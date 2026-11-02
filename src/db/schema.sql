@@ -3060,7 +3060,7 @@ create index if not exists idx_upload_log_user on upload_log (guild_id, user_id,
 alter table upload_log enable row level security;
 
 -- Requests: members ask for something with `!request`, a card with buttons is posted for the staff to claim and finish.
--- A claimed request that is not finished in `completion_hours` goes back to open by itself (Premium).
+-- A claimed request that is not finished in `completion_hours` goes back to open by itself.
 create table if not exists request_config (
   guild_id         text primary key references guilds(guild_id) on delete cascade,
   enabled          boolean not null default false,
@@ -3125,6 +3125,45 @@ alter table partner_config add column if not exists cooldown_minutes integer not
 alter table partner_config add column if not exists welcome_channel_id text;
 alter table partner_config add column if not exists block_nsfw boolean not null default false;
 alter table partner_config add column if not exists blocked_keywords text[] not null default '{}';
+
+-- Partners, uploads, reviews and requests, more settings:
+--  - `milestone_rewards`: a role (and an optional message) for the members that reach a number of partnerships or uploads;
+--    `milestone_awards` records which milestone each member was given, so none is given twice (the primary key is the claim).
+--  - `partner_config.nickname_format`: the nickname format of the Partner Managers (`{name}` and `{count}`); null is off.
+--  - `profile_config`: rules for reviews (minimum age of the account and time in the server, cooldown, comment length). Zero is off.
+--  - `request_config.reminder_hours` and `requests.reminded_at`: one reminder for a request nobody claimed.
+create table if not exists milestone_rewards (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  kind       text not null check (kind in ('partner', 'upload')),
+  count      integer not null check (count between 1 and 1000000),
+  role_id    text not null,
+  message    text check (message is null or char_length(message) <= 1000),
+  created_at timestamptz not null default now(),
+  primary key (guild_id, kind, count)
+);
+alter table milestone_rewards enable row level security;
+
+create table if not exists milestone_awards (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  kind       text not null check (kind in ('partner', 'upload')),
+  user_id    text not null,
+  count      integer not null,
+  awarded_at timestamptz not null default now(),
+  primary key (guild_id, kind, user_id, count)
+);
+alter table milestone_awards enable row level security;
+
+alter table partner_config add column if not exists nickname_format text check (nickname_format is null or char_length(nickname_format) <= 64);
+
+alter table profile_config add column if not exists min_account_days integer not null default 0 check (min_account_days between 0 and 3650);
+alter table profile_config add column if not exists min_member_days integer not null default 0 check (min_member_days between 0 and 3650);
+alter table profile_config add column if not exists cooldown_minutes integer not null default 0 check (cooldown_minutes between 0 and 525600);
+alter table profile_config add column if not exists min_comment integer not null default 0 check (min_comment between 0 and 300);
+alter table profile_config add column if not exists max_comment integer not null default 300 check (max_comment between 20 and 300);
+
+alter table request_config add column if not exists reminder_hours integer not null default 0 check (reminder_hours between 0 and 720);
+alter table requests add column if not exists reminded_at timestamptz;
+create index if not exists idx_requests_unclaimed on requests (status, created_at) where status = 'open' and reminded_at is null;
 
 -- Honeypot: what is posted in the bait channel. `default` is the warning panel Petto makes, `custom` is the text and/or the
 -- saved embed below (with {honeypot.*} variables), `none` posts nothing.

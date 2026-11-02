@@ -86,8 +86,8 @@ const UMBRELLAS = {
   greet: { category: 'welcome', groups: { welcome: 6, leave: 4, boost: 5, dmonjoin: 4, poj: 5, joinrole: 4, stickyroles: 3 }, flat: {} },
   auto: { category: 'automation', groups: { autothread: 3, bumpreminder: 8, reaction: 10, reactionrole: 4, stickymessage: 3, timer: 12 }, flat: {} },
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
-  community: { category: 'automation', groups: { suggestion: 17, confession: 13, request: 2, requestconfig: 8, review: 3, profileconfig: 3 }, flat: { confess: 'confess', profile: 'profile' } },
-  contrib: { category: 'automation', groups: { partner: 2, partnerconfig: 10, uploads: 2, uploadconfig: 6 }, flat: {} },
+  community: { category: 'automation', groups: { suggestion: 17, confession: 13, request: 2, requestconfig: 10, review: 3, profileconfig: 4 }, flat: { confess: 'confess', profile: 'profile' } },
+  contrib: { category: 'automation', groups: { partner: 2, partnerconfig: 12, uploads: 2, uploadconfig: 7 }, flat: {} },
   special: { category: 'utility', groups: { counting: 9, counter: 8, imgonly: 3, urlonly: 4 }, flat: {} },
   bot: { category: 'info', groups: { votes: 2, premium: 1 }, flat: { uptime: 'uptime', version: 'version' } },
 };
@@ -272,7 +272,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 42, protect: 12, greet: 31, auto: 40, message: 33, community: 48, contrib: 20, special: 24, bot: 5 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 42, protect: 12, greet: 31, auto: 40, message: 33, community: 51, contrib: 23, special: 24, bot: 5 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).

@@ -1,6 +1,6 @@
 const database = require('./database');
 
-const DEFAULTS = { enabled: false, channel_id: null, staff_role_id: null, ping_role_id: null, max_open: 3, completion_hours: 0, messages: {} };
+const DEFAULTS = { enabled: false, channel_id: null, staff_role_id: null, ping_role_id: null, max_open: 3, completion_hours: 0, reminder_hours: 0, messages: {} };
 
 async function getConfig(guildId) {
   const { data, error } = await database.from('request_config').select('*').eq('guild_id', String(guildId)).maybeSingle();
@@ -17,6 +17,13 @@ async function upsertConfig(guildId, changes) {
 /** Servers that give a claimed request a time to be finished. */
 async function listConfigsWithTimeout() {
   const { data, error } = await database.from('request_config').select('*').eq('enabled', true).gt('completion_hours', 0);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ ...DEFAULTS, ...row }));
+}
+
+/** Servers that remind the staff of a request nobody claimed. */
+async function listConfigsWithReminder() {
+  const { data, error } = await database.from('request_config').select('*').eq('enabled', true).gt('reminder_hours', 0);
   if (error) throw error;
   return (data ?? []).map((row) => ({ ...DEFAULTS, ...row }));
 }
@@ -69,4 +76,25 @@ async function listClaimedBefore(guildId, before) {
   return data ?? [];
 }
 
-module.exports = { DEFAULTS, getConfig, upsertConfig, listConfigsWithTimeout, create, get, update, list, countOpenBy, listClaimedBefore };
+/** Open requests made before `before` that were not reminded yet, oldest first (at most 10). */
+async function listUnremindedBefore(guildId, before) {
+  const { data, error } = await database.from('requests').select('*').eq('guild_id', String(guildId)).eq('status', 'open').is('reminded_at', null).lt('created_at', before.toISOString()).order('created_at', { ascending: true }).limit(10);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Marks the request as reminded; the row only when it was still open and not reminded (so a reminder is sent once, even from two places). */
+async function markReminded(guildId, number) {
+  const { data, error } = await database.from('requests').update({ reminded_at: new Date().toISOString() }).eq('guild_id', String(guildId)).eq('number', number).eq('status', 'open').is('reminded_at', null).select('*').maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+/** Puts a claimed request back to open, only if it is still claimed by the same person and was claimed before `before` (a request finished or claimed again in between is left alone). */
+async function releaseClaim(guildId, number, claimedBy, before) {
+  const { data, error } = await database.from('requests').update({ status: 'open', claimed_by: null, claimed_at: null }).eq('guild_id', String(guildId)).eq('number', number).eq('status', 'claimed').eq('claimed_by', String(claimedBy)).lt('claimed_at', before.toISOString()).select('*').maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+module.exports = { DEFAULTS, getConfig, upsertConfig, listConfigsWithTimeout, listConfigsWithReminder, listUnremindedBefore, markReminded, releaseClaim, create, get, update, list, countOpenBy, listClaimedBefore };
