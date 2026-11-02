@@ -4753,3 +4753,15 @@ create index if not exists idx_dm_reports_reporter on dm_reports(reporter_id, cr
 create index if not exists idx_dm_reports_open on dm_reports(created_at) where status = 'open';
 alter table dm_reports enable row level security;
 -- No policy on purpose: only the bot's own connection reads or writes it.
+-- A report that was handled is final: the table refuses to move it back to open or to change who handled it.
+create or replace function dm_reports_final() returns trigger language plpgsql as $$
+begin
+  if old.status = 'handled' and (new.status is distinct from 'handled' or new.handled_by is distinct from old.handled_by) then
+    raise exception 'a handled DM report cannot be reopened';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists dm_reports_final on dm_reports;
+create trigger dm_reports_final before update of status, handled_by on dm_reports
+  for each row execute function dm_reports_final();

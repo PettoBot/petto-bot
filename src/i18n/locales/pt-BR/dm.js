@@ -27,7 +27,7 @@ module.exports = {
   'dm.report.delete.label': 'Apagar esta DM depois de denunciar',
   'dm.category.dm_abuse.label.menu': 'DM indesejada ou abusiva',
   'dm.category.dm_abuse.description.menu': 'Uma mensagem direta de um servidor que o Petto entregou e não devia.',
-  'dm.report.sent': '{emoji} Obrigado. A sua denúncia #{id} foi para a equipe do Petto. Os moderadores do servidor não a receberam.',
+  'dm.report.sent': '{emoji} Obrigado. A sua denúncia foi para a equipe do Petto. Os moderadores do servidor não a receberam.',
   'dm.report.deleted': 'A mensagem foi apagada do seu chat.',
   'dm.report.tooShort': 'Escreva pelo menos {min} caracteres para que a equipe do Petto possa agir.',
   'dm.report.badCategory': 'Escolha uma das opções da lista.',

@@ -49,7 +49,6 @@ const fakeDb = {
   async setDelivered(id, messageId) { table.find((row) => row.id === id).delivered_message_id = messageId; },
   async setDeleted() {},
   async handle(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { status: 'handled', handled_by: userId }); return row; },
-  async reopen(id) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'handled') return null; Object.assign(row, { status: 'open', handled_by: null }); return row; },
   async get(id) { return table.find((row) => row.id === Number(id)) ?? null; },
 };
 Object.assign(fakeDb, { SQL: {}, createStore: () => fakeDb });
@@ -354,6 +353,7 @@ section(() => {
   assert.match(schema, /create table if not exists dm_reports \(/, 'the table is in schema.sql');
   assert.match(schema, /message_id\s+text not null unique/, 'one report for each message');
   assert.match(schema, /alter table dm_reports enable row level security;/, 'closed to everyone but the bot');
+  assert.match(schema, /create trigger dm_reports_final before update of status, handled_by on dm_reports/, 'the table itself refuses to reopen a handled report');
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -567,7 +567,7 @@ section(async () => {
   assert.ok(sentToTeam[0].flags & V2);
   assert.equal(table[0].delivered_message_id, 'card1');
   assert.equal(one.deleted, 0, 'the DM stays when the switch is off');
-  assert.ok(calls.deferred && /#1/.test(JSON.stringify(calls.edited[0].components.map(jsonOf))) && /moderators of the server did not get it/.test(JSON.stringify(calls.edited[0].components.map(jsonOf))), 'the person is told, in a short receipt');
+  assert.ok(calls.deferred && !/#\d/.test(JSON.stringify(calls.edited[0].components.map(jsonOf))) && /moderators of the server did not get it/.test(JSON.stringify(calls.edited[0].components.map(jsonOf))), 'the person is told, in a short receipt');
   assert.ok(!/From Mossy/.test(JSON.stringify(calls.edited[0])), 'the receipt carries no origin line or buttons');
   assert.ok(!card.includes('@everyone') && !/<@&?\d/.test(card), 'no mention in the card');
 
@@ -611,7 +611,7 @@ section(async () => {
   assert.match(JSON.stringify(calls.edited[0].components.map(jsonOf)), /already sent 3 reports/, 'the fourth in an hour is refused');
   assert.equal(table.length, 3);
   const other = await submit({ message: botMessage({ id: '500000000000000006' }), details: longText, user: { id: '999999999999999990', tag: 'other#0' } });
-  assert.match(JSON.stringify(other.edited[0].components.map(jsonOf)), /#4/, 'the limit is for each person');
+  assert.match(JSON.stringify(other.edited[0].components.map(jsonOf)), /went to Petto staff/, 'the limit is for each person');
   // The window: in memory and in the database (a restart forgets the memory, not the table).
   let now = 1_000_000;
   const limiter = dmReports.createLimiter({ now: () => now });
@@ -637,7 +637,12 @@ section(async () => {
   assert.equal(table.length, 4, 'stored without a channel');
   assert.equal(table[3].delivered_message_id, undefined);
   assert.ok(warnings.some((line) => /PETTO_DM_REPORTS_CHANNEL_ID is not set/.test(line)), 'and a warning says why');
-  assert.match(JSON.stringify(calls.edited[0].components.map(jsonOf)), /report #4/, 'the person is thanked all the same');
+  assert.match(JSON.stringify(calls.edited[0].components.map(jsonOf)), /went to Petto staff/, 'the person is thanked all the same');
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    const thanks = i18n.t(lang, 'dm.report.sent', { emoji: '', id: 4, number: 4 });
+    assert.ok(!/\d|#/.test(thanks) && !/\{/.test(thanks), `the thanks in ${lang} shows no report number: ${thanks}`);
+  }
+  assert.ok(!/#\d|report \d/i.test(JSON.stringify(calls.edited[0].components.map(jsonOf))), 'the reporter is never shown a number');
   assert.equal(stored.deleted, 1, 'the report is stored, so the DM can go');
   config.opsChannels.dmReports = '555555555555555555';
   warnings.length = 0;
@@ -697,12 +702,17 @@ section(async () => {
   const operator = config.ownerId;
   calls = await press(operator, 'dmteam:done:41');
   assert.equal(reportRow.status, 'handled');
-  assert.match(JSON.stringify(calls.updates[0].components.map(jsonOf)), /Handled by[\s\S]*Reopen/, 'the card shows who handled it, with a button to reopen');
+  assert.match(JSON.stringify(calls.updates[0].components.map(jsonOf)), /Handled by/, 'the card shows who handled it');
+  assert.ok(!/Reopen|dmteam:(open|done)/.test(JSON.stringify(calls.updates[0].components.map(jsonOf))), 'a handled card has no Reopen and no button at all');
   assert.deepEqual(calls.updates[0].allowedMentions, { parse: [] });
   calls = await press(operator, 'dmteam:done:41');
   assert.match(calls.replies[0].content, /already handled/, 'handled once');
+  assert.match(calls.replies[0].content, /cannot be reopened/, 'a second press says it is final');
+  assert.equal(calls.updates.length, 0, 'and changes nothing');
+  assert.equal(fakeDb.reopen, undefined, 'the store has no way back');
   calls = await press(operator, 'dmteam:open:41');
-  assert.equal(reportRow.status, 'open');
+  assert.match(calls.replies[0].content, /not valid/, 'an old Reopen button does nothing');
+  assert.equal(reportRow.status, 'handled', 'a handled report stays handled');
   calls = await press(operator, 'dmteam:bad');
   assert.match(calls.replies[0].content, /not valid/);
   table.length = 0;

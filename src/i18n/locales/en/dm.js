@@ -27,7 +27,7 @@ module.exports = {
   'dm.report.delete.label': 'Delete this DM after reporting',
   'dm.category.dm_abuse.label.menu': 'Unwanted or abusive DM',
   'dm.category.dm_abuse.description.menu': 'A direct message from a server that Petto delivered and should not have.',
-  'dm.report.sent': '{emoji} Thank you. Your report #{id} went to Petto staff. The moderators of the server did not get it.',
+  'dm.report.sent': '{emoji} Thank you. Your report went to Petto staff. The moderators of the server did not get it.',
   'dm.report.deleted': 'The message was deleted from your chat.',
   'dm.report.tooShort': 'Please write at least {min} characters so Petto staff can act on it.',
   'dm.report.badCategory': 'Pick one of the options of the list.',

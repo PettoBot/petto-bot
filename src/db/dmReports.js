@@ -1,6 +1,6 @@
 // i18n-ignore-file: database layer; nothing here reaches a member.
 // The reports of direct messages (table dm_reports in schema.sql): who reported which message of Petto, from which server, why, and what the Petto team
-// did with it. They are for the Petto team only. One report per message: the unique key makes the second one fail, so two clicks at the same time
+// did with it. A report that was marked handled is final: there is no statement that opens it again (and the table refuses it too). They are for the Petto team only. One report per message: the unique key makes the second one fail, so two clicks at the same time
 // cannot send two.
 const { getPrimaryPool } = require('./postgres');
 
@@ -15,7 +15,6 @@ returning *`,
   delivered: 'update dm_reports set delivered_message_id = $2 where id = $1',
   deleted: 'update dm_reports set deleted_dm = true where id = $1',
   handle: "update dm_reports set status = 'handled', handled_by = $2, handled_at = now() where id = $1 and status = 'open' returning *",
-  reopen: "update dm_reports set status = 'open', handled_by = null, handled_at = null where id = $1 and status = 'handled' returning *",
   get: 'select * from dm_reports where id = $1',
 });
 
@@ -45,7 +44,6 @@ function createStore(query) {
     async setDelivered(id, messageId) { await query(SQL.delivered, [id, String(messageId)]); },
     async setDeleted(id) { await query(SQL.deleted, [id]); },
     async handle(id, userId) { return (await query(SQL.handle, [id, String(userId)])).rows?.[0] ?? null; },
-    async reopen(id) { return (await query(SQL.reopen, [id])).rows?.[0] ?? null; },
     async get(id) { return (await query(SQL.get, [id])).rows?.[0] ?? null; },
   };
 }

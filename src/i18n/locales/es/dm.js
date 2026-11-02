@@ -27,7 +27,7 @@ module.exports = {
   'dm.report.delete.label': 'Borrar este MD después de reportar',
   'dm.category.dm_abuse.label.menu': 'MD no deseado o abusivo',
   'dm.category.dm_abuse.description.menu': 'Un mensaje directo de un servidor que Petto entregó y no debió.',
-  'dm.report.sent': '{emoji} Gracias. Tu reporte #{id} llegó al staff de Petto. Los moderadores del servidor no lo recibieron.',
+  'dm.report.sent': '{emoji} Gracias. Tu reporte llegó al staff de Petto. Los moderadores del servidor no lo recibieron.',
   'dm.report.deleted': 'El mensaje se borró de tu chat.',
   'dm.report.tooShort': 'Escribe al menos {min} caracteres para que el staff de Petto pueda actuar.',
   'dm.report.badCategory': 'Elige una de las opciones de la lista.',

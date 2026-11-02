@@ -176,7 +176,7 @@ async function handleModal(interaction) {
     details: interaction.fields.getTextInputValue(FIELDS.details),
     deleteAfter: readCheckbox(interaction.fields, FIELDS.remove),
   });
-  if (result.ok) return reply(`${t(lang, 'dm.report.sent', { emoji: EMOJI.APPROVE, id: result.id })}${result.deleted ? `\n${t(lang, 'dm.report.deleted')}` : ''}`);
+  if (result.ok) return reply(`${t(lang, 'dm.report.sent', { emoji: EMOJI.APPROVE })}${result.deleted ? `\n${t(lang, 'dm.report.deleted')}` : ''}`);
   const key = { tooShort: 'dm.report.tooShort', badCategory: 'dm.report.badCategory', limit: 'dm.report.limit', duplicate: 'dm.report.duplicate' }[result.reason] ?? 'dm.report.failed';
   return fail(t(lang, key, { min: LIMITS.min, max: result.max ?? LIMITS.perHour, minutes: result.minutes ?? 60 }));
 }
