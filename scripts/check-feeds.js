@@ -146,6 +146,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok([...walked].every((n) => n >= 1 && n <= pokemon.TOTAL));
 
   const rss = (entries) => `<?xml version="1.0"?><feed><title>Chan</title>${entries.map((e) => `<entry><yt:videoId>${e.id}</yt:videoId><title>${e.title}</title><link rel="alternate" href="https://www.youtube.com/${e.short ? 'shorts/' : 'watch?v='}${e.id}"/><author><name>Chan</name></author><published>${new Date(e.at).toISOString()}</published><yt:channelId>UCx</yt:channelId><media:group><media:thumbnail url="https://i.ytimg.com/vi/${e.id}/hq.jpg"/><media:description>${e.desc ?? ''}</media:description><media:community><media:statistics views="5"/></media:community></media:group></entry>`).join('')}</feed>`;
+  const jpeg = (size = 6000) => new Response(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(size)]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
   const now = Date.now();
   const entries = [
     { id: 'vid1', title: 'A video &amp; more', at: now - 3_600_000, desc: 'First line\nsecond line' },
@@ -173,6 +174,7 @@ const allText = (message) => JSON.stringify(json(message.components));
       const state = { liv1: 'live', upc1: 'upcoming', sch1: 'live' };
       return new Response(JSON.stringify({ items: ids.map((id) => ({ id, snippet: { liveBroadcastContent: state[id] ?? 'none' }, liveStreamingDetails: id === 'sch1' ? { actualStartTime: new Date(now - 90_000).toISOString() } : {} })) }), { status: 200 });
     }
+    if (/ytimg\.com/.test(String(url))) return jpeg();
     return new Response('{}', { status: 404 });
   };
   const account = { id: 'UCx', name: 'Chan', avatar: 'https://yt3.example/a.jpg', url: 'https://www.youtube.com/channel/UCx' };
@@ -224,8 +226,30 @@ const allText = (message) => JSON.stringify(json(message.components));
   results = await PROVIDERS.youtube.poll([account], new Map(), { now });
   assert.ok(!results.get('UCx').items.some((item) => item.id === 'liv1'), 'the recording of a stream that was live is not a new video');
   assert.ok(results.get('UCx').items.some((item) => item.id === 'vid1'), 'a real video still is');
+  // A new video whose picture YouTube has not made yet is held (it is not marked as seen) and goes out with the best picture that loads; one that never gets it goes out anyway.
+  {
+    const made = new Map(); // url -> the answer YouTube gives for it
+    let young = [{ id: 'yng1', title: 'Young', at: now - 60_000 }];
+    globalThis.fetch = async (url) => {
+      const text = String(url);
+      if (text.includes('/feeds/videos.xml')) return new Response(rss(young), { status: 200 });
+      if (text.includes('/youtube/v3/videos')) return new Response(JSON.stringify({ items: young.map((e) => ({ id: e.id, snippet: { liveBroadcastContent: 'none' } })) }), { status: 200 });
+      return made.has(text) ? made.get(text)() : new Response('', { status: 404 });
+    };
+    const posted = async () => (await PROVIDERS.youtube.poll([account], new Map(), { now })).get('UCx').items;
+    assert.equal((await posted()).length, 0, 'a young video with no picture yet is held');
+    made.set('https://i.ytimg.com/vi/yng1/maxresdefault.jpg', () => jpeg(500));
+    made.set('https://i.ytimg.com/vi/yng1/hqdefault.jpg', () => jpeg(500));
+    assert.equal((await posted()).length, 0, 'the gray stand-in of YouTube (a few hundred bytes) is not a picture');
+    made.set('https://i.ytimg.com/vi/yng1/hqdefault.jpg', () => jpeg());
+    assert.equal((await posted())[0].image, 'https://i.ytimg.com/vi/yng1/hqdefault.jpg', 'the one that loads is used');
+    made.set('https://i.ytimg.com/vi/yng1/maxresdefault.jpg', () => jpeg());
+    assert.equal((await posted())[0].image, 'https://i.ytimg.com/vi/yng1/maxresdefault.jpg', 'the largest one that loads wins');
+    young = [{ id: 'old2', title: 'Older', at: now - 30 * 60_000 }];
+    assert.equal((await posted())[0].image, 'https://i.ytimg.com/vi/old2/hq.jpg', 'a video that waited long enough goes out with the picture of its feed');
+  }
   // The feed fails for one channel and not for the others.
-  globalThis.fetch = async (url) => (String(url).includes('channel_id=bad') ? new Response('', { status: 404 }) : new Response(rss(entries), { status: 200 }));
+  globalThis.fetch = async (url) => (String(url).includes('channel_id=bad') ? new Response('', { status: 404 }) : /ytimg\.com/.test(String(url)) ? jpeg() : new Response(rss(entries), { status: 200 }));
   results = await PROVIDERS.youtube.poll([{ ...account, id: 'bad' }, account], new Map(), { now, withLive: false });
   assert.equal(results.get('bad').error, 'unavailable', 'a feed that fails for a channel that was found is YouTube having trouble, not a channel that is gone');
   assert.equal(results.get('UCx').items.length, 4);
