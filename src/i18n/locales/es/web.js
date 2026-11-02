@@ -50,6 +50,7 @@ module.exports = {
   'web.verifyApi.captchaUnreachable': 'No se pudo conectar con el servicio de captcha. Inténtalo de nuevo.',
   'web.verifyApi.captchaFailed': 'La comprobación del captcha falló. Inténtalo de nuevo.',
   'web.verifyApi.rolesFailed': 'Quedaste verificado, pero no pude actualizar tus roles. Contacta a un moderador.',
+  'web.verifyApi.noRole': 'Quedaste verificado. Este servidor aún no tiene un rol configurado para los verificados; si todavía no ves los canales, pregunta a un moderador.',
   'web.limit.verifyPage': 'Demasiadas solicitudes. Espera un minuto e inténtalo de nuevo.',
   'web.limit.captcha': 'Pediste demasiadas imágenes. Espera un minuto e inténtalo de nuevo.',
   'web.limit.transcript': 'Demasiadas solicitudes. Inténtalo de nuevo en un minuto.',

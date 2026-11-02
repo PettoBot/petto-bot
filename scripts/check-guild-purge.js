@@ -39,7 +39,7 @@ const clientWith = (ids, expected = 0) => ({ isReady: () => true, guilds: { cach
   // The tables with a guild_id that have to be deleted by name are found by themselves; what a person paid for is never among them.
   const loose = await departures.looseTables();
   assert.ok(loose.includes('guild_member_days') && loose.includes('dash_access'), 'the tables without a foreign key are found');
-  assert.ok(!loose.some((name) => ['premium_slot_assignments', 'premium_slot_requests', 'guilds', 'guild_departures'].includes(name)), 'Premium is left alone');
+  assert.ok(!loose.some((name) => ['premium_slot_assignments', 'premium_slot_requests', 'guilds', 'guild_departures', 'guild_blacklist'].includes(name)), 'Premium and the blacklist are left alone');
 
   // Servers: 1 is still there; 2 left 5 days ago; 3 has just been noticed as missing; 4 left long ago but has a backup; 5 left 5 days ago but came back.
   for (const n of [1, 2, 3, 4, 5]) await makeGuild(G(n));

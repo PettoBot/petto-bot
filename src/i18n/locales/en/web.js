@@ -50,6 +50,7 @@ module.exports = {
   'web.verifyApi.captchaUnreachable': 'Could not reach the captcha service. Try again.',
   'web.verifyApi.captchaFailed': 'Captcha check failed. Please try again.',
   'web.verifyApi.rolesFailed': 'Verified, but I was unable to update your roles. Contact a moderator.',
+  'web.verifyApi.noRole': 'You are verified. This server has no role set up for verified members yet, so if you still cannot see the channels, ask a moderator.',
   'web.limit.verifyPage': 'Too many requests. Wait a minute and try again.',
   'web.limit.captcha': 'Too many pictures asked. Wait a minute and try again.',
   'web.limit.transcript': 'Too many requests. Try again in a minute.',

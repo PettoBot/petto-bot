@@ -93,6 +93,8 @@ async function ensureUnverifiedRole(guild, verifyConfig, { onProgress } = {}) {
     });
     await gateChannels(guild, role, { reason: t(lang, 'verify.reason.gateSetup'), onProgress: tell });
     await upsertConfig(guild.id, { unverified_role_id: role.id });
+    // A gate role that was chosen before and is gone: the staff is told that a new one was made (not for the first one of a server).
+    if (verifyConfig.unverified_role_id) require('./deadRoles').tellStaff({ guild, kind: 'gate', roleId: verifyConfig.unverified_role_id, outcome: 'made', name: role.name }).catch(() => {});
     return role;
   })();
   making.set(guild.id, entry);

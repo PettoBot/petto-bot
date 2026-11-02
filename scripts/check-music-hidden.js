@@ -86,7 +86,7 @@ const MUSIC_WORDS = ['music', 'play', 'playnext', 'skip', 'previous', 'stop', 'r
     assert.equal(isSlashCommand(music), false);
     assert.ok(!collectCommandData().some((json) => json.name === 'music'), `not in the commands sent to Discord (MUSIC_ENABLED=${enabled})`);
   }
-  for (const other of client.commands.values()) if (other !== music) assert.ok(!isHiddenEverywhere(other), `${other.data.name} is not hidden`);
+  for (const other of client.commands.values()) if (other !== music && !other.team) assert.ok(!isHiddenEverywhere(other), `${other.data.name} is not hidden`); // (the new team tools are hidden on purpose: check-guild-blacklist.js)
   const slotsHidden = slotUsage(collectCommandData()).chat.used;
   config.musicEnabled = true;
   config.musicListed = true;

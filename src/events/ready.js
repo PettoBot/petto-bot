@@ -10,6 +10,7 @@ const { startOmniplexStatsJob } = require('../jobs/omniplexStatsJob');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { startGuildLanguageRefresh } = require('../i18n');
+const guildBlacklist = require('../utils/guildBlacklist');
 
 /** A while after connecting, says in the log how Discord sees the bot (for example `{"mobile":"idle"}`), to check the phone icon without a screenshot. */
 function reportMobileStatus(client) {
@@ -39,6 +40,9 @@ module.exports = {
 
     logger.info(`Petto v${require("../../package.json").version} is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
     attachDiscordLogger(client);
+    // Every blacklisted server Petto is in now (the list was loaded before the login): left one by one, a second apart, in the background.
+    guildBlacklist.sweep(client).then((count) => { if (count) logger.info(`Left ${count} blacklisted server(s) at start.`); })
+      .catch((err) => logger.warn(`The blacklist sweep failed: ${err?.message ?? err}`));
     // The registration of the slash commands ran before the login: now that the log of Discord is on, it says what it did.
     announceDeployReport();
     // Once, in the background: the server-only copies of the commands left from a registration per server (they showed twice).

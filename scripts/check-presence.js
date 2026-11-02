@@ -195,8 +195,9 @@ const botPresence = require('../src/utils/botPresence');
   // Nobody but the team.
   events.length = 0;
   setCalls = 0;
+  const answersBefore = answers.length;
   answer = await run({ status: 'device', device: 'normal' }, '1');
-  assert.ok(answer.includes('not available') && setCalls === 0 && !events.includes('restart'));
+  assert.ok(answers.length === answersBefore && setCalls === 0 && !events.includes('restart'), 'nobody but the team gets an answer, not even a refusal');
   // Alone, it shows the dot and the device, and the dot's label only claims the phone icon when the device is not normal.
   saved.set('presence_status', 'online');
   saved.set('presence_device', 'normal');

@@ -4753,3 +4753,36 @@ create index if not exists idx_dm_reports_reporter on dm_reports(reporter_id, cr
 create index if not exists idx_dm_reports_open on dm_reports(created_at) where status = 'open';
 alter table dm_reports enable row level security;
 -- No policy on purpose: only the bot's own connection reads or writes it.
+-- A report that was handled is final: the table refuses to move it back to open or to change who handled it.
+create or replace function dm_reports_final() returns trigger language plpgsql as $$
+begin
+  if old.status = 'handled' and (new.status is distinct from 'handled' or new.handled_by is distinct from old.handled_by) then
+    raise exception 'a handled DM report cannot be reopened';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists dm_reports_final on dm_reports;
+create trigger dm_reports_final before update of status, handled_by on dm_reports
+  for each row execute function dm_reports_final();
+
+-- ---------------------------------------------------------------------------
+-- The servers the Petto team blacklisted for breaking the terms of service or the privacy policy (db/guildBlacklist.js, utils/guildBlacklist.js).
+-- Petto leaves one that it is in, and leaves again the second it is added back. It is NOT erased with the departure of a server (db/guildDepartures.js
+-- KEEP): the entry must outlive what Petto stored for that server. `reason` is for the team and is told to the owner of the server; `notified_at` is
+-- the last notice to the owner (one every 24 hours at most); `attempts` counts the times the server added Petto again.
+-- ---------------------------------------------------------------------------
+create table if not exists guild_blacklist (
+  guild_id        text primary key,
+  reason          text not null,
+  added_by        text not null,
+  added_at        timestamptz not null default now(),
+  guild_name      text,
+  owner_id        text,
+  notified_at     timestamptz,
+  left_at         timestamptz,
+  attempts        integer not null default 0,
+  last_attempt_at timestamptz
+);
+alter table guild_blacklist enable row level security;
+-- No policy on purpose: only the bot's own connection reads or writes it.

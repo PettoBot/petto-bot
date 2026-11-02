@@ -18,6 +18,7 @@ const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verifi
 const { getTicketById, getTicketByNumber } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
+const { applyVerificationRoles } = require('../utils/verifyApply');
 const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, vault } = require('../db/backups');
 const { planRestore, restoreParts, backupContents } = require('../utils/backupRestore');
 const backupJobs = require('../utils/backupJobs');
@@ -178,6 +179,8 @@ function startServer(client) {
   const app = express();
   const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
   app.disable('x-powered-by');
+  // A blacklisted server is "not available" on every route that has a :guildId (the dashboard, the API, the appeals, the transcripts).
+  require('../utils/guildBlacklist').guardWebGuild(app);
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1); // i18n-ignore: Express setting
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
@@ -1182,29 +1185,28 @@ function startServer(client) {
         return;
       }
 
-      // The audit log reason is in the server's language, the same as when the member verifies inside Discord (utils/verifyApply.js).
+      // The same step as when the member verifies inside Discord (utils/verifyApply.js): the roles in the language of the server, and a role that
+      // was deleted never fails it (it is made again, or the staff is told and the member still counts as verified).
       const serverLang = peekGuildLanguage(guild.id);
+      let noRole = false;
       try {
-        if (verifyConfig?.unverified_role_id && member.roles.cache.has(verifyConfig.unverified_role_id)) {
-          await member.roles.remove(verifyConfig.unverified_role_id, t(serverLang, 'verify.reason.passed'));
-        }
-        if (verifyConfig?.verified_role_id) {
-          await member.roles.add(verifyConfig.verified_role_id, t(serverLang, 'verify.reason.passed'));
-        }
+        ({ noRole } = await applyVerificationRoles({ client, guild, member, settings: verifyConfig, lang: serverLang }));
       } catch (err) {
         await releaseRedemption(payload.jti).catch((releaseErr) => logger.error('Failed to release verification claim after role failure:', releaseErr));
         throw err;
       }
 
-      res.json({ ok: true });
+      res.json(noRole ? { ok: true, note: t(lang, 'web.verifyApi.noRole') } : { ok: true });
 
       // Best-effort follow-up work, the member's already verified at this point,
       // so none of this should turn a real success into an error response.
       await logVerification(client, guild, member.user).catch((err) => logger.error('Failed to log verification:', err));
-      await sendVerifiedDM(member, { guild })
-        .catch(() => logger.warn(`Could not DM verified confirmation to ${member.id} in guild ${guild.id}.`));
+      if (!noRole) {
+        await sendVerifiedDM(member, { guild })
+          .catch(() => logger.warn(`Could not DM verified confirmation to ${member.id} in guild ${guild.id}.`));
+      }
     } catch (err) {
-      logger.error('Failed to apply verification roles:', err);
+      logger.error({ guildId: payload.guildId, userId: payload.userId, command: 'verify', action: 'verify-web', source: 'web' }, 'Failed to apply verification roles:', err);
       res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.rolesFailed') });
     }
   });

@@ -3,6 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 const { peekGuildLanguage, languageFromLocale, runWithLanguage } = require('../i18n');
+const guildBlacklist = require('../utils/guildBlacklist');
+
+// The interactions of a blacklisted server that were already answered "not available": every listener of interactionCreate asks, only the first one answers.
+const blockedAnswered = new WeakSet();
 
 const EVENTS_DIR = path.join(__dirname, '..', 'events');
 
@@ -47,6 +51,26 @@ function eventLanguage(eventName, guildId, args) {
   return lang;
 }
 
+/** The listener that is registered on the client for one event module: the blacklist check first, then the language of the server, then the handler. */
+function makeInvoker(event, file, client) {
+  return (...args) => {
+    // A blacklisted server: no listener runs for it (nothing is written, sent or read), except the ones marked `blacklistExempt` (the one that leaves, and
+    // guildDelete). It is read from memory, so this costs nothing and never waits for the database.
+    if (guildBlacklist.blocksEvent(event, args)) {
+      if (event.name === 'interactionCreate' && !blockedAnswered.has(args[0])) { blockedAnswered.add(args[0]); guildBlacklist.refuseInteraction(args[0]); }
+      return;
+    }
+    const context = eventContext(event.name, args);
+    // Each event runs inside the language of its server, so what it sends follows `!language` (see src/i18n).
+    const lang = eventLanguage(event.name, context.guildId, args);
+    logger.runWithContext(context, () => Promise.resolve()
+      .then(() => runWithLanguage(lang, () => event.execute(...args, client)))
+      .catch((err) => (isPermissionError(err)
+        ? logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`)
+        : logger.error(`[event:${event.name}] Handler failed (${file}):`, err))));
+  };
+}
+
 /**
  * Loads every event module and registers it on the client.
  * Each event file must export { name: string, once?: boolean, execute(...args) }.
@@ -71,16 +95,7 @@ function loadEvents(client) {
       continue;
     }
 
-    const invoke = (...args) => {
-      const context = eventContext(event.name, args);
-      // Each event runs inside the language of its server, so what it sends follows `!language` (see src/i18n).
-      const lang = eventLanguage(event.name, context.guildId, args);
-      logger.runWithContext(context, () => Promise.resolve()
-        .then(() => runWithLanguage(lang, () => event.execute(...args, client)))
-        .catch((err) => (isPermissionError(err)
-          ? logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`)
-          : logger.error(`[event:${event.name}] Handler failed (${file}):`, err))));
-    };
+    const invoke = makeInvoker(event, file, client);
 
     if (event.once) client.once(event.name, invoke);
     else client.on(event.name, invoke);
@@ -91,4 +106,4 @@ function loadEvents(client) {
   logger.info(`Loaded ${count} event(s).`);
 }
 
-module.exports = { loadEvents };
+module.exports = { loadEvents, makeInvoker };

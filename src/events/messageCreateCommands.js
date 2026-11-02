@@ -26,7 +26,7 @@ const { findTrigger } = require('../utils/codeTriggers');
 const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
 const guildPrefixes = require('../utils/guildPrefixes');
 const { isCommonWord } = require('../utils/commonWords');
-const { isHiddenEverywhere, isHiddenWordFor } = require('../utils/hiddenCommands');
+const { isTeamOnly, isHiddenWordFor } = require('../utils/hiddenCommands');
 const { isPettoOperator } = require('../utils/autoModControl');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
@@ -364,7 +364,7 @@ module.exports = {
     const hiddenAutomodControl = Boolean(automodControlAction && automodControlAction !== 'invalid');
     if (hiddenAutomodControl) argText = `control ${automodControlAction}`;
     // The same for a way in that was not the typed word (a server alias, a first word sent on): a hidden command does not exist for the people outside the team.
-    if (isHiddenEverywhere(command) && !isPettoOperator(message.author.id)) { command = null; hiddenWord = true; }
+    if (isTeamOnly(command) && !isPettoOperator(message.author.id)) { command = null; hiddenWord = true; }
     // Slash-only commands can open native Discord modals and must not be
     // executed through the pseudo-interaction used by prefix commands.
     if (command?.slashOnly) return;

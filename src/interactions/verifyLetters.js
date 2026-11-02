@@ -1,6 +1,7 @@
 // The letters check inside Discord: a button in the verification DM shows a picture, and the member types the letters in a small form.
 // The picture's ticket is kept in memory for a few minutes (a restart just asks for a new picture); five wrong answers lock it, as on the page.
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SectionBuilder, ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } = require('discord.js');
+const { EMOJI } = require('../utils/emojis');
 const { getConfig } = require('../db/verificationConfig');
 const { hasEverVerified } = require('../db/verificationRedemptions');
 const captcha = require('../utils/verifyCaptcha');
@@ -22,7 +23,7 @@ const key = (guildId, userId) => `${guildId}:${userId}`;
 
 /** The button of the verification DM that starts the letters check. */
 function startButton(guildId, lang = currentLanguage()) {
-  return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel(t(lang, 'verify.letters.start.button')).setEmoji('🔤').setStyle(ButtonStyle.Primary);
+  return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel(t(lang, 'verify.letters.start.button')).setEmoji(EMOJI.SAFETY).setStyle(ButtonStyle.Primary);
 }
 
 
@@ -199,9 +200,10 @@ async function handleModal(interaction) {
     const applied = await applyVerification({ client: interaction.client, guild: state.guild, member: state.member, settings: state.settings, jti: `dc${Date.now().toString(36)}${state.member.id}` });
     // The picture that was answered stops being usable: its buttons are locked, so nobody asks for another one once verified.
     await lockPicture(interaction);
-    return say(interaction, applied.ok ? t(lang, 'verify.letters.done', { server: state.guild.name }) : t(lang, 'verify.letters.already'));
+    return say(interaction, !applied.ok ? t(lang, 'verify.letters.already') : t(lang, applied.noRole ? 'verify.letters.doneNoRole' : 'verify.letters.done', { server: state.guild.name }));
   } catch (err) {
-    logger.error('Failed to apply verification roles (letters in Discord):', err);
+    // Pressed in a DM there is no server on the interaction: the server being verified for is named here, so the error says which one it was.
+    logger.error({ guildId, userId: interaction.user.id, channelId: interaction.channelId ?? undefined, command: 'verify', action: 'verify-letters', source: 'interactionCreate' }, 'Failed to apply verification roles (letters in Discord):', err);
     return say(interaction, t(lang, 'verify.letters.rolesFailed'));
   }
 }

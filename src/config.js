@@ -67,6 +67,8 @@ module.exports = {
   clientId: process.env.DISCORD_CLIENT_ID,
   ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
   developerIds: envList('PETTO_DEVELOPER_IDS'),
+  // Servers that are blacklisted whatever the database says (ids separated by commas): a safety net merged in at start (utils/guildBlacklist.js).
+  blacklistedGuildIds: envList('PETTO_BLACKLISTED_GUILD_IDS'),
   // Quest alerts are open to every server now that the community API allowed it. Set QUESTS_PUBLIC=false to close them
   // again, so only the owner, the developers and these testers can set them up.
   questsPublic: process.env.QUESTS_PUBLIC !== 'false',

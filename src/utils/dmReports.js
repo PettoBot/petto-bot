@@ -53,7 +53,7 @@ function snapshotOf(message) {
 
 const oneLine = (value, max) => String(value ?? '').replace(/[\r\n`]+/g, ' ').trim().slice(0, max);
 
-/** The card of the team: what was reported, where it came from, who reported it, and the button that marks it handled. No mention can notify anyone. */
+/** The card of the team: what was reported, where it came from, who reported it, and the button that marks it handled (a handled card has none: it is final). No mention can notify anyone. */
 function teamCard(row, { handledBy = null } = {}) {
   const handled = row.status === 'handled' || Boolean(handledBy);
   const seconds = Math.floor(new Date(row.created_at ?? Date.now()).getTime() / 1000);
@@ -65,10 +65,10 @@ function teamCard(row, { handledBy = null } = {}) {
     `### Details from the reporter\n\`\`\`\n${String(row.details ?? '').replace(/```/g, "'''").slice(0, LIMITS.max)}\n\`\`\``,
   ].join('\n');
   const container = addBlocks(new ContainerBuilder(), text).setAccentColor(handled ? COLORS.GREEN : COLORS.YELLOW);
-  const button = handled
-    ? new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:open:${row.id}`).setLabel('Reopen').setStyle(ButtonStyle.Secondary)
-    : new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:done:${row.id}`).setLabel('Mark handled').setStyle(ButtonStyle.Success);
-  return { components: [container, new ActionRowBuilder().addComponents(button)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
+  // A handled report is final: its card has no button at all (nothing opens it again).
+  const components = [container];
+  if (!handled) components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:done:${row.id}`).setLabel('Mark handled').setStyle(ButtonStyle.Success)));
+  return { components, flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
 /**

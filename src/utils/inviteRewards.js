@@ -1,6 +1,7 @@
 // Roles for reaching a number of invites. After an invite count changes, the inviter gets the roles whose number they have
 // reached and loses the ones they have fallen below. Only the roles of the rewards are touched.
 const inviteTracking = require('../db/inviteTracking');
+const { isGone, reportDeadRoles } = require('./deadRoles');
 const logger = require('./logger');
 const { t, guildLanguage } = require('../i18n');
 
@@ -21,6 +22,9 @@ async function applyRewards(guild, inviterId) {
     const stats = await inviteTracking.getStats(guild.id, inviterId);
     const plan = planRewards(rewards, stats.total);
     const me = guild.members.me;
+    // A reward whose role was deleted from the server: the staff is told, and the reward is taken out of the list when they could be told.
+    const gone = [...new Set(rewards.map((reward) => reward.role_id).filter((id) => isGone(guild, id)))];
+    if (gone.length) await reportDeadRoles({ client: guild.client, guild, kind: 'invite', roleIds: gone, forget: (roleId) => inviteTracking.removeReward(guild.id, roleId) });
     const usable = (roleId) => { const role = guild.roles.cache.get(roleId); return role && !role.managed && me && role.position < me.roles.highest.position; };
     const add = plan.give.filter((id) => usable(id) && !member.roles.cache.has(id));
     const remove = plan.take.filter((id) => usable(id) && member.roles.cache.has(id));

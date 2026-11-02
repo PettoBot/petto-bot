@@ -64,6 +64,9 @@ function checkClassification() {
     [new Error('[Redis] a command failed (timed out); skipping Redis for 10s.'), 'redis-timeout'],
     [coded('57P01', 'terminating connection due to administrator command'), 'database-connection'],
     [new Error('Connection terminated unexpectedly'), 'database-connection'],
+    // A role that a server chose in a Petto setting and then deleted: the server has to pick it again, it is not a bug of Petto.
+    [api(10011, 'Unknown Role', { status: 404, url: 'https://discord.com/api/v10/guilds/123456789012345678/members/223456789012345678/roles/323456789012345678' }), 'unknown-role'],
+    [api(50028, 'Invalid Role', { status: 400 }), 'invalid-role'],
     // The two errors of the screenshots of the team.
     [api(10062, 'Unknown interaction', { url: 'https://discord.com/api/v10/interactions/123456789012345678/tokentokentoken1234/callback' }), 'unknown-interaction'],
     [api(10003, 'Unknown Channel', { status: 404 }), 'unknown-channel'],
@@ -78,6 +81,13 @@ function checkClassification() {
   }
   assert.match(classify(api(10062, 'Unknown interaction')).explanation, /took more than 3 seconds to answer.*Not a bug by itself/);
   assert.equal(classify(api(10003, 'Unknown Channel')).fix, 'already-done');
+  // The priority card of the owner's test server: `Failed to apply verification roles (letters in Discord)`, Unknown Role, code 10011, PUT.
+  const deadRole = Object.assign(api(10011, 'Unknown Role', { status: 404 }), { method: 'PUT' });
+  const deadRoleResult = classify(deadRole, { args: ['Failed to apply verification roles (letters in Discord):', deadRole] });
+  assert.deepEqual([deadRoleResult.priority, deadRoleResult.benign, deadRoleResult.kind, deadRoleResult.fix], [false, true, 'unknown-role', 'config-role-missing'], 'a deleted role is a setting of the server, never a priority error');
+  assert.equal(deadRoleResult.explanation, 'Unknown Role: a role chosen in a Petto setting (verification, join roles, reaction roles, level rewards...) was deleted from the server, so the server needs to pick it again. Not a Petto bug.');
+  assert.equal(classify(null, { args: ['Could not give the role: Unknown Role'] }).kind, 'unknown-role', 'the name of the error written in a text is read too');
+  assert.match(classify(api(50013, 'Missing Permissions')).explanation, /above the highest role of Petto/, 'a role above Petto is explained');
   assert.equal(classify(api(10062, 'x')).fix, 'late-answer');
   assert.equal(classify(coded('ETIMEDOUT')).fix, 'retry');
 

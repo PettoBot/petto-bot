@@ -7,6 +7,7 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 const rrDb = require('../db/reactionRoles');
+const { isUnknownRole, reportDeadRoles } = require('../utils/deadRoles');
 const { t, languageOf, currentLanguage } = require('../i18n');
 
 const BUTTON_PREFIX = 'rr:';
@@ -105,7 +106,12 @@ async function handleButton(interaction) {
   }
 
   const role = interaction.guild.roles.cache.get(row.role_id);
-  if (!role) return reply(interaction, t(lang, 'automation.reactionrole.button.roleGone'));
+  const roleGone = async () => {
+    // The member is told, and so is the staff of the server (once a day).
+    await reportDeadRoles({ client: interaction.client, guild: interaction.guild, kind: 'reaction', roleIds: [row.role_id] });
+    return reply(interaction, t(lang, 'automation.reactionrole.button.roleGone'));
+  };
+  if (!role) return roleGone();
   const me = interaction.guild.members.me;
   if (!me?.permissions.has(PermissionFlagsBits.ManageRoles) || !role.editable) {
     return reply(interaction, t(lang, 'automation.reactionrole.button.cannotManage'));
@@ -116,13 +122,18 @@ async function handleButton(interaction) {
   if (row.mode === 'add' && hasRole) return reply(interaction, t(lang, 'automation.reactionrole.button.alreadyHave', { role: role.name }));
   if (row.mode === 'remove' && !hasRole) return reply(interaction, t(lang, 'automation.reactionrole.button.doNotHave', { role: role.name }));
 
-  if (row.mode === 'remove' || (row.mode === 'toggle' && hasRole)) {
-    await member.roles.remove(role, t(lang, 'automation.reactionrole.button.auditReason'));
-    return reply(interaction, t(lang, 'automation.reactionrole.button.removed', { role: role.name }));
-  }
+  try {
+    if (row.mode === 'remove' || (row.mode === 'toggle' && hasRole)) {
+      await member.roles.remove(role, t(lang, 'automation.reactionrole.button.auditReason'));
+      return reply(interaction, t(lang, 'automation.reactionrole.button.removed', { role: role.name }));
+    }
 
-  await member.roles.add(role, t(lang, 'automation.reactionrole.button.auditReason'));
-  return reply(interaction, t(lang, 'automation.reactionrole.button.added', { role: role.name }));
+    await member.roles.add(role, t(lang, 'automation.reactionrole.button.auditReason'));
+    return reply(interaction, t(lang, 'automation.reactionrole.button.added', { role: role.name }));
+  } catch (error) {
+    if (isUnknownRole(error)) return roleGone(); // deleted a moment ago, before the bot's list of roles knew it
+    throw error;
+  }
 }
 
 module.exports = { BUTTON_PREFIX, buildButtonRows, placeInRows, buttonStyle, buttonEmoji, syncMessageButtons, handleButton };

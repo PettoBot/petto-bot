@@ -1,6 +1,5 @@
 // i18n-ignore-file: Petto team diagnostic command (private operations server only).
 const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
-const config = require('../../config');
 const guildPrefixes = require('../../utils/guildPrefixes');
 const database = require('../../db/database');
 const { getLogConfig } = require('../../db/logConfig');
@@ -8,6 +7,9 @@ const { getConfig: getMemberEventsConfig } = require('../../db/memberEvents');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { sendDm } = require('../../utils/dmOrigin');
+const { isTeam } = require('../../utils/teamTools');
+const guildBlacklist = require('../../db/guildBlacklist');
+const { getGuildPremium } = require('../../db/premium');
 
 const DIAGNOSTIC_GUILD_ID = '1502171756113432607';
 const V2_EPHEMERAL = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
@@ -15,6 +17,12 @@ const GREEN = 0xa5ea7a;
 const RED = 0xfe6465;
 const YELLOW = 0xf5c451;
 const SNOWFLAKE_RE = /^\d{15,25}$/;
+
+// What Petto needs in a server at the server level (shown in `info`; the channel ones are in the next line).
+const SERVER_PERMISSIONS = [
+  ['Administrator', 'Administrator'], ['ManageGuild', 'Manage Server'], ['ManageRoles', 'Manage Roles'], ['ManageChannels', 'Manage Channels'],
+  ['ModerateMembers', 'Timeout'], ['BanMembers', 'Ban'], ['ViewAuditLog', 'Audit Log'], ['ManageWebhooks', 'Webhooks'],
+];
 
 const IMPORTANT_PERMISSIONS = [
   ['ViewChannel', 'View Channel'],
@@ -133,12 +141,16 @@ async function buildGuildInfo(client, guildId) {
   const guild = await resolveGuild(client, guildId);
   if (!guild) return `${EMOJI.DENY} Petto is not in guild \`${guildId}\`, or Discord did not allow the guild lookup.`;
 
-  const [channels, botMember, owner, database] = await Promise.all([
+  const [channels, botMember, owner, database, premium] = await Promise.all([
     fetchChannels(guild),
     fetchBotMember(guild, client),
     guild.fetchOwner().catch(() => null),
     getDatabaseSnapshot(guild.id),
+    getGuildPremium(guild.id).catch(() => null),
   ]);
+  const listed = guildBlacklist.entryOf(guild.id);
+  const serverPermissions = SERVER_PERMISSIONS.map(([key, label]) => `${label}: ${status(Boolean(botMember?.permissions?.has(PermissionFlagsBits[key])))}`).join(' · ');
+  const features = (guild.features ?? []).slice(0, 12).map((feature) => `\`${feature}\``).join(', ') || 'none';
 
   const allChannels = [...channels.values()].filter(Boolean);
   const textChannels = allChannels.filter((channel) => channel.isTextBased?.());
@@ -161,7 +173,11 @@ async function buildGuildInfo(client, guildId) {
     `**Server:** ${shorten(guild.name, 90)} (\`${guild.id}\`)`,
     `**Bot membership:** ${status(true, 'present')} · **Owner:** ${owner ? `<@${owner.id}>` : `\`${guild.ownerId}\``}`,
     `**Members:** ${guild.memberCount ?? 'unknown'} · **Channels:** ${allChannels.length} (${textChannels.length} text, ${voiceChannels.length} voice)`,
-    `**Bot permissions:** ${permissionLine(permissions)}`,
+    `**Shard:** ${guild.shardId ?? 'unknown'} · **Petto joined:** ${guild.joinedTimestamp ? `<t:${Math.floor(guild.joinedTimestamp / 1000)}:R>` : 'unknown'} · **Server created:** ${guild.createdTimestamp ? `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>` : 'unknown'}`,
+    `**Premium:** ${premium?.active ? `active (${clean(premium.planKey, 'plan')})` : 'none'} · **Blacklist:** ${listed ? `LISTED (${shorten(listed.reason, 80)})` : 'no'}`,
+    `**Features:** ${features}`,
+    `**Petto in the server:** ${serverPermissions}`,
+    `**Bot permissions (channel):** ${permissionLine(permissions)}`,
     '',
     `**Database row:** ${dbStatus} · **Prefixes:** \`${clean(guildPrefixes.prefixesOf(dbGuild).join(' '), '!')}\` · **Language:** ${clean(dbGuild?.language, 'en')}`,
     `**Welcome:** ${formatWelcome(database.welcome, channels)}`,
@@ -235,6 +251,12 @@ module.exports = {
   privateGuildId: DIAGNOSTIC_GUILD_ID,
   slashOnly: true,
   hiddenFromHelp: true,
+  teamOnly: true,
+  team: {
+    summary: 'Diagnostics of a server (slash command, only in the private diagnostics server): shard, members, owner, join date, features, Premium, blacklist status, permissions of Petto, database row, welcome and log routes. Also sends a test message or a DM to its owner (no mentions).',
+    usage: ['/guilddebug info <server id>', '/guilddebug send <server id> <message> [channel id]', '/guilddebug dm-owner <server id> <message>'],
+    who: 'owner and developers (in the diagnostics server only)',
+  },
   data: new SlashCommandBuilder()
     .setName('guilddebug')
     .setDescription('Private diagnostics for a guild (Petto owner only).')
@@ -256,7 +278,7 @@ module.exports = {
       .addStringOption((option) => option.setName('message').setDescription('Message to send (mentions are disabled)').setMaxLength(2000).setRequired(true))),
 
   async execute(interaction) {
-    if (interaction.guildId !== DIAGNOSTIC_GUILD_ID || interaction.user.id !== config.ownerId) {
+    if (interaction.guildId !== DIAGNOSTIC_GUILD_ID || !isTeam(interaction.user?.id)) {
       return replyCard(interaction, `${EMOJI.DENY} This private diagnostic command is unavailable here.`, RED);
     }
 

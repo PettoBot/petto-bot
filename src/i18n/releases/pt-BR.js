@@ -1,5 +1,49 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
+  'v0.7.9-3': {
+    label: 'v0.7.9~3 · Donut: comandos de barra, /ai ask (BETA), DMs denunciáveis',
+    summary: 'Uma correção do Donut: os comandos com prefixo passam a comandos de barra como `/mod`, `/server` e `/game`, uma IA que responde perguntas (BETA), DMs que dizem de onde vêm e podem ser denunciadas, e uma ajuda mais clara.',
+    sections: [
+      {
+        title: 'Comandos de barra',
+        items: [
+          '`/mod`, `/staff`, `/server`, `/user`, `/game`, `/me`, `/search` e mais nove como `/config` e `/greet` são comandos de barra que reúnem os comandos com prefixo como subcomandos. Cada palavra com `!` funciona como antes, e cada subcomando pede a permissão do comando que ele envolve.',
+          '`/server icon`, `banner` e `splash` mostram a imagem do servidor, `!bots` (`/server bots`) lista os bots dele, e `/boosterrole` é o seu próprio comando de barra. `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` e `/timeout` passaram para `/server`, `/user` e `/mod`.',
+          '`/ai ask` e `!ask` respondem às suas perguntas com uma IA (BETA): 10 por dia para membros grátis, sem limite com Premium. `/ai usage` mostra quantas você ainda tem.',
+        ],
+      },
+      {
+        title: 'Ajuda e mensagens',
+        items: [
+          '`/help` responde no canal, descreve cada opção dos seus menus e sugere comandos enquanto você digita (`/help command:`). Um comando digitado errado (`!bna`) recebe "Você quis dizer `!ban`?".',
+          'Os comandos com prefixo respondem como resposta à mensagem que os digitou, e a palavra `petto` sempre funciona como prefixo.',
+          'Cada DM do Petto começa com uma linha cinza `De <servidor>` e traz três botões: info, apagar e denunciar. Info mostra, só para você, o ícone, nome, ID, data de criação e membros do servidor; toda resposta dos botões é privada e nada é escrito no chat. Uma denúncia vai só para a equipe do Petto, nunca para os moderadores do servidor; ela não tem um número para lembrar e, quando a equipe a marca como atendida, fica encerrada para sempre.',
+          '`/level notify test` mostra o seu próximo aviso de nível exatamente como a sua configuração o enviaria, e não salva nada.',
+        ],
+      },
+      {
+        title: 'Servidores e feeds',
+        items: [
+          'Os feeds do Reddit e do Pinterest têm um cartão limpo com a imagem primeiro, e os feeds automáticos e `!animal` mostram só a imagem.',
+          'Os formulários são numerados por servidor, então o seu primeiro formulário é o número 1, e `!forum` adiciona posts de ajuda em um fórum (desligado até você configurar).',
+          'A boas-vindas pode esperar o membro aceitar as regras, um servidor pode ter uma segunda boas-vindas, e os cartões de imagem têm 34 designs novos.',
+          'O Premium que acabou é removido automaticamente, e o rastreador de convites tem configurações novas em `/invites config`.',
+          'A equipe do Petto pode colocar na lista negra os servidores que violam os termos de serviço ou a política de privacidade do Petto: o Petto sai deles, conta ao dono o motivo e sai de novo se o adicionarem de novo.',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          '`!send` e `/message send` pedem Gerenciar mensagens no servidor e no canal, verificado primeiro em todas as formas de enviar, e uma recusa é privada.',
+          'Os tickets se corrigem sozinhos: um botão tardio, ou um ticket cujo canal não existe mais, não mostra mais um erro.',
+          'Um quadro do Pinterest não publica mais um cartão vazio sem parar.',
+          'O cartão de subida de nível não esconde mais parte da etiqueta de posição, e um resultado longo não termina mais em "Algo deu errado".',
+          'Um cargo que um servidor apagou não quebra mais a verificação, os cargos de entrada, os cargos por reação, os botões de cargos nem as recompensas de nível: os outros continuam sendo dados, a equipe recebe um aviso uma vez por dia no canal de registros, e o cargo de verificados é criado de novo quando dá. Quem passa na verificação nunca fica bloqueado por isso.',
+          'O botão "Verificar aqui no Discord" tem um ícone de escudo em vez do emoji de letras.',
+        ],
+      },
+    ],
+  },
   'v0.7.9-2': {
     label: 'v0.7.9~2 · Donut: /act, 43 interações novas, !uwu e mais',
     summary: 'Uma correção do Donut: todos os comandos de interação em um só comando `/act`, 43 novos, `!uwu` e quatro joguinhos, vários prefixos, formulários de tickets novos e menções silenciosas.',
