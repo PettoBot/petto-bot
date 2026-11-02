@@ -1,7 +1,7 @@
 // The message a feed sends: an optional line of text on top (a ping, and the words the server chose; the feeds of a creator or a channel,
-// such as YouTube, Twitch, Kick or Bluesky, say who posted when the server wrote nothing, the automatic ones are only their card), and a Components V2 card. Two layouts:
+// such as YouTube, Twitch, Kick or Bluesky, say who posted when the server wrote nothing, the automatic ones are only their card), and a Components V2 card. Three layouts:
 //
-// The image-first card of the feeds of a site (Reddit, Pinterest, Bluesky, Mastodon, Tumblr, Letterboxd, RSS): the account, the post, the picture.
+// The image-first card of Reddit and Pinterest only: the account, the post, the picture.
 //   ### emoji [the account](its link)
 //   **[Title of the post](link)**            (not when it is the name of the account)
 //   > the first words of the post             (not for a pin)
@@ -9,8 +9,9 @@
 //   -# u/author • <t:time:f>                  (a pin: `-# Pinterest ∙ owner` under the account, and nothing at the end)
 //   [ the button to the post ]
 //
-// The feeds that post by themselves (animals, pictures by words, the article of the day...): only the picture, with no icon, source, time or button.
+// The animal feeds and the pictures feed: only the picture, with no icon, source, time or button.
 //
+// Every other platform (Pokémon, Wikipedia, chess, Epic, music, AniList, Bluesky, Mastodon, Tumblr, Letterboxd, RSS...) keeps the classic card with its platform icon and its button:
 // The card of a video, a stream or a release:
 //   [ emoji **[Title](link)**            [picture] ]
 //   [ -# the description, when there is one       ]
@@ -92,7 +93,7 @@ function allowedMentionsOf(feed) {
 }
 
 // The sites whose posts are drawn image-first (see the top of this file).
-const IMAGE_FIRST = new Set(['reddit', 'pinterest', 'bluesky', 'mastodon', 'tumblr', 'letterboxd', 'rss']);
+const IMAGE_FIRST = new Set(['reddit', 'pinterest']);
 const MAX_QUOTE = 300;
 const MAX_LINK = 512; // what Discord takes as the address of a button
 const MAX_IMAGE_URL = 2000;
@@ -145,27 +146,15 @@ function imageFirstCard(item, { platform, options, lang, top }) {
   return card;
 }
 
-// The feeds that post by themselves (a picture of an animal, pictures by words, the article of the day, a puzzle, a Pokémon): only the picture in a clean card.
-// No icon, no source, no button, no time. The title (as a link) and the first words only for the ones whose source gives real ones; a picture has none.
-const AUTO_CARD = new Set(['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures', 'wikipedia', 'chess', 'pokemon']);
-const WITHOUT_WORDS = new Set(['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures']); // their title is made up, not given by the source
+// The animal feeds and the pictures feed: only the picture in a clean card. No icon, no source, no button, no time, no words (a picture has none of its own).
+const AUTO_CARD = new Set(['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures']);
 
 function autoCard(item, { platform, options }) {
-  const lines = [];
-  if (!WITHOUT_WORDS.has(item.platform)) {
-    const title = linkText(item.title);
-    const url = shortUrl(item.url);
-    if (title) lines.push(`**${url ? `[${title}](${url})` : title}**`);
-    const words = plainText(item.description, MAX_QUOTE);
-    if (words && words !== plainText(item.title, 200)) lines.push(`> ${words}`);
-    if (item.extra) lines.push(`-# ${plainText(item.extra, 160)}`);
-  }
   const image = options.image === false ? null : (ATTACHMENT.test(String(item.image ?? '')) ? item.image : shortUrl(item.image, MAX_IMAGE_URL));
   const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
-  if (lines.length) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(lines.join('\n'), MAX_CARD_TEXT)));
   if (image) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
-  // A card needs something inside: with no picture and no words (the server turned the picture off) it says what kind of feed it is.
-  if (!lines.length && !image) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(platform.name));
+  // A card needs something inside: with no picture (the server turned the picture off) it says what kind of feed it is.
+  else card.addTextDisplayComponents(new TextDisplayBuilder().setContent(platform.name));
   return card;
 }
 
