@@ -432,7 +432,7 @@ function detailView(client, guild, prefix, command, entry, categoryId, includeHi
  * start with what was typed first, then the ones that contain it or have an alias that does; at most 25 (what Discord shows). The names of the
  * commands that the person should not see (private ones) are left out like in the help itself.
  */
-function helpChoices(client, typed, includeHidden = false) {
+function helpChoices(client, typed, includeHidden = false, lang = 'en') {
   const word = String(typed ?? '').toLowerCase().trim();
   const found = [];
   for (const command of getChatInputCommands(client, includeHidden)) {
@@ -448,13 +448,28 @@ function helpChoices(client, typed, includeHidden = false) {
       else if (lower.startsWith(word)) score = 1;
       else if (lower.includes(word)) score = 2;
       else if (aliases.some((alias) => alias === word || alias.startsWith(word))) score = 2.5;
-      if (score !== null) found.push({ path, score });
+      if (score !== null) {
+        const entry = path === name ? (entries.length === 1 && !entries[0].path.length ? entries[0] : null) : entries.find((each) => [name, ...each.path].join(' ') === path);
+        const text = entry ? commandDescription(lang, command, entry.path, null, entry.description) : commandDescription(lang, command, [], null, command.data.description);
+        found.push({ path, score, text });
+      }
     }
   }
   return found
     .sort((a, b) => a.score - b.score || a.path.length - b.path.length || a.path.localeCompare(b.path))
     .slice(0, 25)
-    .map(({ path }) => ({ name: path.slice(0, 100), value: path.slice(0, 100) }));
+    .map(({ path, text }) => ({ name: choiceName(path, text), value: path.slice(0, 100) }));
+}
+
+/** Discord's autocomplete list only has a name per choice (no description line), so the name is "path · what it does", cut to the 100 characters Discord takes. */
+function choiceName(path, text) {
+  const head = path.slice(0, 100);
+  const what = optionDescription(text, '');
+  if (!what) return head;
+  const room = 100 - head.length - 3;
+  if (room < 12) return head;
+  const chars = [...what];
+  return `${head} · ${chars.length <= room ? what : `${chars.slice(0, room - 1).join('').trimEnd()}…`}`;
 }
 
 module.exports = {
@@ -471,7 +486,10 @@ module.exports = {
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
     if (focused.name !== 'command') return interaction.respond([]);
-    return interaction.respond(helpChoices(interaction.client, focused.value, isPettoOperator(interaction.user?.id)));
+    // The list is in the language of the person (Discord sends its locale with the request): no database lookup, so it answers inside the 3 seconds.
+    const locale = String(interaction.locale ?? '').toLowerCase();
+    const lang = locale.startsWith('pt') ? 'pt-BR' : locale.startsWith('es') ? 'es' : 'en';
+    return interaction.respond(helpChoices(interaction.client, focused.value, isPettoOperator(interaction.user?.id), lang));
   },
 
   async execute(interaction) {

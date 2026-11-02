@@ -129,7 +129,15 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
   {
     const all = help.helpChoices(client, '');
     assert.equal(all.length, 25, 'at most what Discord shows');
-    assert.ok(all.every((choice) => choice.name === choice.value && choice.name.length <= 100), 'the name is what is looked up');
+    assert.ok(all.every((choice) => choice.name.startsWith(choice.value.slice(0, 40)) && choice.name.length <= 100 && choice.value.length <= 100), 'the name starts with what is looked up and fits what Discord takes');
+    // Discord's list has no description line, so each name says what the command does after the path.
+    assert.ok(all.every((choice) => / · \S/.test(choice.name) || choice.name === choice.value), 'each choice says what it does');
+    assert.ok(all.filter((choice) => / · /.test(choice.name)).length >= 20, 'nearly all of them have their description');
+    const spanish = help.helpChoices(client, 'ban', false, 'es');
+    const english = help.helpChoices(client, 'ban', false, 'en');
+    assert.equal(spanish[0].value, english[0].value, 'the same value in every language');
+    assert.notEqual(spanish[0].name, english[0].name, 'but the description is in the language of the person');
+    for (const lang of ['en', 'es', 'pt-BR']) assert.ok(help.helpChoices(client, 'ticket category', false, lang).every((choice) => choice.name.length <= 100 && /^ticket category[a-z ]* · /.test(choice.name)), `${lang}: subcommands show their description`);
     const ban = help.helpChoices(client, 'ban');
     assert.equal(ban[0].value, 'ban', 'an exact match first');
     assert.ok(ban.some((choice) => choice.value === 'ban temp') || ban.some((choice) => /^ban /.test(choice.value)), 'then its subcommands');
