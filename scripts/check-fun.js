@@ -107,7 +107,9 @@ for (const [typed, move] of [['rock', 'rock'], ['Piedra', 'rock'], ['pedra', 'ro
   assert.equal(await run('rps', 'es', 'lagarto'), t('es', 'fun.rps.pick'));
   assert.match(await run('rps', 'es', 'piedra'), /^✊ \*\*piedra\*\* {2}vs /, 'the Spanish word is a move');
   assert.match(await run('rps', 'pt-BR', 'tesoura'), /^✌️ \*\*tesoura\*\* {2}vs /, 'the Portuguese word is a move');
-  assert.equal(await run('ship', 'es', ''), '💞 **a** × **a**: **100%** · Almas gemelas', 'a member with themselves, in Spanish');
+  const selfShip = (await run('ship', 'es', '')).split('\n');
+  assert.equal(selfShip[1], '**a** × **a** son **100%** compatibles', 'a member with themselves, in Spanish');
+  assert.ok(selfShip[2].startsWith('**Almas gemelas.** '), 'with the step of the score');
 
   // coinflip, wouldyourather, neverhaveiever, truthordare: the prompts, the words they read and the answers.
   const prompts = require('../src/utils/funPrompts');

@@ -6,10 +6,11 @@ async function listRoles(guildId) {
   return data;
 }
 
-async function addRole(guildId, roleId, target = 'all') {
+/** `afterRules`: the role is given when the member accepts the rules of the server (Membership Screening), not at the join. */
+async function addRole(guildId, roleId, target = 'all', afterRules = false) {
   const { data, error } = await database
     .from('join_roles')
-    .upsert({ guild_id: guildId, role_id: roleId, target }, { onConflict: 'guild_id,role_id' })
+    .upsert({ guild_id: guildId, role_id: roleId, target, after_rules: Boolean(afterRules) }, { onConflict: 'guild_id,role_id' })
     .select('*')
     .single();
   if (error) throw error;

@@ -39,7 +39,7 @@ const MODULES = {
   leaveconfig: { aliases: [], title: t('en', 'config.module.leaveconfig.title'), command: 'leave', sources: [{ table: 'member_events_config', only: /^leave_/ }] },
   boostconfig: { aliases: [], title: t('en', 'config.module.boostconfig.title'), command: 'boost', sources: [{ table: 'member_events_config', only: /^boost_/ }] },
   dmonjoinconfig: { aliases: [], title: t('en', 'config.module.dmonjoinconfig.title'), command: 'dmonjoin', sources: [{ table: 'member_events_config', only: /^dm_join_/ }] },
-  joinroleconfig: { aliases: ['autoroleconfig'], title: t('en', 'config.module.joinroleconfig.title'), command: 'joinrole', sources: [{ table: 'join_roles', list: true, only: ['role_id', 'target'] }] },
+  joinroleconfig: { aliases: ['autoroleconfig'], title: t('en', 'config.module.joinroleconfig.title'), command: 'joinrole', sources: [{ table: 'join_roles', list: true, only: ['role_id', 'target', 'after_rules'] }] },
   pojconfig: {
     aliases: [],
     title: t('en', 'config.module.pojconfig.title'),

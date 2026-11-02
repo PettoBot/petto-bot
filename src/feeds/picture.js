@@ -8,7 +8,7 @@ const MIN_BYTES = 2_000; // what a made preview weighs at the least: a few bytes
 const MAGIC = [[0x89, 0x50, 0x4e, 0x47], [0xff, 0xd8, 0xff], [0x47, 0x49, 0x46, 0x38], [0x52, 0x49, 0x46, 0x46]]; // png, jpeg, gif, riff (webp)
 const ready = new Map(); // url -> until (a picture that loaded is remembered)
 
-async function imageReady(url) {
+async function imageReady(url, { minBytes = MIN_BYTES } = {}) {
   if (ready.has(url) && ready.get(url) > Date.now()) return true;
   try {
     // A real look at the first bytes (not only the headers): Discord reads the picture itself, and a CDN that answers a HEAD with 200 can still have nothing to show.
@@ -16,7 +16,7 @@ async function imageReady(url) {
     const type = response.headers.get('content-type');
     const bytes = new Uint8Array(await response.arrayBuffer());
     const total = Number(/\/(\d+)$/.exec(response.headers.get('content-range') ?? '')?.[1] ?? response.headers.get('content-length') ?? bytes.length);
-    const ok = response.ok && (!type || /^image\//i.test(type)) && total >= MIN_BYTES && MAGIC.some((magic) => magic.every((byte, i) => bytes[i] === byte));
+    const ok = response.ok && (!type || /^image\//i.test(type)) && total >= minBytes && MAGIC.some((magic) => magic.every((byte, i) => bytes[i] === byte));
     if (ok) {
       ready.set(url, Date.now() + KEEP_MS);
       for (const [key, until] of ready) if (until < Date.now()) ready.delete(key);

@@ -170,6 +170,8 @@ create table if not exists join_roles (
   created_at timestamptz not null default now(),
   primary key (guild_id, role_id)
 );
+-- `after_rules`: the role waits until the member accepts the rules of the server (Membership Screening) instead of being given at the join.
+alter table join_roles add column if not exists after_rules boolean not null default false;
 alter table join_roles enable row level security;
 
 -- Auto-creates a thread off every new message in a configured channel, optionally posting a
@@ -2487,6 +2489,23 @@ create index if not exists idx_bulk_role_jobs_guild on bulk_role_jobs(guild_id);
 create index if not exists idx_bulk_role_jobs_active on bulk_role_jobs(guild_id) where status in ('pending', 'running');
 
 alter table bulk_role_jobs enable row level security;
+
+-- Bulk role jobs, second round: previews (dry runs), a reason for the audit log, filters by number of roles and by pending members,
+-- a cursor so a job that was interrupted (a restart) goes on where it was, pause, a code for why it failed (the dashboard translates it)
+-- and the message of Discord where a job started from a command shows its progress.
+alter table bulk_role_jobs add column if not exists dry_run boolean not null default false;
+alter table bulk_role_jobs add column if not exists reason text;
+alter table bulk_role_jobs add column if not exists min_roles integer;
+alter table bulk_role_jobs add column if not exists max_roles integer;
+alter table bulk_role_jobs add column if not exists skip_pending boolean not null default false;
+alter table bulk_role_jobs add column if not exists skipped_count integer not null default 0;
+alter table bulk_role_jobs add column if not exists cursor_id text;
+alter table bulk_role_jobs add column if not exists started_at timestamptz;
+alter table bulk_role_jobs add column if not exists paused boolean not null default false;
+alter table bulk_role_jobs add column if not exists error_code text;
+alter table bulk_role_jobs add column if not exists source text not null default 'dashboard';
+alter table bulk_role_jobs add column if not exists progress_channel_id text;
+alter table bulk_role_jobs add column if not exists progress_message_id text;
 
 -- Custom numeric authorization system (0-100), layered on top of Discord's own permissions,
 -- not a replacement for them. A "group" is a named bucket of users and/or roles sharing one

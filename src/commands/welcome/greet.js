@@ -5,9 +5,9 @@
 //
 // PERMISSIONS: Discord checks `default_member_permissions` for a whole command, never for one subcommand, so `/greet` itself is open (null:
 // everybody sees it, and a server can limit it in Settings > Integrations) and each subcommand asks, when it runs, for what the command it
-// wraps asks: Manage Server for welcome, leave, boost, dmonjoin and poj; Manage Roles for joinrole and stickyroles. With the prefix the old command does the same check, with its own rules. What the wrapped command checks by itself
+// wraps asks: Manage Server for welcome, leave, boost, dmonjoin and poj. With the prefix the old command does the same check, with its own rules. What the wrapped command checks by itself
 // (the permission of the bot, who may change what) still runs after, untouched.
-const { defineUmbrella } = require('../../utils/umbrella');
+const { defineUmbrella, prefixWordsOf, loadByName } = require('../../utils/umbrella');
 
 // `group`: a command with subcommands, all of them; `name`: a command with none.
 const SUBCOMMANDS = [
@@ -16,12 +16,23 @@ const SUBCOMMANDS = [
   { group: 'boost', wraps: 'boost' },
   { group: 'dmonjoin', wraps: 'dmonjoin' },
   { group: 'poj', wraps: 'poj' },
+];
+
+// The join roles and the sticky roles are groups of `/role` now (`/role join`, `/role sticky`): they are not here as slash commands any more, but the
+// old words keep working with the prefix (`!greet joinrole add @Role`, `!greet sr enable`), sent to the same commands.
+const MOVED = [
   { group: 'joinrole', wraps: 'joinrole' },
   { group: 'stickyroles', wraps: 'stickyroles' },
 ];
 
-module.exports = defineUmbrella({
+const umbrella = defineUmbrella({
   name: 'greet',
-  description: 'Members who join, leave or boost: welcome and goodbye messages, DM, ping on join, join roles.',
+  description: 'Members who join, leave or boost: welcome and goodbye messages, DM and ping on join.',
   subcommands: SUBCOMMANDS,
 });
+
+module.exports = {
+  ...umbrella,
+  prefixWords: { ...umbrella.prefixWords, ...prefixWordsOf(MOVED, loadByName) },
+  ruleKeys: { ...umbrella.ruleKeys, joinrole: 'joinrole', stickyroles: 'stickyroles' },
+};

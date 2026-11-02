@@ -107,4 +107,11 @@ module.exports = {
   'welcome.bump.status.next': '**Status:** Next: {time}',
   'welcome.bump.status.reminder': '**Reminder:** {text}',
   'welcome.bump.status.thankyou': '**Thank you:** {text}',
+  'welcome.joinRole.waitsRules': 'It is given after they accept the rules of the server (Membership Screening).',
+  'welcome.joinRole.applyReason': 'Join role given to the members who were already here',
+  'welcome.joinRole.list.afterRules': 'after the rules',
+  'welcome.joinRole.list.problem.gone': '{emoji}  This role was deleted from the server, so it is not given. Remove it or set it again.',
+  'welcome.joinRole.list.problem.managed': '{emoji}  This role is managed by an integration, so I cannot give it.',
+  'welcome.joinRole.list.problem.above': '{emoji}  This role is above my highest role, so I cannot give it.',
+  'welcome.joinRole.list.noPermission': '{emoji}  I do not have the Manage Roles permission, so no join role is given.',
 };

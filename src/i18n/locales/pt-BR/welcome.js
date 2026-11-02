@@ -107,4 +107,11 @@ module.exports = {
   'welcome.bump.status.next': '**Status:** Próximo bump {time}',
   'welcome.bump.status.reminder': '**Lembrete:** {text}',
   'welcome.bump.status.thankyou': '**Agradecimento:** {text}',
+  'welcome.joinRole.waitsRules': 'É dado quando aceitam as regras do servidor (Triagem de membros).',
+  'welcome.joinRole.applyReason': 'Cargo de entrada dado aos membros que já estavam',
+  'welcome.joinRole.list.afterRules': 'após as regras',
+  'welcome.joinRole.list.problem.gone': '{emoji}  Este cargo foi apagado do servidor, então não é dado. Remova-o ou configure de novo.',
+  'welcome.joinRole.list.problem.managed': '{emoji}  Este cargo é gerenciado por uma integração, então não posso dá-lo.',
+  'welcome.joinRole.list.problem.above': '{emoji}  Este cargo está acima do meu cargo mais alto, então não posso dá-lo.',
+  'welcome.joinRole.list.noPermission': '{emoji}  Não tenho a permissão Gerenciar cargos, então nenhum cargo de entrada é dado.',
 };

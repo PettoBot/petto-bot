@@ -93,8 +93,12 @@ async function convertToken(message, def, token, resolveContext = {}) {
       const n = Number(token);
       return Number.isNaN(n) ? null : n;
     }
-    case ApplicationCommandOptionType.Boolean:
-      return parseBoolToken(token);
+    case ApplicationCommandOptionType.Boolean: {
+      const value = parseBoolToken(token);
+      // A command that reads bare words (`prefixBareFlags`): the name of the option alone turns it on (`!role all @Role remove preview`).
+      if (value === null && resolveContext.bareFlags && token.toLowerCase().replaceAll('-', '_') === def.name) return true;
+      return value;
+    }
     // A file is the one sent with the message (see getAttachment); a word typed there belongs to the next option.
     case ApplicationCommandOptionType.Attachment:
       return null;
@@ -122,6 +126,11 @@ async function extractFlags(message, tokens, optionDefs, resolveContext) {
         i++;
         continue;
       }
+    }
+    // `--preview` with no value after it is on, for the commands that read bare words.
+    if (def && resolveContext.bareFlags && def.type === ApplicationCommandOptionType.Boolean) {
+      flagValues[def.name] = true;
+      continue;
     }
     remaining.push(tokens[i]);
   }
@@ -204,7 +213,9 @@ async function parsePositional(message, optionDefs, tokens, resolveContext, { gr
 
 async function parseOptions(message, optionDefs, tokens, resolveContext, parseConfig = {}) {
   const { remaining, flagValues } = await extractFlags(message, tokens, optionDefs, resolveContext);
-  const unfilledDefs = optionDefs.filter((d) => !(d.name in flagValues));
+  // The options a command only takes by name (`--joined_after 30d`) are not filled by position: a word that is not for them goes to the next option.
+  const flagOnly = new Set(parseConfig.flagOnlyOptions ?? []);
+  const unfilledDefs = optionDefs.filter((d) => !(d.name in flagValues) && !flagOnly.has(d.name));
   const positionalValues = await parsePositional(message, unfilledDefs, remaining, resolveContext, parseConfig);
   return { ...flagValues, ...positionalValues };
 }
@@ -420,9 +431,11 @@ async function buildInteractionFromMessage(message, command, argText) {
     resolved.remainingTokens,
     {
       includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove') || Boolean(command.prefixIncludeBans?.includes(resolved.subcommand)),
+      bareFlags: Boolean(command.prefixBareFlags),
     },
     {
       greedyStringOption: command.prefixGreedyStringOptions?.[resolved.subcommand ?? '_'] ?? null,
+      flagOnlyOptions: command.prefixFlagOnlyOptions ?? [],
     },
   );
   applyChoices(resolved.optionDefs, values);
