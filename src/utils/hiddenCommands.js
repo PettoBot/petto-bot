@@ -9,7 +9,6 @@
  * A command marked `teamOnly` (the private tools of the team: `!slots`, `!botstatus`, `!leaveguild`, `!guildsend`...) has the same silence for everybody outside
  * the team (the typing indicator and "unknown command" included) but is still listed for the team in `!help` (`hiddenFromHelp`) and in `!team`.
  */
-const config = require('../config');
 const { isPettoOperator } = require('./autoModControl');
 
 /** Whether a loaded command is hidden everywhere (a getter on the command, so an opt-in of the environment can bring it back). */
@@ -24,7 +23,8 @@ const isTeamOnly = (command) => Boolean(command && (command.hiddenEverywhere || 
  */
 function isHiddenFrom(command, userId) {
   if (!isTeamOnly(command)) return false;
-  if (command.ownerOnly) return String(userId ?? '') !== String(config.ownerId);
+  // Read when it is needed: loading the configuration needs the environment of a running bot, and this module is also loaded by checks and tools.
+  if (command.ownerOnly) return String(userId ?? '') !== String(require('../config').ownerId);
   return !isPettoOperator(userId);
 }
 
