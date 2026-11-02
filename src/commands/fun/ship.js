@@ -1,11 +1,17 @@
+const { createHash } = require('node:crypto');
 const { AttachmentBuilder, SlashCommandBuilder } = require('discord.js');
-const { shipScore, shipVerdict } = require('../../utils/funGames');
+const { shipScore, shipName, shipMessage } = require('../../utils/funGames');
 const { buildShipCard } = require('../../imgutils/shipCard');
 const logger = require('../../utils/logger');
 const { languageOf } = require('../../i18n');
 
 function nameOf(guild, user) {
   return guild?.members?.cache?.get(user.id)?.displayName ?? user.globalName ?? user.username;
+}
+
+/** A number for the hearts of the card that is the same for the same pair, in either order. */
+function shipSeed(idA, idB) {
+  return createHash('sha256').update([String(idA), String(idB)].sort().join(':')).digest().readUInt32BE(0);
 }
 
 function avatarOf(guild, user) {
@@ -30,10 +36,10 @@ module.exports = {
     const score = shipScore(first.id, second.id);
     const nameA = nameOf(interaction.guild, first);
     const nameB = nameOf(interaction.guild, second);
-    const text = `💞 **${nameA}** × **${nameB}**: **${score}%** · ${shipVerdict(score, lang)}`;
+    const text = shipMessage({ idA: first.id, idB: second.id, nameA, nameB, score, lang });
 
     try {
-      const card = await buildShipCard({ avatarA: avatarOf(interaction.guild, first), avatarB: avatarOf(interaction.guild, second), nameA, nameB, score });
+      const card = await buildShipCard({ avatarA: avatarOf(interaction.guild, first), avatarB: avatarOf(interaction.guild, second), nameA, nameB, score, shipName: shipName(nameA, nameB, lang), seed: shipSeed(first.id, second.id) });
       await interaction.editReply({ content: text, files: [new AttachmentBuilder(card, { name: 'ship.png' })], allowedMentions: { parse: [] } });
     } catch (err) {
       // The picture is a bonus: the result is still told when it cannot be drawn.
