@@ -39,7 +39,16 @@ patch('src/db/commandRestrictions.js', { restrictionMap: async () => ({}) });
 patch('src/db/permissions.js', { hasCommandPermission: async () => true, listGroups: async () => [] });
 patch('src/db/memberEvents.js', { getConfig: async () => null });
 patch('src/db/logConfig.js', { getLogConfig: async () => ({ entries: [], webhooks: [], ignored: [] }) });
-patch('src/db/premium.js', { getGuildPremium: async () => ({ active: true, planKey: 'pro', userId: '1', expiresAt: null }) });
+const premiumCalls = [];
+patch('src/db/premium.js', {
+  getGuildPremium: async () => ({ active: true, planKey: 'pro', userId: '1', expiresAt: null }),
+  getUserPremium: async () => ({ active: false, status: 'free', entitlement: null, assignments: [], slotsUsed: 0, slotsTotal: 0, expiresAt: null }),
+  grantManualPremium: async (...args) => { premiumCalls.push(['grant', ...args]); return { ok: true, assignment: args[3] ? { guild_id: args[3] } : null }; },
+  assignPremiumSlot: async (...args) => { premiumCalls.push(['assign', ...args]); return { ok: true }; },
+  unassignPremiumSlot: async (...args) => { premiumCalls.push(['unassign', args[0], args[1]]); return { ok: true }; },
+  revokeManualPremium: async (...args) => { premiumCalls.push(['revoke', args[0], args[1]]); return { ok: true, releasedGuildIds: ['1'] }; },
+});
+patch('src/jobs/premiumRoleJob.js', { syncPremiumRoleForUser: async () => {} });
 patch('src/db/guildDepartures.js', { clear: async () => { order.push('side:departures.clear'); }, mark: async () => { order.push('side:departures.mark'); } });
 patch('src/utils/sharedCooldown.js', { getRemainingCooldownShared: async () => 0 });
 patch('src/utils/userPrefixAccess.js', { activeUserPrefix: async () => null });
@@ -156,7 +165,7 @@ const client = {
 loadCommands(client);
 const cmd = (name) => client.commands.get(name);
 const text = (payload) => JSON.stringify(JSON.parse(JSON.stringify(payload)));
-const dump = (value) => JSON.stringify(typeof value === 'string' ? value : (value?.components ?? []).map((c) => c.toJSON?.() ?? c));
+const dump = (value) => JSON.stringify(typeof value === 'string' ? value : [...(value?.components ?? []), ...(value?.embeds ?? [])].map((c) => c.toJSON?.() ?? c));
 
 // ------------------------------------------------------------------------------------------------ typing a message, as a person
 let seq = 0;
@@ -167,7 +176,7 @@ async function send(content, { as = ANA, perms = 0n, guild = null } = {}) {
   seq += 1;
   const here = guild ?? { id: `9${String(seq).padStart(17, '0')}`, name: 'Petto Test', members: { cache: new Map(), fetch: async () => new Map() }, channels: { cache: new Map() }, roles: { cache: new Map() } };
   const message = {
-    content, author: { id: as, bot: false }, guild: here, guildId: here.id, client,
+    content, author: { id: as, bot: false, username: 'tester', displayAvatarURL: () => null }, guild: here, guildId: here.id, client,
     member: { id: as, guild: { ownerId: '1' }, permissions: new PermissionsBitField(perms), roles: { cache: new Map(), highest: { position: 1 } } },
     mentions: { users: new Map(), roles: new Map(), channels: new Map(), members: new Map() }, attachments: new Map(), reference: null,
     channel: { id: '5', sendTyping: async () => { sent.push('typing'); }, send: async (payload) => { sent.push(dump(payload)); return {}; } },
@@ -594,25 +603,73 @@ const reset = () => { order.length = 0; dms.length = 0; channelSends.length = 0;
 
   // ============================================================================================== !team: read from the commands, so it cannot go stale
   reset();
+  const { buildPage } = require('../src/utils/pager');
   const listed = await send('!team', { as: DEV });
-  const everything = listed.sent.join('\n');
+  const teamCommand = cmd('team');
+  const items = teamCommand.teamItems(client);
+  const pageCount = Math.ceil(items.length / 5);
+  const firstPage = listed.sent.join('\n');
+  assert.ok(items.length > 5 && pageCount > 1, `the tools do not fit one page (${items.length} entries, ${pageCount} pages): they are paged`);
+  assert.ok(/pg::team::/.test(firstPage) && firstPage.includes(`::${DEV}::`) && /1 \/ \d/.test(firstPage), 'with the usual pager buttons, that only the author can press');
+  assert.ok(/None of these is a slash command/.test(firstPage), 'it says that none of them is a slash command');
+  const pageText = async (page) => dump(await buildPage('team', { guild: { client }, userId: DEV, page, lang: 'en' }));
+  let everything = '';
+  for (let page = 0; page < pageCount; page += 1) {
+    const shown = await pageText(page);
+    assert.ok(JSON.parse(shown).length >= 1 && shown.length < 3900, `page ${page + 1} fits one card (${shown.length} characters)`);
+    everything += shown;
+  }
   const flagged = [...client.commands.values()].filter((each) => each.teamOnly);
-  assert.ok(flagged.length >= 7, `${flagged.length} commands are flagged as team only`);
+  assert.ok(flagged.length >= 8, `${flagged.length} commands are flagged as team only`);
   for (const each of flagged) {
     assert.ok(each.team && each.team.summary && each.team.usage?.length && each.team.who, `${each.data.name} carries its description, usage and who may use it`);
-    assert.ok(everything.includes(each.data.name) && each.team.usage.every((line) => everything.includes(line.slice(0, 20))), `!team lists ${each.data.name} with its usage`);
+    assert.ok(each.team.area, `${each.data.name} says its area`);
+    assert.ok(everything.includes(`!${each.data.name}`) && everything.includes(each.team.usage[0].slice(0, 20)), `!team lists ${each.data.name} with its usage`);
+    const full = teamCommand.detailText(teamCommand.findEntry(client, each.data.name));
+    assert.ok(each.team.usage.every((line) => full.includes(line)) && full.includes(each.team.who), `!team ${each.data.name} shows every usage line and who can use it`);
   }
-  for (const name of ['slots', 'botstatus', 'guildsend', 'leaveguild', 'guilddebug', 'blacklist', 'team']) assert.ok(flagged.some((each) => each.data.name === name), `${name} is a flagged team tool`);
+  for (const name of ['slots', 'botstatus', 'guildsend', 'leaveguild', 'guilddebug', 'blacklist', 'team', 'premiumadmin']) assert.ok(flagged.some((each) => each.data.name === name), `${name} is a flagged team tool`);
   for (const each of flagged) assert.ok(each.teamOnly && isTeamOnly(each), `${each.data.name} is silent for everybody outside the team`);
   assert.ok(!/music/i.test(everything), 'the music is not mentioned');
-  assert.ok(/teamhelp/.test(everything) && /premium grant/.test(everything) && /am <control token>/.test(everything), 'the parts of other commands are listed too (and the token never is)');
-  assert.ok(/owner only/.test(everything));
+  assert.ok(/teamhelp/.test(everything) && /channel create/.test(everything) && /control token/.test(everything), 'the parts of other commands are listed too (and the token never is)');
+  assert.ok(/owner only/.test(everything) && /owner and developers/.test(everything));
+  for (const title of ['Servers', 'Bot status and the team', 'Premium', 'Moderation tools']) assert.ok(everything.includes(`### ${title}`), `the area ${title} is a heading`);
+  const order2 = ['Servers', 'Bot status and the team', 'Premium', 'Moderation tools'].map((title) => everything.indexOf(`### ${title}`));
+  assert.deepEqual([...order2].sort((a, b) => a - b), order2, 'the areas come in order');
+  assert.ok(/petto blacklist/.test(everything) && /works too/.test(everything), 'each tool says whether `petto <word>` works too');
   for (const piece of cmd('team').teamText(client)) assert.ok(piece.length <= 3000, 'each piece fits in one message');
+  // the pages are in the table of the pager: a stranger cannot turn them (only the author), and a click on the last page works
+  const page2 = await pageText(1);
+  assert.ok(/2 \/ \d/.test(page2) && page2 !== (await pageText(0)), 'the second page is another page');
+  // silent for everybody else, as before
+  for (const word of ['!team', '!team blacklist', '!teamhelp', 'petto team']) {
+    const stranger = await send(word, { as: ANA });
+    assert.deepEqual(stranger.sent, [], `${word} says nothing to a member`);
+    assert.equal(stranger.typed, false, `${word} does not even type for a member`);
+  }
+  // !team <command>: one tool in detail
+  const detail = (await send('!team blacklist', { as: DEV })).sent.join('\n');
+  for (const wanted of ['!blacklist', 'Usage', '!blacklist list', 'Examples', 'It answers', 'Careful', 'Who can use it', 'owner and developers', 'Slash command', 'No: it is not in the `/` menu', 'petto blacklist']) assert.ok(detail.includes(wanted), `!team blacklist shows ${wanted}`);
+  const viaAlias = (await send('!team teamhelp', { as: DEV })).sent.join('\n');
+  assert.ok(viaAlias.includes('!team <command>') || viaAlias.includes('!team &lt;command&gt;') || /Usage/.test(viaAlias), '!team teamhelp shows the tool of its alias');
+  const premiumDetail = (await send('!team premium', { as: DEV })).sent.join('\n');
+  assert.ok(/premiumadmin/.test(premiumDetail) && /!premium grant\|assign\|unassign\|revoke/.test(premiumDetail) && /owner only/.test(premiumDetail) && /developer who is not the owner/.test(premiumDetail), '!team premium finds the tool by the old word and says it is the owner only');
+  const channelDetail = (await send('!team channel', { as: DEV })).sent.join('\n');
+  assert.ok(/channel create/.test(channelDetail) && /Team parts/.test(channelDetail), '!team channel shows the team part of a command');
+  assert.ok(/No team tool is called/.test((await send('!team nothing', { as: DEV })).sent.join('\n')), 'an unknown word says so');
+  assert.ok(!/@everyone/.test((await send('!team bad@everyone', { as: DEV })).sent.join('\n')), 'and it never echoes a mention');
   const viaWord = await send('petto teamhelp', { as: DEV });
-  assert.ok(viaWord.sent.length >= 1 && viaWord.sent.join('').includes('leaveguild'), '`petto teamhelp` works for the team');
+  assert.ok(viaWord.sent.length >= 1 && /petto team|team tools/i.test(viaWord.sent.join('')), '`petto teamhelp` works for the team');
   // a new tool shows up as soon as it carries its metadata
-  client.commands.set('zzfake', { data: { name: 'zzfake' }, teamOnly: true, team: { summary: 'A tool added later.', usage: ['!zzfake'], who: 'owner' } });
-  assert.ok(cmd('team').teamText(client).join('\n').includes('zzfake'), 'it is generated, not written by hand');
+  client.commands.set('is', { data: { name: 'is' }, aliases: [], teamOnly: true, team: { summary: 'An everyday word.', usage: ['!is'], who: 'owner' } });
+  assert.equal(teamCommand.teamEntries(client).tools.find((tool) => tool.name === 'is').viaPetto, false, 'a word like `is` is chat after `petto`: the tool says it needs the symbol');
+  assert.ok(teamCommand.detailText(teamCommand.findEntry(client, 'is')).includes('only with the symbol'));
+  client.commands.delete('is');
+  assert.equal(teamCommand.teamEntries(client).tools.find((tool) => tool.name === 'blacklist').viaPetto, true);
+  client.commands.set('zzfake', { data: { name: 'zzfake' }, teamOnly: true, team: { summary: 'A tool added later.', usage: ['!zzfake'], who: 'owner', area: 'servers' } });
+  const withFake = teamCommand.teamItems(client).join('\n');
+  assert.ok(withFake.includes('zzfake') && teamCommand.teamText(client).join('\n').includes('zzfake'), 'it is generated, not written by hand');
+  assert.ok(teamCommand.detailText(teamCommand.findEntry(client, 'zzfake')).includes('A tool added later.'), 'and `!team zzfake` shows it');
   client.commands.delete('zzfake');
 
   // ============================================================================================== !leaveguild
@@ -697,24 +754,86 @@ const reset = () => { order.length = 0; dms.length = 0; channelSends.length = 0;
   assert.ok((opsAlerts.match(/allowedMentions: \{ parse: \[\] \}/g) ?? []).length >= 2, 'the notice goes out with no mentions, in a channel and in a DM');
   assert.ok(/never fall back to a random public channel/i.test(opsAlerts), 'and never to a public channel');
 
-  // ============================================================================================== !guilddebug
+  // ============================================================================================== !guilddebug (prefix only now: it was a slash command of one private server)
   reset();
   const debugGuild = makeGuild(95, { name: 'Debug Me', members: 999 });
   await store.add({ guildId: debugGuild.id, reason: 'listed to test the debug', addedBy: DEV });
   const debug = cmd('guilddebug');
-  const debugReplies = [];
-  const debugInteraction = (userId) => ({
-    user: { id: userId }, guildId: debug.privateGuildId, client, deferred: false, replied: false,
-    options: { getSubcommand: () => 'info', getString: () => debugGuild.id },
-    reply: async (payload) => { debugReplies.push(payload); }, deferReply: async function deferReply() { this.deferred = true; }, editReply: async (payload) => { debugReplies.push(payload); },
-  });
-  await debug.execute(debugInteraction(ANA));
-  assert.ok(/unavailable here/.test(dump(debugReplies.at(-1))), 'a stranger is refused');
-  debugReplies.length = 0;
-  await debug.execute(debugInteraction(DEV));
-  const shown = dump(debugReplies.at(-1)); if (process.env.DBG) console.log(shown);
-  for (const wanted of ['Debug Me', debugGuild.id, '999', 'Shard', 'Petto joined', 'Premium', 'active', 'Blacklist', 'LISTED', 'listed to test the debug', 'Features', 'COMMUNITY', 'Petto in the server', 'Administrator', 'Owner']) assert.ok(shown.includes(wanted), `guilddebug info shows ${wanted}`);
-  assert.ok(!shown.includes(config.token ?? 'check-only') && !/postgres:\/\//.test(shown) && !/secret|password/i.test(shown), 'and never a secret');
+  assert.ok(debug.prefixOnly && debug.teamOnly && debug.hiddenEverywhere && debug.hiddenFromHelp && !debug.privateGuildId && !debug.slashOnly, '!guilddebug is a prefix-only team tool: no private-server registration, no slash command');
+  assert.ok(!collectCommandData().some((json) => json.name === 'guilddebug') && !require('../src/handlers/commandHandler').collectPrivateGuildCommandData().length, 'nothing is registered anywhere for it');
+  const diagnosticHere = { id: debug.diagnosticGuildId, name: 'Diagnostics', members: { cache: new Map(), fetch: async () => new Map() }, channels: { cache: new Map() }, roles: { cache: new Map() } };
+  assert.deepEqual((await send(`!guilddebug info ${debugGuild.id}`, { as: ANA, guild: diagnosticHere })).sent, [], 'a member gets no answer in the diagnostics server');
+  assert.equal((await send(`!guilddebug info ${debugGuild.id}`, { as: ANA, guild: diagnosticHere })).typed, false, 'not even typing');
+  const outside = await send(`!guilddebug info ${debugGuild.id}`, { as: DEV });
+  assert.ok(/unavailable here/.test(outside.sent.join('')), 'the private-server rule is kept: elsewhere the team is told it is unavailable');
+  for (const who of [DEV, config.ownerId]) {
+    const info = await send(`!guilddebug info ${debugGuild.id}`, { as: who, guild: diagnosticHere });
+    const shown = info.sent.join('\n'); if (process.env.DBG) console.log(shown);
+    for (const wanted of ['Debug Me', debugGuild.id, '999', 'Shard', 'Petto joined', 'Premium', 'active', 'Blacklist', 'LISTED', 'listed to test the debug', 'Features', 'COMMUNITY', 'Petto in the server', 'Administrator', 'Owner']) assert.ok(shown.includes(wanted), `!guilddebug info shows ${wanted} (${who === DEV ? 'developer' : 'owner'})`);
+    assert.ok(!shown.includes(config.token ?? 'check-only') && !/postgres:\/\//.test(shown) && !/secret|password/i.test(shown), 'and never a secret');
+  }
+  debugGuild.systemChannelId = null;
+  const sendResult = await send(`!guilddebug send ${debugGuild.id} hello from the team --channel 660000000000009995`, { as: DEV, guild: diagnosticHere });
+  assert.ok(sendResult.sent.length >= 1, '!guilddebug send answers the team');
+  assert.deepEqual((await send(`!guilddebug send ${debugGuild.id} hello`, { as: ANA, guild: diagnosticHere })).sent, [], 'and nothing to a member');
+
+  // ============================================================================================== the owner-only Premium actions: !premiumadmin and the old !premium words
+  reset();
+  premiumCalls.length = 0;
+  const OWNER = config.ownerId;
+  const premiumGuild = { id: '9999999999999999999'.slice(0, 18), name: 'Petto Test', members: { cache: new Map(), fetch: async () => new Map() }, channels: { cache: new Map() }, roles: { cache: new Map() } };
+  const typedPremium = (content, as) => send(content, { as, guild: premiumGuild });
+  const premiumAdmin = cmd('premiumadmin');
+  assert.ok(premiumAdmin.prefixOnly && premiumAdmin.teamOnly && premiumAdmin.ownerOnly && premiumAdmin.hiddenEverywhere && premiumAdmin.hiddenFromHelp, '!premiumadmin is a hidden prefix-only tool of the owner');
+  assert.deepEqual(premiumAdmin.data.toJSON().options.map((option) => option.name), ['grant', 'assign', 'unassign', 'revoke']);
+  assert.deepEqual(cmd('premium').data.toJSON().options.map((option) => option.name), ['status'], '/premium keeps only what members need');
+  assert.ok(!collectCommandData().some((json) => json.name === 'premiumadmin'), '!premiumadmin is never registered');
+  const botJson = collectCommandData().find((json) => json.name === 'bot');
+  assert.deepEqual(botJson.options.find((option) => option.name === 'premium').options.map((option) => option.name), ['status'], '/bot premium has only `status`');
+  const USER_ID = '121212121212121212';
+  const serverId = '131313131313131313';
+  const actions = [
+    [`grant ${USER_ID} 3 ${serverId}`, ['grant', USER_ID, 3, OWNER, serverId], /Permanent Premium granted/],
+    [`assign ${USER_ID} ${serverId}`, ['assign', USER_ID, serverId], /Premium activated on server/],
+    [`unassign ${USER_ID} ${serverId}`, ['unassign', USER_ID, serverId], /Premium released from server/],
+    [`revoke ${USER_ID}`, ['revoke', USER_ID, OWNER], /Manual Premium revoked/],
+  ];
+  for (const [typedText, expected, wording] of actions) {
+    for (const head of ['!premiumadmin', '!premium', '!prem', 'petto premiumadmin']) {
+      premiumCalls.length = 0;
+      const result = await typedPremium(`${head} ${typedText}`, OWNER);
+      assert.deepEqual(premiumCalls[0], expected, `${head} ${typedText}: the owner does exactly what the old command did`);
+      assert.ok(wording.test(result.sent.join('')), `${head} ${typedText}: the same answer as before (${result.sent.join('').slice(0, 80)})`);
+    }
+    for (const head of ['!premiumadmin', '!premium', '!prem']) {
+      premiumCalls.length = 0;
+      const stranger = await typedPremium(`${head} ${typedText}`, DEV);
+      assert.deepEqual([premiumCalls, stranger.sent, stranger.typed], [[], [], false], `${head} ${typedText}: a developer who is not the owner gets nothing (no change, no reply, no typing)`);
+      const member = await typedPremium(`${head} ${typedText}`, ANA);
+      assert.deepEqual([premiumCalls, member.sent, member.typed], [[], [], false], `${head} ${typedText}: a member gets nothing either`);
+    }
+  }
+  const statusAnswer = await typedPremium('!premium', ANA); if (process.env.DBG) console.log(statusAnswer);
+  assert.ok(statusAnswer.sent.length === 1 && /Premium/.test(statusAnswer.sent[0]), '!premium still answers a member with their status');
+  assert.deepEqual((await typedPremium('!premiumadmin', ANA)).sent, [], 'and the word of the tool is not a command for a member');
+  assert.equal((await typedPremium('!premiumadmin', ANA)).isCommand, false);
+  for (const includeHidden of [false, true]) {
+    const main = JSON.stringify(JSON.parse(JSON.stringify(help.mainView(client, { name: 'Test', members: { me: null } }, '!', includeHidden, 'en'))));
+    assert.ok(!/premiumadmin/.test(main), `!help does not list premiumadmin (includeHidden=${includeHidden})`);
+    assert.ok(!help.helpChoices(client, 'premiumad', includeHidden).some((choice) => /premiumadmin/.test(choice.value)), 'nor the autocomplete');
+    assert.ok(!help.suggestCommands(client, 'premiumadmn', includeHidden).includes('premiumadmin'), 'nor the suggestions');
+  }
+  assert.ok(!('premiumadmin' in SHORT_ALIAS_TABLE), 'the tables of short aliases have no word for it');
+
+  // ============================================================================================== /channel create is gone from slash, !channel create stays for the team only
+  const channelJson = collectCommandData().find((json) => json.name === 'channel');
+  assert.ok(channelJson && !channelJson.options.some((option) => option.name === 'create'), '/channel create is not registered');
+  assert.ok(cmd('channel').data.toJSON().options.some((option) => option.name === 'create'), 'but it still exists for the prefix');
+  assert.ok(!collectCommandData().find((json) => json.name === 'automod').options.some((option) => option.name === 'control'), '/automod control is not registered either');
+  const modJson = collectCommandData().find((json) => json.name === 'mod');
+  assert.ok(['lock', 'unlock', 'slowmode'].every((name) => modJson.options.some((option) => option.name === name)), '/mod lock, unlock and slowmode stay');
+  const refusedCreate = await send('!channel create news', { as: ANA, perms: PermissionFlagsBits.Administrator, guild: premiumGuild });
+  assert.ok(/team|equipo|equipe/i.test(refusedCreate.sent.join('')), '!channel create still refuses a non-team member with its message');
 
   console.log('check-guild-blacklist: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

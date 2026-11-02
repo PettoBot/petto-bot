@@ -1,6 +1,7 @@
 // i18n-ignore-file: Petto team operator command.
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { isSlashCommand } = require('../../handlers/commandHandler');
+const { slashJson } = require('../../utils/slashJson');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const { slotUsage, nearLimit, difference, LIMITS } = require('../../utils/slashBudget');
 const { textCard } = require('../../utils/caseCard');
@@ -21,7 +22,7 @@ async function registeredCommands(client) {
 function loadedCommands(client) {
   return [...client.commands.values()]
     .filter((command) => command?.data && !command.prefixOnly && !command.privateGuildId && (isSlashCommand(command) || (command.data.toJSON().type ?? 1) !== 1))
-    .map((command) => command.data.toJSON());
+    .map((command) => slashJson(command));
 }
 
 function slotLines(usage) {
@@ -41,6 +42,9 @@ module.exports = {
     summary: 'The slash command budget: slots used out of 100 and 5, commands close to their limits, what Discord has that Petto does not load (and the other way round), and how many commands still work only with the prefix.',
     usage: ['!slots'],
     who: 'owner and developers',
+    area: 'bot',
+    examples: ['!slots'],
+    answers: 'one card with the numbers (read from Discord when it can be asked)',
   },
   data: new SlashCommandBuilder()
     .setName('slots')

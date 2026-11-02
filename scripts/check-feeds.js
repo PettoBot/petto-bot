@@ -1572,7 +1572,7 @@ const allText = (message) => JSON.stringify(json(message.components));
       for (const type of ['video', 'short', 'live', 'clip']) assert.ok(card.defaultMessage({}, { ...sample, platform: type === 'clip' ? 'twitch' : 'youtube', type }, 'en').startsWith('Hey everyone!'), `${type} keeps its words`);
     }
 
-    // --- The feeds that post by themselves: only the picture ---------------------------------------------------------------------------------------------------------------
+    // --- The animal feeds and the pictures feed: only the picture ----------------------------------------------------------------------------------------------------------
     {
       const feedRow = { message: '', ping_roles: [], ping_everyone: false, options: {} };
       for (const platform of ['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures']) {
@@ -1581,11 +1581,6 @@ const allText = (message) => JSON.stringify(json(message.components));
         assert.deepEqual(shown[0].components.map((part) => part.type), [12], `${platform}: the card is only the picture (no icon, title, source, time or button)`);
         assert.equal(shown[0].accent_color, PLATFORMS[platform].color);
       }
-      // The ones with a real title keep it (and its first words), and still no button, icon or source.
-      const wiki = plain(card.buildFeedMessage(feedRow, { platform: 'wikipedia', type: 'daily', id: 'w', title: 'Cat', url: 'https://en.wikipedia.org/wiki/Cat', description: 'A small animal.', image: 'https://upload.example/cat.jpg', author: 'Wikipedia', publishedAt: Date.now() }, { lang: 'en' }).components)[0];
-      assert.deepEqual(wiki.components.map((part) => part.type), [10, 12]);
-      assert.equal(wiki.components[0].content, '**[Cat](https://en.wikipedia.org/wiki/Cat)**\n> A small animal.');
-      assert.ok(!JSON.stringify(wiki).includes('Wikipedia"') && !JSON.stringify(wiki).includes('pe_f_'), 'no source line and no icon');
       assert.ok(plain(card.buildFeedMessage({ ...feedRow, options: { image: false } }, { platform: 'cat', type: 'photo', id: 'k', title: 'A cat', image: 'https://cdn.example/c.jpg' }, { lang: 'en' }).components)[0].components.length >= 1, 'a card is never empty');
     }
 
@@ -1706,18 +1701,38 @@ const allText = (message) => JSON.stringify(json(message.components));
       } finally { globalThis.fetch = realFetch; }
     }
 
-    // The other sites share the layout: the account on top, the picture, a byline with the author and the time.
+    // Every other platform keeps the card it had before the image-first work (Pokémon, Wikipedia, chess, Epic, music, AniList, Bluesky, Mastodon, Tumblr, Letterboxd, RSS, the creators):
+    // the golden file holds what src/feeds/card.js built at 11839b3 for a fixed item of each one (sizes, kinds of parts, the icon, the button with its label), in three languages.
     {
+      const golden = require('./fixtures/feed-cards-old.json');
+      assert.ok(golden.cases.length > 150, 'the golden file has the cards of every restored platform');
+      const wanted = ['youtube', 'twitch', 'kick', 'bluesky', 'mastodon', 'tumblr', 'letterboxd', 'rss', 'modrinth', 'github', 'npm', 'pypi', 'steam', 'pokemon', 'wikipedia', 'chess', 'epic', 'anilist', 'randommusic', 'spotify', 'deezer', 'applemusic'];
+      assert.deepEqual([...new Set(golden.cases.map((entry) => entry.name.split('/')[0]))].sort(), [...wanted].sort(), 'every restored platform is in it');
+      for (const entry of golden.cases) {
+        const message = card.buildFeedMessage(entry.feed, entry.item, { lang: entry.lang, ...(entry.hero ? { hero: entry.hero } : {}) });
+        const built = plain({ content: message.content ?? null, flags: message.flags ?? null, allowedMentions: message.allowedMentions ?? null, components: (message.components ?? []).map((part) => (part.toJSON ? part.toJSON() : part)) });
+        assert.deepEqual(built, entry.expected, `${entry.name}: the card is the one the old code built`);
+      }
+      // What the card has, said once in words: the icon, a section with the avatar, the footer line and the button of the platform.
       const feedRow = { message: '', ping_roles: [], ping_everyone: false, options: {} };
-      const blog = plain(card.buildFeedMessage(feedRow, { platform: 'rss', type: 'post', title: 'A post', url: 'https://blog.test/a', description: 'A post', image: 'https://blog.test/a.jpg', author: 'The Blog', authorUrl: 'https://blog.test', source: 'The Blog', sourceUrl: 'https://blog.test', publishedAt: Date.parse('2026-10-31T18:33:00Z') }, { lang: 'en' }).components);
-      assert.equal(blog[0].type, 17, 'RSS: only the card');
-      assert.ok(!blog[0].components[0].content.includes('\n> '), 'a description that is the title again is not repeated');
-      assert.ok(!blog[0].components.some((part) => part.type === 9), 'no thumbnail beside the picture');
-      const skeet = plain(card.buildFeedMessage(feedRow, { platform: 'bluesky', type: 'post', title: 'Jay', url: 'https://bsky.app/profile/j/post/1', description: 'hello world', image: null, author: '@j.bsky.social', source: 'Jay', sourceUrl: 'https://bsky.app/profile/j', publishedAt: 1_792_000_000_000 }, { lang: 'en' }).components);
-      assert.equal(skeet[0].type, 10, 'Bluesky follows a person: it keeps its words above the card');
-      assert.match(skeet[0].content, /^Hey everyone! \*\*@j\.bsky\.social\*\* just posted\.$/);
-      assert.match(skeet[1].components[0].content, /^### <:pe_f_BlueSky:\d+> \[Jay\]\(https:\/\/bsky\.app\/profile\/j\)\n> hello world$/);
+      for (const [platform, type, label] of [['pokemon', 'daily', 'Open'], ['wikipedia', 'daily', 'Read'], ['chess', 'daily', 'Open'], ['epic', 'game', 'Open'], ['rss', 'post', 'Read'], ['bluesky', 'post', 'See post'], ['tumblr', 'post', 'Read'], ['mastodon', 'post', 'See post'], ['letterboxd', 'post', 'Read']]) {
+        const shown = plain(card.buildFeedMessage(feedRow, { platform, type, id: 'g', title: 'Title', url: 'https://example.com/g', description: 'Words', image: 'https://example.com/g.png', avatar: 'https://example.com/a.png', author: 'Someone', publishedAt: Date.now() }, { lang: 'en' }).components).at(-1);
+        assert.equal(shown.type, 17, `${platform}: a card`);
+        assert.match(shown.components[0].components?.[0]?.content ?? '', new RegExp(`^<:pe_f_[A-Za-z]+:\\d+> \\*\\*\\[Title\\]\\(https://example.com/g\\)\\*\\*`), `${platform}: the icon and the linked title, as before`);
+        assert.equal(shown.components[0].type, 9, `${platform}: the heading is a section with the picture of the account`);
+        const button = shown.components.at(-1).components?.[0];
+        assert.equal(button?.type, 2, `${platform}: it has its button`);
+        assert.ok(button.label.length > 0 && button.url === 'https://example.com/g' && button.emoji, `${platform}: the button has a label, an icon and the link`);
+        assert.ok(!shown.components.some((part) => part.type === 10 && part.content.startsWith('### ')), `${platform}: not the image-first heading`);
+      }
+      // The default words follow the table: none for these (the card is alone), the words of the server when it wrote some. AniList is the only one that had a default line and has none now.
+      for (const platform of ['pokemon', 'wikipedia', 'chess', 'epic', 'anilist', 'rss', 'randommusic']) {
+        assert.equal(plain(card.buildFeedMessage(feedRow, { platform, type: PLATFORMS[platform].defaultTypes[0], id: 'g', title: 'T', url: 'https://example.com/g', author: 'Someone' }, { lang: 'en' }).components)[0].type, 17, `${platform}: no default line`);
+      }
+      assert.equal(plain(card.buildFeedMessage({ ...feedRow, message: 'Look!' }, { platform: 'pokemon', type: 'daily', id: 'g', title: 'Pikachu', url: 'https://example.com/g' }, { lang: 'en' }).components)[0].content, 'Look!', 'a feed with words of its own keeps them');
+      assert.match(plain(card.buildFeedMessage(feedRow, { platform: 'bluesky', type: 'post', id: 'g', title: 'Jay', url: 'https://example.com/g', author: '@j.bsky.social' }, { lang: 'en' }).components)[0].content, /^Hey everyone! \*\*@j\.bsky\.social\*\* just posted\.$/, 'a creator keeps its default line');
     }
+
 
     // GitHub: the tag of the last answer is sent, and a 304 gives the same releases without a new reading.
     assert.equal(github.parseRepo('https://github.com/PettoBot/petto-bot/releases/tag/v1'), 'PettoBot/petto-bot');

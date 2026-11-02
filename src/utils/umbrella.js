@@ -18,6 +18,7 @@ const moderationPermissions = require('./moderationPermissions');
 const { permissionLabels } = require('./permissions');
 const { t, languageOf } = require('../i18n');
 const { aliasesFor } = require('./defaultCommandAliases');
+const { slashJson } = require('./slashJson');
 
 const ADD_OPTION = {
   [ApplicationCommandOptionType.String]: 'addStringOption',
@@ -101,7 +102,7 @@ function subcommandsOfWrapped(entry, json) {
 function addSubcommands(builder, subcommands, load) {
   for (const entry of subcommands) {
     if (entry.group) {
-      const json = load(entry.wraps).data.toJSON();
+      const json = slashJson(load(entry.wraps));
       builder.addSubcommandGroup((group) => {
         group.setName(entry.group).setDescription(entry.description ?? json.description);
         for (const node of subcommandsOfWrapped(entry, json)) group.addSubcommand((sub) => fillSubcommand(sub, node.name, node));
@@ -115,7 +116,7 @@ function addSubcommands(builder, subcommands, load) {
         copyOptions(sub, entry.options);
         return sub;
       }
-      const json = load(entry.wraps).data.toJSON();
+      const json = slashJson(load(entry.wraps));
       const node = entry.sub ? json.options.find((option) => option.name === entry.sub) : json;
       return fillSubcommand(sub, entry.name, node);
     });
@@ -130,7 +131,7 @@ function addSubcommands(builder, subcommands, load) {
 function expandGroups(subcommands, load) {
   return subcommands.flatMap((entry) => {
     if (!entry.group) return [entry];
-    return subcommandsOfWrapped(entry, load(entry.wraps).data.toJSON()).map((node) => ({ group: entry.group, name: node.name, wraps: entry.wraps, sub: node.name }));
+    return subcommandsOfWrapped(entry, slashJson(load(entry.wraps))).map((node) => ({ group: entry.group, name: node.name, wraps: entry.wraps, sub: node.name }));
   });
 }
 

@@ -110,7 +110,7 @@ module.exports = {
   'cmd.utility.globalranking.on.desc': 'Vuelve a mostrar tu nombre y avatar en el ranking.',
   'cmd.utility.globalranking.off.desc': 'Ocúltate del ranking.',
   'cmd.utility.globalranking.status.desc': 'Mira si apareces en el ranking.',
-  'cmd.utility.guilddebug.desc': 'Diagnóstico privado de un servidor (solo el dueño de Petto).',
+  'cmd.utility.guilddebug.desc': 'Control privado: diagnóstico de un servidor (equipo de Petto, solo en el servidor de diagnóstico).',
   'cmd.utility.guilddebug.info.desc': 'Revisa membresía, permisos, configuración en la base de datos, bienvenida y registros.',
   'cmd.utility.guilddebug.info.opt.guild_id.desc': 'ID del servidor que revisar',
   'cmd.utility.guilddebug.send.desc': 'Envía un mensaje de prueba controlado a través de Petto.',
@@ -382,6 +382,7 @@ module.exports = {
   'cmd.utility.blacklist.desc': 'Control privado: pon en la lista negra los servidores que incumplen los términos.',
   'cmd.utility.blacklist.opt.text.desc': 'Un servidor y un motivo, o remove, list o info.',
   'cmd.utility.team.desc': 'Control privado: las herramientas del equipo de Petto.',
+  'cmd.utility.team.opt.command.desc': 'Una herramienta del equipo para ver en detalle',
   'cmd.utility.guildsend.opt.server.desc': 'ID del servidor, su nombre exacto (entre comillas si tiene espacios) o here.',
   'cmd.utility.leaveguild.opt.server.desc': 'El ID o el nombre exacto del servidor del que Petto debe salir, o --here para este.',
 };
