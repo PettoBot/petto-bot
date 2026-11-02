@@ -1912,6 +1912,7 @@ const allText = (message) => JSON.stringify(json(message.components));
 
     // The board as Pinterest sends it (the shapes of a real board: ids `e1_...`, small pictures, a pin with a blank title, and the entry of a pin that is gone).
     const PIN = 'https://www.pinterest.com/pin/';
+    const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // every character that means something in a pattern
     const entryXml = ({ id, title = ' ', image = '', date = null }) => `<item><title>${title}</title><link>${PIN}${id}/</link><description>&lt;a href=&quot;${PIN}${id}/&quot;&gt;&lt;img src=&quot;${image}&quot;&gt;&lt;/a&gt;${title.trim()}</description><pubDate>${date ? new Date(date).toUTCString() : 'Invalid Date'}</pubDate><guid>${PIN}${id}/</guid></item>`;
     const T0 = Date.parse('2026-11-01T16:00:00Z');
     const real17 = Array.from({ length: 17 }, (_, index) => ({ id: `e1_AfqPSh${String(index).padStart(2, '0')}x_Ai-GUFcmNDC6JM2zNsLMD-YE2ps3HfaVMLqwmypvqROT`, title: index === 1 ? ' ' : `Pin ${index}`, image: `https://i.pinimg.com/236x/4e/66/d5/4e66d55cc81481f648ed295b1529e2a${index.toString(16)}.jpg`, date: T0 - (index + 1) * 3_600_000 }));
@@ -1961,7 +1962,7 @@ const allText = (message) => JSON.stringify(json(message.components));
         await look(); await look();
         assert.equal(sentPins.length, 0, `${label}: the board did not change: the ghost, with a new address on every reading, is not news`);
         assert.equal(warnings.length, restart ? 2 : 1, `${label}: and it is said once in the log (the limit of an hour is kept by the process that runs: a restart starts it again)`);
-        assert.match(warnings[0], new RegExp(`^Feed 41: 1 pinterest item\\(s\\) without a picture were not posted \\(last: ${PIN.replace(/\./g, '\\.')}`));
+        assert.match(warnings[0], new RegExp(`^Feed 41: 1 pinterest item\\(s\\) without a picture were not posted \\(last: ${escapeRegExp(PIN)}`));
         assert.ok(!/Pin \d|miau/.test(warnings[0].replace(/pinterest\.com/g, '')), 'the log line has the ids and no words of the pin');
         assert.ok(store.size > afterFirst, `${label}: the ids the ghost took are marked seen`);
 
