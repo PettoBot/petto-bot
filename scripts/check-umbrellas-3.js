@@ -83,7 +83,7 @@ const optionsOf = (command) => command.data.toJSON().options;
 const UMBRELLAS = {
   config: { category: 'config', groups: { prefix: 5, alias: 4, moderation: 4, restrictcommand: 4, disablecommand: 4, sanctionmessage: 3, backup: 9, statsconfig: 6 }, flat: { language: 'language', appeals: 'appeals', recommended: 'cmdconfig' } },
   protect: { category: 'config', groups: { honeypot: 5, verify: 5, security: 2 }, flat: {} },
-  greet: { category: 'welcome', groups: { welcome: 6, leave: 4, boost: 5, dmonjoin: 4, poj: 5, joinrole: 4, stickyroles: 3 }, flat: {} },
+  greet: { category: 'welcome', groups: { welcome: 6, leave: 4, boost: 5, dmonjoin: 4, poj: 5 }, flat: {} },
   auto: { category: 'automation', groups: { autothread: 3, bumpreminder: 8, reaction: 10, reactionrole: 4, stickymessage: 3, timer: 12 }, flat: {} },
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
   community: { category: 'automation', groups: { suggestion: 17, confession: 13, request: 2, requestconfig: 10, review: 3, profileconfig: 4 }, flat: { confess: 'confess', profile: 'profile' } },
@@ -96,7 +96,7 @@ const PERMS = {
   prefix: 'ManageGuild', language: 'ManageGuild', alias: 'ManageGuild', moderation: 'ManageGuild', restrictcommand: 'ManageGuild', disablecommand: 'ManageGuild',
   sanctionmessage: 'ManageGuild', appeals: 'ManageGuild', backup: 'ManageGuild', statsconfig: 'ManageGuild', cmdconfig: null,
   honeypot: 'Administrator', verify: 'ManageGuild', security: 'ManageGuild',
-  welcome: 'ManageGuild', leave: 'ManageGuild', boost: 'ManageGuild', dmonjoin: 'ManageGuild', poj: 'ManageGuild', joinrole: 'ManageRoles', stickyroles: 'ManageRoles',
+  welcome: 'ManageGuild', leave: 'ManageGuild', boost: 'ManageGuild', dmonjoin: 'ManageGuild', poj: 'ManageGuild',
   autothread: 'ManageChannels', bumpreminder: 'ManageGuild', reaction: 'ManageGuild', reactionrole: 'ManageRoles', stickymessage: 'ManageMessages', timer: 'ManageGuild',
   send: 'ManageMessages', editembed: 'ManageMessages', sender: 'ManageGuild', webhook: 'ManageWebhooks', panel: 'ManageGuild', responder: 'ManageGuild', pagination: 'ManageMessages',
   suggestion: null, confession: null, confess: null, request: null, requestconfig: 'ManageGuild', review: null, profile: null, profileconfig: 'ManageGuild',
@@ -106,7 +106,7 @@ const PERMS = {
 };
 // The commands that already have subcommands, registered by themselves (with the number of top-level subcommands and groups they have).
 const DIRECT = {
-  level: 25, automod: 15, form: 17, forum: 19, role: 21, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 8, image: 12, feed: 8, identity: 6,
+  level: 25, automod: 15, form: 17, forum: 19, role: 24, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 8, image: 12, feed: 8, identity: 6,
   starboard: 10, clownboard: 10, monkeyboard: 10, stats: 8, customcommand: 16, rollouts: 15, quickreply: 4, voicemaster: 17, giveawaypreset: 7, giveawaytemplate: 4,
 };
 const NEW_SLASH = [...Object.keys(UMBRELLAS), ...Object.keys(DIRECT)];
@@ -272,7 +272,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 42, protect: 12, greet: 31, auto: 40, message: 33, community: 51, contrib: 23, special: 24, bot: 5 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 42, protect: 12, greet: 24, auto: 40, message: 33, community: 51, contrib: 23, special: 24, bot: 5 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).
@@ -416,8 +416,6 @@ function tailOf(node) {
   assert.ok(call === null, '`ar` is not a word of /auto: autoresponder is not in it');
   call = await ran('!greet welcome status');
   assert.deepEqual([call.file, call.sub], ['welcome', 'status']);
-  call = await ran(`!greet joinrole add <@&${MODS}>`);
-  assert.deepEqual([call.file, call.sub, call.values.role], ['joinrole', 'add', MODS]);
   call = await ran('!bot votes top');
   assert.deepEqual([call.file, call.sub], ['votes', 'top']);
   call = await ran('!bot version');
@@ -427,7 +425,8 @@ function tailOf(node) {
     const command = commandFile(umbrella);
     for (const [word, route] of Object.entries(command.prefixWords)) {
       const name = route.command;
-      assert.ok(wrappedNames.includes(name), `${umbrella}: ${word} goes to a command it wraps`);
+      // (`!greet joinrole` and `!greet stickyroles` are prefix words of commands that moved to `/role join` and `/role sticky`.)
+      assert.ok(wrappedNames.includes(name) || (umbrella === 'greet' && ['joinrole', 'stickyroles'].includes(name)), `${umbrella}: ${word} goes to a command it wraps`);
       assert.equal(commandFile(name).data.name, name);
     }
     for (const name of [...Object.keys(UMBRELLAS[umbrella].groups), ...Object.values(UMBRELLAS[umbrella].flat)]) {
@@ -484,7 +483,7 @@ function tailOf(node) {
   spyOn(wrappedNames);
   for (const [content, file, subName] of [
     ['!prefix show', 'prefix', 'show'], ['!prefix set ?!', 'prefix', 'set'], ['!language es', 'language', null], ['!alias list', 'alias', 'list'], ['!honeypot list', 'honeypot', 'list'], ['!verify status', 'verify', 'status'],
-    ['!welcome status', 'welcome', 'status'], ['!leave status', 'leave', 'status'], ['!boost status', 'boost', 'status'], ['!joinrole list', 'joinrole', 'list'], ['!timer list', 'timer', 'list'],
+    ['!welcome status', 'welcome', 'status'], ['!leave status', 'leave', 'status'], ['!boost status', 'boost', 'status'], ['!timer list', 'timer', 'list'],
     ['!reaction list', 'reaction', 'list'], ['!sender list', 'sender', 'list'], ['!webhook list', 'webhook', 'list'], ['!panel list', 'panel', 'list'], ['!suggestion setup', 'suggestion', 'setup'],
     ['!confession config', 'confession', 'config'], ['!counting config', 'counting', 'config'], ['!imgonly list', 'imgonly', 'list'], ['!partner stats', 'partner', 'stats'], ['!uploads stats', 'uploads', 'stats'],
     ['!votes top', 'votes', 'top'], ['!uptime', 'uptime', null], ['!version', 'version', null], ['!premium status', 'premium', 'status'],
@@ -722,6 +721,13 @@ function tailOf(node) {
   const before = require('node:child_process').execSync('git show HEAD:src/utils/short-aliases.json', { cwd: root, encoding: 'utf8' });
   // The one exception: the four words of the booster role subcommands that /me had for a few days (/boosterrole is its own command now, with its own words `brc`, `brco`, `brr`, `brre`).
   const MOVED_OUT_OF_ME = new Set(['mbc', 'mbo', 'mbre', 'mbrem']);
+  // The join roles and the sticky roles moved from `/greet` to `/role join` and `/role sticky`: their short words are hand-written routes of `role` now (same words, same action).
+  const MOVED_TO_ROLE = { gja: ['join', 'add'], gjc: ['join', 'clear'], gjl: ['join', 'list'], gjr: ['join', 'remove'], gsd: ['sticky', 'disable'], gse: ['sticky', 'enable'], gss: ['sticky', 'status'] };
+  for (const [alias, args] of Object.entries(MOVED_TO_ROLE)) {
+    MOVED_OUT_OF_ME.add(alias);
+    const route = require('../src/utils/defaultCommandAliases').BASE_PREFIX_ROUTES.find((each) => each.alias === alias);
+    assert.deepEqual([route?.command, route?.args], ['role', args], `${alias} still works: it goes to !role ${args.join(' ')}`);
+  }
   for (const alias of MOVED_OUT_OF_ME) assert.ok(!Object.hasOwn({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }, alias), `${alias} went away with the /me booster role subcommand`);
   // The other exception: the words of the owner-only Premium actions. They worked as `premium grant` and `bot premium grant`; those actions are not slash subcommands any more
   // (they were in the `/` menu of everybody), so the SAME words now reach the hidden tool `!premiumadmin` and live in the team table (never published).
