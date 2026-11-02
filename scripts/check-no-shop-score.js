@@ -34,7 +34,7 @@ for (const lang of ['en', 'es', 'pt-BR']) {
 
 // The manual tools stay and cannot scan or score.
 const guildsend = require('../src/commands/utility/guildsend');
-assert.deepEqual(guildsend.data.toJSON().options.map((option) => option.name), ['guild_id', 'type', 'details']);
+assert.deepEqual(guildsend.data.toJSON().options.map((option) => option.name), ['server', 'type', 'details']);
 assert.ok(!/scan|score|unignore/.test(guildsend.data.toJSON().options[1].description), 'guildsend sends notices only');
 assert.ok(fs.existsSync(path.join(root, 'src/commands/utility/leaveguild.js')), '!leaveguild stays');
 assert.equal(typeof alerts.createGuildDiagnosticSink, 'function', 'the diagnostic sink stays');

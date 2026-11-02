@@ -19,6 +19,13 @@ const STATUS_KEYS = { active: 'active', pending: 'pending', past_due: 'pastDue',
 // stay in English. What any member can see (the status card and its errors) is translated.
 
 module.exports = {
+  // The parts only the OWNER can use (`!team` lists them, read from here).
+  teamParts: [
+    { usage: '!premium grant <user> <slots> [server id]', who: 'owner only', summary: 'Grants permanent manual Premium with that many server slots (and activates it on a server if you give one).' }, // i18n-ignore: team list
+    { usage: '!premium assign <user> <server id>', who: 'owner only', summary: 'Activates a slot of the user on a server.' }, // i18n-ignore: team list
+    { usage: '!premium unassign <user> <server id>', who: 'owner only', summary: 'Releases the slot and restores that server\'s avatar, banner and bio to the free defaults.' }, // i18n-ignore: team list
+    { usage: '!premium revoke <user>', who: 'owner only', summary: 'Revokes a manual grant and releases all its slots (paid subscriptions are managed from the billing portal).' }, // i18n-ignore: team list
+  ],
   // This builder is used by the prefix parser only. deployCommands.js skips
   // every command marked prefixOnly, so no /premium command is created.
   prefixOnly: true,

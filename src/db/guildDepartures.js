@@ -4,7 +4,7 @@ const { getPrimaryPool } = require('./postgres');
 const commandData = require('./commandData');
 
 // Tables that have a guild_id but are not erased with the server: what a person paid for or asked for stays until it is handled on its own.
-const KEEP = new Set(['guilds', 'guild_departures', 'premium_slot_assignments', 'premium_slot_requests', 'custom_command_data']);
+const KEEP = new Set(['guilds', 'guild_departures', 'premium_slot_assignments', 'premium_slot_requests', 'custom_command_data', 'guild_blacklist']);
 
 const pool = () => getPrimaryPool();
 

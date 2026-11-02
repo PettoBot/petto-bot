@@ -33,6 +33,9 @@ function actionWord(value, lang) {
 }
 
 module.exports = {
+  teamParts: [
+    { usage: '!am <control token> [stats|sync]', who: 'owner and developers, with the token', summary: 'Hidden control of Petto\'s official AutoMod: the numbers across servers, or a re-sync of the managed rules of this server.' }, // i18n-ignore: team list
+  ],
   // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
   registerSlash: true,
   aliases: ['am', 'antiraid'],

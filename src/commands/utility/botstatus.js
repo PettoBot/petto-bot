@@ -33,6 +33,12 @@ function deviceLabel(device) {
 module.exports = {
   prefixOnly: true,
   hiddenFromHelp: true,
+  teamOnly: true,
+  team: {
+    summary: 'Shows or changes the status dot of Petto (online, idle, dnd, invisible) and the device it connects as (normal, phone, android, ios). A new device restarts the bot after a few seconds.',
+    usage: ['!botstatus', '!botstatus online|idle|dnd|invisible', '!botstatus device normal|phone|android|ios'],
+    who: 'owner and developers',
+  },
   statusLabel,
   deviceLabel,
   data: new SlashCommandBuilder()
@@ -51,9 +57,8 @@ module.exports = {
       .setRequired(false)),
 
   async execute(interaction) {
-    if (!isPettoOperator(interaction.user?.id)) {
-      return reply(interaction, `${EMOJI.DENY} This private control is not available to this account.`, 0xfe6465);
-    }
+    // Nobody else gets an answer (for them this is not a command at all; this is the second lock).
+    if (!isPettoOperator(interaction.user?.id)) return undefined;
 
     // `!botstatus device phone` reads as status "device" and device "phone": the word `device` says which one is meant, and a device
     // word typed alone (`!botstatus phone`) is the device too. None of them is a status.

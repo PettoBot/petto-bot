@@ -17,7 +17,7 @@ module.exports = {
         items: [
           '`/help` answers in the channel, describes every menu option and suggests commands while you type (`/help command:`). A mistyped command (`!bna`) gets "Did you mean `!ban`?".',
           'Prefix commands answer as a reply to the message that typed them, and the word `petto` always works as a prefix.',
-          'Every DM from Petto starts with a grey `From <server>` line and has three buttons: info, delete and report. Info shows, only to you, the icon, name, ID, creation date and members of the server; every answer of the buttons is private and nothing is written in the chat. A report goes to the Petto team only, never to the moderators of the server.',
+          'Every DM from Petto starts with a grey `From <server>` line and has three buttons: info, delete and report. Info shows, only to you, the icon, name, ID, creation date and members of the server; every answer of the buttons is private and nothing is written in the chat. A report goes to the Petto team only, never to the moderators of the server; it has no number to remember, and once the team marks it as handled it is closed for good.',
           '`/level notify test` shows you your next level-up announcement exactly as your settings would send it, and saves nothing.',
         ],
       },
@@ -28,6 +28,7 @@ module.exports = {
           'Forms are numbered per server, so your first form is number 1, and `!forum` adds help posts in a forum channel (off until you set it up).',
           'The welcome can wait until the member accepts the rules, a server can have a second welcome, and image cards have 34 new designs.',
           'Premium that is over is removed automatically, and the invite tracker has new settings in `/invites config`.',
+          "The Petto team can blacklist servers that break Petto's terms of service or privacy policy: Petto leaves them, tells the owner why, and leaves again if they add it back.",
         ],
       },
       {

@@ -1,26 +1,37 @@
 // i18n-ignore-file: Petto team operator command.
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const config = require('../../config');
-const { resolveOpsGuildId } = require('../../utils/opsGuild');
-const { isPettoOperator } = require('../../utils/autoModControl');
-const { textCard } = require('../../utils/caseCard');
+const { SlashCommandBuilder } = require('discord.js');
 const { EMOJI } = require('../../utils/emojis');
 const { sendGuildNotice, TEMPLATES } = require('../../utils/guildOpsAlerts');
 const logger = require('../../utils/logger');
+const { isTeam, findGuild, notFoundText, guildLine, opsNote, teamReply, oneLine } = require('../../utils/teamTools');
 
-const SNOWFLAKE_RE = /^\d{15,25}$/;
 const TYPES = Object.keys(TEMPLATES);
+const RED = 0xfe6465;
+const YELLOW = 0xfed53c;
+const GREEN = 0xa5ea7a;
 
+/**
+ * Private support control, prefix only: sends one of the notices (`policy`, `permissions`, `logs`, `diagnostic`, `maintenance`) to a server, in its language.
+ * The notice goes to a PRIVATE staff or log channel of that server, else to the owner by direct message, never to a public channel; no mention can ping anyone
+ * (`allowedMentions` none in every route). Anybody outside the team gets no answer. What it did is shown (name, ID, members, owner, where it went) and noted in
+ * the operations channel.
+ */
 module.exports = {
   prefixOnly: true,
   hiddenFromHelp: true,
+  teamOnly: true,
+  team: {
+    summary: `Sends a notice (${TYPES.join(', ')}) to a server in its own language: to a private staff channel, else to its owner by DM, never to a public channel and never with pings.`,
+    usage: ['!guildsend <server id or name> <type> [details]', '!guildsend here <type> [details]'],
+    who: 'owner and developers',
+  },
   data: new SlashCommandBuilder()
     .setName('guildsend')
     .setDescription('Private support control: send a notice to a server.')
     .setDMPermission(false)
     .addStringOption((option) => option
-      .setName('guild_id')
-      .setDescription('Discord server ID.')
+      .setName('server')
+      .setDescription('Server ID, its exact name (in quotes if it has spaces), or here.')
       .setRequired(true))
     .addStringOption((option) => option
       .setName('type')
@@ -31,78 +42,32 @@ module.exports = {
       .setDescription('Optional notice context.')),
 
   async execute(interaction) {
-    if (!isPettoOperator(interaction.user?.id)) {
-      return reply(interaction, `${EMOJI.DENY} This private support control is not available to this account.`, 0xfe6465);
-    }
-
-    const supportGuildId = await resolveOpsGuildId(interaction.client);
-    if (!supportGuildId || interaction.guildId !== supportGuildId) {
-      return reply(interaction, `${EMOJI.DENY} This control can only be used in Petto's private operations server.`, 0xfe6465);
-    }
-
-    const guildId = interaction.options.getString('guild_id', true).trim();
+    if (!isTeam(interaction.user?.id)) return undefined;
+    const client = interaction.client;
+    const query = interaction.options.getString('server', true).trim();
     const kind = interaction.options.getString('type', true).trim().toLowerCase();
     const details = interaction.options.getString('details', false)?.trim() || null;
 
-    if (!SNOWFLAKE_RE.test(guildId)) {
-      return reply(interaction, `${EMOJI.WARNING} Use a valid Discord server ID.`, 0xfed53c);
-    }
-    if (!TYPES.includes(kind)) {
-      return reply(interaction, `${EMOJI.WARNING} Unknown type. Use: \`${TYPES.join('`, `')}\`.`, 0xfed53c);
-    }
+    if (!TYPES.includes(kind)) return teamReply(interaction, `${EMOJI.WARNING} Unknown type. Use: \`${TYPES.join('`, `')}\`.`, YELLOW);
+    const found = await findGuild(client, query, { current: interaction.guild ?? null });
+    if (!found.ok) return teamReply(interaction, `${EMOJI.WARNING} ${notFoundText(found, query)}`, YELLOW);
+    if (!found.guild) return teamReply(interaction, `${EMOJI.DENY} Petto is not currently in a server with ID \`${found.id}\`.`, RED);
+    const guild = found.guild;
 
-    const guild = await resolveGuild(interaction.client, guildId);
-    if (!guild) {
-      return reply(interaction, `${EMOJI.DENY} Petto is not currently in a server with ID \`${guildId}\`.`, 0xfe6465);
-    }
-
-    await interaction.reply({
-      components: [textCard(`${EMOJI.WARNING} Sending **${kind}** notice to \`${guildId}\`…`)],
-      flags: MessageFlags.IsComponentsV2,
+    await interaction.deferReply?.();
+    const result = await sendGuildNotice(client, {
+      guildId: guild.id, kind, details, source: '!guildsend', requestedBy: interaction.user.id, force: true, teamAlert: TEMPLATES[kind].severity === 'critical',
     });
-
-    const result = await sendGuildNotice(interaction.client, {
-      guildId,
-      kind,
-      details,
-      source: '!guildsend',
-      requestedBy: interaction.user.id,
-      force: true,
-      teamAlert: TEMPLATES[kind].severity === 'critical',
-    });
-
+    const summary = guildLine(guild);
     if (!result.ok) {
-      logger.warn({ guildId, action: 'guildsend', userId: interaction.user.id }, 'Guild notice could not be delivered privately; team alert fallback was attempted.');
-      return interaction.editReply({
-        components: [textCard(`${EMOJI.WARNING} Petto could not find a safe private delivery route. No public channel was used; the team alert fallback was attempted.`, 0xfed53c)],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      logger.warn({ guildId: guild.id, action: 'guildsend', userId: interaction.user.id }, 'Guild notice could not be delivered privately; team alert fallback was attempted.');
+      await opsNote(client, `**Notice (${kind}) could NOT be delivered.**\n${summary}\nBy: <@${interaction.user.id}> (\`${interaction.user.id}\`)`);
+      return teamReply(interaction, `${EMOJI.WARNING} Petto could not find a safe private route to ${summary}. No public channel was used; the team alert fallback was attempted.`, YELLOW);
     }
 
-    const destination = result.deliveryType === 'owner_dm'
-      ? 'by DM to the server owner'
-      : result.channel
-        ? `in <#${result.channel.id}>`
-        : 'through a private route';
-
-    logger.info({ guildId, action: 'guildsend', userId: interaction.user.id, deliveryType: result.deliveryType }, `Guild ${kind} notice delivered ${destination}.`);
-    return interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE} Notice delivered to **${guild.name}** (\`${guildId}\`) ${destination}.`, 0xa5ea7a)],
-      flags: MessageFlags.IsComponentsV2,
-    });
+    const destination = result.deliveryType === 'owner_dm' ? 'by DM to the server owner' : result.channel ? `in the private channel <#${result.channel.id}>` : 'through a private route';
+    logger.info({ guildId: guild.id, action: 'guildsend', userId: interaction.user.id, deliveryType: result.deliveryType }, `Guild ${kind} notice delivered ${destination}.`);
+    await opsNote(client, `**Notice (${kind}) sent ${oneLine(destination, 100)}.**\n${summary}\nBy: <@${interaction.user.id}> (\`${interaction.user.id}\`)${details ? `\nDetails: ${oneLine(details, 300)}` : ''}`);
+    return teamReply(interaction, `${EMOJI.APPROVE} Notice **${kind}** delivered ${destination}.\n${summary}`, GREEN);
   },
 };
-
-async function resolveGuild(client, guildId) {
-  return client.guilds.cache.get(String(guildId))
-    ?? client.guilds.fetch(String(guildId)).catch(() => null);
-}
-
-
-async function reply(interaction, content, color) {
-  return interaction.reply({
-    components: [textCard(content, color)],
-    flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { parse: [] },
-  });
-}

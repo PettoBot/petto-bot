@@ -17,7 +17,7 @@ module.exports = {
         items: [
           '`/help` responde en el canal, describe cada opción de sus menús y sugiere comandos mientras escribes (`/help command:`). Un comando mal escrito (`!bna`) recibe "¿Quisiste decir `!ban`?".',
           'Los comandos con prefijo responden como respuesta al mensaje que los escribió, y la palabra `petto` siempre funciona como prefijo.',
-          'Cada DM de Petto empieza con una línea gris `De <servidor>` y trae tres botones: info, borrar y reportar. Info muestra, solo a ti, el icono, nombre, ID, fecha de creación y miembros del servidor; toda respuesta de los botones es privada y no se escribe nada en el chat. Un reporte va solo al equipo de Petto, nunca a los moderadores del servidor.',
+          'Cada DM de Petto empieza con una línea gris `De <servidor>` y trae tres botones: info, borrar y reportar. Info muestra, solo a ti, el icono, nombre, ID, fecha de creación y miembros del servidor; toda respuesta de los botones es privada y no se escribe nada en el chat. Un reporte va solo al equipo de Petto, nunca a los moderadores del servidor; no tiene un número que recordar y, cuando el equipo lo marca como atendido, queda cerrado para siempre.',
           '`/level notify test` te muestra tu próximo aviso de nivel exactamente como lo enviaría tu configuración, y no guarda nada.',
         ],
       },
@@ -28,6 +28,7 @@ module.exports = {
           'Los formularios se numeran por servidor, así que tu primer formulario es el número 1, y `!forum` suma publicaciones de ayuda en un foro (apagado hasta que lo configures).',
           'La bienvenida puede esperar a que el miembro acepte las reglas, un servidor puede tener una segunda bienvenida, y las tarjetas de imagen tienen 34 diseños nuevos.',
           'El Premium que terminó se elimina automáticamente, y el rastreador de invitaciones tiene ajustes nuevos en `/invites config`.',
+          'El equipo de Petto puede poner en una lista negra los servidores que incumplen los términos de servicio o la política de privacidad de Petto: Petto sale de ellos, le dice al dueño el motivo y vuelve a salir si lo añaden de nuevo.',
         ],
       },
       {

@@ -179,6 +179,8 @@ function startServer(client) {
   const app = express();
   const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
   app.disable('x-powered-by');
+  // A blacklisted server is "not available" on every route that has a :guildId (the dashboard, the API, the appeals, the transcripts).
+  require('../utils/guildBlacklist').guardWebGuild(app);
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1); // i18n-ignore: Express setting
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');

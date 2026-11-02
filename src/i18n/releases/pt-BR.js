@@ -17,7 +17,7 @@ module.exports = {
         items: [
           '`/help` responde no canal, descreve cada opção dos seus menus e sugere comandos enquanto você digita (`/help command:`). Um comando digitado errado (`!bna`) recebe "Você quis dizer `!ban`?".',
           'Os comandos com prefixo respondem como resposta à mensagem que os digitou, e a palavra `petto` sempre funciona como prefixo.',
-          'Cada DM do Petto começa com uma linha cinza `De <servidor>` e traz três botões: info, apagar e denunciar. Info mostra, só para você, o ícone, nome, ID, data de criação e membros do servidor; toda resposta dos botões é privada e nada é escrito no chat. Uma denúncia vai só para a equipe do Petto, nunca para os moderadores do servidor.',
+          'Cada DM do Petto começa com uma linha cinza `De <servidor>` e traz três botões: info, apagar e denunciar. Info mostra, só para você, o ícone, nome, ID, data de criação e membros do servidor; toda resposta dos botões é privada e nada é escrito no chat. Uma denúncia vai só para a equipe do Petto, nunca para os moderadores do servidor; ela não tem um número para lembrar e, quando a equipe a marca como atendida, fica encerrada para sempre.',
           '`/level notify test` mostra o seu próximo aviso de nível exatamente como a sua configuração o enviaria, e não salva nada.',
         ],
       },
@@ -28,6 +28,7 @@ module.exports = {
           'Os formulários são numerados por servidor, então o seu primeiro formulário é o número 1, e `!forum` adiciona posts de ajuda em um fórum (desligado até você configurar).',
           'A boas-vindas pode esperar o membro aceitar as regras, um servidor pode ter uma segunda boas-vindas, e os cartões de imagem têm 34 designs novos.',
           'O Premium que acabou é removido automaticamente, e o rastreador de convites tem configurações novas em `/invites config`.',
+          'A equipe do Petto pode colocar na lista negra os servidores que violam os termos de serviço ou a política de privacidade do Petto: o Petto sai deles, conta ao dono o motivo e sai de novo se o adicionarem de novo.',
         ],
       },
       {

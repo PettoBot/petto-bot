@@ -147,7 +147,7 @@ const SELF_GATED = {
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
-const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'quests', 'guilddebug', 'music']);
+const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'quests', 'guilddebug', 'music', 'blacklist', 'team']);
 
 
 // ---------------------------------------------------------------- a fake Discord for the probes: it records what changes the server
@@ -490,7 +490,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     const name = command.data.name;
     const isUmbrella = Boolean(command.permissionForSubcommand);
     const raw = json(command).default_member_permissions;
-    if (command.hiddenEverywhere) { assert.deepEqual((await typed(`!${name}`)).sent, [], `!${name} is not a command for a plain member (check-music-hidden.js)`); continue; }
+    if (command.hiddenEverywhere || command.teamOnly) { assert.deepEqual((await typed(`!${name}`)).sent, [], `!${name} is not a command for a plain member (check-music-hidden.js)`); continue; }
     const result = await typed(`!${name}`);
     results.set(name, result);
     if (command.slashOnly) { assert.equal(result.ran.length, 0, `!${name} is slash only`); continue; }

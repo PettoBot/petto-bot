@@ -36,6 +36,12 @@ function slotLines(usage) {
 module.exports = {
   prefixOnly: true,
   hiddenFromHelp: true,
+  teamOnly: true,
+  team: {
+    summary: 'The slash command budget: slots used out of 100 and 5, commands close to their limits, what Discord has that Petto does not load (and the other way round), and how many commands still work only with the prefix.',
+    usage: ['!slots'],
+    who: 'owner and developers',
+  },
   data: new SlashCommandBuilder()
     .setName('slots')
     .setDescription('Private control: the slash command slots Petto has left.')

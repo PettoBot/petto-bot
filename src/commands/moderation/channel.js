@@ -25,6 +25,9 @@ function canCreateChannels(userId) {
 }
 
 module.exports = {
+  teamParts: [
+    { usage: '!channel create ...', who: 'owner and developers', summary: 'Creating channels with this command is open only to the team for now; everybody else is told so.' }, // i18n-ignore: team list
+  ],
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
   aliases: ['ch'],

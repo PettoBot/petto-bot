@@ -163,6 +163,9 @@ async function main() {
   music.init(client); // before the login: the connection to the node waits for the client to be ready by itself
 
   await runMigrations();
+  // The blacklist of servers is read into memory before the login, so the first guildCreate and the first message already know it (and every few minutes after).
+  await require('./src/db/guildBlacklist').load().catch((err) => logger.warn('Could not read the server blacklist (the environment list still applies):', err.message));
+  require('./src/db/guildBlacklist').startRefresh();
   // The device saved with `!botstatus device` wins over PETTO_MOBILE_STATUS. The gateway reads the names when it connects (the login
   // below), so the database being ready here is early enough; if it cannot be read the environment keeps deciding and the boot goes on.
   await require('./src/utils/botDevice').applySavedDevice().catch((err) => logger.warn('Could not apply the saved device of the bot:', err.message));
