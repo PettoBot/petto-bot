@@ -1,4 +1,4 @@
-// i18n-ignore-file: Petto team diagnostic command (private operations server only).
+// i18n-ignore-file: Petto team diagnostic command (prefix only, private diagnostics server only).
 const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const guildPrefixes = require('../../utils/guildPrefixes');
 const database = require('../../db/database');
@@ -12,7 +12,8 @@ const guildBlacklist = require('../../db/guildBlacklist');
 const { getGuildPremium } = require('../../db/premium');
 
 const DIAGNOSTIC_GUILD_ID = '1502171756113432607';
-const V2_EPHEMERAL = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
+// A prefix reply is a plain message (the Ephemeral flag means nothing there), and it only works in the private diagnostics server.
+const V2_EPHEMERAL = MessageFlags.IsComponentsV2;
 const GREEN = 0xa5ea7a;
 const RED = 0xfe6465;
 const YELLOW = 0xf5c451;
@@ -209,8 +210,12 @@ async function getWritableChannel(guild, botMember, channels) {
 
 async function sendToGuild(interaction) {
   const guildId = interaction.options.getString('guild_id', true);
-  const channelId = interaction.options.getString('channel_id');
-  const message = interaction.options.getString('message', true);
+  // With the prefix the message takes every word, so the channel is the end of it: `... --channel <id>` (the option `channel_id` still works as a pseudo-option).
+  const raw = interaction.options.getString('message', true);
+  const tail = /\s+--channel\s+<?#?(\d{15,25})>?\s*$/i.exec(raw);
+  const channelId = interaction.options.getString('channel_id') ?? tail?.[1] ?? null;
+  const message = tail ? raw.slice(0, tail.index).trim() : raw;
+  if (!message) return replyCard(interaction, `${EMOJI.DENY} Write the message to send.`, RED);
   const guild = await resolveGuild(interaction.client, guildId);
   if (!guild) return replyCard(interaction, `${EMOJI.DENY} Petto is not in guild \`${guildId}\`, or it could not be fetched.`, RED);
 
@@ -248,18 +253,26 @@ async function replyCard(interaction, content, color = 0x4b4f59) {
 }
 
 module.exports = {
-  privateGuildId: DIAGNOSTIC_GUILD_ID,
-  slashOnly: true,
+  // It was a slash command registered in the diagnostics server only; it is a prefix-only team tool now (it never shows in the `/` menu of any server).
+  prefixOnly: true,
   hiddenFromHelp: true,
+  hiddenEverywhere: true,
   teamOnly: true,
+  diagnosticGuildId: DIAGNOSTIC_GUILD_ID,
+  // The message takes every word left (`!guilddebug send <server id> hello there --channel <channel id>`).
+  prefixGreedyStringOptions: { send: 'message', 'dm-owner': 'message' },
   team: {
-    summary: 'Diagnostics of a server (slash command, only in the private diagnostics server): shard, members, owner, join date, features, Premium, blacklist status, permissions of Petto, database row, welcome and log routes. Also sends a test message or a DM to its owner (no mentions).',
-    usage: ['/guilddebug info <server id>', '/guilddebug send <server id> <message> [channel id]', '/guilddebug dm-owner <server id> <message>'],
+    summary: 'Diagnostics of a server (only in the private diagnostics server): shard, members, owner, join date, features, Premium, blacklist status, permissions of Petto, database row, welcome and log routes. Also sends a test message or a DM to its owner (no mentions).',
+    usage: ['!guilddebug info <server id>', '!guilddebug send <server id> <message> [--channel <channel id>]', '!guilddebug dm-owner <server id> <message>'],
     who: 'owner and developers (in the diagnostics server only)',
+    area: 'servers',
+    examples: ['!guilddebug info 123456789012345678', '!guilddebug send 123456789012345678 test from Petto --channel 223456789012345678'],
+    answers: 'one card with the data (or what was sent and its message ID); in any other server it says it is unavailable there',
+    dangers: '`send` and `dm-owner` really send a message to a server or to its owner (never with pings).',
   },
   data: new SlashCommandBuilder()
     .setName('guilddebug')
-    .setDescription('Private diagnostics for a guild (Petto owner only).')
+    .setDescription('Private control: diagnostics for a server (the Petto team, in the diagnostics server only).')
     .setDMPermission(false)
     .addSubcommand((subcommand) => subcommand
       .setName('info')
@@ -278,7 +291,9 @@ module.exports = {
       .addStringOption((option) => option.setName('message').setDescription('Message to send (mentions are disabled)').setMaxLength(2000).setRequired(true))),
 
   async execute(interaction) {
-    if (interaction.guildId !== DIAGNOSTIC_GUILD_ID || !isTeam(interaction.user?.id)) {
+    // Nobody outside the team gets an answer (the message handler does not even run it for them: this is the second lock).
+    if (!isTeam(interaction.user?.id)) return undefined;
+    if (interaction.guildId !== DIAGNOSTIC_GUILD_ID) {
       return replyCard(interaction, `${EMOJI.DENY} This private diagnostic command is unavailable here.`, RED);
     }
 

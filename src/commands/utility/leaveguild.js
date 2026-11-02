@@ -27,6 +27,10 @@ module.exports = {
     summary: 'Makes Petto leave a server, after you confirm with a button. It refuses the server where you type it unless you add --here, and never leaves the operations or support server.',
     usage: ['!leaveguild <server id or name>', '!leaveguild --here'],
     who: 'owner and developers',
+    area: 'servers',
+    examples: ['!leaveguild 123456789012345678', '!leaveguild --here'],
+    answers: 'a question with yes and no buttons that only you can press (30 seconds), then what happened',
+    dangers: 'Petto really leaves the server; it never leaves the operations or support server.',
   },
   prefixRawOptions: { _: (text) => ({ server: String(text ?? '') }) },
   data: new SlashCommandBuilder()

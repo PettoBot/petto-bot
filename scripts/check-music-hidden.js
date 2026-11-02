@@ -160,7 +160,7 @@ const MUSIC_WORDS = ['music', 'play', 'playnext', 'skip', 'previous', 'stop', 'r
   config.musicEnabled = false;
   // The tables of short aliases that are published
   assert.ok(!Object.values(SHORT_ALIAS_TABLE).some((target) => target.split(' ')[0] === 'music'), 'src/utils/short-aliases.json has no music word');
-  assert.ok(Object.keys(TEAM_ALIAS_TABLE).length >= 15 && Object.values(TEAM_ALIAS_TABLE).every((target) => target.split(' ')[0] === 'music'), 'the words for the team are in their own table');
+  assert.ok(Object.keys(TEAM_ALIAS_TABLE).length >= 15 && Object.values(TEAM_ALIAS_TABLE).every((target) => ['music', 'premiumadmin'].includes(target.split(' ')[0])), 'the words for the team are in their own table (the hidden commands: music and the owner-only Premium tool)');
   for (const word of Object.keys(TEAM_ALIAS_TABLE)) assert.ok(!(word in SHORT_ALIAS_TABLE), `${word} is not in both tables`);
   const info = generator.loadCommandInfo();
   assert.equal(info.commands.find((command) => command.name === 'music').hidden, true, 'the generator skips it');
@@ -185,7 +185,7 @@ const MUSIC_WORDS = ['music', 'play', 'playnext', 'skip', 'previous', 'stop', 'r
   const toMusic = DEFAULT_PREFIX_ROUTES.filter((route) => route.command === 'music');
   assert.ok(toMusic.length >= 30 && toMusic.every((route) => route.team === true), 'every route to /music is marked `team`');
   assert.ok(BASE_PREFIX_ROUTES.filter((route) => route.command === 'music').every((route) => route.team === true));
-  for (const route of DEFAULT_PREFIX_ROUTES.filter((other) => other.team)) assert.equal(route.command, 'music', 'only the music has team routes');
+  for (const route of DEFAULT_PREFIX_ROUTES.filter((other) => other.team)) assert.ok(['music', 'premiumadmin'].includes(route.command), 'only the hidden commands have team routes');
 
   // ------------------------------------------------------------ the prefix: silent for a member, as before for the team
   const calls = [];

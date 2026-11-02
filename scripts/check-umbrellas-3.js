@@ -19,6 +19,7 @@ process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
 const assert = require('node:assert/strict');
+const { slashJson } = require('../src/utils/slashJson');
 const path = require('node:path');
 const { ApplicationCommandOptionType, MessageFlags, PermissionFlagsBits, PermissionsBitField } = require('discord.js');
 
@@ -88,7 +89,7 @@ const UMBRELLAS = {
   community: { category: 'automation', groups: { suggestion: 17, confession: 13, request: 2, requestconfig: 8, review: 3, profileconfig: 3 }, flat: { confess: 'confess', profile: 'profile' } },
   contrib: { category: 'automation', groups: { partner: 2, partnerconfig: 10, uploads: 2, uploadconfig: 6 }, flat: {} },
   special: { category: 'utility', groups: { counting: 9, counter: 8, imgonly: 3, urlonly: 4 }, flat: {} },
-  bot: { category: 'info', groups: { votes: 2, premium: 5 }, flat: { uptime: 'uptime', version: 'version' } },
+  bot: { category: 'info', groups: { votes: 2, premium: 1 }, flat: { uptime: 'uptime', version: 'version' } },
 };
 // What each wrapped command asks of the member (a permission, or null for anyone: what it checks by itself is its own).
 const PERMS = {
@@ -105,7 +106,7 @@ const PERMS = {
 };
 // The commands that already have subcommands, registered by themselves (with the number of top-level subcommands and groups they have).
 const DIRECT = {
-  level: 25, automod: 16, form: 17, forum: 19, role: 21, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 8, image: 12, feed: 8, identity: 6,
+  level: 25, automod: 15, form: 17, forum: 19, role: 21, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 8, image: 12, feed: 8, identity: 6,
   starboard: 10, clownboard: 10, monkeyboard: 10, stats: 8, customcommand: 16, rollouts: 15, quickreply: 4, voicemaster: 17, giveawaypreset: 7, giveawaytemplate: 4,
 };
 const NEW_SLASH = [...Object.keys(UMBRELLAS), ...Object.keys(DIRECT)];
@@ -271,7 +272,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 42, protect: 12, greet: 31, auto: 40, message: 33, community: 48, contrib: 20, special: 24, bot: 9 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 42, protect: 12, greet: 31, auto: 40, message: 33, community: 48, contrib: 20, special: 24, bot: 5 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).
@@ -315,7 +316,8 @@ function tailOf(node) {
     const command = commandFile(name);
     assert.ok(command && isSlashCommand(command), `/${name} is registered`);
     assert.ok(!command.prefixOnly && !command.slashOnly && !command.hiddenFromHelp, `/${name} works with the prefix and as a slash command`);
-    const json = command.data.toJSON();
+    // What is registered leaves out the actions of the team that only work with the prefix (`prefixOnlySubcommands`: `/automod control`).
+    const json = slashJson(command);
     assert.equal(json.dm_permission, false, `/${name} is not offered in DMs`);
     assert.equal(json.options.length, count, `/${name} has ${count} subcommands and groups`);
     assert.ok(json.options.length <= 25 && json.options.every((each) => each.type === 1 || each.type === 2), `/${name} only has subcommands (at most 25)`);
@@ -721,7 +723,14 @@ function tailOf(node) {
   // The one exception: the four words of the booster role subcommands that /me had for a few days (/boosterrole is its own command now, with its own words `brc`, `brco`, `brr`, `brre`).
   const MOVED_OUT_OF_ME = new Set(['mbc', 'mbo', 'mbre', 'mbrem']);
   for (const alias of MOVED_OUT_OF_ME) assert.ok(!Object.hasOwn({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }, alias), `${alias} went away with the /me booster role subcommand`);
-  for (const [alias, target] of Object.entries(JSON.parse(before)).filter(([alias]) => !MOVED_OUT_OF_ME.has(alias))) assert.equal({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }[alias], target, `${alias} is still ${target} (the words of a hidden command moved to the team table)`);
+  // The other exception: the words of the owner-only Premium actions. They worked as `premium grant` and `bot premium grant`; those actions are not slash subcommands any more
+  // (they were in the `/` menu of everybody), so the SAME words now reach the hidden tool `!premiumadmin` and live in the team table (never published).
+  const RETARGETED = { bpa: 'premiumadmin assign', bpg: 'premiumadmin grant', bpr: 'premiumadmin revoke', bpu: 'premiumadmin unassign', pas: 'premiumadmin assign', pg: 'premiumadmin grant', prev: 'premiumadmin revoke', pu: 'premiumadmin unassign' };
+  for (const [alias, target] of Object.entries(RETARGETED)) {
+    assert.equal(TEAM_ALIAS_TABLE[alias], target, `${alias} is a word of the team table now (${target})`);
+    assert.ok(!Object.hasOwn(SHORT_ALIAS_TABLE, alias), `${alias} is not published any more`);
+  }
+  for (const [alias, target] of Object.entries(JSON.parse(before)).filter(([alias]) => !MOVED_OUT_OF_ME.has(alias) && !Object.hasOwn(RETARGETED, alias))) assert.equal({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }[alias], target, `${alias} is still ${target} (the words of a hidden command moved to the team table)`);
   spyOn(wrappedNames);
   const shortOf = (target) => Object.entries(SHORT_ALIAS_TABLE).find(([, value]) => value === target)[0];
   call = await ran(`!${shortOf('protect honeypot list')}`);

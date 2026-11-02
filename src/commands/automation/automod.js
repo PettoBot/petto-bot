@@ -34,7 +34,7 @@ function actionWord(value, lang) {
 
 module.exports = {
   teamParts: [
-    { usage: '!am <control token> [stats|sync]', who: 'owner and developers, with the token', summary: 'Hidden control of Petto\'s official AutoMod: the numbers across servers, or a re-sync of the managed rules of this server.' }, // i18n-ignore: team list
+    { usage: '!am <control token> [stats|sync]', who: 'owner and developers, with the token', area: 'moderation', summary: 'Hidden control of Petto\'s official AutoMod: the numbers across servers, or a re-sync of the managed rules of this server.' }, // i18n-ignore: team list
   ],
   // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
   registerSlash: true,
@@ -42,6 +42,8 @@ module.exports = {
   // The words of other bots for the same settings (`!antiraid newaccounts`, `!antiraid avatar`...).
   prefixSubcommandAliases: { massjoin: 'raid', newaccounts: 'anti-alt', newaccount: 'anti-alt', age: 'anti-alt', avatar: 'no-avatar', defaultpfp: 'no-avatar', whitelist: 'join-pass' },
   hiddenPrefixSubcommands: ['control'],
+  // The hidden control of the team is not part of the slash command either: it never shows in the `/` menu.
+  prefixOnlySubcommands: ['control'],
   data: new SlashCommandBuilder()
     .setName('automod')
     .setDescription('Server protection tools: manual link checks, word filter, anti-spam, anti-raid.')
