@@ -15,6 +15,8 @@ const ENV_ID = '777000000000000009';
 process.env.PETTO_DEVELOPER_IDS = DEV;
 process.env.PETTO_BLACKLISTED_GUILD_IDS = `${ENV_ID}, not-an-id, 12`;
 const assert = require('node:assert/strict');
+// The addresses a text links to, as whole addresses (not a piece of some longer one).
+const linksOf = (value) => new Set(String(value).match(/https?:\/\/[^\s)>\]"']+/g) ?? []);
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
@@ -366,10 +368,10 @@ const reset = () => { order.length = 0; dms.length = 0; channelSends.length = 0;
   // the language of the server
   reset();
   await send(`!blacklist ${spanish.id} incumplir los términos`, { as: DEV });
-  assert.ok(text(dms[0].payload).includes('Petto salió de este servidor') && text(dms[0].payload).includes('https://petto.sbs/es/terms') && text(dms[0].payload).includes('https://petto.sbs/es/privacy'), 'Spanish for a Spanish server, with the Spanish pages');
+  assert.ok(text(dms[0].payload).includes('Petto salió de este servidor') && linksOf(text(dms[0].payload)).has('https://petto.sbs/es/terms') && linksOf(text(dms[0].payload)).has('https://petto.sbs/es/privacy'), 'Spanish for a Spanish server, with the Spanish pages');
   reset();
   await send(`!blacklist ${portuguese.id} violar os termos`, { as: DEV });
-  assert.ok(text(dms[0].payload).includes('O Petto saiu deste servidor') && text(dms[0].payload).includes('https://petto.sbs/pt-br/terms'), 'Portuguese for a Portuguese server');
+  assert.ok(text(dms[0].payload).includes('O Petto saiu deste servidor') && linksOf(text(dms[0].payload)).has('https://petto.sbs/pt-br/terms'), 'Portuguese for a Portuguese server');
   for (const lang of ['en', 'es', 'pt-BR']) {
     const rendered = text(blacklist.noticeCard({ lang, guildName: 'X', guildId: G(1), reason: 'because it broke the rules' }));
     assert.ok(rendered.includes('because it broke the rules') && rendered.includes(links.SUPPORT_URL) && !/\{[a-z]+\}/.test(rendered), `${lang}: the card is complete`);
