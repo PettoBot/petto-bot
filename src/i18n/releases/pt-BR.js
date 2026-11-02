@@ -24,7 +24,7 @@ module.exports = {
       {
         title: 'Servidores e feeds',
         items: [
-          'Os feeds do Reddit e do Pinterest têm um cartão limpo com a imagem primeiro, e os feeds automáticos e `!animal` mostram só a imagem.',
+          'Os feeds do Reddit e do Pinterest têm um cartão limpo com a imagem primeiro, e só os feeds de animais e imagens e o `!animal` mostram apenas a imagem. Os demais feeds ficam como antes.',
           'Os formulários são numerados por servidor, então o seu primeiro formulário é o número 1, e `!forum` adiciona posts de ajuda em um fórum (desligado até você configurar).',
           'A boas-vindas pode esperar o membro aceitar as regras, um servidor pode ter uma segunda boas-vindas, e os cartões de imagem têm 34 designs novos.',
           'O Premium que acabou é removido automaticamente, e o rastreador de convites tem configurações novas em `/invites config`.',

@@ -24,7 +24,7 @@ module.exports = {
       {
         title: 'Servers and feeds',
         items: [
-          'Reddit and Pinterest feeds get a clean card with the picture first, and the automatic feeds and `!animal` show only the picture.',
+          'Reddit and Pinterest feeds get a clean card with the picture first, and only the animal and pictures feeds and `!animal` show just the picture. Every other feed looks as before.',
           'Forms are numbered per server, so your first form is number 1, and `!forum` adds help posts in a forum channel (off until you set it up).',
           'The welcome can wait until the member accepts the rules, a server can have a second welcome, and image cards have 34 new designs.',
           'Premium that is over is removed automatically, and the invite tracker has new settings in `/invites config`.',
