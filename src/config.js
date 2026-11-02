@@ -124,6 +124,10 @@ module.exports = {
   // Requests per second the bot may make to Discord, all of them (commands, logs, webhooks, panels). Discloud shuts an app down when it
   // passes 300 requests in 30 seconds (10 a second), so the default keeps a margin: 8 a second is at most 240 in 30 seconds.
   restRequestsPerSecond: envInt('PETTO_REST_RPS', 8, 1, 45),
+  // Sticky messages go back to the bottom of the channel this many milliseconds after the last message (a burst keeps pushing it back, but never
+  // past STICKY_MAX_WAIT_MS after the first message of the burst, so a long conversation still gets its sticky). Less is faster, more is fewer requests.
+  stickyQuietMs: envInt('STICKY_QUIET_MS', 350, 0, 10_000),
+  stickyMaxWaitMs: envInt('STICKY_MAX_WAIT_MS', 2_000, 0, 60_000),
   // Optional Redis (the one Discloud offers, for example `redis://default:password@host:port`). Without it everything works from memory as
   // before; with it the bot keeps its short-lived caches and command cooldowns across restarts and shares the request limit.
   redisUrl: String(process.env.DISCLOUD_REDIS_URL || process.env.REDIS_URL || '').trim() || null,
