@@ -3,6 +3,7 @@ const { ensureGuild } = require('../db/guilds');
 const { getConfig } = require('../db/verificationConfig');
 const { hasEverVerified } = require('../db/verificationRedemptions');
 const { ensureUnverifiedRole } = require('../utils/verifyRole');
+const { giveVerifiedRole } = require('../utils/verifyHeal');
 const { verifyLinkFor } = require('../utils/verifyLink');
 const { sendVerifyDM } = require('../utils/verifyMessage');
 const config = require('../config');
@@ -24,7 +25,8 @@ module.exports = {
       // Returning member who already passed verification before — don't re-gate them.
       if (await hasEverVerified(member.guild.id, member.id)) {
         if (verifyConfig.verified_role_id) {
-          await member.roles.add(verifyConfig.verified_role_id, t(lang, 'verify.reason.returning')).catch((err) => logger.warn(`Could not re-grant verified role to ${member.id}:`, err.message));
+          // A verified role that was deleted is made again, or the staff is told (utils/verifyHeal.js): the returning member is not blocked either way.
+          await giveVerifiedRole({ client: member.client, guild: member.guild, member, settings: verifyConfig, lang, reason: t(lang, 'verify.reason.returning') }).catch((err) => logger.warn(`Could not re-grant verified role to ${member.id}:`, err.message));
         }
         return;
       }

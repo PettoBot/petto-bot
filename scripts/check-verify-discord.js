@@ -14,8 +14,10 @@ let everVerified = false;
 const applied = [];
 stub('src/db/verificationConfig.js', { getConfig: async () => settings });
 stub('src/db/verificationRedemptions.js', { hasEverVerified: async () => everVerified });
-stub('src/utils/verifyApply.js', { applyVerification: async (options) => { applied.push(options.jti); return { ok: true }; } });
-stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+let applyBehaviour = async () => ({ ok: true });
+stub('src/utils/verifyApply.js', { applyVerification: async (options) => { applied.push(options.jti); return applyBehaviour(options); } });
+const errors = [];
+stub('src/utils/logger.js', { info() {}, warn() {}, error: (...args) => errors.push(args) });
 const captcha = require('../src/utils/verifyCaptcha');
 const verifyLetters = require('../src/interactions/verifyLetters');
 const { methodOf, inDiscord, usesLink } = require('../src/utils/verifyMethod');
@@ -41,6 +43,9 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   // The button of the DM starts a picture: a PNG with the buttons to type or to ask for another.
   const button = verifyLetters.startButton(GUILD).toJSON();
   assert.equal(button.custom_id, `vfy:start:${GUILD}`);
+  // The icon of the button is Petto's own (the shield), not the letters emoji that Android draws as "abc".
+  assert.equal(`<:${button.emoji.name}:${button.emoji.id}>`, require('../src/utils/emojis').EMOJI.SAFETY, 'the button has the shield of Petto');
+  assert.ok(!JSON.stringify(verifyLetters.buildPanel({ guild, method: 'letters' }).components[0].toJSON()).includes('🔤'), 'and the panel does not have the letters emoji either');
   assert.ok(button.custom_id.length <= 100);
   await verifyLetters.handleButton(interaction(button.custom_id));
   assert.equal(replies.length, 1);
@@ -93,6 +98,25 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   const buttons = JSON.stringify(locked[0].components).match(/"disabled":true/g) ?? [];
   assert.equal(buttons.length, 2, 'both buttons are off');
   assert.ok(text(replies.at(-1)).includes("You're verified") || JSON.stringify(replies.at(-1)).includes("You're verified"), 'and the member is told they are in');
+
+  // The member solved the picture but there is no role to give (it was deleted and cannot be made again): told in a friendly way, not "contact a moderator".
+  captcha.createChallenge = (id) => known(id);
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  captcha.createChallenge = original;
+  applyBehaviour = async () => ({ ok: true, noRole: true });
+  await verifyLetters.handleModal(interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }));
+  assert.ok(text(replies.at(-1)).includes('no role set up for verified members yet') && !text(replies.at(-1)).includes('Contact a moderator'), 'verified, with no role: said kindly');
+  // Any other failure of the roles is still the old message, and the error says WHICH server (the interaction of a DM has none of its own).
+  captcha.createChallenge = (id) => known(id);
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  captcha.createChallenge = original;
+  applyBehaviour = async () => { throw Object.assign(new Error('Missing Permissions'), { code: 50013 }); };
+  await verifyLetters.handleModal(interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }));
+  assert.ok(text(replies.at(-1)).includes('Contact a moderator'), 'a permission problem is still reported to the member');
+  assert.equal(errors.length, 1);
+  assert.deepEqual([errors[0][0].guildId, errors[0][0].userId, errors[0][0].command, errors[0][0].source], [GUILD, USER, 'verify', 'interactionCreate'], 'the error carries the server being verified for');
+  assert.match(errors[0][1], /Failed to apply verification roles \(letters in Discord\)/);
+  applyBehaviour = async () => ({ ok: true });
 
   // A server that does not use the check in Discord, or a member who is already in.
   settings = { ...settings, method: 'turnstile' };

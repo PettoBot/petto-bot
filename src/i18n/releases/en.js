@@ -17,7 +17,7 @@ module.exports = {
         items: [
           '`/help` answers in the channel, describes every menu option and suggests commands while you type (`/help command:`). A mistyped command (`!bna`) gets "Did you mean `!ban`?".',
           'Prefix commands answer as a reply to the message that typed them, and the word `petto` always works as a prefix.',
-          'Every DM from Petto starts with a grey `From <server>` line and has three buttons: info, delete and report. A report goes to the Petto team only, never to the moderators of the server.',
+          'Every DM from Petto starts with a grey `From <server>` line and has three buttons: info, delete and report. Info shows, only to you, the icon, name, ID, creation date and members of the server; every answer of the buttons is private and nothing is written in the chat. A report goes to the Petto team only, never to the moderators of the server.',
           '`/level notify test` shows you your next level-up announcement exactly as your settings would send it, and saves nothing.',
         ],
       },
@@ -37,6 +37,8 @@ module.exports = {
           'Tickets fix themselves: a late button, or a ticket whose channel is gone, no longer shows an error.',
           'A Pinterest board no longer posts an empty card again and again.',
           'The level-up card no longer hides part of the position chip, and a long result no longer ends in "Something went wrong".',
+          'A role that a server deleted no longer breaks verification, join roles, reaction roles, role buttons or level rewards: the others are still given, the staff is told once a day in the log channel, and the verified role is made again when it can be. Members who pass verification are never blocked by it.',
+          'The "Verify here in Discord" button has a shield icon instead of the letters emoji.',
         ],
       },
     ],

@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const stickyRolesDb = require('../db/stickyRoles');
 const identityDb = require('../db/identity');
+const { addRoles } = require('../utils/deadRoles');
 const logger = require('../utils/logger');
 const { t, currentLanguage } = require('../i18n');
 
@@ -30,9 +31,9 @@ module.exports = {
       });
       if (assignable.length === 0) return;
 
-      await member.roles.add(assignable, t(currentLanguage(), 'automation.stickyroles.auditReason')).catch((err) => {
-        logger.warn(`Sticky roles restore couldn't apply roles for ${member.id} in guild ${member.guild.id}:`, err.message);
-      });
+      // These are the roles the member had, not a setting of the server: one that was deleted since is simply left out and the rest are given back.
+      const result = await addRoles(member, assignable, t(currentLanguage(), 'automation.stickyroles.auditReason'));
+      if (result.error) logger.warn(`Sticky roles restore couldn't apply roles for ${member.id} in guild ${member.guild.id}:`, result.error.message);
     } catch (err) {
       logger.error(`Sticky roles restore failed for ${member.id} in guild ${member.guild.id}:`, err);
     }

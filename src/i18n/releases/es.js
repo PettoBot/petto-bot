@@ -17,7 +17,7 @@ module.exports = {
         items: [
           '`/help` responde en el canal, describe cada opción de sus menús y sugiere comandos mientras escribes (`/help command:`). Un comando mal escrito (`!bna`) recibe "¿Quisiste decir `!ban`?".',
           'Los comandos con prefijo responden como respuesta al mensaje que los escribió, y la palabra `petto` siempre funciona como prefijo.',
-          'Cada DM de Petto empieza con una línea gris `De <servidor>` y trae tres botones: info, borrar y reportar. Un reporte va solo al equipo de Petto, nunca a los moderadores del servidor.',
+          'Cada DM de Petto empieza con una línea gris `De <servidor>` y trae tres botones: info, borrar y reportar. Info muestra, solo a ti, el icono, nombre, ID, fecha de creación y miembros del servidor; toda respuesta de los botones es privada y no se escribe nada en el chat. Un reporte va solo al equipo de Petto, nunca a los moderadores del servidor.',
           '`/level notify test` te muestra tu próximo aviso de nivel exactamente como lo enviaría tu configuración, y no guarda nada.',
         ],
       },
@@ -37,6 +37,8 @@ module.exports = {
           'Los tickets se arreglan solos: un botón tardío, o un ticket cuyo canal ya no existe, ya no muestra un error.',
           'Un tablero de Pinterest ya no publica una y otra vez una tarjeta vacía.',
           'La tarjeta de subida de nivel ya no tapa parte de la etiqueta de posición, y un resultado largo ya no termina en "Algo salió mal".',
+          'Un rol que un servidor eliminó ya no rompe la verificación, los roles de entrada, los roles por reacción, los botones de roles ni las recompensas de nivel: los demás se siguen dando, el staff recibe un aviso una vez al día en el canal de registros, y el rol de verificados se crea de nuevo cuando se puede. Quien pasa la verificación nunca queda bloqueado por eso.',
+          'El botón "Verificar aquí en Discord" tiene un icono de escudo en lugar del emoji de letras.',
         ],
       },
     ],

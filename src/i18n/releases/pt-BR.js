@@ -17,7 +17,7 @@ module.exports = {
         items: [
           '`/help` responde no canal, descreve cada opção dos seus menus e sugere comandos enquanto você digita (`/help command:`). Um comando digitado errado (`!bna`) recebe "Você quis dizer `!ban`?".',
           'Os comandos com prefixo respondem como resposta à mensagem que os digitou, e a palavra `petto` sempre funciona como prefixo.',
-          'Cada DM do Petto começa com uma linha cinza `De <servidor>` e traz três botões: info, apagar e denunciar. Uma denúncia vai só para a equipe do Petto, nunca para os moderadores do servidor.',
+          'Cada DM do Petto começa com uma linha cinza `De <servidor>` e traz três botões: info, apagar e denunciar. Info mostra, só para você, o ícone, nome, ID, data de criação e membros do servidor; toda resposta dos botões é privada e nada é escrito no chat. Uma denúncia vai só para a equipe do Petto, nunca para os moderadores do servidor.',
           '`/level notify test` mostra o seu próximo aviso de nível exatamente como a sua configuração o enviaria, e não salva nada.',
         ],
       },
@@ -37,6 +37,8 @@ module.exports = {
           'Os tickets se corrigem sozinhos: um botão tardio, ou um ticket cujo canal não existe mais, não mostra mais um erro.',
           'Um quadro do Pinterest não publica mais um cartão vazio sem parar.',
           'O cartão de subida de nível não esconde mais parte da etiqueta de posição, e um resultado longo não termina mais em "Algo deu errado".',
+          'Um cargo que um servidor apagou não quebra mais a verificação, os cargos de entrada, os cargos por reação, os botões de cargos nem as recompensas de nível: os outros continuam sendo dados, a equipe recebe um aviso uma vez por dia no canal de registros, e o cargo de verificados é criado de novo quando dá. Quem passa na verificação nunca fica bloqueado por isso.',
+          'O botão "Verificar aqui no Discord" tem um ícone de escudo em vez do emoji de letras.',
         ],
       },
     ],

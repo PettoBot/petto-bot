@@ -5,6 +5,7 @@ const { decodeCustomId } = require('../utils/embedActions');
 const { manageable } = require('./responders');
 const { describe } = require('../utils/responderEngine');
 const { templatePayload } = require('../utils/templatedMessage');
+const { addRoles, isGone, reportDeadRoles } = require('../utils/deadRoles');
 const { t, languageOf } = require('../i18n');
 const { sendDm } = require('../utils/dmOrigin');
 
@@ -41,7 +42,14 @@ async function changeRoles(interaction, action, lang) {
   }
   let failed = false;
   const reason = t(lang, 'embeds.action.auditReason');
-  if (add.can.length) await interaction.member.roles.add(add.can, reason).catch(() => { failed = true; });
+  // A role that was deleted is not given, the others are; the staff is told (utils/deadRoles.js).
+  const gone = [...add.skipped, ...remove.skipped].filter((id) => isGone(interaction.guild, id));
+  if (add.can.length) {
+    const result = await addRoles(interaction.member, add.can, reason);
+    if (result.failed.length || (result.dead.length && !result.added.length)) failed = true;
+    gone.push(...result.dead);
+  }
+  if (gone.length) await reportDeadRoles({ client: interaction.client, guild: interaction.guild, kind: 'button', roleIds: gone });
   if (remove.can.length) await interaction.member.roles.remove(remove.can, reason).catch(() => { failed = true; });
   if (failed) {
     await say(interaction, t(lang, 'automation.responder.changeFailed'));

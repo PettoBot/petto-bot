@@ -3,8 +3,10 @@
 //     ones that are not messages to a person, each with its reason), and the net in `User#send` / `GuildMember#send` is there too;
 //   - the three shapes (text, embeds, Components V2) get the line first (grey, small) and one row of three icon buttons; a message at a limit keeps
 //     itself and drops the line or the buttons; names are escaped and clipped; custom ids stay under 100 characters;
-//   - the buttons (about, delete, report) with fake interactions: private reply with what is public, only the bot's own messages in the person's own
-//     direct messages, a polite refusal inside a server, delete only the message;
+//   - the buttons (about, delete, report) with fake interactions: every answer is a private (ephemeral) answer to the interaction, never a message
+//     written in the chat (no `channel.send`, no `user.send`); the about card has the facts of the server and nothing else (the removed texts are
+//     gone in the three languages); only the bot's own messages in the person's own direct messages, a polite private refusal inside a server;
+//     delete acknowledges and then deletes that message; a slow lookup is acknowledged first;
 //   - the form (limits of Discord, 20 characters, category), the rate limit (3 an hour, one per message), the delivery to the team (a card with no
 //     pings, a fallback to the database), the delete-after switch, the buttons of the team, and the three languages.
 process.env.DISCORD_TOKEN ||= 'check-only';
@@ -104,7 +106,11 @@ section(() => {
   assert.equal(origin.parseCustomId(origin.customId('info', null, 'team')).guildId, null, 'no server is "0"');
   assert.equal(origin.parseCustomId('dminfo:abc:welcome'), null);
   assert.equal(origin.parseCustomId('dmrepm:1:welcome'), null, 'the id of the form is not the id of a button');
-  for (const kind of origin.KINDS) for (const lang of i18n.LANGUAGES) assert.ok(i18n.CATALOGS[lang][`dm.kind.${kind}`] || kind === 'notice' && i18n.CATALOGS[lang]['dm.kind.notice'], `dm.kind.${kind} in ${lang}`);
+  // The reasons of the old about card are gone from the three languages: the card only has facts about the server.
+  for (const lang of i18n.LANGUAGES) {
+    const leftovers = Object.keys(i18n.CATALOGS[lang]).filter((key) => /^dm\.(kind|stop)\./.test(key) || ['dm.info.reason', 'dm.info.behalf', 'dm.info.buttons', 'dm.info.dismiss'].includes(key));
+    assert.deepEqual(leftovers, [], `${lang}: no reasons, no stop lines, no explanation of the buttons`);
+  }
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -342,6 +348,8 @@ section(() => {
   const handlerSource = fs.readFileSync(path.join(ROOT, 'src/interactions/dmOrigin.js'), 'utf8');
   assert.ok(!/interaction\.(guild|member)\.[a-z]/i.test(handlerSource), 'the handlers do not dereference a server or a member');
   assert.ok(!/PermissionFlagsBits|permissions\.has/.test(handlerSource), 'and decide nothing with permissions');
+  assert.ok(!/\.send\(|\.createMessage\(/.test(handlerSource), 'no answer is written in the chat: every answer is an answer to the interaction');
+  assert.ok(/MessageFlags\.Ephemeral/.test(handlerSource) && /deferUpdate\(/.test(handlerSource), 'private answers, and the delete button acknowledges with deferUpdate');
   const schema = fs.readFileSync(path.join(ROOT, 'src/db/schema.sql'), 'utf8');
   assert.match(schema, /create table if not exists dm_reports \(/, 'the table is in schema.sql');
   assert.match(schema, /message_id\s+text not null unique/, 'one report for each message');
@@ -351,18 +359,21 @@ section(() => {
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 // The buttons, with fake interactions.
 function fake({ customId, message, inGuild = false, user = { id: USER_ID }, locale = 'en-US', channel, fields, showModalSpy } = {}) {
-  const calls = { replies: [], updates: [], follow: [], modal: null, deferred: false, edited: [] };
+  const calls = { replies: [], updates: [], follow: [], modal: null, deferred: false, updated: false, edited: [], order: [], deferOptions: null };
   const dm = channel === undefined ? { id: 'dm1', type: 1, recipientId: user.id, messages: { fetch: async (id) => (message?.id === id ? message : null) } } : channel;
+  // Nothing is ever written in the chat as an answer: these would be a message in the DM, not an answer to the interaction.
+  if (dm && typeof dm === 'object') dm.send = async () => { throw new Error('an answer was written in the chat (channel.send)'); };
+  user.send = async () => { throw new Error('an answer was written in the chat (user.send)'); };
   const interaction = {
     customId, user, locale, message, channel: dm, channelId: dm?.id ?? 'dm1', fields,
     client: { user: { id: BOT_ID }, guilds: { cache: new Map([[GUILD_ID, guild]]) }, channels: { fetch: async () => null } },
     guildId: inGuild ? GUILD_ID : null, guild: inGuild ? guild : null, member: inGuild ? { id: user.id } : null,
     replied: false, deferred: false,
-    reply: async (body) => { calls.replies.push(body); interaction.replied = true; },
-    deferReply: async () => { calls.deferred = true; interaction.deferred = true; },
-    editReply: async (body) => { calls.edited.push(body); },
-    deferUpdate: async () => { calls.deferred = true; },
-    followUp: async (body) => { calls.follow.push(body); },
+    reply: async (body) => { calls.order.push('reply'); calls.replies.push(body); interaction.replied = true; },
+    deferReply: async (options) => { calls.order.push('deferReply'); calls.deferred = true; calls.deferOptions = options; interaction.deferred = true; },
+    editReply: async (body) => { calls.order.push('editReply'); calls.edited.push(body); },
+    deferUpdate: async () => { calls.order.push('deferUpdate'); calls.deferred = true; calls.updated = true; },
+    followUp: async (body) => { calls.order.push('followUp'); calls.follow.push(body); },
     showModal: async (modal) => { calls.modal = modal; showModalSpy?.(modal); },
     update: async (body) => { calls.updates.push(body); },
   };
@@ -370,59 +381,116 @@ function fake({ customId, message, inGuild = false, user = { id: USER_ID }, loca
 }
 const botMessage = (extra = {}) => ({ id: '423456789012345678', channelId: 'dm1', author: { id: BOT_ID }, content: '-# From Mossy Hollow\nYou were banned. https://evil.example/x discord.gg/abc', embeds: [], components: [], deleted: 0, async delete() { this.deleted += 1; }, ...extra });
 
+const EPHEMERAL = MessageFlags.Ephemeral;
+const privateCard = (reply, label) => {
+  assert.ok(reply.flags & EPHEMERAL, `${label}: private (ephemeral), only the person sees it`);
+  assert.ok(reply.flags & V2, `${label}: a card`);
+  assert.deepEqual(reply.allowedMentions, { parse: [] }, `${label}: no mention can notify`);
+};
+// What a handler said, whether it answered first or filled in an acknowledgement (which was private when it was announced).
+const said = (calls) => [...calls.replies, ...calls.edited, ...calls.follow];
+const sayText = (calls) => JSON.stringify(said(calls).map((body) => (body.components ?? []).map(jsonOf)));
+const REMOVED = {
+  en: ['Why you got it', 'on behalf of that server', 'trash button', 'warning button', 'You can delete this reply', '/dmonjoin', 'no switch for it', 'moderation action was taken', 'Petto sent it on behalf'],
+  es: ['Por qué lo recibiste', 'en nombre de ese servidor', 'botón de la papelera', 'botón de advertencia', 'Puedes borrar esta respuesta', '/dmonjoin'],
+  'pt-BR': ['Por que você a recebeu', 'em nome desse servidor', 'botão da lixeira', 'botão de aviso', 'Você pode apagar esta resposta', '/dmonjoin'],
+};
+
 section(async () => {
-  // About: a reply with what is public, in the language of the person.
+  // About: a PRIVATE answer to the interaction (acknowledged first, then filled in), with the facts of the server and nothing else.
   let message = botMessage();
   let { interaction, calls } = fake({ customId: origin.customId('info', guild, 'sanction'), message });
   await handlers.handleButton(interaction);
-  assert.equal(calls.replies.length, 1, 'one reply');
-  let reply = calls.replies[0];
-  const text = JSON.stringify(reply.components.map(jsonOf));
-  for (const wanted of ['Mossy Hollow', GUILD_ID, '1234', String(Math.floor(guild.createdTimestamp / 1000)), 'moderation action']) assert.ok(text.includes(wanted), `the reply shows ${wanted}`);
-  assert.ok(text.includes('on behalf of that server'), 'it says Petto sent it on behalf of the server');
-  assert.ok(text.includes('https://cdn.example/icon.png'), 'with the icon of the server');
-  assert.ok(reply.flags & V2, 'a card');
+  assert.deepEqual(calls.order, ['deferReply', 'editReply'], 'the interaction is acknowledged first and the answer fills it in');
+  assert.equal(calls.deferOptions.flags & EPHEMERAL, EPHEMERAL, 'announced as a private answer');
+  assert.equal(calls.replies.length, 0, 'no second reply');
+  let reply = calls.edited[0];
+  assert.ok(reply.flags & V2 && !(reply.flags & EPHEMERAL), 'the edit keeps the card and leaves the privacy fixed when it was announced');
   assert.deepEqual(reply.allowedMentions, { parse: [] }, 'no mention can notify');
-  assert.ok(JSON.stringify(reply.components.map(jsonOf)).includes('dmdel:'), 'the reply can be deleted with the bin');
-  assert.ok(!(reply.flags & MessageFlags.Ephemeral) || true, 'ephemeral is not possible in direct messages: it is a message the person can delete');
-  assert.ok(!/invite|staff member|moderator:|prefix/i.test(text.replace(/moderation action|the staff of that server|staff/gi, '')), 'nothing private about the server');
-  assert.ok(text.includes('/dmonjoin') === false, 'a sanction has no switch of its own');
-  // The kinds that have a switch say where it is; the ones that have not, say so.
-  ({ interaction, calls } = fake({ customId: origin.customId('info', guild, 'welcome'), message }));
-  await handlers.handleButton(interaction);
-  assert.ok(JSON.stringify(calls.replies[0].components.map(jsonOf)).includes('/dmonjoin disable'), 'the join message names its command');
-  // Spanish, Portuguese.
-  for (const [locale, word] of [['es-ES', 'Servidor'], ['pt-BR', 'Servidor']]) {
-    ({ interaction, calls } = fake({ customId: origin.customId('info', guild, 'ticket'), message, locale }));
+  let text = sayText(calls);
+  for (const wanted of ['About this server', 'Mossy Hollow', GUILD_ID, '1,234', String(Math.floor(guild.createdTimestamp / 1000)), 'https://cdn.example/icon.png']) assert.ok(text.includes(wanted), `the card shows ${wanted}`);
+  for (const removed of REMOVED.en) assert.ok(!text.includes(removed), `the card does not say "${removed}"`);
+  const card = reply.components.map(jsonOf);
+  assert.equal(card.length, 1, 'only the card: no row with a trash button on a message that is dismissed with Discord\'s own dismiss');
+  const kinds = new Set();
+  const walk = (node) => { kinds.add(node.type); for (const child of node.components ?? []) walk(child); if (node.accessory) walk(node.accessory); };
+  card.forEach(walk);
+  assert.ok(!kinds.has(1) && !kinds.has(2), 'no row and no buttons at all');
+  assert.ok(!text.includes('dmdel:') && !text.includes('dmrep:'), 'not even the id of one');
+  assert.ok(!/invite|prefix/i.test(text), 'nothing private about the server');
+  // Every kind says the same: the reason is not part of the card any more.
+  const first = text;
+  for (const kind of origin.KINDS) {
+    ({ interaction, calls } = fake({ customId: origin.customId('info', guild, kind), message }));
     await handlers.handleButton(interaction);
-    assert.ok(JSON.stringify(calls.replies[0].components.map(jsonOf)).includes(word), `${locale}: in the language of the person`);
+    assert.equal(sayText(calls), first, `${kind}: the same facts, no reason`);
   }
-  // Petto itself (no server) and a server Petto left.
+  // The three languages: the facts in the language of the person, none of the removed lines.
+  for (const [locale, lang, word] of [['en-US', 'en', 'Server'], ['es-ES', 'es', 'Servidor'], ['pt-BR', 'pt-BR', 'Servidor']]) {
+    ({ interaction, calls } = fake({ customId: origin.customId('info', guild, 'welcome'), message, locale }));
+    await handlers.handleButton(interaction);
+    const out = sayText(calls);
+    assert.ok(out.includes(word) && out.includes('Mossy Hollow') && out.includes(GUILD_ID), `${lang}: the facts of the server`);
+    for (const removed of REMOVED[lang]) assert.ok(!out.includes(removed), `${lang}: not "${removed}"`);
+    assert.ok(out.length < 1000, `${lang}: short`);
+  }
+  // Petto itself (no server): one short line. A server Petto left: its ID and one short line.
   ({ interaction, calls } = fake({ customId: origin.customId('info', null, 'team'), message }));
   await handlers.handleButton(interaction);
-  assert.ok(JSON.stringify(calls.replies[0].components.map(jsonOf)).includes('Petto itself'), 'a message from Petto says so');
+  text = sayText(calls);
+  assert.ok(text.includes('Petto itself') && !text.includes('Petto team') && !text.includes('sent by'), 'a message from Petto says so, in one line');
   ({ interaction, calls } = fake({ customId: origin.customId('info', { id: '999999999999999999' }, 'welcome'), message }));
   await handlers.handleButton(interaction);
-  assert.ok(JSON.stringify(calls.replies[0].components.map(jsonOf)).includes('not in that server any more'), 'a server that is gone: nothing more is shown');
+  text = sayText(calls);
+  assert.ok(text.includes('999999999999999999') && text.includes('Petto is not in that server any more.'), 'a server that is gone: its ID and a short line');
+  assert.ok(!text.includes('nothing more to show'), 'and nothing else');
+  // A server with no icon and no member count still shows the rest.
+  const bare = { id: GUILD_ID, name: 'Bare', iconURL: () => null };
+  ({ interaction, calls } = fake({ customId: origin.customId('info', bare, 'welcome'), message }));
+  interaction.client.guilds.cache.set(GUILD_ID, bare);
+  await handlers.handleButton(interaction);
+  assert.ok(sayText(calls).includes('Bare') && !sayText(calls).includes('Members'), 'a missing count is left out, not invented');
+  // Nothing was ever written in the chat (the fake throws when `channel.send` or `user.send` is used).
 
-  // The refusals.
+  // A slow lookup (the chat has to be found through the person): acknowledged before the lookup, so the 3 seconds never run out.
+  const slowOrder = [];
+  ({ interaction, calls } = fake({ customId: origin.customId('info', guild, 'welcome'), message, channel: null }));
+  interaction.user.createDM = async () => { slowOrder.push('lookup'); await new Promise((resolve) => setTimeout(resolve, 20)); return { id: 'dm1' }; };
+  const realDefer = interaction.deferReply;
+  interaction.deferReply = async (options) => { slowOrder.push('deferReply'); return realDefer(options); };
+  await handlers.handleButton(interaction);
+  assert.deepEqual(slowOrder, ['deferReply', 'lookup'], 'announced first, looked up after');
+  assert.ok(sayText(calls).includes('Mossy Hollow'), 'and then answered');
+
+  // The refusals: private answers too (a card in red), never a chat message.
   ({ interaction, calls } = fake({ customId: origin.customId('info', guild, 'welcome'), message, inGuild: true }));
   await handlers.handleButton(interaction);
-  assert.match(JSON.stringify(calls.replies[0].components.map(jsonOf)), /only work in your direct messages/, 'inside a server: a polite refusal');
-  assert.ok(!JSON.stringify(calls.replies[0]).includes('Mossy'), 'and nothing of the server');
+  assert.match(sayText(calls), /only work in your direct messages/, 'inside a server: a polite refusal');
+  assert.ok(!sayText(calls).includes('Mossy'), 'and nothing of the server');
+  assert.equal(calls.deferOptions.flags & EPHEMERAL, EPHEMERAL, 'the refusal is private');
   ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message, inGuild: true }));
   await handlers.handleButton(interaction);
   assert.equal(message.deleted, 0, 'a message is not deleted from a server channel');
-  ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message: botMessage({ author: { id: '777777777777777777' } }) }));
+  assert.deepEqual(calls.order, ['deferUpdate', 'followUp'], 'acknowledged, then a private note');
+  assert.ok(calls.follow[0].flags & EPHEMERAL, 'the note is private');
+  assert.match(sayText(calls), /only work in your direct messages/);
+  ({ interaction, calls } = fake({ customId: origin.customId('report', guild, 'welcome'), message, inGuild: true }));
   await handlers.handleButton(interaction);
-  assert.match(JSON.stringify(calls.replies[0].components.map(jsonOf)), /not a message that Petto sent/, 'only the messages of Petto');
+  assert.equal(calls.modal, null, 'no form from a server channel');
+  privateCard(calls.replies[0], 'the refusal to open the form');
+  assert.match(sayText(calls), /only work in your direct messages/);
+  ({ interaction, calls } = fake({ customId: origin.customId('info', guild, 'welcome'), message: botMessage({ author: { id: '777777777777777777' } }) }));
+  await handlers.handleButton(interaction);
+  assert.match(sayText(calls), /not a message that Petto sent/, 'only the messages of Petto');
   const foreign = botMessage();
   ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message: foreign, channel: { id: 'dm1', type: 1, recipientId: '888888888888888888' } }));
   await handlers.handleButton(interaction);
   assert.equal(foreign.deleted, 0, 'the chat of another person is not theirs');
+  assert.match(sayText(calls), /not a message that Petto sent/, 'and they are told, privately');
   ({ interaction, calls } = fake({ customId: 'dminfo:zzz', message }));
   await handlers.handleButton(interaction);
-  assert.match(JSON.stringify(calls.replies[0].components.map(jsonOf)), /not valid any more/, 'an id that does not parse');
+  privateCard(calls.replies[0], 'an id that does not parse');
+  assert.match(sayText(calls), /not valid any more/, 'an id that does not parse');
   // A partial channel (no recipient known): the chat is looked up, and must be this one.
   const partial = botMessage();
   ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message: partial, channel: null }));
@@ -430,16 +498,23 @@ section(async () => {
   await handlers.handleButton(interaction);
   assert.equal(partial.deleted, 1, 'a chat that is not cached is found through the person');
 
-  // Delete: that message and nothing else.
+  // Delete: acknowledged (deferUpdate), then that message and nothing else; nothing is said when it works.
   const mine = botMessage();
   ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message: mine }));
   await handlers.handleButton(interaction);
   assert.equal(mine.deleted, 1, 'the message is deleted, once');
-  assert.ok(calls.deferred && calls.replies.length === 0 && calls.follow.length === 0, 'nothing else is said');
+  assert.deepEqual(calls.order, ['deferUpdate'], 'deferUpdate and then the delete: no reply, no follow-up, no edit');
+  assert.ok(calls.replies.length === 0 && calls.follow.length === 0 && calls.edited.length === 0, 'nothing else is said');
   const stuck = botMessage({ async delete() { throw new Error('Unknown Message'); } });
   ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message: stuck }));
   await handlers.handleButton(interaction);
-  assert.match(JSON.stringify(calls.follow[0].components.map(jsonOf)), /could not be deleted/, 'a message that cannot be deleted is said');
+  assert.deepEqual(calls.order, ['deferUpdate', 'followUp'], 'a message that cannot be deleted: acknowledged, then said');
+  assert.match(sayText(calls), /could not be deleted/, 'a message that cannot be deleted is said');
+  assert.ok(calls.follow[0].flags & EPHEMERAL, 'privately');
+  // Whatever fails to acknowledge never breaks the handler.
+  ({ interaction, calls } = fake({ customId: origin.customId('delete', guild, 'welcome'), message: botMessage() }));
+  interaction.deferUpdate = async () => { throw Object.assign(new Error('Unknown interaction'), { code: 10062 }); };
+  await handlers.handleButton(interaction);
 
   // Report: opens the form (the id says which message).
   ({ interaction, calls } = fake({ customId: origin.customId('report', guild, 'form'), message }));
@@ -449,6 +524,7 @@ section(async () => {
   ({ interaction, calls } = fake({ customId: origin.customId('report', guild, 'form'), message, inGuild: true }));
   await handlers.handleButton(interaction);
   assert.equal(calls.modal, null, 'not from a server');
+  assert.deepEqual(calls.order, ['reply'], 'the refusal is the first and only answer (a form cannot follow an acknowledgement)');
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -468,6 +544,11 @@ section(async () => {
     interaction.client.user = { id: BOT_ID };
     interaction.client.guilds = { cache: new Map([[GUILD_ID, guild]]) };
     await handlers.handleModal(interaction);
+    // The receipt and every error of the form (too short, rate limit, already reported...) are private: announced as ephemeral, then filled in.
+    assert.deepEqual(calls.order, ['deferReply', 'editReply'], 'the form is acknowledged first and then answered once');
+    assert.equal(calls.deferOptions.flags & EPHEMERAL, EPHEMERAL, 'the answer to the form is private, never a message of the chat');
+    assert.equal(calls.replies.length, 0);
+    assert.ok(calls.edited[0].flags & V2 && !(calls.edited[0].flags & EPHEMERAL), 'a card');
     return calls;
   };
   const longText = 'This server sends me messages I never asked for, again and again.';
@@ -577,6 +658,10 @@ section(async () => {
   const inGuild = fake({ customId: `dmrepm:${GUILD_ID}:welcome:500000000000000011`, message: botMessage({ id: '500000000000000011' }), inGuild: true, fields: fields(longText) });
   await handlers.handleModal(inGuild.interaction);
   assert.match(JSON.stringify(inGuild.calls.replies[0].components.map(jsonOf)), /only work in your direct messages/);
+  privateCard(inGuild.calls.replies[0], 'the refusal of a form sent from a server');
+  const badId = fake({ customId: 'dmrepm:nonsense', message: botMessage({ id: '500000000000000013' }), fields: fields(longText) });
+  await handlers.handleModal(badId.interaction);
+  privateCard(badId.calls.replies[0], 'an id of the form that does not parse');
   const notBot = botMessage({ id: '500000000000000012', author: { id: '666666666666666666' } });
   calls = await submit({ message: notBot, details: longText, user: { id: '999999999999999994', tag: 'q#0' } });
   assert.match(JSON.stringify(calls.edited[0].components.map(jsonOf)), /not a message that Petto sent/);

@@ -131,6 +131,8 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) { const error = new Error(data.error || T.failed); error.code = data.code; throw error; }
         btn.style.display = 'none'; if (widget) widget.style.display = 'none'; const letters = document.querySelector('.letters'); if (letters) letters.style.display = 'none';
+        // The server has no role for verified members yet: the answer says it, in the place of "close this tab".
+        if (data.note) { const text = document.getElementById('status-success-text'); if (text) text.textContent = data.note; }
         successBox.classList.add('show');
       } catch (error) {
         turnstileToken = null; btn.textContent = T.button;

@@ -6,6 +6,7 @@ const { planRoles, exclusiveRemovals, describe, BUTTON_PREFIX, SELECT_PREFIX } =
 const { templatePayload } = require('../utils/templatedMessage');
 const { resolve } = require('../utils/embedVariables');
 const { emojiOf } = require('../utils/responderEngine');
+const { addRoles, isGone, reportDeadRoles } = require('../utils/deadRoles');
 const { t, languageOf } = require('../i18n');
 
 const say = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
@@ -80,7 +81,14 @@ async function run(interaction, responder, alsoRemove, lang) {
 
   let failed = false;
   const reason = t(lang, 'automation.responder.auditReason', { name: responder.name });
-  if (add.can.length) await member.roles.add(add.can, reason).catch(() => { failed = true; });
+  // A role that was deleted is not given, the others are; the staff is told (utils/deadRoles.js).
+  const gone = [...add.skipped, ...remove.skipped].filter((id) => isGone(guild, id));
+  if (add.can.length) {
+    const result = await addRoles(member, add.can, reason);
+    if (result.failed.length || (result.dead.length && !result.added.length)) failed = true;
+    gone.push(...result.dead);
+  }
+  if (gone.length) await reportDeadRoles({ client: interaction.client, guild, kind: 'button', roleIds: gone });
   if (remove.can.length) await member.roles.remove(remove.can, reason).catch(() => { failed = true; });
   if (failed) return say(interaction, t(lang, 'automation.responder.changeFailed'));
   if (blocked && !touches && !responder.reply && !responder.reply_template) return say(interaction, t(lang, 'automation.responder.cannotGive'));

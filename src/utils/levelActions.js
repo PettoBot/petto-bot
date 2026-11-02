@@ -1,6 +1,7 @@
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const levelUsersDb = require('../db/levelUsers');
 const levelRewardsDb = require('../db/levelRewards');
+const { isGone, reportDeadRoles } = require('./deadRoles');
 const levelMultipliersDb = require('../db/levelMultipliers');
 const { levelForXp } = require('./levelCurve');
 const { buildLevelData } = require('./levelData');
@@ -127,6 +128,14 @@ async function checkRewards(guild, member, level, config, source = 'text') {
     const role = guild.roles.cache.get(r.role_id);
     return role && role.position < me.roles.highest.position ? role : null;
   };
+  // A reward whose role was deleted from the server: the rest are still given, the staff is told and the reward is taken out of the list.
+  const gone = [...new Set(earned.filter((r) => isGone(guild, r.role_id)).map((r) => r.role_id))];
+  if (gone.length) {
+    await reportDeadRoles({
+      client: guild.client, guild, kind: 'level', roleIds: gone,
+      forget: async (roleId) => { for (const reward of rewards.filter((r) => r.role_id === roleId)) await levelRewardsDb.removeReward(guild.id, reward.level, source); },
+    });
+  }
 
   if (config.role_mode === 'highest') {
     const best = earned.reduce((a, b) => (b.level > a.level ? b : a));

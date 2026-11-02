@@ -7,8 +7,9 @@ const path = require('node:path');
 
 // What Petto does about each kind. `none`: nothing to do, it is expected. `already-done`: the thing is gone, so the job is done.
 // `late-answer`: the answer cannot go through the dead interaction. `retry`: try once more. `ask-server`: the server has to fix its setup.
+// `config-role-missing`: a role chosen in a Petto setting was deleted, so the server has to pick it again (Petto already tells its staff).
 // `investigate`: a person has to look.
-const FIX = Object.freeze({ NONE: 'none', ALREADY_DONE: 'already-done', LATE_ANSWER: 'late-answer', RETRY: 'retry', ASK_SERVER: 'ask-server', INVESTIGATE: 'investigate' });
+const FIX = Object.freeze({ NONE: 'none', ALREADY_DONE: 'already-done', LATE_ANSWER: 'late-answer', RETRY: 'retry', ASK_SERVER: 'ask-server', CONFIG_ROLE_MISSING: 'config-role-missing', INVESTIGATE: 'investigate' });
 
 /** Discord API codes that are expected, or that are known and still need a look (`priority: true`). */
 const API_CODES = Object.freeze({
@@ -20,8 +21,10 @@ const API_CODES = Object.freeze({
   10013: { kind: 'unknown-user', fix: FIX.NONE, explain: 'Unknown User: that account no longer exists.' },
   10004: { kind: 'unknown-guild', fix: FIX.NONE, explain: 'Unknown Guild: Petto was removed from that server (or it is unavailable) while working on it.' },
   10015: { kind: 'unknown-webhook', fix: FIX.NONE, explain: 'Unknown Webhook: the server deleted the webhook Petto was using. Petto makes a new one when it needs it.' },
+  10011: { kind: 'unknown-role', fix: FIX.CONFIG_ROLE_MISSING, explain: 'Unknown Role: a role chosen in a Petto setting (verification, join roles, reaction roles, level rewards...) was deleted from the server, so the server needs to pick it again. Not a Petto bug.' },
+  50028: { kind: 'invalid-role', fix: FIX.CONFIG_ROLE_MISSING, explain: 'Invalid Role: a role chosen in a Petto setting is not valid in that server any more (it was deleted or it is from another server), so the server needs to pick it again. Not a Petto bug.' },
   50001: { kind: 'missing-access', fix: FIX.ASK_SERVER, server: true, explain: 'Missing Access: Petto cannot see that channel or server. The server has to give Petto access; it is their setup.' },
-  50013: { kind: 'missing-permissions', fix: FIX.ASK_SERVER, server: true, explain: 'Missing Permissions: the server did not give Petto a permission it needs there. It is their setup, not a bug.' },
+  50013: { kind: 'missing-permissions', fix: FIX.ASK_SERVER, server: true, explain: 'Missing Permissions: the server did not give Petto a permission it needs there, or the role Petto tried to give is above the highest role of Petto (the server has to move the role of Petto up). It is their setup, not a bug.' },
   160002: { kind: 'missing-history', fix: FIX.ASK_SERVER, server: true, explain: 'Cannot reply without Read Message History: the server has to give Petto that permission in the channel.' },
   50007: { kind: 'dm-closed', fix: FIX.NONE, explain: 'Cannot send messages to this user: the person has direct messages closed. Normal.' },
   40333: { kind: 'cannot-send', fix: FIX.NONE, explain: 'Cannot send messages in this channel: the channel does not allow it right now.' },
@@ -66,7 +69,7 @@ const MESSAGE_PATTERNS = Object.freeze([
 
 const JS_BUGS = new Set(['TypeError', 'ReferenceError', 'SyntaxError', 'RangeError', 'EvalError', 'URIError', 'AssertionError']);
 
-const NAMED_CODES = Object.freeze({ interaction: 10062, channel: 10003, message: 10008, member: 10007, user: 10013, guild: 10004, webhook: 10015 });
+const NAMED_CODES = Object.freeze({ interaction: 10062, channel: 10003, message: 10008, member: 10007, user: 10013, guild: 10004, webhook: 10015, role: 10011 });
 
 const EXPLAIN_UNKNOWN = 'Unknown: needs a look.';
 
@@ -247,7 +250,7 @@ function classify(error, context = {}) {
     : result);
 
   // The name of a Discord error written in the text ("Unknown interaction"), when the code did not come along.
-  const named = /\bUnknown (Interaction|Channel|Message|Member|User|Guild|Webhook)\b/i.exec(text);
+  const named = /\bUnknown (Interaction|Channel|Message|Member|User|Guild|Webhook|Role)\b/i.exec(text);
   const knownCode = typeof code === 'number' && API_CODES[code] ? code : named ? NAMED_CODES[named[1].toLowerCase()] : null;
 
   // Discord's numeric codes (also on plain objects with a code, which is what the checks use).

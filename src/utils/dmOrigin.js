@@ -24,7 +24,7 @@ const PREFIX = Object.freeze({ info: 'dminfo', delete: 'dmdel', report: 'dmrep' 
 const MODAL_PREFIX = 'dmrepm';
 const TEAM_PREFIX = 'dmteam';
 
-/** Why a message was sent, short; `info` says it in words (`dm.kind.<kind>`). Anything else is `notice`. */
+/** Why a message was sent, short: it travels in the id of the buttons and goes on the report to the team. Anything else is `notice`. */
 const KINDS = Object.freeze([
   'welcome', 'sanction', 'appeal', 'form', 'ticket', 'giveaway', 'verify', 'level', 'suggestion', 'report', 'confession', 'setup', 'security',
   'backup', 'embed', 'custom', 'team', 'notice',
