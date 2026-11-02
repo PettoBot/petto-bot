@@ -1,5 +1,46 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.9-3': {
+    label: 'v0.7.9~3 · Donut: slash umbrellas, /ai ask (BETA), reportable DMs',
+    summary: 'A patch of Donut: prefix commands move into slash commands such as `/mod`, `/server` and `/game`, an AI that answers questions (BETA), DMs that say where they come from and can be reported, and a clearer help.',
+    sections: [
+      {
+        title: 'Slash commands',
+        items: [
+          '`/mod`, `/staff`, `/server`, `/user`, `/game`, `/me`, `/search` and nine more such as `/config` and `/greet` are slash commands that gather the prefix commands as subcommands. Every `!` word works as before, and each subcommand asks for the permission of the command it wraps.',
+          '`/server icon`, `banner` and `splash` show the picture of the server, `!bots` (`/server bots`) lists its bots, and `/boosterrole` is its own slash command. `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` moved into `/server`, `/user` and `/mod`.',
+          '`/ai ask` and `!ask` answer your questions with an AI (BETA): 10 a day for free members, unlimited with Premium. `/ai usage` shows how many you have left.',
+        ],
+      },
+      {
+        title: 'Help and messages',
+        items: [
+          '`/help` answers in the channel, describes every menu option and suggests commands while you type (`/help command:`). A mistyped command (`!bna`) gets "Did you mean `!ban`?".',
+          'Prefix commands answer as a reply to the message that typed them, and the word `petto` always works as a prefix.',
+          'Every DM from Petto starts with a grey `From <server>` line and has three buttons: info, delete and report. A report goes to the Petto team only, never to the moderators of the server.',
+          '`/level notify test` shows you your next level-up announcement exactly as your settings would send it, and saves nothing.',
+        ],
+      },
+      {
+        title: 'Servers and feeds',
+        items: [
+          'Reddit and Pinterest feeds get a clean card with the picture first, and the automatic feeds and `!animal` show only the picture.',
+          'Forms are numbered per server, so your first form is number 1, and `!forum` adds help posts in a forum channel (off until you set it up).',
+          'The welcome can wait until the member accepts the rules, a server can have a second welcome, and image cards have 34 new designs.',
+          'Premium that is over is removed automatically, and the invite tracker has new settings in `/invites config`.',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          '`!send` and `/message send` need Manage Messages in the server and in the channel, checked first on every way of sending, and a refusal is private.',
+          'Tickets fix themselves: a late button, or a ticket whose channel is gone, no longer shows an error.',
+          'A Pinterest board no longer posts an empty card again and again.',
+          'The level-up card no longer hides part of the position chip, and a long result no longer ends in "Something went wrong".',
+        ],
+      },
+    ],
+  },
   'v0.7.9-2': {
     label: 'v0.7.9~2 · Donut: /act, 43 new interactions, !uwu and more',
     summary: 'A patch of Donut: all the interaction commands in one `/act` command, 43 new ones, `!uwu` and four small games, several prefixes, new ticket forms and silent mentions.',
