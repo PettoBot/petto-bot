@@ -107,4 +107,11 @@ module.exports = {
   'welcome.bump.status.next': '**Estado:** Próximo bump {time}',
   'welcome.bump.status.reminder': '**Recordatorio:** {text}',
   'welcome.bump.status.thankyou': '**Agradecimiento:** {text}',
+  'welcome.joinRole.waitsRules': 'Se da cuando aceptan las reglas del servidor (Selección de miembros).',
+  'welcome.joinRole.applyReason': 'Rol de entrada dado a los miembros que ya estaban',
+  'welcome.joinRole.list.afterRules': 'tras las reglas',
+  'welcome.joinRole.list.problem.gone': '{emoji}  Este rol se borró del servidor, así que no se da. Quítalo o vuelve a configurarlo.',
+  'welcome.joinRole.list.problem.managed': '{emoji}  Este rol lo gestiona una integración, así que no puedo darlo.',
+  'welcome.joinRole.list.problem.above': '{emoji}  Este rol está por encima de mi rol más alto, así que no puedo darlo.',
+  'welcome.joinRole.list.noPermission': '{emoji}  No tengo el permiso Gestionar roles, así que no se da ningún rol de entrada.',
 };
