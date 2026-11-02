@@ -9,6 +9,8 @@ const logger = require('./logger');
 const UNKNOWN_CHANNEL = 10003;
 // A ticket row exists a moment before its channel does (the number comes first); one without a channel this old is left over.
 const NO_CHANNEL_GRACE_MS = 30 * 60_000;
+// The most tickets one sweep closes; the next sweep continues.
+const MAX_HEALED_PER_RUN = 100;
 
 function defaultDeps() {
   const { t, guildLanguage } = require('../i18n');
@@ -93,10 +95,12 @@ async function channelIsGone(guild, channelId) {
 }
 
 /** Closes every open ticket whose channel is gone, in the servers Petto can see right now. Returns how many it closed. */
-async function reconcileTicketChannels(client, deps = defaultDeps(), { now = Date.now() } = {}) {
+async function reconcileTicketChannels(client, deps = defaultDeps(), { now = Date.now(), limit = MAX_HEALED_PER_RUN } = {}) {
   const open = await deps.db.listAllOpenTickets();
   let closedCount = 0;
   for (const ticket of open) {
+    // A conservative batch: the rest is healed by the next run.
+    if (closedCount >= limit) break;
     const guild = client.guilds.cache.get(ticket.guild_id);
     // A server in an outage (or that Petto left) is not checked: its channels cannot be trusted to be missing.
     if (!guild || guild.available === false) continue;
@@ -114,4 +118,39 @@ async function reconcileTicketChannels(client, deps = defaultDeps(), { now = Dat
   return closedCount;
 }
 
-module.exports = { closeTicketWithoutChannel, handleTicketChannelDelete, reconcileTicketChannels, channelIsGone, isUnknownChannel, UNKNOWN_CHANNEL };
+/**
+ * An action on a ticket found its channel (or message) gone. When the channel of the ticket really is gone, the database is made to say the same: an
+ * open ticket is closed (so the member can open another) and the channel is forgotten (so nothing looks for it again). Returns true when healed, or
+ * false when the ticket's channel is still there (the "unknown" was about something else, and it is a real failure).
+ */
+async function healGoneTicket({ guild, client = guild?.client, ticket, actorId = null }, deps = defaultDeps()) {
+  if (!ticket) return true;
+  if (guild && ticket.channel_id && !(await channelIsGone(guild, ticket.channel_id))) return false;
+  const row = (typeof deps.db.getTicketById === 'function' ? await deps.db.getTicketById(ticket.id) : null) ?? ticket;
+  if (row.status === 'open' && guild) await closeTicketWithoutChannel({ guild, client, ticket: row, executorId: actorId }, deps);
+  else if (row.channel_id) await deps.db.setTicketChannel(row.id, null);
+  return true;
+}
+
+/**
+ * Panels whose channel no longer exists keep a message id that points nowhere: it is forgotten (the panel itself, with its categories, stays, so it
+ * can be sent again with `!ticket panel resend`). Only a channel Discord answers "Unknown Channel" for, in a server that is available.
+ */
+async function reconcileTicketPanels(client, deps = defaultDeps(), { limit = 500 } = {}) {
+  const panels = await deps.db.listPanelsWithMessage(limit);
+  let cleared = 0;
+  for (const panel of panels) {
+    const guild = client.guilds.cache.get(panel.guild_id);
+    if (!guild || guild.available === false) continue;
+    try {
+      if (!panel.channel_id || !(await channelIsGone(guild, panel.channel_id))) continue;
+      await deps.db.setPanelMessageId(panel.id, null);
+      cleared += 1;
+    } catch (error) {
+      logger.warn(`Ticket panel ${panel.id} in ${panel.guild_id}: the channel check failed: ${error?.message ?? error}`);
+    }
+  }
+  return cleared;
+}
+
+module.exports = { healGoneTicket, reconcileTicketPanels, closeTicketWithoutChannel, handleTicketChannelDelete, reconcileTicketChannels, channelIsGone, isUnknownChannel, UNKNOWN_CHANNEL };

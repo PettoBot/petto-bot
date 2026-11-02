@@ -12,6 +12,7 @@ const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocke
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
+const { sendDm } = require('../../utils/dmOrigin');
 
 module.exports = {
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
@@ -64,8 +65,7 @@ async function kickUser(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  await targetMember
-    .send(await sanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
+  await sendDm(targetMember, await sanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
     .catch(() => logger.warn(`Could not DM kick notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 
   try {
@@ -119,8 +119,7 @@ async function kickUsers(interaction) {
     }
 
     try {
-      await member
-        .send(await sanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
+      await sendDm(member, await sanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
         .catch(() => logger.warn(`Could not DM kick notice to ${user.id} in guild ${interaction.guild.id}.`));
       await member.kick(reason ?? undefined);
       const modCase = await createCase({ guildId: interaction.guild.id, userId: user.id, moderatorId: interaction.user.id, type: 'kick', reason });

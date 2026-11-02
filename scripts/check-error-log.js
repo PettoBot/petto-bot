@@ -1,4 +1,4 @@
-// The channel of errors: routine rate limit notes are left out, the same problem is sent once with a count, and a burst goes out slowly.
+// The GENERAL channel of errors (the priority one is checked in check-error-triage.js): routine rate limit notes are left out, the same problem is sent once with a count, and a burst goes out slowly.
 const assert = require('node:assert/strict');
 const { createDiscordErrorLogSink, isRoutineNoise, duplicateKey } = require('../src/utils/discordErrorLog');
 
@@ -36,5 +36,13 @@ assert.notEqual(duplicateKey('warn', ['a']), duplicateKey('error', ['a']));
   await new Promise((resolve) => setTimeout(resolve, 400));
   assert.ok(sent.length <= 2 + 21, 'a long burst is cut');
   assert.ok(sent.some((payload) => JSON.stringify(payload.embeds[0].toJSON()).includes('a real error')), 'the error is still sent');
+  // An error that the triage turned into a warning is always told (even "Missing Permissions"), with what it means; secrets never reach the card.
+  const before = sent.length;
+  await sink('warn', ['Missing Permissions while setting up postgres://user:pw@host/db'], new Date().toISOString(), { triaged: true, explanation: 'The server did not give Petto a permission.' });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(sent.length, before + 1, 'a triaged error is not routine noise');
+  const triaged = JSON.stringify(sent.at(-1).embeds[0].toJSON());
+  assert.ok(triaged.includes('What it means') && !triaged.includes('user:pw'), 'it says what it means and the password of an address is removed');
+  assert.deepEqual(sent.at(-1).allowedMentions, { parse: [] }, 'the general log never pings');
   console.log('Checked the error channel: no rate limit notes, no repeats and a slow burst.');
 })();

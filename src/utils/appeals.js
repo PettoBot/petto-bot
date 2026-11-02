@@ -10,6 +10,7 @@ const { textCard } = require('./caseCard');
 const logger = require('./logger');
 const { t, guildLanguage, normalizeLanguage, currentLanguage, defaultText } = require('../i18n');
 const { semanticColor } = require('./colors');
+const { sendDm } = require('./dmOrigin');
 
 const PREFIX = 'appeal';
 const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300, short: 300, paragraph: 1500, number: 20, reply: 1500, greeting: 600, link: 300 };
@@ -408,10 +409,10 @@ async function notifyStaff(guild, submission, text, color = 0x4b4f59) {
   await target.send({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch((err) => logger.warn(`Appeals: could not notify the staff: ${err.message}`));
 }
 
-async function sendDm(client, userId, text, color) {
+async function dmApplicant(client, userId, text, color, guild) {
   const user = await client.users.fetch(userId).catch(() => null);
   if (!user) return false;
-  return user.send({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 }).then(() => true).catch(() => false);
+  return sendDm(user, { components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'appeal' }).then(() => true).catch(() => false);
 }
 
 /** A member's appeal, from the site: checks, stores it and puts it in front of the staff. */
@@ -551,7 +552,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
     await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), t(lang, 'appeals.audit.rejected')).catch(() => {});
   }
   const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite?.url ? `\n\n${labelsFor(config).rejoin}: ${invite.url}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
-  const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
+  const dm = await dmApplicant(client, row.user_id, text, STATUS_COLORS[status], guild);
   await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite?.url ? `\n${invite.url}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId, lang);
   const who = moderatorName ?? `<@${moderatorId}>`;
@@ -583,7 +584,7 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
   // The DM follows the language of the appeal page, like the default texts and labels around it.
   const staffName = t(normalizeLanguage(config?.language) ?? 'en', 'appeals.dm.staff');
-  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? staffName : clip(moderatorName ?? staffName, 40)}**\n${text}\n\n-# ${config.allow_replies ? labelsFor(config).answer : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
+  const dm = await dmApplicant(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? staffName : clip(moderatorName ?? staffName, 40)}**\n${text}\n\n-# ${config.allow_replies ? labelsFor(config).answer : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff, guild);
   const lang = await guildLanguage(guild.id);
   await notifyStaff(guild, submission, `${t(lang, 'appeals.staff.replied', { moderator: `<@${moderatorId}>`, user: clip(submission.username, 40) })}\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };

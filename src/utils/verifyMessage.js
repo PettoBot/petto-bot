@@ -7,6 +7,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { methodOf } = require('./verifyMethod');
 const { canDoLetters } = require('./verifyLink');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
 const SUCCESS_COLOR = 0xa5ea7a;
 
@@ -70,17 +71,17 @@ async function sendVerifyDM(member, { guild, link, lang }) {
     const payload = { ...custom, allowedMentions: { parse: [] } };
     // A saved design does not know about the button, so it goes in a row of its own below it.
     if (discordButton) payload.components = [...(payload.components ?? []), new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id, language))];
-    return member.send(payload);
+    return sendDm(member, payload, { guild, kind: 'verify' });
   }
-  return member.send({ components: [buildVerifyDM({ guild, link, discordButton, lang: language })], flags: MessageFlags.IsComponentsV2 });
+  return sendDm(member, { components: [buildVerifyDM({ guild, link, discordButton, lang: language })], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'verify' });
 }
 
 /** DMs the confirmation after a member verified, with the server's saved embed when one is chosen, in the language of the server. */
 async function sendVerifiedDM(member, { guild, lang }) {
   const settings = await getConfig(guild.id).catch(() => null);
   const custom = await templatePayload(guild.id, settings?.verified_embed_template, { guild, user: member.user ?? member, member });
-  if (custom) return member.send({ ...custom, allowedMentions: { parse: [] } });
-  return member.send({ components: [buildVerifiedDM({ guild, lang: lang ?? await guildLanguage(guild.id) })], flags: MessageFlags.IsComponentsV2 });
+  if (custom) return sendDm(member, { ...custom, allowedMentions: { parse: [] } }, { guild, kind: 'verify' });
+  return sendDm(member, { components: [buildVerifiedDM({ guild, lang: lang ?? await guildLanguage(guild.id) })], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'verify' });
 }
 
 module.exports = { buildVerifyDM, buildVerifiedDM, sendVerifyDM, sendVerifiedDM };

@@ -14,6 +14,7 @@ const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocke
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
+const { sendDm } = require('../../utils/dmOrigin');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
@@ -125,8 +126,7 @@ async function muteUser(interaction) {
   await sanctionReply(interaction, { modCase, type: 'mute', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 
-  await targetMember
-    .send(await sanctionDM({ type: 'mute', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
+  await sendDm(targetMember, await sanctionDM({ type: 'mute', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
     .catch(() => logger.warn(`Could not DM mute notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 
@@ -181,8 +181,7 @@ async function muteUsers(interaction) {
       caseNumbers.push(modCase.case_number);
       succeeded.push(user);
       await logSanction(interaction.client, interaction.guild, { modCase, target: user, moderator: interaction.user, reason });
-      await member
-        .send(await sanctionDM({ type: 'mute', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
+      await sendDm(member, await sanctionDM({ type: 'mute', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
         .catch(() => logger.warn(`Could not DM mute notice to ${user.id} in guild ${interaction.guild.id}.`));
     } catch (err) {
       logger.warn(`mute users: failed to mute ${user.id}:`, err.message);
@@ -247,8 +246,7 @@ async function tempMute(interaction) {
   await sanctionReply(interaction, { modCase, type: 'tempmute', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason, duration });
 
-  await targetMember
-    .send(await sanctionDM({ type: 'tempmute', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
+  await sendDm(targetMember, await sanctionDM({ type: 'tempmute', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
     .catch(() => logger.warn(`Could not DM tempmute notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 
@@ -300,8 +298,7 @@ async function unmuteUser(interaction) {
   await sanctionReply(interaction, { modCase, type: 'unmute', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 
-  await targetMember
-    .send(await sanctionDM({ type: 'unmute', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
+  await sendDm(targetMember, await sanctionDM({ type: 'unmute', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
     .catch(() => logger.warn(`Could not DM unmute notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 
@@ -362,8 +359,7 @@ async function unmuteUsers(interaction) {
     succeeded.push(user);
     await logSanction(interaction.client, interaction.guild, { modCase, target: user, moderator: interaction.user, reason });
 
-    await member
-      .send(await sanctionDM({ type: 'unmute', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
+    await sendDm(member, await sanctionDM({ type: 'unmute', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
       .catch(() => logger.warn(`Could not DM unmute notice to ${user.id} in guild ${interaction.guild.id}.`));
   }
 

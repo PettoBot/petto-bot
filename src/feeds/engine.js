@@ -24,6 +24,42 @@ const schedule = new Map(); // `${platform}:${accountId}` -> { at, fails }
 
 const keyOf = (platform, accountId) => `${platform}:${accountId}`;
 
+// What was seen is also kept in memory (until the bot restarts): when the database cannot write it, nothing already looked at is posted again by this process.
+const REMEMBER_LIMIT = 50_000;
+const remembered = new Set(); // `${feedId}:${itemId}`
+const remember = (feedId, itemIds) => {
+  for (const id of itemIds) {
+    if (remembered.size >= REMEMBER_LIMIT) remembered.delete(remembered.values().next().value);
+    remembered.add(`${feedId}:${id}`);
+  }
+};
+
+/** Marks items as seen BEFORE anything is sent: a step that fails after a send (the database, the record of the success) can then never post the same thing again. */
+async function markBeforeSending(feed, items) {
+  if (!items.length) return;
+  const ids = items.map((item) => String(item.id));
+  remember(feed.id, ids);
+  try {
+    await feedsDb.markSeen(ids.map((id) => [feed.id, id]));
+  } catch (error) {
+    logger.warn(`Feed ${feed.id}: could not write ${ids.length} item(s) as seen, they are kept in memory until the bot restarts: ${error.message}`);
+  }
+}
+
+// What the feed does not post because it would be an empty card (a pin with no picture) is marked as seen, counted, and said in the log once an hour for each feed.
+const SKIP_LOG_MS = 3_600_000;
+const skipped = new Map(); // feed id -> { count, at }
+function noteSkipped(feed, items, now) {
+  const state = skipped.get(feed.id) ?? { count: 0, at: -Infinity };
+  state.count += items.length;
+  skipped.set(feed.id, state);
+  if (now - state.at < SKIP_LOG_MS) return;
+  state.at = now;
+  // i18n-ignore: a line of the log, with ids only
+  logger.warn(`Feed ${feed.id}: ${state.count} ${feed.platform} item(s) without a picture were not posted (last: ${String(items.at(-1).id).slice(0, 120)}).`);
+  state.count = 0;
+}
+
 /** Does a notice pass the words the feed wants and the ones it does not? */
 function passes(feed, item) {
   const text = `${item.title ?? ''} ${item.description ?? ''}`.toLowerCase();
@@ -115,6 +151,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
   // A feed whose first look failed has not marked what already existed: this pass only marks it.
   if (!feed.ready) {
     await feedsDb.markSeen(result.items.map((item) => [feed.id, String(item.id)]));
+    remember(feed.id, result.items.map((item) => String(item.id)));
     await feedsDb.update(feed.guild_id, feed.id, { ready: true });
     feed.ready = true;
     return;
@@ -122,8 +159,16 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
 
   const wanted = new Set(feed.types ?? []);
   if (feed.platform === 'modrinth' && String(feed.account_id).startsWith('new:')) wanted.add('project'); // a list of the newest projects (made before that kind of notice existed) posts them
-  const unseen = result.items.filter((item) => !seen.has(`${feed.id}:${item.id}`));
-  const toPost = unseen.filter((item) => wanted.has(item.type) && passes(feed, item)).sort((a, b) => (a.publishedAt ?? 0) - (b.publishedAt ?? 0)).slice(-MAX_PER_PASS);
+  const unseen = result.items.filter((item) => !seen.has(`${feed.id}:${item.id}`) && !remembered.has(`${feed.id}:${item.id}`));
+  const when = (item) => item.publishedAt ?? item.firstSeenAt ?? 0;
+  const postable = unseen.filter((item) => !item.skip && wanted.has(item.type) && passes(feed, item)).sort((a, b) => when(a) - when(b));
+  const toPost = postable.slice(-MAX_PER_PASS); // the newest ones, posted from the oldest to the newest
+  // Everything that was seen now is remembered, also what the feed does not post (a type it did not choose), so turning it on later is not a flood. It is written
+  // before the first send: a failure after the send must never make the same notice go out again.
+  await markBeforeSending(feed, unseen);
+  const unposted = unseen.filter((item) => item.skip);
+  if (unposted.length) noteSkipped(feed, unposted, now);
+  if (postable.length > toPost.length) logger.info(`Feed ${feed.id}: ${postable.length} new ${feed.platform} item(s) at once, the newest ${toPost.length} posted and ${postable.length - toPost.length} marked as seen without posting.`); // i18n-ignore: a line of the log
 
   let posted = 0;
   if (toPost.length) {
@@ -138,7 +183,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
           posted += 1;
           if (feed.platform === 'youtube' && (item.type === 'video' || item.type === 'short')) noteLate(feed.account_id, item);
           if (item.type === 'live' && item.publishedAt) noteLateLive(feed, item, now);
-          if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item });
+          if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item }).catch((error) => logger.warn(`Feed ${feed.id}: could not save its live message: ${error.message}`)); // the notice is out: this is not a failure to post
         } catch (error) {
           await recordFailure(feed, error?.code === 10003 ? 'channelGone' : error?.code === 50001 || error?.code === 50013 ? 'permission' : 'send');
           break;
@@ -147,8 +192,6 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
       if (posted) await recordSuccess(feed).catch(() => {});
     }
   }
-  // Everything that was seen now is remembered, also what the feed does not post (a type it did not choose), so turning it on later is not a flood.
-  if (unseen.length) await feedsDb.markSeen(unseen.map((item) => [feed.id, String(item.id)]));
 
   if (result.stillLive) {
     for (const row of liveRows.get(feed.id) ?? []) if (!result.stillLive.has(row.item_id)) await closeLive(client, feed, row, lang);
@@ -284,6 +327,6 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
 /** Makes an account due at the next pass (YouTube told the bot something new is there): it is looked at at once instead of when its turn comes. */
 const wake = (platform, accountId) => { schedule.set(keyOf(platform, accountId), { at: 0, fails: 0 }); };
 
-const forgetSchedule = () => { schedule.clear(); feedsDb.forgetList(); kickRepaired = true; }; // for the checks (the repair is checked by itself)
+const forgetSchedule = () => { schedule.clear(); remembered.clear(); skipped.clear(); feedsDb.forgetList(); kickRepaired = true; }; // for the checks (the repair is checked by itself)
 
 module.exports = { tick, wake, processFeed, passes, forgetSchedule, replayUrl, repairKickPictures, MAX_PER_PASS, FAILURES_TO_STOP };

@@ -12,6 +12,9 @@ const EMOJI = {
   QUESTION: '<:pe_razon:1450677650933940347>',
   WARNING: '<:petto_warning:1527894476616630433>',
   REPORT: '<:pe_report:1541889748526694531>',
+  // The three small buttons under every direct message of Petto: about it (the "i"), delete it (the bin) and report it (REPORT).
+  INFO: '<:pe_info:1533575563225337866>',
+  DELETE: '<:pe_delete:1533575163273023599>',
   REPORT_IMPORTANT: '<:pe_reportimportan:1541889795285061652>',
   // Release center set — kept here so the catalog and its buttons share the
   // same application emojis as the rest of Petto's interactive panels.

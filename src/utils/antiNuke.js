@@ -8,6 +8,7 @@ const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 const { t, tn, currentLanguage } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const RESTORE_PREFIX = 'an_restore';
 
@@ -260,7 +261,7 @@ async function dmOwner(guild, config, text, lang) {
   const owner = await guild.fetchOwner().catch(() => null);
   if (!owner?.send) return;
   const body = [t(lang, 'security.antinuke.dm.title', { server: guild.name ?? guild.id }), text].join('\n');
-  await owner.send({ components: [textCard(body, 0xff6b6b)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } })
+  await sendDm(owner, { components: [textCard(body, 0xff6b6b)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }, { guild, kind: 'security' })
     .catch((err) => logger.warn(`Anti-nuke: the owner of ${guild.id} could not be told in DMs: ${err.message}`));
 }
 

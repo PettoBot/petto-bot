@@ -1886,6 +1886,200 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(engine.passes({ filters: { include: ['review'] } }, { title: 'Other', description: '' }), false);
   assert.equal(engine.passes({ filters: { exclude: ['sponsor'] } }, { title: 'Sponsored', description: 'a sponsor' }), false);
 
+  // --- the engine against a store written out: a board that lists a pin that is gone (a new address on every reading, no date, no picture) -----------------------------------
+  {
+    const log = require('../src/utils/logger');
+    const database = require('../src/db/database');
+    const { createPostgresClient } = require('../src/db/postgres');
+    const rssProviders = require('../src/feeds/providers/rss');
+    const { fresh, stamped } = require('../src/feeds/providers');
+
+    // The store: what `feed_seen` does (a pair is seen once it was written; reading answers the pairs asked for).
+    const store = new Set();
+    const flags = { failMark: false, failUpdate: false };
+    const real = { listEnabled: feedsDb.listEnabled, liveRowsAll: feedsDb.liveRowsAll, seenAmong: feedsDb.seenAmong, markSeen: feedsDb.markSeen, update: feedsDb.update };
+    const row = { id: 41, guild_id: '1', platform: 'pinterest', account_id: 'ange/miau', account_name: 'miau', account_avatar: null, account_url: 'https://www.pinterest.com/ange/miau/', channel_id: '2', types: ['pin'], message: '', ping_roles: [], ping_everyone: false, options: {}, filters: {}, enabled: true, ready: false, failures: 0 };
+    feedsDb.listEnabled = async () => [row];
+    feedsDb.liveRowsAll = async () => [];
+    feedsDb.seenAmong = async (feedIds, itemIds) => new Set([...store].filter((key) => feedIds.some((f) => itemIds.some((i) => key === `${f}:${i}`))));
+    feedsDb.markSeen = async (pairs) => { if (flags.failMark) throw new Error('the database is down'); for (const [f, i] of pairs) store.add(`${f}:${i}`); };
+    feedsDb.update = async (_guild, _id, patch) => { if (flags.failUpdate && 'last_sent_at' in patch) throw new Error('the database is down'); return Object.assign(row, patch); };
+
+    const sentPins = [];
+    const channel = { id: '2', isTextBased: () => true, isDMBased: () => false, send: async (payload) => { sentPins.push(payload); return { id: `m${sentPins.length}` }; } };
+    const guildOf = { id: '1', channels: { cache: new Map([['2', channel]]) }, members: {} };
+    const pinClient = { guilds: { cache: new Map([['1', guildOf]]) }, channels: { cache: new Map(), fetch: async () => null } };
+
+    // The board as Pinterest sends it (the shapes of a real board: ids `e1_...`, small pictures, a pin with a blank title, and the entry of a pin that is gone).
+    const PIN = 'https://www.pinterest.com/pin/';
+    const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // every character that means something in a pattern
+    const entryXml = ({ id, title = ' ', image = '', date = null }) => `<item><title>${title}</title><link>${PIN}${id}/</link><description>&lt;a href=&quot;${PIN}${id}/&quot;&gt;&lt;img src=&quot;${image}&quot;&gt;&lt;/a&gt;${title.trim()}</description><pubDate>${date ? new Date(date).toUTCString() : 'Invalid Date'}</pubDate><guid>${PIN}${id}/</guid></item>`;
+    const T0 = Date.parse('2026-11-01T16:00:00Z');
+    const real17 = Array.from({ length: 17 }, (_, index) => ({ id: `e1_AfqPSh${String(index).padStart(2, '0')}x_Ai-GUFcmNDC6JM2zNsLMD-YE2ps3HfaVMLqwmypvqROT`, title: index === 1 ? ' ' : `Pin ${index}`, image: `https://i.pinimg.com/236x/4e/66/d5/4e66d55cc81481f648ed295b1529e2a${index.toString(16)}.jpg`, date: T0 - (index + 1) * 3_600_000 }));
+    let reads = 0;
+    let extra = []; // what the board has on top, newest first
+    let ghostNames = ['fM8CzuSV', 'vXLLmSvo', 'Wvxfxp1e', '4tNsB5HZ', 'k1QpZr8d', 'Zt9LmN2b'];
+    const widget = []; // the pins asked about
+    const realFetchPins = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const link = String(url);
+      if (link.includes('pinterest.com/ange/miau.rss')) {
+        const ghost = { id: ghostNames[reads % ghostNames.length] }; // a new address on every reading, no date, no picture, no title
+        reads += 1;
+        return new Response(`<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>miau</title><link>https://www.pinterest.com/ange/miau</link>${[...extra, ...real17.slice(0, 14), ghost, ...real17.slice(14)].map(entryXml).join('')}</channel></rss>`, { status: 200 });
+      }
+      if (link.startsWith('https://widgets.pinterest.com/v3/pidgets/pins/info/')) {
+        const id = new URL(link).searchParams.get('pin_ids');
+        widget.push(id);
+        if (id === '5551234') return new Response(JSON.stringify({ status: 'success', data: [{ images: { '236x': { url: 'https://i.pinimg.com/236x/aa/bb/num.jpg', width: 236, height: 300 }, '564x': { url: 'https://i.pinimg.com/564x/aa/bb/num.jpg', width: 564, height: 700 } } }] }), { status: 200 });
+        return new Response(JSON.stringify({ status: 'failure', message: 'Invalid parameters', data: null }), { status: 200 });
+      }
+      if (link.startsWith('https://i.pinimg.com/')) return fakeImage();
+      return new Response('', { status: 404 });
+    };
+    const warnings = [];
+    const infos = [];
+    const realLog = { warn: log.warn, info: log.info };
+    log.warn = (...args) => { warnings.push(args.join(' ')); };
+    log.info = (...args) => { infos.push(args.join(' ')); };
+    const galleryOf = (payload) => json(payload.components)[0].components.find((part) => part.type === 12)?.items[0].media.url;
+    const textOf = (payload) => JSON.stringify(json(payload.components));
+    rssProviders.pinPace.gapMs = 0;
+
+    try {
+      for (const restart of [true, false]) {
+        // restart: the bot starts again before every look (only the store remembers); otherwise it keeps running (the store and its own memory).
+        store.clear(); sentPins.length = 0; warnings.length = 0; infos.length = 0; widget.length = 0; reads = 0; extra = []; rssProviders.forgetPins(); Object.assign(row, { ready: false, failures: 0 });
+        let clock = T0;
+        const look = async () => { if (restart) engine.forgetSchedule(); clock += 20 * 60_000; await engine.tick(pinClient, { now: clock }); };
+        const label = restart ? 'restarted each time' : 'running';
+        engine.forgetSchedule();
+        await look(); // the feed was just made but its first look failed: this look only marks what the board has (the ghost too)
+        assert.equal(sentPins.length, 0, `${label}: the first look posts nothing`);
+        assert.equal(row.ready, true);
+        const afterFirst = store.size;
+
+        await look(); await look();
+        assert.equal(sentPins.length, 0, `${label}: the board did not change: the ghost, with a new address on every reading, is not news`);
+        assert.equal(warnings.length, restart ? 2 : 1, `${label}: and it is said once in the log (the limit of an hour is kept by the process that runs: a restart starts it again)`);
+        assert.match(warnings[0], new RegExp(`^Feed 41: 1 pinterest item\\(s\\) without a picture were not posted \\(last: ${escapeRegExp(PIN)}`));
+        assert.ok(!/Pin \d|miau/.test(warnings[0].replace(/pinterest\.com/g, '')), 'the log line has the ids and no words of the pin');
+        assert.ok(store.size > afterFirst, `${label}: the ids the ghost took are marked seen`);
+
+        // New pins: one with a picture, one with a number and no picture in the feed (the widget has it), one with a number the widget does not know, one with no date.
+        extra = [
+          { id: '5551234', title: 'From the widget', date: clock - 60_000 },
+          { id: 'e1_AfqPSh_NEW_with_picture-and-words_', title: 'Fresh pin', image: 'https://i.pinimg.com/236x/cc/dd/ee.jpg', date: clock - 120_000 },
+          { id: '5559999', title: 'Gone', date: clock - 180_000 },
+          { id: 'e1_AfqPSh_NO_date_at_all_', title: 'No date', image: 'https://i.pinimg.com/236x/cc/dd/ff.jpg' },
+        ];
+        await look();
+        assert.equal(sentPins.length, 3, `${label}: the three pins that have a picture are posted`);
+        assert.ok(sentPins.every((payload) => galleryOf(payload)), `${label}: no card without a picture`);
+        const byLink = (needle) => sentPins.find((payload) => textOf(payload).includes(needle));
+        assert.equal(galleryOf(byLink('5551234')), 'https://i.pinimg.com/564x/aa/bb/num.jpg', `${label}: the picture of a pin the feed left empty comes from the public widget`);
+        assert.equal(galleryOf(byLink('NEW_with_picture')), 'https://i.pinimg.com/736x/cc/dd/ee.jpg');
+        assert.ok(byLink('NO_date_at_all'), `${label}: a pin with no date is posted, the first time`);
+        assert.ok(!byLink('5559999'), `${label}: a pin with no picture anywhere is not posted`);
+        assert.deepEqual([...new Set(widget)].sort(), ['5551234', '5559999'], 'only numeric pins are asked about');
+        if (!restart) assert.equal(warnings.length, 1, `${label}: the same hour, the same line (it was written at the first look)`);
+
+        await look(); await look();
+        assert.equal(sentPins.length, 3, `${label}: the second look posts nothing, nor does the third (the pin with no date is not new again)`);
+        assert.equal(widget.length, 2, 'each pin is asked about once, the answer is kept');
+        clock += 4 * 24 * 3_600_000; // days later the same board still lists the pin with no date: it was seen, and it is old now
+        await look();
+        assert.equal(sentPins.length, 3, `${label}: nothing again`);
+        if (!restart) assert.equal(warnings.length, 2, `${label}: the log says it again after an hour, not before`);
+        assert.ok(infos.every((line) => !/at once/.test(line)), 'no flood was cut');
+      }
+
+      // A failure after the send, or of the database, never posts the same thing again.
+      for (const [what, flag] of [['the database cannot write what was seen', 'failMark'], ['the record of the success cannot be written', 'failUpdate']]) {
+        store.clear(); sentPins.length = 0; warnings.length = 0; reads = 0; extra = []; flags.failMark = false; flags.failUpdate = false; Object.assign(row, { ready: true, failures: 0 });
+        engine.forgetSchedule();
+        let clock = T0;
+        await engine.tick(pinClient, { now: (clock += 20 * 60_000) }); // everything on the board is new to this feed: the newest three go out
+        assert.equal(sentPins.length, engine.MAX_PER_PASS);
+        store.clear(); sentPins.length = 0; // a new, empty store
+        engine.forgetSchedule();
+        extra = [{ id: 'e1_AfqPSh_after_failure_', title: 'After a failure', image: 'https://i.pinimg.com/236x/cc/dd/aa.jpg', date: clock }];
+        for (const entry of real17) store.add(`41:${PIN}${entry.id}/`); // what the board had is seen
+        for (const name of ghostNames) store.add(`41:${PIN}${name}/`);
+        flags[flag] = true;
+        await engine.tick(pinClient, { now: (clock += 20 * 60_000) });
+        assert.equal(sentPins.length, 1, `${what}: the new pin is posted`);
+        for (let i = 0; i < 3; i += 1) await engine.tick(pinClient, { now: (clock += 20 * 60_000) });
+        assert.equal(sentPins.length, 1, `${what}: and it is not posted again`);
+        if (flag === 'failMark') assert.ok(warnings.some((line) => /could not write 1 item\(s\) as seen/.test(line)), 'the failure is in the log');
+        flags[flag] = false;
+      }
+
+      // The most posted at once: five new pins, the newest three go out from the oldest to the newest, the other two are marked as seen and counted in one line.
+      store.clear(); sentPins.length = 0; infos.length = 0; reads = 0; Object.assign(row, { ready: true, failures: 0 });
+      engine.forgetSchedule();
+      for (const entry of real17) store.add(`41:${PIN}${entry.id}/`);
+      for (const name of ghostNames) store.add(`41:${PIN}${name}/`);
+      extra = [5, 4, 3, 2, 1].map((n) => ({ id: `e1_AfqPSh_burst${n}_`, title: `Burst ${n}`, image: `https://i.pinimg.com/236x/cc/dd/b${n}.jpg`, date: T0 + 24 * 3_600_000 - n * 60_000 }));
+      await engine.tick(pinClient, { now: T0 + 25 * 3_600_000 });
+      assert.deepEqual(sentPins.map((payload) => /Burst (\d)/.exec(textOf(payload))[1]), ['3', '2', '1'], 'the newest three, oldest first');
+      assert.ok(store.has(`41:${PIN}e1_AfqPSh_burst5_/`) && store.has(`41:${PIN}e1_AfqPSh_burst4_/`), 'the rest are marked as seen');
+      assert.equal(infos.filter((line) => /5 new pinterest item\(s\) at once, the newest 3 posted and 2 marked/.test(line)).length, 1, 'and counted in one line');
+      engine.forgetSchedule();
+      await engine.tick(pinClient, { now: T0 + 26 * 3_600_000 });
+      assert.equal(sentPins.length, 3, 'the next look posts nothing');
+    } finally {
+      Object.assign(feedsDb, real);
+      globalThis.fetch = realFetchPins;
+      Object.assign(log, realLog);
+      engine.forgetSchedule();
+    }
+
+    // An empty title shows no title line, a real one shows as ever; the pin whose picture is missing says so (the engine does not post it).
+    const board = { id: 'ange/miau', name: 'miau', avatar: null, url: 'https://www.pinterest.com/ange/miau/' };
+    const blank = rssProviders.toItem('pinterest', 'pin', { id: `${PIN}1/`, url: `${PIN}1/`, title: '', image: 'https://i.pinimg.com/736x/a/b.jpg', published: T0 }, board);
+    assert.equal(json(card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, blank, { lang: 'en' }).components)[0].components[0].content.split('\n').length, 2, 'no title line for a pin with no title');
+    assert.equal(rssProviders.toItem('pinterest', 'pin', { id: 'x', url: `${PIN}x/`, title: 'T', image: '', published: null }, board).skip, 'noPicture');
+    assert.equal(blank.skip, undefined);
+    assert.equal(rssProviders.numericPin(`${PIN}5551234/`), '5551234');
+    assert.equal(rssProviders.numericPin(`${PIN}fM8CzuSV/`), null, 'the short ids are not numbers: the widget would say "Non-numeric value"');
+    const widgetBody = (images) => ({ status: 'success', data: [{ images }] });
+    assert.equal(rssProviders.pinPictures(widgetBody({ '236x': { url: 'https://i.pinimg.com/236x/a.jpg' }, '564x': { url: 'https://i.pinimg.com/564x/a.jpg' }, '736x': { url: 'https://i.pinimg.com/736x/a.jpg' }, orig: { url: 'https://i.pinimg.com/originals/a.jpg' } })).image, 'https://i.pinimg.com/originals/a.jpg', 'the original first');
+    assert.equal(rssProviders.pinPictures(widgetBody({ '236x': { url: 'https://i.pinimg.com/236x/a.jpg' }, '564x': { url: 'https://i.pinimg.com/564x/a.jpg' }, '736x': { url: 'https://i.pinimg.com/736x/a.jpg' } })).image, 'https://i.pinimg.com/736x/a.jpg');
+    assert.equal(rssProviders.pinPictures(widgetBody({ '236x': { url: 'https://i.pinimg.com/236x/a.jpg' } })).image, 'https://i.pinimg.com/236x/a.jpg', 'the small one when it is all there is');
+    assert.equal(rssProviders.pinPictures(widgetBody({ '564x': { url: 'https://elsewhere.test/a.jpg' } })), null, 'only pictures of the host of Pinterest');
+    assert.equal(rssProviders.pinPictures({ status: 'failure', message: 'Invalid parameters', data: null }), null);
+
+    // A missing date is "unknown": the item is as old as the first time it was seen, and it is not fresh for ever.
+    const first = stamped('rss', { id: 'blog' }, [{ id: 'no-date' }, { id: 'dated', publishedAt: T0 }], T0);
+    assert.equal(first[0].firstSeenAt, T0);
+    assert.equal(first[1].firstSeenAt, undefined);
+    assert.equal(fresh(first[0], T0 + 1000), true, 'new now');
+    assert.equal(fresh(first[0], T0 + MAX_AGE_MS + 1000), false, 'and old later');
+    assert.equal(stamped('rss', { id: 'blog' }, [{ id: 'no-date' }], T0 + 5 * 3_600_000)[0].firstSeenAt, T0, 'the first time stays');
+    assert.equal(fresh({ id: 'anything' }, T0), true, 'what is not a reader of a site has its own dates');
+    assert.equal(stamped('rss', { id: 'blog' }, [{ id: 'other' }], 0)[0].firstSeenAt, undefined, '`now: 0` (the test of a feed) changes nothing');
+
+    // The database layer: the ids are sent as values of the query (never written in it), so a comma, a bracket, a quote or a space cannot hide a row from `seenAmong`.
+    const queries = [];
+    const fakeDb = createPostgresClient({ query: async (text, values) => { queries.push({ text, values }); return { rows: [] }; } });
+    const realFrom = database.from;
+    database.from = (table) => fakeDb.from(table);
+    try {
+      const nasty = ['a,b', 'c(d)', 'say "hi"', "o'brien", 'with space', 'https://www.pinterest.com/pin/e1_Af-q_/', 'x:y', 'back\\slash', '50%', 'a.b.c'];
+      await feedsDb.seenAmong([7, 8], nasty);
+      const select = queries.find((query) => /^SELECT/.test(query.text));
+      assert.match(select.text, /"item_id" IN \(\$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12\)/);
+      assert.deepEqual(select.values, [7, 8, ...nasty], 'each id travels as it is');
+      assert.ok(nasty.every((id) => !select.text.includes(id)), 'and none is written in the text of the query');
+      queries.length = 0;
+      await feedsDb.markSeen(nasty.map((id) => [7, id]));
+      const insert = queries.find((query) => /^INSERT/.test(query.text));
+      assert.deepEqual(insert.values.filter((_, index) => index % 2 === 1), nasty);
+      assert.match(insert.text, /ON CONFLICT \("feed_id", "item_id"\) DO NOTHING$/);
+    } finally { database.from = realFrom; }
+  }
+
   if (!process.env.PETTO_TEST_DATABASE_URL) {
     console.log('check-feeds: ok (the database part was skipped: set PETTO_TEST_DATABASE_URL to a test database to run it)');
     process.exit(0);
@@ -2113,6 +2307,10 @@ const allText = (message) => JSON.stringify(json(message.components));
   await pool.query("update feed_seen set seen_at = now() - interval '90 days' where item_id = 'ancient'");
   await feedsDb.pruneOld();
   assert.equal((await feedsDb.seenAmong([a.id], ['ancient'])).size, 0, 'what was posted long ago is forgotten');
+  // Ids with the characters that are special in a filter list (commas, brackets, quotes, spaces, `:` and `/`) are found again: what was written is what is read.
+  const nastyIds = ['a,b', 'c(d)', 'say "hi"', "o'brien", 'with space', 'https://www.pinterest.com/pin/e1_Af-q_/', 'x:y', 'back\\slash', '50%', 'a.b.c', '\u00e1\u00f1'];
+  await feedsDb.markSeen(nastyIds.map((id) => [a.id, id]));
+  assert.deepEqual([...(await feedsDb.seenAmong([a.id], [...nastyIds, 'never-seen']))].sort(), nastyIds.map((id) => `${a.id}:${id}`).sort(), 'every id is found again, and only those');
   assert.equal(await feedsDb.remove(G, a.id), true);
   assert.equal((await pool.query('select count(*)::int as n from feed_seen where feed_id = $1', [a.id])).rows[0].n, 0, 'removing a feed removes what it remembered');
 

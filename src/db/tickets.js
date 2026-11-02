@@ -236,6 +236,13 @@ async function listAllOpenTickets(limit = 5000) {
   return data ?? [];
 }
 
+/** The panels that still point to a message (the oldest first), with only what the check of their channel needs. */
+async function listPanelsWithMessage(limit = 500) {
+  const { data, error } = await database.from('ticket_panels').select('id,guild_id,channel_id,message_id').not('message_id', 'is', null).order('id', { ascending: true }).limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
 async function reopenTicket(ticketId) {
   const { data, error } = await database.from('tickets').update({ status: 'open', closed_by: null, close_reason: null, closed_at: null }).eq('id', ticketId).select('*').single();
   if (error) throw error;
@@ -332,4 +339,5 @@ module.exports = {
   touchActivity,
   listOpenTicketsByOpener,
   listOpenTicketsForGuild,
+  listPanelsWithMessage,
 };

@@ -22,6 +22,9 @@ const { EMOJI } = require('./emojis');
 const config = require('../config');
 const logger = require('./logger');
 const { t, tn, guildLanguage, languageOf, defaultText } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
+const { ack } = require('./interactionAck');
+const { isGone } = require('./errorTriage');
 
 const STAFF_OVERWRITE_PERMS = [
   PermissionFlagsBits.ViewChannel,
@@ -394,7 +397,7 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     // which looks noisy); the file goes when the server chose it or when there is no link.
     const dmPayload = { components: rows, flags: MessageFlags.IsComponentsV2, ...(delivery.fileBuffer ? { files: [new AttachmentBuilder(delivery.fileBuffer, { name: delivery.fileName })] } : {}) };
 
-    await opener.send(dmPayload).catch(() => logger.warn(`Ticket #${ticket.ticket_number}: could not DM transcript to opener.`));
+    await sendDm(opener, dmPayload, { guild, kind: 'ticket' }).catch(() => logger.warn(`Ticket #${ticket.ticket_number}: could not DM transcript to opener.`));
   }
 
   const closeCard = buildTicketClosedNotice({ ticketNumber: ticket.ticket_number, closedByLine, reason: finalReason, lang });
@@ -450,25 +453,39 @@ async function reopenTicket({ guild, client, channel, ticket, actor }) {
   return reopened;
 }
 
+/**
+ * Deletes the channel of a ticket. The order keeps it safe: an open ticket gets its transcript FIRST (if that fails the ticket is not touched and
+ * the error says so), then it is closed in the database, then the channel goes, then the channel is forgotten. A channel that is already gone is
+ * the same as deleted; a second run (a second press, a retry) finds the work done and does only what is left.
+ */
 async function deleteTicketChannel({ guild, client, channel, ticket, actor }) {
   const lang = await guildLanguage(guild.id);
+  const current = (await db.getTicketById(ticket.id).catch(() => null)) ?? ticket;
+
+  if (current.status === 'open') {
+    const opener = await client.users.fetch(ticket.opener_id).catch(() => null);
+    try {
+      await generateAndStoreTranscript({ guild, channel, ticket: { ...current, status: 'closed' }, opener, lang, closer: actor });
+    } catch (error) {
+      if (isGone(error)) throw error; // the channel is gone already: the caller finishes the bookkeeping
+      logger.warn(`Ticket #${ticket.ticket_number}: no transcript before deleting, so the ticket was not deleted: ${error?.message ?? error}`);
+      error.friendlyKey = 'tickets.safe.transcriptFailed';
+      throw error;
+    }
+    await db.closeOpenTicket(ticket.id, { closedBy: actor.id, reason: t(lang, 'tickets.channelGone.deletedReason') });
+  }
+
+  try {
+    await channel.delete(t(lang, 'tickets.audit.deleted', { number: ticket.ticket_number, user: actor.tag ?? actor.username }));
+  } catch (error) {
+    if (!isGone(error)) throw error;
+  }
+  await db.setTicketChannel(ticket.id, null);
   await sendLog(client, guild.id, 'tickets', {
     description: t(lang, 'tickets.log.deleted', { emoji: EMOJI.TICKET_DELETE, number: ticket.ticket_number, user: actor.id }),
     color: 0xfe6465,
     timestamp: new Date().toISOString(),
   }).catch(() => {});
-
-  // Deleting an open ticket closes it as well: before, it stayed open with no channel and kept the member's open ticket slot.
-  // Its messages are saved first, so the transcript is not lost with the channel.
-  if (ticket.status === 'open') {
-    const closed = await db.closeOpenTicket(ticket.id, { closedBy: actor.id, reason: t(lang, 'tickets.channelGone.deletedReason') }).catch((err) => { logger.warn(`Ticket #${ticket.ticket_number}: could not close before deleting: ${err.message}`); return null; });
-    if (closed) {
-      const opener = await client.users.fetch(ticket.opener_id).catch(() => null);
-      await generateAndStoreTranscript({ guild, channel, ticket: closed, opener, lang, closer: actor }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: no transcript before deleting: ${err.message}`));
-    }
-  }
-  await db.setTicketChannel(ticket.id, null);
-  await channel.delete(t(lang, 'tickets.audit.deleted', { number: ticket.ticket_number, user: actor.tag ?? actor.username }));
 }
 
 async function addMember({ guild, client, channel, ticket, actor, targetUser }) {
@@ -506,6 +523,11 @@ async function renameTicket({ guild, client, channel, ticket, actor, newName }) 
 /** Shared "open a ticket from an interaction" flow — used by both the /ticket open slash command and panel buttons/select menus. */
 async function openTicketInteractive(interaction, category, lang) {
   lang ??= await languageOf(interaction);
+  if (category.form_id && (interaction.deferred || interaction.replied)) {
+    // The form is a window, and a window cannot open once the answer was announced: asked to press again (the form opens fast the next time).
+    await interaction.editReply({ content: t(lang, 'tickets.safe.tryAgain') });
+    return;
+  }
   if (category.form_id && (interaction.isButton?.() || interaction.isStringSelectMenu?.())) {
     const form = await formsDb.getFormById(category.form_id);
     if (!form) {
@@ -525,7 +547,8 @@ async function openTicketInteractive(interaction, category, lang) {
     await interaction.reply({ content: t(lang, 'tickets.open.formRequired'), flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  // Already acknowledged (the safety net does it first when the answer is slow): fine.
+  if (!(await ack(interaction))) return;
   try {
     const { channel } = await openTicket({ guild: interaction.guild, client: interaction.client, category, opener: interaction.user });
     await interaction.editReply({ content: t(lang, 'tickets.open.done', { emoji: EMOJI.APPROVE, channel: `${channel}` }) });

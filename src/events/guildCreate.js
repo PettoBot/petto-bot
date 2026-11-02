@@ -18,6 +18,7 @@ const {
   buildOwnerGuide,
   sendSetupMessage,
 } = require('../utils/onboarding');
+const { sendDm } = require('../utils/dmOrigin');
 
 // The configured operations channel receives the join event; the shared lifecycle
 // helper also mirrors it to the general operations channel.
@@ -135,7 +136,7 @@ async function welcomeGuild(guild, guildConfig, languageChoice = null) {
       if (!sent) setupTarget = null;
     }
     if (!setupTarget) {
-      const byDm = inviter ? await inviter.send(setupPayload({ dm: true, guildName: guild.name })).then(() => true).catch(() => false) : false;
+      const byDm = inviter ? await sendDm(inviter, setupPayload({ dm: true, guildName: guild.name }), { guild, kind: 'setup' }).then(() => true).catch(() => false) : false;
       if (!byDm) {
         const privateChannel = findPrivateChannel(guild);
         const sent = privateChannel ? await sendSetupMessage(privateChannel, setupPayload({ fallback: true })).catch(() => null) : null;
@@ -144,14 +145,14 @@ async function welcomeGuild(guild, guildConfig, languageChoice = null) {
     }
 
     const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
-    if (ownerUser) await ownerUser.send({ content }).catch(() => {});
+    if (ownerUser) await sendDm(ownerUser, { content }, { plain: true }).catch(() => {}); // the team's own notice of a new server: not a message to a member
 
     if (owner?.user && setupTarget) {
-      await owner.user.send(buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildPrefixes.primaryPrefix(guildConfig), languageChoice })).catch(() => {});
+      await sendDm(owner.user, buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildPrefixes.primaryPrefix(guildConfig), languageChoice }), { guild, kind: 'setup' }).catch(() => {});
     }
 
     if (inviter && inviter.id !== owner?.id) {
-      await inviter.send(buildThanksMessage(guild.name, setupMention, guildPrefixes.primaryPrefix(guildConfig))).catch(() => {});
+      await sendDm(inviter, buildThanksMessage(guild.name, setupMention, guildPrefixes.primaryPrefix(guildConfig)), { guild, kind: 'setup' }).catch(() => {});
     }
   } catch (err) {
     logger.error(`guildCreate join notification failed for guild ${guild.id}:`, err);

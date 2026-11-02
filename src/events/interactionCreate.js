@@ -67,22 +67,42 @@ const { isPettoOperator } = require('../utils/autoModControl');
 const { DISPLAY_BUTTON_PREFIX } = require('../utils/embedV2');
 const { PREFIX: EMBED_BUTTON_PREFIX } = require('../utils/embedActions');
 const { handleButton: handleEmbedButton } = require('../interactions/embedButtons');
+const { PREFIX: DM_ORIGIN_PREFIX, MODAL_PREFIX: DM_REPORT_MODAL_PREFIX, TEAM_PREFIX: DM_TEAM_PREFIX } = require('../utils/dmOrigin');
+const { handleButton: handleDmOriginButton, handleModal: handleDmReportModal } = require('../interactions/dmOrigin');
+const { handleTeamButton: handleDmTeamButton } = require('../interactions/dmTeam');
 const { PREFIX: FEED_SENSE_PREFIX, handleButton: handleFeedSense } = require('../interactions/feedSense');
 const { t, formatDecimal, languageOf } = require('../i18n');
+
+const { reportInteractionError } = require('../utils/interactionErrors');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
+    // The three small buttons under every direct message of Petto (about it, delete it, report it) and the form of the report: they live in the
+    // direct messages, where the interaction has no server. The card of the report in the team channel has its own button.
+    if (interaction.isButton() && Object.values(DM_ORIGIN_PREFIX).some((prefix) => interaction.customId.startsWith(`${prefix}:`))) {
+      try { await handleDmOriginButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a button under a direct message:', err); }
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${DM_REPORT_MODAL_PREFIX}:`)) {
+      try { await handleDmReportModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the form that reports a direct message:', err); }
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith(`${DM_TEAM_PREFIX}:`)) {
+      try { await handleDmTeamButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the button of a direct message report:', err); }
+      return;
+    }
+
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
-      try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      try { await handleCodeCommandComponent(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a custom command button or menu:', err); }
       return;
     }
 
     // The buttons of `!stats privacy` and the confirmation of `!statsconfig delete`.
     if (interaction.isButton() && interaction.customId.startsWith(`${STATS_PREFIX}:`)) {
-      try { await handleStatsButton(interaction); } catch (err) { logger.error('Error handling a statistics button:', err); }
+      try { await handleStatsButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a statistics button:', err); }
       return;
     }
 
@@ -114,7 +134,7 @@ module.exports = {
 
     // Forum support: the button of the panel, its form, the menu of the tags and the two buttons under it.
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && isForumId(interaction.customId)) {
-      try { await handleForumInteraction(interaction); } catch (err) { logger.error('Error handling a forum support component:', err); }
+      try { await handleForumInteraction(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a forum support component:', err); }
       return;
     }
 
@@ -141,11 +161,11 @@ module.exports = {
       return;
     }
     if (interaction.isButton() && interaction.customId.startsWith(`${VERIFY_LETTERS_PREFIX}:`)) {
-      try { await handleVerifyLettersButton(interaction); } catch (err) { logger.error('Error handling a verification button:', err); }
+      try { await handleVerifyLettersButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a verification button:', err); }
       return;
     }
     if (interaction.isModalSubmit() && interaction.customId.startsWith(`${VERIFY_LETTERS_PREFIX}:`)) {
-      try { await handleVerifyLettersModal(interaction); } catch (err) { logger.error('Error handling the verification form:', err); }
+      try { await handleVerifyLettersModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the verification form:', err); }
       return;
     }
 
@@ -156,128 +176,128 @@ module.exports = {
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(REQUEST_PREFIX)) {
-      try { await handleRequestButton(interaction); } catch (err) { logger.error('Error handling a request button:', err); }
+      try { await handleRequestButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a request button:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(FEED_SENSE_PREFIX)) {
-      try { await handleFeedSense(interaction); } catch (err) { logger.error('Error handling the meaning of a word of a feed:', err); }
+      try { await handleFeedSense(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the meaning of a word of a feed:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(EMBED_BUTTON_PREFIX)) {
-      try { await handleEmbedButton(interaction); } catch (err) { logger.error('Error handling a button of an embed code:', err); }
+      try { await handleEmbedButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a button of an embed code:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(RESPONDER_BUTTON_PREFIX)) {
-      try { await handleResponderButton(interaction); } catch (err) { logger.error('Error handling a button responder:', err); }
+      try { await handleResponderButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a button responder:', err); }
       return;
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith(RESPONDER_SELECT_PREFIX)) {
-      try { await handleResponderSelect(interaction); } catch (err) { logger.error('Error handling a panel menu:', err); }
+      try { await handleResponderSelect(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a panel menu:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId === 'petto_setup_modal') {
-      try { await handleSetupModal(interaction); } catch (err) { logger.error('Error handling Petto setup modal:', err); }
+      try { await handleSetupModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling Petto setup modal:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(SETUP_BUTTON_PREFIX)) {
-      try { await handleSetupButton(interaction); } catch (err) { logger.error('Error handling Petto setup button:', err); }
+      try { await handleSetupButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling Petto setup button:', err); }
       return;
     }
 
     // The language buttons of the setup message of a new server.
     if (interaction.isButton() && interaction.customId.startsWith(LANGUAGE_CHOICE_PREFIX)) {
-      try { await handleLanguageChoice(interaction); } catch (err) { logger.error('Error handling the language button of the setup message:', err); }
+      try { await handleLanguageChoice(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the language button of the setup message:', err); }
       return;
     }
 
     if (interaction.isButton() && (interaction.customId.startsWith('vm:') || interaction.customId.startsWith('vc:'))) {
-      try { await handleVoiceMasterButton(interaction); } catch (err) { logger.error('Error handling VoiceMaster button:', err); }
+      try { await handleVoiceMasterButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling VoiceMaster button:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId === HONEYPOT_COUNT_BUTTON_ID) {
-      try { await handleHoneypotButton(interaction); } catch (err) { logger.error('Error handling honeypot count button:', err); }
+      try { await handleHoneypotButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling honeypot count button:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(ROLEPLAY_BUTTON_PREFIX)) {
-      try { await handleRoleplayButton(interaction); } catch (err) { logger.error('Error handling roleplay response button:', err); }
+      try { await handleRoleplayButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling roleplay response button:', err); }
       return;
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('backup_menu:')) {
-      try { await handleBackupSelect(interaction); } catch (err) { logger.error('Error handling backup menu:', err); }
+      try { await handleBackupSelect(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup menu:', err); }
       return;
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === QUEST_SELECT_ID) {
-      try { await handleQuestSelect(interaction); } catch (err) { logger.error('Error handling quest menu:', err); }
+      try { await handleQuestSelect(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling quest menu:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(`${QUEST_PAGE_ID}:`)) {
-      try { await handleQuestButton(interaction); } catch (err) { logger.error('Error handling quest page button:', err); }
+      try { await handleQuestButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling quest page button:', err); }
       return;
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === VERSION_SELECT_ID) {
-      try { await handleVersionSelect(interaction); } catch (err) { logger.error('Error handling version select:', err); }
+      try { await handleVersionSelect(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling version select:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(`${JUMBO_PREFIX}:`)) {
-      try { await handleJumboButton(interaction); } catch (err) { logger.error('Error handling the jumbo steal button:', err); }
+      try { await handleJumboButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the jumbo steal button:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('version:')) {
-      try { await handleVersionButton(interaction); } catch (err) { logger.error('Error handling version button:', err); }
+      try { await handleVersionButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling version button:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_schedule_modal:')) {
-      try { await handleScheduleModal(interaction); } catch (err) { logger.error('Error handling backup schedule modal:', err); }
+      try { await handleScheduleModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup schedule modal:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('backup_delete:')) {
-      try { await handleDeleteButton(interaction); } catch (err) { logger.error('Error handling backup delete button:', err); }
+      try { await handleDeleteButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup delete button:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_delete_modal:')) {
-      try { await handleDeleteModal(interaction); } catch (err) { logger.error('Error handling backup delete modal:', err); }
+      try { await handleDeleteModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup delete modal:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('backup_restore:')) {
-      try { await handleRestoreButton(interaction); } catch (err) { logger.error('Error handling backup restore button:', err); }
+      try { await handleRestoreButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup restore button:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_restore_code:')) {
-      try { await handleRestoreCodeModal(interaction); } catch (err) { logger.error('Error handling backup restore check:', err); }
+      try { await handleRestoreCodeModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup restore check:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_restore_modal:')) {
-      try { await handleRestoreModal(interaction); } catch (err) { logger.error('Error handling backup restore modal:', err); }
+      try { await handleRestoreModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling backup restore modal:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && (interaction.customId.startsWith('vm_modal_') || interaction.customId.startsWith('vcm:'))) {
-      try { await handleVoiceMasterModal(interaction); } catch (err) { logger.error('Error handling VoiceMaster modal:', err); }
+      try { await handleVoiceMasterModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling VoiceMaster modal:', err); }
       return;
     }
 
     if (interaction.isUserSelectMenu() && (interaction.customId.startsWith('vm_select:') || interaction.customId.startsWith('vc:do_'))) {
-      try { await handleVoiceMasterSelect(interaction); } catch (err) { logger.error('Error handling VoiceMaster select:', err); }
+      try { await handleVoiceMasterSelect(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling VoiceMaster select:', err); }
       return;
     }
 
@@ -285,7 +305,7 @@ module.exports = {
       try {
         await handleEmbedPanelButton(interaction);
       } catch (err) {
-        logger.error('Error handling embed panel button:', err);
+        reportInteractionError(interaction, 'Error handling embed panel button:', err);
       }
       return;
     }
@@ -294,33 +314,33 @@ module.exports = {
       try {
         await handleEmbedPanelModal(interaction);
       } catch (err) {
-        logger.error('Error handling embed panel modal:', err);
+        reportInteractionError(interaction, 'Error handling embed panel modal:', err);
       }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('rpt:')) {
-      try { await handleReportActionButton(interaction); } catch (err) { logger.error('Error handling report action button:', err); }
+      try { await handleReportActionButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling report action button:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('rptr:')) {
-      try { await handleReportReasonModal(interaction); } catch (err) { logger.error('Error handling report reason modal:', err); }
+      try { await handleReportReasonModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling report reason modal:', err); }
       return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('rptl:')) {
-      try { await handleReportListButton(interaction); } catch (err) { logger.error('Error handling report list button:', err); }
+      try { await handleReportListButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling report list button:', err); }
       return;
     }
 
     if ((interaction.isButton() || interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) && interaction.customId.startsWith(REPORT_CONFIG_PREFIX)) {
-      try { await handleReportConfigComponent(interaction); } catch (err) { logger.error('Error handling report settings component:', err); }
+      try { await handleReportConfigComponent(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling report settings component:', err); }
       return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId === REPORT_LIMITS_MODAL_ID) {
-      try { await handleReportLimitsModal(interaction); } catch (err) { logger.error('Error handling report limits modal:', err); }
+      try { await handleReportLimitsModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling report limits modal:', err); }
       return;
     }
 
@@ -328,7 +348,7 @@ module.exports = {
       try {
         await handleReportModal(interaction);
       } catch (err) {
-        logger.error('Error handling report modal:', err);
+        reportInteractionError(interaction, 'Error handling report modal:', err);
       }
       return;
     }
@@ -337,7 +357,7 @@ module.exports = {
       try {
         await handleReportConfigModal(interaction);
       } catch (err) {
-        logger.error('Error handling report config modal:', err);
+        reportInteractionError(interaction, 'Error handling report config modal:', err);
       }
       return;
     }
@@ -347,7 +367,7 @@ module.exports = {
         if (interaction.isButton()) await handleTicketSetupButton(interaction);
         else await handleTicketSetupSelect(interaction);
       } catch (err) {
-        logger.error('Error handling ticket setup:', err);
+        reportInteractionError(interaction, 'Error handling ticket setup:', err);
       }
       return;
     }
@@ -356,7 +376,7 @@ module.exports = {
       try {
         await handleTicketSetupModal(interaction);
       } catch (err) {
-        logger.error('Error handling ticket setup modal:', err);
+        reportInteractionError(interaction, 'Error handling ticket setup modal:', err);
       }
       return;
     }
@@ -365,7 +385,7 @@ module.exports = {
       try {
         await handleTicketFormPanelButton(interaction);
       } catch (err) {
-        logger.error('Error handling ticket form builder button:', err);
+        reportInteractionError(interaction, 'Error handling ticket form builder button:', err);
       }
       return;
     }
@@ -374,7 +394,7 @@ module.exports = {
       try {
         await handleTicketFormPanelModal(interaction);
       } catch (err) {
-        logger.error('Error handling ticket form builder modal:', err);
+        reportInteractionError(interaction, 'Error handling ticket form builder modal:', err);
       }
       return;
     }
@@ -383,7 +403,7 @@ module.exports = {
       try {
         await handleTicketPanelButton(interaction);
       } catch (err) {
-        logger.error('Error handling ticket panel button:', err);
+        reportInteractionError(interaction, 'Error handling ticket panel button:', err);
       }
       return;
     }
@@ -392,7 +412,7 @@ module.exports = {
       try {
         await handleTicketPanelSelect(interaction);
       } catch (err) {
-        logger.error('Error handling ticket panel select:', err);
+        reportInteractionError(interaction, 'Error handling ticket panel select:', err);
       }
       return;
     }
@@ -401,7 +421,7 @@ module.exports = {
       try {
         await handleTicketFormModal(interaction);
       } catch (err) {
-        logger.error('Error handling ticket form modal:', err);
+        reportInteractionError(interaction, 'Error handling ticket form modal:', err);
       }
       return;
     }
@@ -412,7 +432,7 @@ module.exports = {
       try {
         await handleTicketRatingButton(interaction);
       } catch (err) {
-        logger.error('Error handling ticket rating button:', err);
+        reportInteractionError(interaction, 'Error handling ticket rating button:', err);
       }
       return;
     }
@@ -421,7 +441,7 @@ module.exports = {
       try {
         await handleTicketRatingModal(interaction);
       } catch (err) {
-        logger.error('Error handling ticket rating modal:', err);
+        reportInteractionError(interaction, 'Error handling ticket rating modal:', err);
       }
       return;
     }
@@ -430,7 +450,7 @@ module.exports = {
       try {
         await handleTicketControlButton(interaction);
       } catch (err) {
-        logger.error('Error handling ticket control button:', err);
+        reportInteractionError(interaction, 'Error handling ticket control button:', err);
       }
       return;
     }
@@ -439,7 +459,7 @@ module.exports = {
       try {
         await handleTicketCloseModal(interaction);
       } catch (err) {
-        logger.error('Error handling ticket close modal:', err);
+        reportInteractionError(interaction, 'Error handling ticket close modal:', err);
       }
       return;
     }
@@ -448,7 +468,7 @@ module.exports = {
       try {
         await handleTicketUserSelect(interaction);
       } catch (err) {
-        logger.error('Error handling ticket user select:', err);
+        reportInteractionError(interaction, 'Error handling ticket user select:', err);
       }
       return;
     }
@@ -457,7 +477,7 @@ module.exports = {
       try {
         await handleGiveawayButton(interaction);
       } catch (err) {
-        logger.error('Error handling giveaway button:', err);
+        reportInteractionError(interaction, 'Error handling giveaway button:', err);
       }
       return;
     }
@@ -466,7 +486,7 @@ module.exports = {
       try {
         await handleReactionRoleButton(interaction);
       } catch (err) {
-        logger.error('Error handling reaction role button:', err);
+        reportInteractionError(interaction, 'Error handling reaction role button:', err);
         if (!interaction.replied && !interaction.deferred) {
           await interaction.reply({ content: t(await languageOf(interaction), 'core.reactionRoleError'), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
         }
@@ -484,7 +504,7 @@ module.exports = {
       try {
         await handlePager(interaction);
       } catch (err) {
-        logger.error('Error handling list page:', err);
+        reportInteractionError(interaction, 'Error handling list page:', err);
         if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: t(await languageOf(interaction), 'core.pagerError'), flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       return;
@@ -494,7 +514,7 @@ module.exports = {
       try {
         await handleTicketAiButton(interaction);
       } catch (err) {
-        logger.error('Error handling the ticket AI button:', err);
+        reportInteractionError(interaction, 'Error handling the ticket AI button:', err);
       }
       return;
     }
@@ -503,7 +523,7 @@ module.exports = {
       try {
         await handlePollButton(interaction);
       } catch (err) {
-        logger.error('Error handling poll button:', err);
+        reportInteractionError(interaction, 'Error handling poll button:', err);
       }
       return;
     }
@@ -512,7 +532,7 @@ module.exports = {
       try {
         await handlePollPanelButton(interaction);
       } catch (err) {
-        logger.error('Error handling poll panel button:', err);
+        reportInteractionError(interaction, 'Error handling poll panel button:', err);
       }
       return;
     }
@@ -521,7 +541,7 @@ module.exports = {
       try {
         await handlePollPanelModal(interaction);
       } catch (err) {
-        logger.error('Error handling poll panel modal:', err);
+        reportInteractionError(interaction, 'Error handling poll panel modal:', err);
       }
       return;
     }
@@ -628,7 +648,7 @@ module.exports = {
         return;
       }
       if (isPermissionError(err)) logger.warn(`Missing permission running /${interaction.commandName}: ${err.message} (code ${err.code})`);
-      else logger.error(`Error executing /${interaction.commandName}:`, err);
+      else reportInteractionError(interaction, `Error executing /${interaction.commandName}:`, err);
 
       const errorReply = { content: isPermissionError(err) ? permissionHelp(err, lang) : isPayloadError(err) ? t(lang, 'core.replyTooLong') : t(lang, 'core.error'), flags: MessageFlags.Ephemeral };
       // If Discord refuses the error card itself for what it is made of (a deferred answer in Components V2 does not take `content`), a short text is sent once.

@@ -8,6 +8,7 @@ const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const logger = require('../../utils/logger');
 const { failureDetail } = require('../../utils/moderationCommand');
 const { t, languageOf } = require('../../i18n');
+const { sendDm } = require('../../utils/dmOrigin');
 
 module.exports = {
   aliases: ['sb', 'sofban'],
@@ -37,8 +38,7 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
     if (targetMember) {
-      await targetMember
-        .send(await sanctionDM({ type: 'softban', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
+      await sendDm(targetMember, await sanctionDM({ type: 'softban', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
         .catch(() => logger.warn(`Could not DM softban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
     }
 

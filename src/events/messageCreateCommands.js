@@ -156,9 +156,11 @@ async function findPrefixWay(message) {
   return way ? { ...way, mention: false } : null;
 }
 
+/** Whether the member has the permission a command declares (nothing declared: everybody). A member without readable permissions is a member who may not. */
 function checkDefaultPermission(json, member) {
   if (json.default_member_permissions == null) return true;
-  return member.permissions.has(BigInt(json.default_member_permissions));
+  const permissions = member?.permissions;
+  return typeof permissions?.has === 'function' && permissions.has(BigInt(json.default_member_permissions)) === true;
 }
 
 function effectiveCommandData(command, argText) {

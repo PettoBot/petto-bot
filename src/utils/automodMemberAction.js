@@ -3,6 +3,7 @@ const { createCase } = require('../db/modActions');
 const { logSanction } = require('./caseLog');
 const { sanctionDM } = require('./sanctionTemplates');
 const logger = require('./logger');
+const { sendDm } = require('./dmOrigin');
 
 /**
  * Applies an automatic kick and records it exactly like a manual moderation
@@ -12,8 +13,7 @@ async function applyAutomatedKick(member, reason) {
   const { guild, user } = member;
   const client = member.client;
 
-  await user
-    .send(await sanctionDM({ type: 'kick', guild, client, reason, user, member, source: 'automod' }))
+  await sendDm(user, await sanctionDM({ type: 'kick', guild, client, reason, user, member, source: 'automod' }))
     .catch(() => {});
 
   try {

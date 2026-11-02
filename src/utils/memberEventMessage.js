@@ -7,6 +7,7 @@ const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
 const { sendAs } = require('./senderIdentity');
+const { sendDm } = require('./dmOrigin');
 const { plainCard } = require('./plainCard');
 const { t, currentLanguage } = require('../i18n');
 
@@ -35,8 +36,10 @@ function localizeDefaultText(kind, text, lang = currentLanguage()) {
  * message both required" is how a trigger gets turned off without a separate
  * enabled flag.
  */
-async function sendMemberEvent({ guild, channel, kind, messageText: storedText, embedTemplateName, ctx, asCard = false, lang = currentLanguage() }) {
+async function sendMemberEvent({ guild, channel, kind, messageText: storedText, embedTemplateName, ctx, asCard = false, lang = currentLanguage(), dmOrigin = null }) {
   if (!storedText && !embedTemplateName) return;
+  // A direct message (the channel is the chat with the member) says who it is from and has the buttons; no server look applies to it.
+  const post = (payload) => (dmOrigin ? sendDm(channel, payload, dmOrigin) : deliver(channel, kind, payload));
   const messageText = localizeDefaultText(kind, storedText, lang);
 
   // {reactreply:emoji} can appear in the message text regardless of whether it ends up sent
@@ -48,7 +51,7 @@ async function sendMemberEvent({ guild, channel, kind, messageText: storedText, 
       const doc = await getTemplate(guild.id, embedTemplateName);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        const sent = await deliver(channel, kind, { content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
+        const sent = await post({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
         if (emojis.length) await applyReactReplies(sent, emojis);
         return;
       }
@@ -59,7 +62,7 @@ async function sendMemberEvent({ guild, channel, kind, messageText: storedText, 
     if (cleanedText && looksLikeScript(cleanedText)) {
       const { payload, error } = await payloadFromCode(cleanedText, { ...ctx, lang });
       if (payload) {
-        const sent = await deliver(channel, kind, { content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
+        const sent = await post({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
         if (emojis.length) await applyReactReplies(sent, emojis);
         return;
       }
@@ -71,7 +74,7 @@ async function sendMemberEvent({ guild, channel, kind, messageText: storedText, 
       const plain = await plainMessage(cleanedText, ctx);
       // The usual look of a message the server did not write itself: a card (`asCard` can be its color), with the same text and the same files.
       const body = asCard ? { ...plainCard(plain.content, Number.isInteger(asCard) ? asCard : null), ...(plain.files ? { files: plain.files } : {}) } : plain;
-      const sent = await deliver(channel, kind, { ...body, allowedMentions: ANNOUNCEMENT_MENTIONS });
+      const sent = await post({ ...body, allowedMentions: ANNOUNCEMENT_MENTIONS });
       if (emojis.length) await applyReactReplies(sent, emojis);
     } else if (emojis.length) {
       // Reactions were the only thing configured (no other text) — nothing to react to without

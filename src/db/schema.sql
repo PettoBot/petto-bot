@@ -4724,3 +4724,32 @@ create index if not exists idx_forum_posts_quiet on forum_posts(last_activity_at
 create index if not exists idx_forum_posts_solved on forum_posts(solved_at) where status = 'solved';
 create index if not exists idx_forum_posts_tag on forum_posts(tag_deadline_at) where tag_deadline_at is not null;
 alter table forum_posts enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Reports of direct messages: a person reports a direct message that Petto sent them (the report button under it). It goes to the Petto team
+-- ONLY, never to the moderators of the server the message came from. One report per message (unique message_id). The team's card is the message
+-- `delivered_message_id` of the team channel (null when no channel is set: the report waits here until the team reads it).
+-- ---------------------------------------------------------------------------
+create table if not exists dm_reports (
+  id                   bigint generated always as identity primary key,
+  reporter_id          text not null,
+  reporter_tag         text,
+  message_id           text not null unique,
+  channel_id           text not null,
+  guild_id             text,
+  guild_name           text,
+  kind                 text not null default 'notice',
+  category             text not null,
+  details              text not null,
+  message_text         text,
+  deleted_dm           boolean not null default false,
+  delivered_message_id text,
+  status               text not null default 'open' check (status in ('open', 'handled')),
+  handled_by           text,
+  handled_at           timestamptz,
+  created_at           timestamptz not null default now()
+);
+create index if not exists idx_dm_reports_reporter on dm_reports(reporter_id, created_at desc);
+create index if not exists idx_dm_reports_open on dm_reports(created_at) where status = 'open';
+alter table dm_reports enable row level security;
+-- No policy on purpose: only the bot's own connection reads or writes it.

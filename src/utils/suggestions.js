@@ -9,6 +9,7 @@ const { templatePayload } = require('./templatedMessage');
 const logger = require('./logger');
 const { fetchImageBuffer } = require('./safeImage');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const MAX_CONTENT = 1800;
@@ -278,7 +279,7 @@ async function answer({ guild, member, id, status, reason }) {
   if (config.dm_author && status !== 'pending') {
     const author = await guild.client.users.fetch(updated.author_id).catch(() => null);
     const link = updated.message_id && updated.channel_id ? `https://discord.com/channels/${guild.id}/${updated.channel_id}/${updated.message_id}` : '';
-    author?.send({ content: `${t(lang, 'suggestions.answer.dm', { server: guild.name, status: label })}${said}${link ? `\n${link}` : ''}`, allowedMentions: { parse: [] } }).catch(() => {});
+    sendDm(author, { content: `${t(lang, 'suggestions.answer.dm', { server: guild.name, status: label })}${said}${link ? `\n${link}` : ''}`, allowedMentions: { parse: [] } }, { guild, kind: 'suggestion' }).catch(() => {});
   }
   return { row: updated };
 }

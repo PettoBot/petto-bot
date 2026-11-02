@@ -9,6 +9,7 @@ const { buildAdminSetupMessage, buildOwnerGuide, commandMention, commandSubcomma
 const { permissionName } = require('../utils/permissionLabels');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
 const logger = require('../utils/logger');
+const { decorate } = require('../utils/dmOrigin');
 
 const refuse = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 
@@ -59,7 +60,9 @@ async function syncOtherCopies({ guild, language, prefix, clicked }) {
       if (message.author?.id !== client.user.id || message.id === clicked) continue;
       const kind = languageKindOf(message, guild.id);
       if (!kind) continue;
-      const payload = await rebuildMessage({ kind, guild, language, prefix });
+      const rebuilt = await rebuildMessage({ kind, guild, language, prefix });
+      // A direct message keeps its line (who it is from) and its three buttons when it is drawn again.
+      const payload = place.isDMBased?.() ? decorate(rebuilt, { guild, kind: 'setup' }) : rebuilt;
       if (await message.edit(payload).then(() => true).catch(() => false)) updated += 1;
     }
   }
@@ -87,7 +90,8 @@ async function handleButton(interaction) {
   try {
     await setGuildLanguage(guild.id, parsed.language); // saved as chosen by a person: Petto never offers to change it again
     const { prefix } = await ensureGuild(guild.id);
-    await interaction.editReply(await rebuildMessage({ kind: parsed.kind, guild, language: parsed.language, prefix: prefix || '!' }));
+    const rebuilt = await rebuildMessage({ kind: parsed.kind, guild, language: parsed.language, prefix: prefix || '!' });
+    await interaction.editReply(interaction.guildId ? rebuilt : decorate(rebuilt, { guild, kind: 'setup' }));
     syncOtherCopies({ guild, language: parsed.language, prefix: prefix || '!', clicked: interaction.message?.id }).catch((err) => logger.warn(`Could not update the other copies of the setup message of ${guild.id}: ${err.message}`));
     // The panels Petto already posted keep the words they had: they are redrawn, like `!language` does.
     refreshGuildPanels(guild, parsed.language).catch((err) => logger.warn(`Could not redraw the panels of ${guild.id} after a language button: ${err.message}`));

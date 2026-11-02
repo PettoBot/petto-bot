@@ -52,6 +52,8 @@ const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
 const { createDiscordErrorLogSink } = require('./src/utils/discordErrorLog');
+const { createPriorityErrorSink } = require('./src/utils/priorityErrorLog');
+const { createErrorRouter } = require('./src/utils/errorRouting');
 const { createGuildDiagnosticSink } = require('./src/utils/guildOpsAlerts');
 const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
@@ -104,11 +106,22 @@ require('./src/db/guilds').setGuildLookup((guildId) => client.guilds.cache.get(g
 attachRestRateLimitTelemetry(client);
 // A `!` right before a mention (`!@everyone`, `!<@&id>`, `!@Role`) makes it show without notifying: done once, where every send meets.
 require('./src/utils/silentMentionsHook').installSilentMentions(client);
+// Every direct message that Petto starts says who it is from and carries the three small buttons (about it, delete it, report it): see utils/dmOrigin.js.
+require('./src/utils/dmOrigin').installDmOrigin();
 require('./src/utils/redis').start();
 // The dashboard says on Redis when it changes a setting, so the caches forget it at once instead of when they expire.
 require('./src/utils/cacheInvalidation').startCacheInvalidation();
 require('./src/utils/sharedRestLimit').attachSharedRestLimit(client.rest, config.restRequestsPerSecond);
-logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
+// The general log (warnings, rate limits, Redis and the errors Petto expects) and the priority log (the errors to investigate, which ping the team).
+logger.setDiscordSink(createErrorRouter({
+  general: createDiscordErrorLogSink(client, config.errorLogChannelId),
+  priority: createPriorityErrorSink(client, {
+    channelId: config.opsChannels.priorityErrors,
+    fallbackChannelId: config.errorLogChannelId,
+    pingUserIds: config.priorityPing.userIds,
+    pingRoleId: config.priorityPing.roleId,
+  }),
+}));
 logger.addDiscordSink(createGuildDiagnosticSink(client));
 
 process.on('unhandledRejection', (err) => (require('./src/utils/permissionErrors').isPermissionError(err)

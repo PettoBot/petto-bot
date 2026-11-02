@@ -15,6 +15,7 @@ const { addPeriodXp } = require('../db/levelPeriods');
 const { eventMultiplier, dailyBonus, utcDay } = require('./levelRules');
 const logger = require('./logger');
 const { t, currentLanguage } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 // The level-up messages the database holds when a server wrote none, in English: they are shown in the server's language.
 // The old text and voice defaults carried {EMOJI}; the text one drops it (the old star is not injected into the default).
@@ -255,7 +256,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
 
   try {
     if (config.notify_mode === 'dm') {
-      await afterSending(await member.send(payload));
+      await afterSending(await sendDm(member, payload, { guild, kind: 'level' }));
       return;
     }
     let target = channel;

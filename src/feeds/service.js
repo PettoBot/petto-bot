@@ -162,7 +162,8 @@ async function sampleItem(feed, lang) {
   for (const now of STALE_OK.has(feed.platform) ? [Date.now(), 0] : [Date.now()]) {
     try {
       const result = (await provider.poll([account], new Map(), { lang, withLive: false, now })).get(account.id);
-      const item = (result?.items ?? []).find((candidate) => wanted.includes(candidate.type)) ?? result?.items?.[0];
+      const items = (result?.items ?? []).filter((candidate) => !candidate.skip); // what the engine would not post (a pin with no picture) is no example
+      const item = items.find((candidate) => wanted.includes(candidate.type)) ?? items[0];
       if (item) return item;
     } catch { /* the next try, or the example below */ }
   }

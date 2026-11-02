@@ -1,6 +1,7 @@
 // i18n-ignore-file: error log for the Petto team channel.
 const { EmbedBuilder } = require('discord.js');
 const { EMOJI } = require('./emojis');
+const { redactSecrets } = require('./errorTriage');
 
 const SNOWFLAKE_RE = /\b\d{15,25}\b/;
 const MAX_SUMMARY_LENGTH = 1_500;
@@ -12,7 +13,7 @@ function truncate(value, length) {
 }
 
 function redact(value) {
-  return String(value ?? '')
+  return redactSecrets(value)
     .replace(/((?:authorization|bearer|token|secret|password|api[_-]?key|access[_-]?token)\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
     .replace(/(https?:\/\/[^\s?]+)\?[^\s]+/gi, '$1?[REDACTED]')
     .replace(/\b[\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}\b/g, '[REDACTED_TOKEN]');
@@ -104,6 +105,8 @@ function createErrorLogEmbed(level, args, stamp, context) {
     )
     .setFooter({ text: `Petto diagnostics · ${process.version}` })
     .setTimestamp(new Date(stamp));
+  // An error that Petto expects is a warning here, and what it means is said so nobody has to look it up (see errorTriage.js).
+  if (context?.explanation) embed.addFields({ name: 'What it means', value: truncate(redact(context.explanation), 600), inline: false });
 
   return embed;
 }
@@ -174,7 +177,8 @@ function createDiscordErrorLogSink(client, channelId, { gapMs = SEND_GAP_MS, now
   }
 
   return async (level, args, stamp, context) => {
-    if (level === 'info' || isRoutineNoise(level, args)) return;
+    // An error that the triage found expected (and turned into a warning) is always told: only the rate limit notes stay in the console.
+    if (level === 'info' || (!context?.triaged && isRoutineNoise(level, args))) return;
     const key = duplicateKey(level, args);
     const at = now();
     const previous = seen.get(key);

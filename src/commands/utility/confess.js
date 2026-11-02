@@ -4,6 +4,7 @@ const { submit, MAX_CONTENT } = require('../../utils/confessions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
+const { sendDm } = require('../../utils/dmOrigin');
 
 const V2 = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? V2 | MessageFlags.Ephemeral : V2, allowedMentions: { parse: [] } });
@@ -32,7 +33,7 @@ module.exports = {
     const text = result.error ? `${EMOJI.DENY}  ${result.error}` : `${EMOJI.APPROVE}  ${done}`;
     if (interaction.rawMessage) {
       // A reply in the channel would show who confessed, so the answer goes to their DMs.
-      await interaction.user.send({ components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 }).catch(() => {});
+      await sendDm(interaction.user, { components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 }, { guild: interaction.guild, kind: 'confession' }).catch(() => {});
       return undefined;
     }
     const payload = { components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 | MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
