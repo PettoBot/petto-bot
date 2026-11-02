@@ -39,8 +39,17 @@ async function addLog({ guildId, userId, channelId, messageId, files }) {
     .insert({ guild_id: String(guildId), user_id: String(userId), channel_id: String(channelId), message_id: String(messageId), files })
     .select('*')
     .single();
+  // The same message counted twice (an event delivered again) is not an error: it was counted already.
+  if (error?.code === '23505') return null;
   if (error) throw error;
   return data;
+}
+
+/** How many messages with files this member has posted in the upload channels. */
+async function countFor(guildId, userId) {
+  const { count, error } = await database.from('upload_log').select('id', { count: 'exact', head: true }).eq('guild_id', String(guildId)).eq('user_id', String(userId));
+  if (error) throw error;
+  return count ?? 0;
 }
 
 async function listLog(guildId, { since = null, userId = null, limit = 5000 } = {}) {
@@ -52,4 +61,4 @@ async function listLog(guildId, { since = null, userId = null, limit = 5000 } = 
   return data ?? [];
 }
 
-module.exports = { DEFAULTS, getConfig, getConfigCached, upsertConfig, hasUploaded, addLog, listLog };
+module.exports = { DEFAULTS, getConfig, getConfigCached, upsertConfig, hasUploaded, addLog, countFor, listLog };

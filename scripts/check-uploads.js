@@ -29,9 +29,19 @@ stub('src/db/uploads.js', {
   upsertConfig: async (guildId, changes) => { config = { ...(config ?? DEFAULTS), ...changes }; return config; },
   hasUploaded: async (guildId, userId) => log.some((row) => row.user_id === userId),
   addLog: async (row) => { const saved = { id: nextId++, guild_id: row.guildId, user_id: row.userId, channel_id: row.channelId, files: row.files, created_at: new Date().toISOString() }; log.push(saved); return saved; },
+  countFor: async (guildId, userId) => log.filter((row) => row.user_id === userId).length,
   listLog: async (guildId, { since = null, userId = null } = {}) => log.filter((row) => (!since || new Date(row.created_at) >= since) && (!userId || row.user_id === userId)).slice().reverse(),
 });
 
+let milestoneRewards = [];
+const claimed = new Set();
+stub('src/db/milestones.js', {
+  MAX_REWARDS: 25,
+  list: async () => milestoneRewards,
+  claim: async (guildId, kind, userId, count) => { const key = `${kind}:${userId}:${count}`; if (claimed.has(key)) return false; claimed.add(key); return true; },
+  release: async (guildId, kind, userId, count) => { claimed.delete(`${kind}:${userId}:${count}`); },
+  remove: async () => true,
+});
 const event = require('../src/events/messageCreateUploads');
 const uploads = require('../src/commands/automation/uploads');
 const uploadConfig = require('../src/commands/automation/uploadconfig');
@@ -43,7 +53,7 @@ const fakeGuild = (over = {}) => ({ id: 'g1', name: 'Mine', ownerId: 'owner', me
   const sent = [];
   const given = [];
   const post = (over = {}) => {
-    const member = { id: 'u1', user: fakeUser('u1', 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1, roles: { cache: new Collection(), add: async (role) => { given.push(role.id); } } };
+    const member = { id: 'u1', user: fakeUser('u1', 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1, roles: { cache: new Collection(), add: async (role) => { given.push(role?.id ?? role); } } };
     return { id: `m${nextId}`, author: fakeUser('u1', 'Mia'), member, guild: fakeGuild(), channel: { id: 'up-chan', send: async (payload) => { sent.push(payload); } }, attachments: new Collection([['a', {}]]), ...over };
   };
   const run = async (message) => { sent.length = 0; given.length = 0; await event.execute(message); };
@@ -66,6 +76,20 @@ const fakeGuild = (over = {}) => ({ id: 'g1', name: 'Mine', ownerId: 'owner', me
   log = []; config.uploader_role_id = 'high';
   await run(post()); assert.deepEqual(given, [], 'a role above the bot is never given'); assert.equal(sent.length, 1, 'the welcome still goes');
   log = []; config.welcome = {};
+
+  // A post inside a thread or a forum counts when its channel is an upload channel.
+  await run(post({ channel: { id: 'thread1', parentId: 'up-chan', send: async () => {} } })); assert.equal(log.length, 1, 'a thread of an upload channel counts');
+  await run(post({ channel: { id: 'thread2', parentId: 'elsewhere', send: async () => {} } })); assert.equal(log.length, 1, 'a thread of another channel does not');
+  // Two files posted at the same moment: only one is the first, one welcome, and a milestone is given once.
+  log = []; given.length = 0; sent.length = 0; milestoneRewards = [{ count: 2, role_id: 'gold', message: 'Reached {milestone.count}, {user.mention}!' }];
+  const goldGuild = () => fakeGuild({ roles: { cache: new Collection([['gold', { id: 'gold', name: 'Gold', position: 1, managed: false }]]) } });
+  const together = [post({ guild: goldGuild() }), post({ guild: goldGuild() }), post({ guild: goldGuild() })];
+  await Promise.all(together.map((message) => event.execute(message)));
+  assert.equal(log.length, 3);
+  assert.equal(sent.filter((payload) => /first upload/.test(payload.content ?? '')).length, 1, 'only one of three simultaneous uploads is the first');
+  assert.equal(sent.filter((payload) => /Reached 2/.test(payload.content ?? '')).length, 1, 'the milestone message is posted once');
+  assert.equal(given.filter((id) => id === 'gold').length, 1, 'the milestone role is given once');
+  milestoneRewards = []; log = []; given.length = 0; sent.length = 0;
 
   // The numbers.
   const now = new Date();

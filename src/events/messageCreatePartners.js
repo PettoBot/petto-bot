@@ -4,6 +4,8 @@ const { Events, PermissionFlagsBits } = require('discord.js');
 const partnersDb = require('../db/partners');
 const { extractInviteCodes, snowflakeDate, judge, counts, standings, cooldownMinutes } = require('../utils/partnerEngine');
 const { partnerContext, responsePayload } = require('../utils/partnerMessages');
+const { awardMilestones } = require('../utils/milestones');
+const { applyNickname } = require('../utils/partnerNickname');
 const { applyReactReplies } = require('../utils/messageFlags');
 const logger = require('../utils/logger');
 const { t, peekGuildLanguage } = require('../i18n');
@@ -13,7 +15,12 @@ async function reply(message, config, key, info, lang) {
   const payload = await responsePayload(message.guild.id, config, key, ctx, lang);
   const sent = await message.reply({ ...payload, failIfNotExists: false }).catch(() => null);
   if (sent && payload.reactions?.length) await applyReactReplies(sent, payload.reactions);
+  return sent;
 }
+
+// The notice about an ad that was taken down is only for the poster: it goes away by itself.
+const NOTICE_SECONDS = 15;
+const canDelete = (message) => Boolean(message.guild.members.me?.permissions.has(PermissionFlagsBits.ManageMessages));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const UNKNOWN_INVITE = 10006;
@@ -37,8 +44,8 @@ async function lookUpInvite(client, code) {
   return { invite: null, unreachable: true };
 }
 
-async function handleInvite(message, config, code, lang) {
-  const { invite, unreachable } = await lookUpInvite(message.client, code);
+async function handleInvite(message, config, code, lang, seen = new Set(), looked = null) {
+  const { invite, unreachable } = looked ?? await lookUpInvite(message.client, code);
   if (unreachable) {
     await message.reply({ content: t(lang, 'partners.inviteUnreachable'), failIfNotExists: false, allowedMentions: { repliedUser: false } }).catch(() => null);
     return { blocked: false };
@@ -56,9 +63,20 @@ async function handleInvite(message, config, code, lang) {
     nsfw: [1, 3].includes(invite.guild.nsfwLevel),
     text: `${invite.guild.name ?? ''} ${invite.guild.description ?? ''}`,
   };
+  // Two invites of the same server in one message are one partnership.
+  if (seen.has(String(found.guildId))) return { blocked: false, duplicate: true };
+  seen.add(String(found.guildId));
   const [blacklisted, last] = await Promise.all([partnersDb.isBlacklisted(message.guild.id, found.guildId), partnersDb.lastWith(message.guild.id, found.guildId)]);
   const reason = judge({ invite: found, ownGuildId: message.guild.id, config, blacklisted, last });
   const base = { name: found.name, id: found.guildId, members: found.members, invite: `https://discord.gg/${invite.code}`, cooldownEndsUnix: last && cooldownMinutes(config) ? Math.floor(new Date(last.created_at).getTime() / 1000) + cooldownMinutes(config) * 60 : null };
+  if (reason === 'blacklisted' && canDelete(message)) {
+    // The ad of a blacklisted server is taken down; the poster is told in a short message that disappears. Without Manage Messages it is only answered.
+    const gone = await message.delete().then(() => true, () => false);
+    const sent = await reply(message, config, reason, base, lang);
+    if (gone && sent?.delete) setTimeout(() => { sent.delete().catch(() => null); }, NOTICE_SECONDS * 1000).unref?.();
+    logger.info(`Partner ad with a blacklisted server (${found.guildId}) from ${message.author.id} in guild ${message.guild.id}${gone ? ' deleted' : ' not deleted'}.`);
+    return { blocked: true, deleted: gone };
+  }
   if (reason) {
     await reply(message, config, reason, base, lang);
     return { blocked: true };
@@ -69,6 +87,11 @@ async function handleInvite(message, config, code, lang) {
   const rows = all.some((item) => item.id === row.id) ? all : [row, ...all];
   await reply(message, config, 'completed', { ...base, counts: counts(rows.filter((item) => item.manager_id === message.author.id)), standings: standings(rows, message.author.id) }, lang);
   if (config.react_emoji) await message.react(config.react_emoji).catch(() => null);
+  const mine = rows.filter((item) => item.manager_id === message.author.id);
+  // The nickname and the milestones come after the answer and never stop the count.
+  const member = message.member ?? null;
+  await applyNickname({ guild: message.guild, member, user: message.author, config, total: mine.length, lang });
+  await awardMilestones({ guild: message.guild, member, user: message.author, kind: 'partner', total: mine.length, channel: message.channel, ctx: { message, partner: partnerContext({ ...base, config, managerId: message.author.id, managerName: message.author.username, counts: counts(mine), standings: standings(rows, message.author.id) }, lang) }, lang });
   return { blocked: false };
 }
 
@@ -91,11 +114,27 @@ module.exports = {
 
       const lang = (message.pettoLang ?? peekGuildLanguage(message.guild.id));
       let blockedAny = false;
-      for (const code of codes) {
-        const result = await handleInvite(message, config, code, lang);
-        if (result.blocked) blockedAny = true;
+      let deleted = false;
+      const seen = new Set();
+      // With Manage Messages, an ad that has the invite of a blacklisted server is taken down before anything else in it is counted.
+      const lookups = new Map();
+      let order = codes;
+      if (canDelete(message)) {
+        const bad = [];
+        for (const code of codes) {
+          const looked = await lookUpInvite(message.client, code);
+          lookups.set(code, looked);
+          const guildId = looked.invite?.guild?.id;
+          if (guildId && String(guildId) !== String(message.guild.id) && await partnersDb.isBlacklisted(message.guild.id, guildId).catch(() => false)) bad.push(code);
+        }
+        order = [...bad, ...codes.filter((code) => !bad.includes(code))];
       }
-      if (blockedAny && !config.keep_original && message.guild.members.me?.permissions.has(PermissionFlagsBits.ManageMessages)) await message.delete().catch(() => null);
+      for (const code of order) {
+        const result = await handleInvite(message, config, code, lang, seen, lookups.get(code) ?? null);
+        if (result.blocked) blockedAny = true;
+        if (result.deleted) { deleted = true; break; }
+      }
+      if (blockedAny && !deleted && !config.keep_original && canDelete(message)) await message.delete().catch(() => null);
     } catch (error) {
       logger.error(`Partner check failed in guild ${message.guild.id}:`, error);
     }

@@ -33,6 +33,7 @@ stub('src/db/requests.js', {
   update: async (guildId, number, changes) => { const row = rows.find((item) => item.number === number); if (!row) return null; Object.assign(row, changes); return { ...row }; },
   list: async (guildId, { statuses = ['open', 'claimed'], userId = null } = {}) => rows.filter((row) => statuses.includes(row.status) && (!userId || row.user_id === userId)).slice().reverse(),
   countOpenBy: async (guildId, userId) => rows.filter((row) => row.user_id === userId && ['open', 'claimed'].includes(row.status)).length,
+  releaseClaim: async (guildId, number, claimedBy, before) => { const row = rows.find((item) => item.number === number && item.status === 'claimed' && item.claimed_by === String(claimedBy) && new Date(item.claimed_at) < before); if (!row) return null; Object.assign(row, { status: 'open', claimed_by: null, claimed_at: null }); return row; },
   listClaimedBefore: async (guildId, before) => rows.filter((row) => row.status === 'claimed' && new Date(row.claimed_at) < before),
 });
 
@@ -107,7 +108,7 @@ const buttons = (card) => (card.components[1]?.components ?? []).map((item) => i
   assert.match(await talk(requestCommand, 'make', { text: 'Logo 2' }), /"embeds":\[\{"title":"card"\}\]/, 'a saved embed can be the answer');
   assert.match(await talk(requestConfigCommand, 'reply', { template: 'nope' }, admin), /no saved embed/);
   await talk(requestConfigCommand, 'reply', { text: 'reset', template: 'none' }, admin); assert.deepEqual(config.messages.created, {});
-  assert.match(await talk(requestConfigCommand, 'timeout', { hours: 24 }, admin), /Premium feature/); premiumActive = true; assert.match(await talk(requestConfigCommand, 'timeout', { hours: 24 }, admin), /after 24 hours/); premiumActive = false;
+  assert.match(await talk(requestConfigCommand, 'timeout', { hours: 24 }, admin), /after 24 hours/);
   assert.match(await talk(requestConfigCommand, 'view', {}, admin), /Requests[\s\S]*Open requests per member: 5[\s\S]*24 hours/);
 
   // The buttons.
@@ -137,8 +138,7 @@ const buttons = (card) => (card.components[1]?.components ?? []).map((item) => i
     { ...open, number: 1, status: 'claimed', claimed_by: 's1', claimed_at: new Date(Date.now() - 30 * 3_600_000).toISOString(), channel_id: 'cards', message_id: 'm1' },
     { ...open, number: 2, status: 'claimed', claimed_by: 's1', claimed_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), channel_id: 'cards', message_id: 'm2' },
   ];
-  config.completion_hours = 24; premiumActive = false; assert.equal(await unclaimLate(client), 0, 'without Premium nothing goes back');
-  premiumActive = true; assert.equal(await unclaimLate(client), 1);
+  config.completion_hours = 24; premiumActive = false; assert.equal(await unclaimLate(client), 1, 'it is free: no Premium is needed');
   assert.equal(rows[0].status, 'open'); assert.equal(rows[0].claimed_by, null); assert.equal(rows[1].status, 'claimed', 'a recent one stays claimed');
   assert.equal(edited.length, 1); assert.match(notices[0], /Request #1 was claimed by <@s1> and not finished in 24 hours/);
   assert.equal(requestCommand.prefixOnly, true); assert.equal(requestConfigCommand.prefixOnly, true);

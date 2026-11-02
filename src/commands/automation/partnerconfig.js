@@ -6,7 +6,8 @@ const partnersDb = require('../../db/partners');
 const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../../db/premium');
 const { RESPONSE_KEYS, LABELS, MAX_TEXT, labelOf, textOf } = require('../../utils/partnerMessages');
-const { parseSpan, formatSpan, cooldownMinutes } = require('../../utils/partnerEngine');
+const { parseSpan, formatSpan, cooldownMinutes, validNicknameFormat } = require('../../utils/partnerEngine');
+const { runReward, addRewardSubcommand } = require('../../utils/milestoneCommand');
 const { sendManagerWelcome } = require('../../utils/partnerWelcome');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -53,7 +54,10 @@ module.exports = {
     .addSubcommand((s) => s.setName('welcomechannel').setDescription('Where a new Partner Manager is welcomed. Empty: where the welcome command is used.')
       .addChannelOption((o) => o.setName('channel').setDescription('The channel').addChannelTypes(...textChannels).setRequired(false)))
     .addSubcommand((s) => s.setName('welcome').setDescription('Welcome a new Partner Manager: gives the role and sends the welcome.')
-      .addUserOption((o) => o.setName('user').setDescription('Who').setRequired(true))),
+      .addUserOption((o) => o.setName('user').setDescription('Who').setRequired(true)))
+    .addSubcommand((s) => addRewardSubcommand(s))
+    .addSubcommand((s) => s.setName('nickname').setDescription('Nickname of Partner Managers, with {name} and {count}. "off" turns it off.')
+      .addStringOption((o) => o.setName('format').setDescription('Like [{count}] {name}, or "off" (leave it out to see it)').setMaxLength(64).setRequired(false))),
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -95,6 +99,8 @@ module.exports = {
       await save({ welcome_channel_id: channel?.id ?? null });
       return done(ok(channel ? t(lang, 'partners.welcomeChannel.set', { channel: `${channel}` }) : t(lang, 'partners.welcomeChannel.here')));
     }
+    if (sub === 'reward') return runReward({ interaction, kind: 'partner', done, lang });
+    if (sub === 'nickname') return nickname(interaction, config, save, done, lang);
     if (sub === 'requirements') return requirements(interaction, config, save, done, lang);
     if (sub === 'blacklist') return blacklist(interaction, done, lang);
     if (sub === 'response') return response(interaction, config, save, done, lang);
@@ -122,6 +128,7 @@ function viewText(config, lang) {
     }),
     t(lang, 'partners.view.welcomeChannel', { channel: config.welcome_channel_id ? `<#${config.welcome_channel_id}>` : t(lang, 'partners.view.welcomeHere') }),
     t(lang, config.keep_original ? 'partners.view.refusedKept' : 'partners.view.refusedDeleted', { reaction: config.react_emoji ?? none }),
+    t(lang, 'partners.view.nickname', { format: config.nickname_format ? `\`${config.nickname_format}\`` : none }),
     t(lang, 'partners.view.changed', { list: changed.length ? changed.join(', ') : none }),
   ].join('\n');
 }
@@ -160,6 +167,20 @@ async function requirements(interaction, config, save, done, lang) {
   if (!Object.keys(changes).length) return done(note(viewText(config, lang)));
   const next = await save(changes);
   return done(ok(t(lang, 'partners.requirements.saved', { lines: viewText(next, lang).split('\n').slice(4, 7).join('\n') })));
+}
+
+async function nickname(interaction, config, save, done, lang) {
+  const format = interaction.options.getString('format');
+  if (format === null) return done(note(config.nickname_format ? t(lang, 'partners.nickname.show', { format: config.nickname_format }) : t(lang, 'partners.nickname.showOff')));
+  if (/^(off|none|0|no)$/i.test(format.trim())) {
+    await save({ nickname_format: null });
+    return done(ok(t(lang, 'partners.nickname.off')));
+  }
+  if (!validNicknameFormat(format)) return done(note(t(lang, 'partners.nickname.invalid')));
+  await save({ nickname_format: format.trim() });
+  const me = interaction.guild.members?.me;
+  const missing = me && !me.permissions.has(PermissionFlagsBits.ManageNicknames);
+  return done(ok(t(lang, missing ? 'partners.nickname.savedNoPermission' : 'partners.nickname.saved', { format: format.trim() })));
 }
 
 async function blacklist(interaction, done, lang) {

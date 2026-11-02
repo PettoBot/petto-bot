@@ -9,6 +9,7 @@ module.exports = {
   'deadroles.where.level': 'a level reward',
   'deadroles.where.button': 'a role button or menu',
   'deadroles.where.invite': 'an invite reward',
+  'deadroles.where.milestone': 'a milestone reward (partnerships or uploads)',
   'deadroles.action.removed': 'Petto took it out of that setting so nothing keeps failing. Pick a new role there whenever you want one.',
   'deadroles.action.pick': 'Open that setting in the dashboard and pick the role again.',
   'deadroles.action.verification.removed': 'Petto cleared it from the verification settings so nothing keeps failing. Open the verification settings in the dashboard (or run `/verify setup`) and pick a role again. Until then, members who pass the check count as verified in Petto but get no role.',

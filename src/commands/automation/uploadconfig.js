@@ -4,6 +4,7 @@ const { ensureGuild } = require('../../db/guilds');
 const uploadsDb = require('../../db/uploads');
 const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../../db/premium');
+const { runReward, addRewardSubcommand } = require('../../utils/milestoneCommand');
 const { defaultWelcome, MAX_TEXT, textOf } = require('../../utils/uploadMessages');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -28,7 +29,8 @@ module.exports = {
     .addSubcommand((s) => s.setName('role').setDescription('The role given at the first upload. Empty: none.').addRoleOption((o) => o.setName('role').setDescription('The role').setRequired(false)))
     .addSubcommand((s) => s.setName('welcome').setDescription('The message sent at the first upload, with text or a saved embed. "reset" goes back to the default.')
       .addStringOption((o) => o.setName('text').setDescription('The text, with variables like {user.mention}').setMaxLength(MAX_TEXT).setRequired(false))
-      .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or "none"').setRequired(false))),
+      .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or "none"').setRequired(false)))
+    .addSubcommand((s) => addRewardSubcommand(s)),
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -50,6 +52,7 @@ module.exports = {
         t(lang, 'uploads.view.welcome', { welcome: config.welcome?.template ? t(lang, 'uploads.view.embed', { name: config.welcome.template }) : textOf(config.welcome, fallback) }),
       ].join('\n')));
     }
+    if (sub === 'reward') return runReward({ interaction, kind: 'upload', done, lang });
     if (sub === 'enable') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await save({ enabled });

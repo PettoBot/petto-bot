@@ -267,7 +267,7 @@ const OWN_DATA = {
   'me rep-give': 'giving a reputation point is for every member', 'myprefix reset': 'their own prefix', 'profilehistory clear': 'their own saved names',
   'profilehistory record': 'their own choice to save names', 'profilehistory names': 'their own names (it saves the current one)', 'profilehistory nicknames': 'their own nicknames (it saves the current one)',
   'remind cancel': 'their own reminder', 'rep give': 'giving a reputation point is for every member',
-  'review remove': 'their own review', 'community review remove': 'their own review',
+  // (`review remove` writes only their own review: with a `reviewer` given, which this check always fills, a plain member is refused and writes nothing, see check-community-modules.js)
 };
 const FLAGS_EPHEMERAL = 64;
 const isEphemeral = (payload) => { const f = payload?.flags; return Boolean(payload?.ephemeral) || (Array.isArray(f) ? f.includes(FLAGS_EPHEMERAL) : typeof f === 'number' && (f & FLAGS_EPHEMERAL) === FLAGS_EPHEMERAL); };

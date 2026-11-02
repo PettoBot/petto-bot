@@ -19,6 +19,7 @@ const DEFAULTS = {
   blocked_keywords: [],
   keep_original: true,
   react_emoji: null,
+  nickname_format: null,
   messages: {},
 };
 

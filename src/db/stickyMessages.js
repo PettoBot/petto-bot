@@ -31,11 +31,14 @@ async function setSticky(guildId, channelId, content, embedTemplate = null) {
 }
 
 async function setMessageId(guildId, channelId, messageId) {
-  await retryIdempotent(async () => {
-    const { error } = await database.from('sticky_messages').update({ message_id: messageId }).eq('guild_id', guildId).eq('channel_id', channelId);
+  const row = await retryIdempotent(async () => {
+    const { data, error } = await database.from('sticky_messages').update({ message_id: messageId }).eq('guild_id', guildId).eq('channel_id', channelId).select('*').maybeSingle();
     if (error) throw error;
+    return data;
   });
-  stickyCache.delete(cacheKey(guildId, channelId));
+  // The next message of the channel finds the row in the cache instead of asking the database again.
+  if (row) stickyCache.set(cacheKey(guildId, channelId), row);
+  else stickyCache.delete(cacheKey(guildId, channelId));
 }
 
 async function removeSticky(guildId, channelId) {

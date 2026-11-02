@@ -73,7 +73,7 @@ const fakeGuild = (channel) => ({ id: 'g1', members: { fetch: async () => ({ joi
   assert.match(profile, /Profile of Bob[\s\S]*Joined <t:\d+:D>[\s\S]*Rating: ★★★★★ \*\*4.5\*\* from 2 reviews/); assert.doesNotMatch(profile, /Uploads|Requests|Partnerships/);
   uploadConfig = { enabled: true }; requestConfig = { enabled: true }; partnerConfig = { enabled: true };
   profile = await talk(profileCommand, null, { user: fakeUser('b', 'Bob') });
-  assert.match(profile, /Uploads: \*\*2\*\* \(4 files\) · last <t:\d+:R>/); assert.match(profile, /Requests: \*\*3\*\* made, \*\*1\*\* done · \*\*2\*\* finished for others/); assert.match(profile, /Partnerships: \*\*2\*\* \(1 this week\)/);
+  assert.match(profile, /Uploads: \*\*2\*\* \(4 files\) · \*\*0\*\* this week · last <t:\d+:R>/); assert.match(profile, /Requests: \*\*3\*\* made, \*\*1\*\* done · \*\*2\*\* finished for others/); assert.match(profile, /Partnerships: \*\*2\*\* · \*\*1\*\* this week/);
   reviewConfig.reviews_enabled = false; assert.doesNotMatch(await talk(profileCommand, null, { user: fakeUser('b', 'Bob') }), /Rating/, 'the rating is hidden when reviews are off'); reviewConfig.reviews_enabled = true;
   assert.match(await talk(profileCommand, null, { user: fakeUser('nobody', 'Nobody') }), /Rating: no reviews yet/);
   for (const command of [reviewCommand, profileCommand, profileConfigCommand]) assert.equal(command.prefixOnly, true);

@@ -1,10 +1,10 @@
-// The settings of requests for admins: where the cards go, who the staff is, how many a member can have open, and the time
-// a claimed request has to be finished (Premium).
+// The settings of requests for admins: where the cards go, who the staff is, how many a member can have open, the reminder for
+// requests nobody claimed and the time a claimed request has to be finished.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const requestsDb = require('../../db/requests');
 const { getTemplate } = require('../../db/embedTemplates');
-const { getGuildPremium } = require('../../db/premium');
+const { parseHours } = require('../../utils/requestTimeouts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, tn, languageOf } = require('../../i18n');
@@ -26,7 +26,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('staff').setDescription('The role that claims and finishes requests. Empty: who can manage messages.').addRoleOption((o) => o.setName('role').setDescription('The role').setRequired(false)))
     .addSubcommand((s) => s.setName('ping').setDescription('A role to ping with each new request. Empty: none.').addRoleOption((o) => o.setName('role').setDescription('The role').setRequired(false)))
     .addSubcommand((s) => s.setName('limit').setDescription('How many open requests a member can have.').addIntegerOption((o) => o.setName('amount').setDescription('1 to 25').setMinValue(1).setMaxValue(25).setRequired(true)))
-    .addSubcommand((s) => s.setName('timeout').setDescription('Premium: hours a claimed request has to be finished before it goes back to open. 0 is off.').addIntegerOption((o) => o.setName('hours').setDescription('0 to 720').setMinValue(0).setMaxValue(720).setRequired(true)))
+    .addSubcommand((s) => s.setName('timeout').setDescription('Hours a claimed request has to be finished before it goes back to open. 0 is off.').addIntegerOption((o) => o.setName('hours').setDescription('0 to 720').setMinValue(0).setMaxValue(720).setRequired(true)))
+    .addSubcommand((s) => s.setName('unclaim').setDescription('Release a claimed request that is not finished in some hours, or "off".').addStringOption((o) => o.setName('hours').setDescription('1 to 720, or off').setRequired(true)))
+    .addSubcommand((s) => s.setName('notify').setDescription('Remind the staff, once, of a request nobody claimed in some hours, or "off".').addStringOption((o) => o.setName('hours').setDescription('1 to 720, or off').setRequired(true)))
     .addSubcommand((s) => s.setName('reply').setDescription('The answer to who makes a request, with text or a saved embed. "reset" goes back to the default.')
       .addStringOption((o) => o.setName('text').setDescription('The text, with {request.number}, {request.link}, {user.mention}').setMaxLength(2000).setRequired(false))
       .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or "none"').setRequired(false))),
@@ -53,6 +55,7 @@ module.exports = {
         t(lang, 'requests.view.staff', { staff: config.staff_role_id ? `<@&${config.staff_role_id}>` : t(lang, 'requests.view.staffDefault') }),
         t(lang, 'requests.view.ping', { ping: config.ping_role_id ? `<@&${config.ping_role_id}>` : none }),
         t(lang, 'requests.view.perMember', { count: config.max_open }),
+        t(lang, 'requests.view.reminder', { time: config.reminder_hours ? tn(lang, 'requests.view.hours', config.reminder_hours, { count: config.reminder_hours }) : t(lang, 'requests.view.noLimit') }),
         t(lang, 'requests.view.time', { time: config.completion_hours ? tn(lang, 'requests.view.hours', config.completion_hours, { count: config.completion_hours }) : t(lang, 'requests.view.noLimit') }),
         t(lang, 'requests.view.reply', { reply: replyText }),
       ].join('\n')));
@@ -78,12 +81,17 @@ module.exports = {
       await save({ max_open: amount });
       return done(ok(tn(lang, 'requests.limit.set', amount, { count: amount })));
     }
-    if (sub === 'timeout') {
-      const hours = interaction.options.getInteger('hours', true);
-      const premium = await getGuildPremium(interaction.guild.id).catch(() => ({ active: false }));
-      if (hours > 0 && !premium?.active) return done(note(t(lang, 'requests.timeout.premium')));
+    if (sub === 'timeout' || sub === 'unclaim') {
+      const hours = sub === 'timeout' ? interaction.options.getInteger('hours', true) : parseHours(interaction.options.getString('hours', true));
+      if (hours === null) return done(note(t(lang, 'requests.hours.invalid')));
       await save({ completion_hours: hours });
       return done(ok(hours ? tn(lang, 'requests.timeout.set', hours, { count: hours }) : t(lang, 'requests.timeout.off')));
+    }
+    if (sub === 'notify') {
+      const hours = parseHours(interaction.options.getString('hours', true));
+      if (hours === null) return done(note(t(lang, 'requests.hours.invalid')));
+      await save({ reminder_hours: hours });
+      return done(ok(hours ? tn(lang, 'requests.reminder.set', hours, { count: hours }) : t(lang, 'requests.reminder.off')));
     }
     // reply
     const text = interaction.options.getString('text');

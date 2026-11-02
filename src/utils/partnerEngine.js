@@ -131,4 +131,22 @@ function standings(rows, managerId, now = new Date()) {
   };
 }
 
-module.exports = { extractInviteCodes, snowflakeDate, judge, periodStart, rank, counts, parseSpan, formatSpan, cooldownMinutes, standings };
+const NICKNAME_MAX = 32;
+const FORMAT_MAX = 64;
+
+/** Whether a nickname format is usable: up to 64 characters with `{name}` and/or `{count}` in it. */
+function validNicknameFormat(format) {
+  const text = String(format ?? '').trim();
+  return text.length > 0 && text.length <= FORMAT_MAX && /\{(?:name|count)\}/.test(text);
+}
+
+/** The nickname of a Partner Manager: `{name}` and `{count}` replaced, at most 32 characters (the name is the part that is cut). */
+function formatNickname(format, name, count) {
+  const filled = String(format).trim().replaceAll('{count}', String(count));
+  const fixed = filled.replaceAll('{name}', '').length;
+  const parts = filled.split('{name}').length - 1;
+  const room = parts ? Math.max(1, Math.floor((NICKNAME_MAX - fixed) / parts)) : 0;
+  return filled.replaceAll('{name}', String(name ?? '').slice(0, room)).slice(0, NICKNAME_MAX).trim();
+}
+
+module.exports = { validNicknameFormat, formatNickname, extractInviteCodes, snowflakeDate, judge, periodStart, rank, counts, parseSpan, formatSpan, cooldownMinutes, standings };

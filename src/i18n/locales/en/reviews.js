@@ -18,4 +18,9 @@ module.exports = {
   'reviews.show.summary.one': '{stars} **{average}** from {count} review',
   'reviews.show.summary.other': '{stars} **{average}** from {count} reviews',
   'reviews.off': 'Reviews are turned off in this server.',
+  'reviews.problem.commentShort': 'The comment needs at least {min} characters.',
+  'reviews.problem.account': 'Your account has to be at least {days} days old to review.',
+  'reviews.problem.member': 'You have to be in this server for at least {days} days to review.',
+  'reviews.problem.cooldown': 'You can review again {time}.',
+  'reviews.remove.staffOnly': 'Only the staff (Manage Messages or Manage Server) can remove a review somebody else wrote.',
 };

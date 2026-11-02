@@ -94,4 +94,12 @@ module.exports = {
   'partners.welcome.doneNoRole': '{user} is a Partner Manager now. (There is no manager role set, so nothing was given.)',
   'partners.welcome.doneNotSent': '{user} is a Partner Manager now. I could not send the welcome.',
   'partners.welcome.doneNoRoleNotSent': '{user} is a Partner Manager now. (There is no manager role set, so nothing was given.) I could not send the welcome.',
+  'partners.nickname.reason': 'Partner Manager nickname',
+  'partners.nickname.show': 'The nickname of a Partner Manager is `{format}`. Change it with `nickname <format>` or turn it off with `nickname off`.',
+  'partners.nickname.showOff': 'The nickname format is off. Set one with `nickname <format>`, with {name} and {count}, like `[{count}] {name}`.',
+  'partners.nickname.off': 'The nickname format is off. Nicknames stay as they are.',
+  'partners.nickname.invalid': 'The format needs {name} or {count} and up to 64 characters, like `[{count}] {name}`.',
+  'partners.nickname.saved': 'After each partnership the nickname of the Partner Manager is `{format}`.',
+  'partners.nickname.savedNoPermission': 'Saved: `{format}`. I can not change nicknames yet: give me Manage Nicknames and keep my role above the managers.',
+  'partners.view.nickname': 'Nickname of managers: {format}',
 };

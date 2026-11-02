@@ -17,4 +17,9 @@ module.exports = {
   'reviews.show.summary.one': '{stars} **{average}** de {count} reseña',
   'reviews.show.summary.other': '{stars} **{average}** de {count} reseñas',
   'reviews.off': 'Las reseñas están desactivadas en este servidor.',
+  'reviews.problem.commentShort': 'El comentario necesita al menos {min} caracteres.',
+  'reviews.problem.account': 'Tu cuenta debe tener al menos {days} días para dejar una reseña.',
+  'reviews.problem.member': 'Debes llevar al menos {days} días en este servidor para dejar una reseña.',
+  'reviews.problem.cooldown': 'Podrás dejar otra reseña {time}.',
+  'reviews.remove.staffOnly': 'Solo el staff (Gestionar mensajes o Gestionar servidor) puede quitar una reseña que escribió otra persona.',
 };

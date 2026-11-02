@@ -1,6 +1,6 @@
 const database = require('./database');
 
-const DEFAULTS = { reviews_enabled: true, review_channel_id: null };
+const DEFAULTS = { reviews_enabled: true, review_channel_id: null, min_account_days: 0, min_member_days: 0, cooldown_minutes: 0, min_comment: 0, max_comment: 300 };
 
 async function getConfig(guildId) {
   const { data, error } = await database.from('profile_config').select('*').eq('guild_id', String(guildId)).maybeSingle();
@@ -37,6 +37,13 @@ async function removeReview(guildId, targetId, reviewerId) {
   return (data ?? []).length > 0;
 }
 
+/** When this reviewer last saved a review (a new one or a change), or null. Used for the cooldown. */
+async function lastBy(guildId, reviewerId) {
+  const { data, error } = await database.from('member_reviews').select('updated_at').eq('guild_id', String(guildId)).eq('reviewer_id', String(reviewerId)).order('updated_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  return data?.[0]?.updated_at ?? null;
+}
+
 /** The reviews of a member, newest first. */
 async function listFor(guildId, targetId, limit = 500) {
   const { data, error } = await database.from('member_reviews').select('stars,comment,reviewer_id,updated_at').eq('guild_id', String(guildId)).eq('target_id', String(targetId)).order('updated_at', { ascending: false }).limit(limit);
@@ -44,4 +51,4 @@ async function listFor(guildId, targetId, limit = 500) {
   return data ?? [];
 }
 
-module.exports = { DEFAULTS, getConfig, upsertConfig, saveReview, getReview, removeReview, listFor };
+module.exports = { DEFAULTS, getConfig, upsertConfig, saveReview, getReview, removeReview, listFor, lastBy };
