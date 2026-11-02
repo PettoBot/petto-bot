@@ -1,0 +1,17 @@
+module.exports = {
+  'milestones.auditReason': 'Recompensa por hito: {count}',
+  'milestones.choose': 'Elige add, remove o list.',
+  'milestones.badCount': 'El número a alcanzar es un entero del 1 al 1000000.',
+  'milestones.needRole': 'Indica el rol a dar: `reward add <número> <rol> [mensaje]`.',
+  'milestones.badRole': 'Ese rol no se puede dar (es @everyone o lo gestiona una integración).',
+  'milestones.cannotGive': 'No puedo dar {role}: necesito Gestionar roles y el rol debe estar por debajo de mi rol más alto.',
+  'milestones.limit': 'Un servidor puede tener hasta {limit} recompensas aquí. Quita una primero.',
+  'milestones.added': 'Al llegar a {count} se da el rol {role}.',
+  'milestones.addedMessage': 'Al llegar a {count} se da el rol {role} y se publica el mensaje.',
+  'milestones.removed': 'Se quitó la recompensa de {count}. Los roles ya dados se quedan.',
+  'milestones.notListed': 'No hay ninguna recompensa en {count}.',
+  'milestones.partner.title': '### Recompensas por alianzas',
+  'milestones.partner.empty': 'Todavía no hay recompensas por alianzas. Añade una con `reward add <número> <rol> [mensaje]`.',
+  'milestones.upload.title': '### Recompensas por subidas',
+  'milestones.upload.empty': 'Todavía no hay recompensas por subidas. Añade una con `reward add <número> <rol> [mensaje]`.',
+};

@@ -43,6 +43,17 @@ stub('src/db/partners.js', {
   listLog: async (guildId, { since = null, managerId = null } = {}) => logRows.filter((row) => (!since || new Date(row.created_at) >= since) && (!managerId || row.manager_id === managerId)).slice().reverse(),
 });
 
+// Milestone rewards of the server (the engine that gives them is checked in check-community-modules.js).
+let milestoneRewards = [];
+const claimed = new Set();
+stub('src/db/milestones.js', {
+  MAX_REWARDS: 25,
+  list: async () => milestoneRewards,
+  claim: async (guildId, kind, userId, count) => { const key = `${kind}:${userId}:${count}`; if (claimed.has(key)) return false; claimed.add(key); return true; },
+  release: async (guildId, kind, userId, count) => { claimed.delete(`${kind}:${userId}:${count}`); },
+  remove: async () => true,
+});
+
 const engine = require('../src/utils/partnerEngine');
 const messages = require('../src/utils/partnerMessages');
 const event = require('../src/events/messageCreatePartners');
@@ -137,6 +148,7 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
     mine: { code: 'mine', memberCount: 900, guild: { id: 'guild1', name: 'Mine' } },
     bad: { code: 'bad', memberCount: 900, guild: { id: '1100000000000000003', name: 'Black Server' } },
     adult: { code: 'adult', memberCount: 900, guild: { id: '1100000000000000004', name: 'After Dark', nsfwLevel: 1 } },
+    good1b: { code: 'good1b', memberCount: 500, guild: { id: '1100000000000000001', name: 'Good Server' } },
     casino: { code: 'casino', memberCount: 900, guild: { id: '1100000000000000005', name: 'Lucky Hub', description: 'The best GAMBLING tips' } },
   };
   let flaky = 0;
@@ -148,11 +160,11 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
     return invites[code];
   } };
   const sent = [];
-  const made = (content, { channelId = 'chan', roles = ['pm'], authorId = 'u1', bot = false } = {}) => {
+  const made = (content, { channelId = 'chan', roles = ['pm'], authorId = 'u1', bot = false, perms = true, manageable = true } = {}) => {
     const message = {
-      id: `m${sent.length + 1}`, content, client, author: fakeUser(authorId, 'Mia', bot), channel: { id: channelId },
-      member: { id: authorId, user: fakeUser(authorId, 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000, roles: { cache: new Collection(roles.map((id) => [id, { id }])) } },
-      guild: fakeGuild('guild1', { members: { cache: new Collection(), me: { permissions: { has: () => true } } } }),
+      id: `m${sent.length + 1}`, content, client, author: fakeUser(authorId, 'Mia', bot), channel: { id: channelId, send: async (payload) => { sent.push({ kind: 'send', content: payload.content }); } },
+      member: { id: authorId, user: fakeUser(authorId, 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000, manageable, nickname: null, setNickname: async (nick) => { sent.push({ kind: 'nick', nick }); }, roles: { cache: new Collection(roles.map((id) => [id, { id }])), add: async (id) => { sent.push({ kind: 'role', id }); } } },
+      guild: fakeGuild('guild1', { members: { cache: new Collection(), me: { permissions: { has: () => perms }, roles: { highest: { position: 10 } } } }, roles: { cache: new Collection([['rw', { id: 'rw', name: 'Gold', position: 1, managed: false }]]) } }),
       reply: async (payload) => { sent.push({ kind: 'reply', content: payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component)) }); },
       react: async (emoji) => { sent.push({ kind: 'react', emoji }); },
       delete: async () => { sent.push({ kind: 'delete' }); },
@@ -181,8 +193,8 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   out = await run('discord.gg/flaky'); assert.ok(!out.some((item) => item.kind === 'delete'), 'a failed look-up once does not throw the message away'); assert.ok(out.some((item) => /Partnership|partner/i.test(item.content ?? '')) || out.length > 0);
   out = await run('discord.gg/down'); assert.ok(!out.some((item) => item.kind === 'delete'), 'an invite that cannot be checked does not delete the message'); assert.match(out[0].content, /could not check that invite/);
   blacklist.add('1100000000000000003');
-  out = await run('discord.gg/bad'); assert.match(out[0].content, /not allowed as a partner/);
-  assert.equal(out.some((item) => item.kind === 'delete'), false, 'the post is kept by default');
+  out = await run('discord.gg/bad'); assert.match(out.find((item) => item.kind === 'reply').content, /not allowed as a partner/);
+  assert.equal(out[0].kind, 'delete', 'the ad of a blacklisted server is taken down even when refused posts are kept');
 
   // NSFW servers and blocked words, only when the server asked for them.
   const beforeAdult = logRows.length; out = await run('discord.gg/adult'); assert.equal(logRows.length, beforeAdult + 1, 'an NSFW server counts while the filter is off');
@@ -195,8 +207,32 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
 
   // A refused post is deleted when the server asks for it.
   config.keep_original = false;
-  out = await run('discord.gg/bad'); assert.equal(out.at(-1).kind, 'delete', 'the refused post is deleted when the server chose that');
+  out = await run('discord.gg/small'); assert.equal(out.at(-1).kind, 'delete', 'the refused post is deleted when the server chose that');
   config.keep_original = true;
+
+  // The ad of a blacklisted server needs Manage Messages to be taken down; without it, it stays and is only answered.
+  out = await run('discord.gg/bad', { perms: false }); assert.equal(out.some((item) => item.kind === 'delete'), false, 'without Manage Messages nothing is deleted and nothing throws'); assert.match(out.find((item) => item.kind === 'reply').content, /not allowed as a partner/);
+  let before = logRows.length; out = await run('discord.gg/good1 discord.gg/bad'); assert.equal(out[0].kind, 'delete', 'one blacklisted invite in the ad takes the whole message down'); assert.equal(out.filter((item) => item.kind === 'reply').length, 1); assert.equal(logRows.length, before, 'and nothing else in it is counted');
+
+  // Two invites of the same server in one message are one partnership.
+  config.cooldown_days = 0; config.cooldown_minutes = 0;
+  before = logRows.length; await run('discord.gg/good1 discord.gg/good1b'); assert.equal(logRows.length, before + 1, 'the same server twice counts once');
+
+  // The nickname of the manager: only with the format, Manage Nicknames and a member Petto can manage.
+  const total = () => logRows.filter((row) => row.manager_id === 'u1').length;
+  out = await run('discord.gg/good1'); assert.equal(out.some((item) => item.kind === 'nick'), false, 'off by default');
+  config.nickname_format = '[{count}] {name}';
+  out = await run('discord.gg/good1'); assert.deepEqual(out.find((item) => item.kind === 'nick'), { kind: 'nick', nick: `[${total()}] Mia` });
+  out = await run('discord.gg/good1', { manageable: false }); assert.equal(out.some((item) => item.kind === 'nick'), false, 'a member that Petto can not manage keeps the nickname');
+  out = await run('discord.gg/good1', { perms: false }); assert.equal(out.some((item) => item.kind === 'nick'), false, 'without Manage Nicknames nothing is changed'); assert.ok(out.some((item) => item.kind === 'reply'), 'the partnership is still counted and answered');
+  config.nickname_format = null;
+
+  // Milestones: the role and the message come when the total reaches the number, once.
+  milestoneRewards = [{ count: total() + 1, role_id: 'rw', message: 'Milestone {milestone.count} for {user.mention} ({partner.count_total})' }];
+  out = await run('discord.gg/good1');
+  assert.deepEqual(out.find((item) => item.kind === 'role'), { kind: 'role', id: 'rw' }); assert.equal(out.find((item) => item.kind === 'send').content, `Milestone ${total()} for <@u1> (${total()})`);
+  out = await run('discord.gg/good1'); assert.equal(out.some((item) => item.kind === 'role' || item.kind === 'send'), false, 'a milestone is never given twice');
+  milestoneRewards = [];
 
   // The commands: settings are saved, the limit of channels follows the plan, and the numbers are shown.
   const partner = require('../src/commands/automation/partner');

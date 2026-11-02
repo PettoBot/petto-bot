@@ -9,6 +9,7 @@ module.exports = {
   'deadroles.where.level': 'uma recompensa de nível',
   'deadroles.where.button': 'um botão ou menu de cargos',
   'deadroles.where.invite': 'uma recompensa de convites',
+  'deadroles.where.milestone': 'uma recompensa por marcos (parcerias ou envios)',
   'deadroles.action.removed': 'O Petto o tirou dessa configuração para que nada continue falhando. Escolha um cargo novo lá quando quiser.',
   'deadroles.action.pick': 'Abra essa configuração no painel e escolha o cargo de novo.',
   'deadroles.action.verification.removed': 'O Petto o tirou das configurações de verificação para que nada continue falhando. Abra as configurações de verificação no painel (ou use `/verify setup`) e escolha um cargo de novo. Até lá, quem passa na verificação conta como verificado no Petto, mas não recebe nenhum cargo.',

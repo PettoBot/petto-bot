@@ -64,7 +64,7 @@ async function canTellStaff(guildId, event) {
 }
 
 // Where each kind of role is chosen, and what the staff should do. `verification` is the only one that also has its own command.
-const KINDS = Object.freeze(['verification', 'gate', 'join', 'reaction', 'button', 'level', 'invite']);
+const KINDS = Object.freeze(['verification', 'gate', 'join', 'reaction', 'button', 'level', 'invite', 'milestone']);
 const eventOf = (kind) => (kind === 'verification' || kind === 'gate' ? 'verification' : 'roles');
 
 /** The text of the note for the staff. `outcome`: `removed` (Petto took it out of the setting), `pick` (the staff has to pick it again), `made` (Petto made a new one). */

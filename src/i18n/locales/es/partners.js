@@ -93,4 +93,12 @@ module.exports = {
   'partners.welcome.doneNoRole': '{user} ahora es Partner Manager. (No hay un rol de manager configurado, así que no se dio ningún rol).',
   'partners.welcome.doneNotSent': '{user} ahora es Partner Manager. No pude enviar la bienvenida.',
   'partners.welcome.doneNoRoleNotSent': '{user} ahora es Partner Manager. (No hay un rol de manager configurado, así que no se dio ningún rol). No pude enviar la bienvenida.',
+  'partners.nickname.reason': 'Apodo de Partner Manager',
+  'partners.nickname.show': 'El apodo de un Partner Manager es `{format}`. Cámbialo con `nickname <formato>` o desactívalo con `nickname off`.',
+  'partners.nickname.showOff': 'El formato de apodo está desactivado. Pon uno con `nickname <formato>`, con {name} y {count}, como `[{count}] {name}`.',
+  'partners.nickname.off': 'El formato de apodo está desactivado. Los apodos se quedan como están.',
+  'partners.nickname.invalid': 'El formato necesita {name} o {count} y hasta 64 caracteres, como `[{count}] {name}`.',
+  'partners.nickname.saved': 'Después de cada alianza el apodo del Partner Manager es `{format}`.',
+  'partners.nickname.savedNoPermission': 'Guardado: `{format}`. Todavía no puedo cambiar apodos: dame Gestionar apodos y mantén mi rol por encima de los managers.',
+  'partners.view.nickname': 'Apodo de los managers: {format}',
 };

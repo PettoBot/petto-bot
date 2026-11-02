@@ -1,0 +1,17 @@
+module.exports = {
+  'milestones.auditReason': 'Recompensa por marco: {count}',
+  'milestones.choose': 'Escolha add, remove ou list.',
+  'milestones.badCount': 'O número a alcançar é um inteiro de 1 a 1000000.',
+  'milestones.needRole': 'Diga o cargo a dar: `reward add <número> <cargo> [mensagem]`.',
+  'milestones.badRole': 'Esse cargo não pode ser dado (é @everyone ou é gerenciado por uma integração).',
+  'milestones.cannotGive': 'Não consigo dar {role}: preciso de Gerenciar cargos e o cargo precisa estar abaixo do meu cargo mais alto.',
+  'milestones.limit': 'Um servidor pode ter até {limit} recompensas aqui. Remova uma antes.',
+  'milestones.added': 'Ao chegar em {count} o cargo {role} é dado.',
+  'milestones.addedMessage': 'Ao chegar em {count} o cargo {role} é dado e a mensagem é publicada.',
+  'milestones.removed': 'A recompensa de {count} foi removida. Os cargos já dados ficam.',
+  'milestones.notListed': 'Não há recompensa em {count}.',
+  'milestones.partner.title': '### Recompensas por parcerias',
+  'milestones.partner.empty': 'Ainda não há recompensas por parcerias. Adicione uma com `reward add <número> <cargo> [mensagem]`.',
+  'milestones.upload.title': '### Recompensas por envios',
+  'milestones.upload.empty': 'Ainda não há recompensas por envios. Adicione uma com `reward add <número> <cargo> [mensagem]`.',
+};

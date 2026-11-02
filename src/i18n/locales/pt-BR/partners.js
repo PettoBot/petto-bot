@@ -93,4 +93,12 @@ module.exports = {
   'partners.welcome.doneNoRole': '{user} agora é Partner Manager. (Não há cargo de manager configurado, então nenhum cargo foi dado.)',
   'partners.welcome.doneNotSent': '{user} agora é Partner Manager. Não consegui enviar as boas-vindas.',
   'partners.welcome.doneNoRoleNotSent': '{user} agora é Partner Manager. (Não há cargo de manager configurado, então nenhum cargo foi dado.) Não consegui enviar as boas-vindas.',
+  'partners.nickname.reason': 'Apelido de Partner Manager',
+  'partners.nickname.show': 'O apelido de um Partner Manager é `{format}`. Mude com `nickname <formato>` ou desative com `nickname off`.',
+  'partners.nickname.showOff': 'O formato de apelido está desativado. Defina um com `nickname <formato>`, com {name} e {count}, como `[{count}] {name}`.',
+  'partners.nickname.off': 'O formato de apelido está desativado. Os apelidos ficam como estão.',
+  'partners.nickname.invalid': 'O formato precisa de {name} ou {count} e até 64 caracteres, como `[{count}] {name}`.',
+  'partners.nickname.saved': 'Depois de cada parceria o apelido do Partner Manager é `{format}`.',
+  'partners.nickname.savedNoPermission': 'Salvo: `{format}`. Ainda não consigo mudar apelidos: me dê Gerenciar apelidos e mantenha meu cargo acima dos managers.',
+  'partners.view.nickname': 'Apelido dos managers: {format}',
 };
