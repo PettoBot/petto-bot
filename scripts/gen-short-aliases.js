@@ -17,6 +17,8 @@
 //    A subcommand that already has a route of 3 letters or less written by hand (`!mu` is `!minecraft user`) is left alone.
 // A long command with no subcommands (`leaveguild`) gets the first letters of its consonants (`lvg`) when it has no alias of 7 letters or less.
 // The table is committed: running this later only adds words for new commands and subcommands, so a word never changes meaning.
+// scripts/short-aliases-kept.json holds the words that would be different if the rule started from nothing today, because a command was renamed or
+// moved (`!gm` was `!game minecraft`, it is `!search minecraft user` now): the check starts from them to prove the table is what the rule gives.
 process.env.DISCORD_TOKEN ||= 'gen';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://gen:gen@127.0.0.1:1/gen'; // never connected to
@@ -29,13 +31,13 @@ const MAX_LENGTH = 5;
 const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
-// The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search`, `/staff`, `/config`, `/protect`, `/greet`, `/auto`, `/message`, `/community`, `/contrib`, `/special` and `/bot` come after every other command, so their words are the ones left free and no word that already
+// The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search`, `/staff`, `/config`, `/protect`, `/greet`, `/automation`, `/message`, `/community`, `/contributions`, `/specialchannels`, `/modtools`, `/levels` and `/bot` come after every other command, so their words are the ones left free and no word that already
 // works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
-const LAST = ['server', 'user', 'mod', 'game', 'me', 'search', 'staff', 'config', 'protect', 'greet', 'auto', 'message', 'community', 'contrib', 'special', 'bot', 'ai'];
+const LAST = ['server', 'user', 'mod', 'game', 'me', 'search', 'staff', 'config', 'protect', 'greet', 'automation', 'message', 'community', 'contributions', 'specialchannels', 'bot', 'ai', 'levels', 'modtools', 'social'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
-// Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.
-const SKIPPED_COMMANDS = new Set(['act']);
+// Left out: the actions of /action have their own words (`!hug`), and these are not for members to type.
+const SKIPPED_COMMANDS = new Set(['action']);
 
 /** Everything the rule needs to know about the commands, read from the command files. */
 function loadCommandInfo() {
