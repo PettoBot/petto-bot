@@ -18,6 +18,8 @@ const { t, tn, formatNumber, currentLanguage } = require('../i18n');
 
 const PER_PAGE = 10;
 const COLOR = 0x4b4f59;
+const SMALL = (text) => `-# ${text}`; // Discord's small gray text: the stats sit under the name without competing with it
+const USERNAME_WIDTH = 12; // the username shown next to the display name
 const NAME_WIDTH = 18; // how many columns of a name are shown; a wide character (Chinese, an emoji) takes two
 const PODIUM_FILE = 'podium.webp';
 const NUMBER_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
@@ -67,12 +69,18 @@ function displayName(name, width = NAME_WIDTH) {
   return `\u2068${text}\u2069`;
 }
 
-/** One place of the leaderboard as a field: `04 · Luna` over `Lv. 70 · 1.5M XP` (a week or a month has no level, so the value is the XP). */
+/**
+ * One place of the leaderboard as a field: `04 · Luna · luna_99` (the display name and, next to it, the username when it is a different one) over the
+ * level and the XP in small text (a week or a month has no level, so it is just the XP).
+ */
 function memberField(entry, pos, lang, width = NAME_WIDTH) {
   const stats = [];
   if (entry.level !== null) stats.push(t(lang, 'leveling.board.podiumLevel', { level: formatNumber(lang, entry.level) }));
   stats.push(`${compact(lang, entry.xp)} XP`);
-  return { name: `${String(entry.position).padStart(pos, '0')} \u00b7 ${displayName(entry.name, width)}`, value: stats.join(' \u00b7 ') };
+  const username = String(entry.username ?? '').trim();
+  const sameName = !username || username.toLowerCase() === String(entry.name ?? '').trim().toLowerCase();
+  const who = sameName ? displayName(entry.name, width) : `${displayName(entry.name, Math.min(width, 16))} \u00b7 ${displayName(username, USERNAME_WIDTH)}`;
+  return { name: `${String(entry.position).padStart(pos, '0')} \u00b7 ${who}`, value: SMALL(stats.join(' \u00b7 ')) };
 }
 
 /** The fields of the places that are not on the podium: one field for each member, one under another, so every row is two lines. */
@@ -95,6 +103,7 @@ async function loadEntries(guild, { page, source, period, config }) {
       position: offset + i + 1,
       id: row.user_id,
       name: member?.displayName ?? user?.displayName ?? user?.username ?? `…${String(row.user_id).slice(-4)}`,
+      username: user?.username ?? null,
       avatarUrl: (member ?? user)?.displayAvatarURL?.({ extension: 'webp', size: 128, forceStatic: true }) ?? null,
       level: null, xp: Number(row.xp ?? 0), current: null, needed: null,
     };
@@ -136,7 +145,7 @@ async function viewerBlock({ guild, viewerId, source, period, config, total, lan
   try {
     if (period !== 'all') {
       const standing = await periods.memberStanding(guild.id, viewerId, period, voice ? 'voice' : 'text');
-      return standing ? { name: t(lang, 'leveling.board.youName', { rank: n(standing.position), total: n(total) }), value: `${n(standing.xp)} XP` } : null;
+      return standing ? { name: t(lang, 'leveling.board.youName', { rank: n(standing.position), total: n(total) }), value: SMALL(`${n(standing.xp)} XP`) } : null;
     }
     const userData = await levelUsersDb.getUser(guild.id, viewerId);
     const xp = Number(voice ? userData?.voice_xp ?? 0 : userData?.xp ?? 0);
@@ -145,7 +154,7 @@ async function viewerBlock({ guild, viewerId, source, period, config, total, lan
     const data = buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank, total });
     return {
       name: t(lang, 'leveling.board.youName', { rank: n(rank), total: n(total) }),
-      value: t(lang, 'leveling.board.youValue', { level: n(data.level), current: n(data.xpCurrent), needed: n(data.xpNeeded), percent: data.progress }),
+      value: SMALL(t(lang, 'leveling.board.youValue', { level: n(data.level), current: n(data.xpCurrent), needed: n(data.xpNeeded), percent: data.progress })),
       progress: data.progress, voice,
     };
   } catch {
