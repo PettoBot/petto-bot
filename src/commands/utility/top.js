@@ -6,6 +6,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { getVoiceConfig } = require('../../utils/levelSource');
 const periods = require('../../db/levelPeriods');
+const { buildLeaderboardReply } = require('../../utils/leaderboardView');
 const { t, tn, formatNumber, currentLanguage, languageOf } = require('../../i18n');
 
 const PER_PAGE = 10;
@@ -106,15 +107,25 @@ module.exports = {
     let page = Math.min(Math.max(1, interaction.options.getInteger('page') ?? 1), totalPages);
     const footer = (shown) => tn(lang, 'leveling.top.footer', total, { count: total, page: shown, pages: totalPages });
 
-    const embed = await build(page);
-    embed.setFooter({ text: footer(page) });
+    // The page with its pictures (podium on the first one, your own position with a bar); when that cannot be built the plain text list answers, so the
+    // leaderboard always answers. `attachments: []` empties the pictures of the page before when a page without a podium replaces it.
+    const pageReply = async (shown) => {
+      try {
+        return await buildLeaderboardReply({ guild: interaction.guild, page: shown, totalPages, total, source, period, config: sourceConfig, lang, viewerId: interaction.user.id });
+      } catch (error) {
+        const embed = await build(shown);
+        embed.setFooter({ text: footer(shown) });
+        return { embeds: [embed], files: [], attachments: [] };
+      }
+    };
 
+    const first = await pageReply(page);
     if (totalPages === 1) {
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply(first);
       return;
     }
 
-    const msg = await interaction.editReply({ embeds: [embed], components: [navRow(page, totalPages)] });
+    const msg = await interaction.editReply({ ...first, components: [navRow(page, totalPages)] });
     const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
     collector.on('collect', async (i) => {
@@ -132,9 +143,8 @@ module.exports = {
       if (i.customId === 'top_prev') page = Math.max(1, page - 1);
       if (i.customId === 'top_next') page = Math.min(totalPages, page + 1);
 
-      const nextEmbed = await build(page);
-      nextEmbed.setFooter({ text: footer(page) });
-      await i.update({ embeds: [nextEmbed], components: [navRow(page, totalPages)] });
+      const next = await pageReply(page);
+      await i.update({ ...next, components: [navRow(page, totalPages)] });
     });
 
     collector.on('end', (_c, reason) => {

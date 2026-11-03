@@ -1,6 +1,9 @@
 // Checks the leaderboard embed with pictures (utils/leaderboardView.js): the podium picture of the first three, the fields, the position of
 // whoever asked with the progress bar picture, avatars that fail, the caches (finished pictures, avatars, one render for identical requests, the limit
 // of pictures drawn at once), and the plain embed that is still answered when a picture cannot be had. The database and the downloads are replaced.
+process.env.DISCORD_TOKEN ??= 'check';
+process.env.DISCORD_CLIENT_ID ??= '1';
+process.env.DISCLOUD_DATABASE_URL ??= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { Collection } = require('discord.js');
@@ -16,10 +19,13 @@ let rowCount = 10;
 let viewerRow = { xp: 5000, level: 4 };
 const { totalXpForLevel } = require('../src/utils/levelCurve');
 const rowsOf = (offset) => Array.from({ length: rowCount }, (_, i) => ({ user_id: String(1000 + offset + i), level: 83 - offset - i, xp: totalXpForLevel(83 - offset - i, cfg) + 300, voice_level: 5, voice_xp: 900 - i }));
+stub('src/db/database.js', { from: () => ({}) });
 stub('src/db/levelUsers.js', {
   getLeaderboardPage: async (_g, { offset }) => rowsOf(offset), getVoiceLeaderboardPage: async (_g, { offset }) => rowsOf(offset),
   getUser: async () => viewerRow, getRank: async () => 312, getVoiceRank: async () => 12,
+  countRanked: async () => 72_159, countVoiceRanked: async () => 40,
 });
+Object.assign(require('../src/db/levelConfig'), { getConfig: async () => cfg });
 let standing = { xp: 450, position: 9 };
 let periodRows = [{ user_id: '1000', xp: 12_345 }, { user_id: '1001', xp: 900 }];
 stub('src/db/levelPeriods.js', { boardPage: async () => periodRows, memberStanding: async () => standing });
@@ -75,7 +81,6 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   assert.equal(memberField({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'es').value, `Nv. 70 \u00b7 ${compact('es', 1_500_000)} XP`);
   const nasty = memberField({ position: 4, name: '*'.repeat(80), level: 1, xp: 1 }, 2, 'en');
   assert.ok(nasty.name.length <= 60 && nasty.name.length < LIMITS.name, 'a name made only of Markdown characters still fits a field name');
-  assert.equal(memberField({ position: 4, name: 'x'.repeat(80), level: 1, xp: 1 }, 2, 'en', 12).name, `04 \u00b7 ${FSI}${'x'.repeat(11)}\u2026${PDI}`, 'the inline layout cuts shorter');
 
   // Ten rows: the podium picture first, then one field for each of the other seven, then the viewer with the bar.
   const reply = await buildLeaderboardReply({ ...base, viewerId: '77' });
@@ -96,12 +101,6 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   assert.equal(JSON.stringify(reply.embeds.map((e) => e.toJSON().color)), '[4935513,4935513]', 'both embeds have the same color');
   assert.ok(reply.embeds.every((e) => e.toJSON().fields === undefined || e.toJSON().fields.every((f) => f.name.length > 0 && f.value.length > 0)), 'no empty field');
 
-  // The same page with the places side by side: pairs, each row of three filled with an empty field.
-  const inlineReply = await buildLeaderboardReply({ ...base, viewerId: '77', layout: 'inline' });
-  const cells = inlineReply.embeds[1].toJSON().fields;
-  assert.equal(cells.length, 4 * 3 + 1, 'seven places in four rows of three, and the viewer'); assert.equal(cells.at(-1).inline, false);
-  assert.ok(cells.slice(0, -1).every((field, i) => field.inline === true && (i % 3 === 2 ? field.name === '\u200b' : true)), 'every third field is the empty one');
-  assert.match(cells[0].name, /^04 \u00b7 \u2068Luna\u2069$/); assert.match(cells[3].name, /^06 \u00b7 /);
 
   // The second page has no podium: one embed with all ten rows.
   const second = await buildLeaderboardReply({ ...base, page: 2 });
@@ -186,13 +185,13 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
 
   // The limits of an embed: names made of characters that need an escape fill the fields, and everything still fits what Discord accepts.
   for (const [id, member] of members) member.displayName = '*_~|`'.repeat(10);
-  for (const layout of ['stacked', 'inline']) {
-    const worst = await buildLeaderboardReply({ ...base, page: 2, viewerId: '77', layout });
+  {
+    const worst = await buildLeaderboardReply({ ...base, page: 2, viewerId: '77' });
     for (const embed of worst.embeds.map((e) => e.toJSON())) {
-      assert.ok((embed.fields ?? []).length <= LIMITS.fields && (embed.fields ?? []).every((f) => f.name.length <= LIMITS.name && f.value.length <= LIMITS.value), `${layout}: field limits`);
+      assert.ok((embed.fields ?? []).length <= LIMITS.fields && (embed.fields ?? []).every((f) => f.name.length <= LIMITS.name && f.value.length <= LIMITS.value), 'field limits');
     }
     const chars = (e) => (e.title?.length ?? 0) + (e.description?.length ?? 0) + (e.author?.name?.length ?? 0) + (e.footer?.text?.length ?? 0) + (e.fields ?? []).reduce((n, f) => n + f.name.length + f.value.length, 0);
-    assert.ok(worst.embeds.reduce((n, e) => n + chars(e.toJSON()), 0) < LIMITS.total, `${layout}: under 6000 characters`);
+    assert.ok(worst.embeds.reduce((n, e) => n + chars(e.toJSON()), 0) < LIMITS.total, 'under 6000 characters');
   }
   for (const [id, member] of members) member.displayName = names[Number(id) % 10];
   const oversized = { data: { fields: Array.from({ length: 30 }, (_, i) => ({ name: `n${i}`.padEnd(300, 'x'), value: 'v'.repeat(1500), inline: false })) } };
@@ -219,6 +218,35 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   const slow = createPictureCache({ ttlMs: 1000 });
   await Promise.all(Array.from({ length: 8 }, (_, i) => slow.get(`s${i}`, async () => { active += 1; peak = Math.max(peak, active); await new Promise((resolve) => setTimeout(resolve, 10)); active -= 1; return { buffer: Buffer.alloc(1) }; })));
   assert.equal(peak, 2, 'no more than the limit are drawn at once'); delete process.env.IMAGE_RENDER_CONCURRENCY;
+  clearBoardImages(); clearAvatars();
+
+  // The command: `/levels leaderboard`, `!top`, `!leaderboard` and `!lb` all run src/commands/utility/top.js. The first page has the podium and your position with
+  // the bar, a page without a podium empties the pictures of the one before (`attachments: []`), the buttons are kept and only the author may press them.
+  const top = require('../src/commands/utility/top');
+  const { EventEmitter } = require('node:events');
+  const sent = [];
+  const collector = new EventEmitter();
+  const message = { createMessageComponentCollector: () => { collector.stop = () => {}; return collector; }, edit: async () => {} };
+  const interaction = {
+    guild: { ...guild, members: { cache: members, fetch: async () => {} } }, user: { id: '77' }, typedPrefix: '!', pettoLang: 'en',
+    options: { getString: () => null, getInteger: () => null },
+    deferReply: async () => {}, reply: async (payload) => { sent.push(['reply', payload]); },
+    editReply: async (payload) => { sent.push(['editReply', payload]); return message; },
+  };
+  await top.execute(interaction);
+  const [, shown] = sent.find(([how]) => how === 'editReply');
+  assert.equal(shown.embeds.length, 2, 'the podium embed and the list');
+  assert.deepEqual(shown.files.map((file) => file.name), ['podium.webp', 'rank-bar.png'], 'the podium and the bar of your position');
+  assert.ok(shown.components.length === 1 && shown.attachments.length === 0);
+  const updates = [];
+  await new Promise((resolve) => { collector.emit('collect', { user: { id: '5' }, customId: 'top_next', reply: async (payload) => { updates.push(['other', payload]); resolve(); } }); });
+  assert.equal(updates[0][0], 'other', 'somebody else is told it is not theirs');
+  await new Promise((resolve) => { collector.emit('collect', { user: { id: '77' }, customId: 'top_next', update: async (payload) => { updates.push(['author', payload]); resolve(); } }); });
+  const next = updates.find(([who]) => who === 'author')[1];
+  assert.deepEqual(next.attachments, [], 'page 2 empties the podium of page 1');
+  assert.equal(next.embeds.length, 1, 'page 2 is one embed with all ten places');
+  assert.deepEqual(next.files.map((file) => file.name), ['rank-bar.png']);
+  assert.ok(next.components.length === 1, 'the buttons are kept');
   clearBoardImages(); clearAvatars();
   console.log('Checked the leaderboard embed: podium picture, one field for each place, your position, avatars, caches, limits and the plain fallback.');
 })().catch((error) => { console.error(error); process.exit(1); });

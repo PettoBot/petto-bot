@@ -67,10 +67,6 @@ function displayName(name, width = NAME_WIDTH) {
   return `\u2068${text}\u2069`;
 }
 
-// `stacked` is one field per row, each on its own lines; `inline` puts two rows side by side (a third, empty, field fills each Discord row of three).
-const LAYOUTS = { stacked: { inline: false, width: NAME_WIDTH }, inline: { inline: true, width: 12 } };
-const BLANK = '\u200b';
-
 /** One place of the leaderboard as a field: `04 · Luna` over `Lv. 70 · 1.5M XP` (a week or a month has no level, so the value is the XP). */
 function memberField(entry, pos, lang, width = NAME_WIDTH) {
   const stats = [];
@@ -79,15 +75,10 @@ function memberField(entry, pos, lang, width = NAME_WIDTH) {
   return { name: `${String(entry.position).padStart(pos, '0')} \u00b7 ${displayName(entry.name, width)}`, value: stats.join(' \u00b7 ') };
 }
 
-/** The fields of the places that are not on the podium, in the layout asked for. */
-function buildFields(entries, lang, layout = 'stacked') {
-  const { inline, width } = LAYOUTS[layout] ?? LAYOUTS.stacked;
+/** The fields of the places that are not on the podium: one field for each member, one under another, so every row is two lines. */
+function buildFields(entries, lang) {
   const pos = Math.max(2, String(entries[entries.length - 1].position).length);
-  const cells = entries.map((entry) => ({ ...memberField(entry, pos, lang, width), inline }));
-  if (!inline) return cells;
-  const rows = [];
-  for (let i = 0; i < cells.length; i += 2) rows.push(cells[i], cells[i + 1] ?? { name: BLANK, value: BLANK, inline: true }, { name: BLANK, value: BLANK, inline: true });
-  return rows;
+  return entries.map((entry) => ({ ...memberField(entry, pos, lang), inline: false }));
 }
 
 /** The rows of a page: who, level, XP and what is needed, for the all-time ranking or for a week or a month. */
@@ -179,10 +170,10 @@ function fitLimits(embeds, keepLast = 0) {
 
 /**
  * The reply for one page: `{ embeds, files, attachments }` (the last one empties the old files when a page is edited in place).
- * `total` and `totalPages` come from the command. `viewerId` is who asked, for the "You" field. `layout` is `stacked` (default) or `inline`.
+ * `total` and `totalPages` come from the command. `viewerId` is who asked, for the "You" field.
  * Database errors are the caller's, as before; a picture that cannot be had never makes the page fail.
  */
-async function buildLeaderboardReply({ guild, page, totalPages, total, source = 'messages', period = 'all', config, lang = currentLanguage(), viewerId = null, layout = 'stacked' }) {
+async function buildLeaderboardReply({ guild, page, totalPages, total, source = 'messages', period = 'all', config, lang = currentLanguage(), viewerId = null }) {
   const entries = await loadEntries(guild, { page, source, period, config });
   const title = t(lang, TITLES[source === 'voice' ? 'voice' : 'messages'][period], { server: guild.name });
   const footer = tn(lang, 'leveling.top.footer', total, { page: formatNumber(lang, page), pages: formatNumber(lang, totalPages) });
@@ -198,7 +189,7 @@ async function buildLeaderboardReply({ guild, page, totalPages, total, source = 
   // The places after the podium and the viewer go in a second embed; when there is nothing for it, the first one carries the footer.
   const list = podium && (rest.length || viewer) ? new EmbedBuilder().setColor(COLOR) : header;
   if (!entries.length) list.setDescription(t(lang, 'leveling.top.noData'));
-  const fields = rest.length ? buildFields(rest, lang, layout) : [];
+  const fields = rest.length ? buildFields(rest, lang) : [];
   if (viewer) {
     const bar = viewer.progress === undefined ? null : await renderRankBar({ percent: viewer.progress, voice: viewer.voice }).catch(() => null);
     if (bar) { files.push(new AttachmentBuilder(bar.buffer, { name: bar.name })); list.setImage(`attachment://${bar.name}`); }
