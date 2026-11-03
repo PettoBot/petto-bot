@@ -76,9 +76,11 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   assert.equal(bare('\u202eevil\u202c\u200b\u2066name'), 'evilname', 'bidirectional and zero-width controls are removed');
   const arabic = '\u0645\u0631\u062d\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645'; assert.equal(bare(arabic), arabic, 'a right-to-left name is kept');
   assert.equal(displayName('   '), '?'); assert.equal(displayName('\u200b\u200b'), '?'); assert.equal(bare('Line\nbreak\tname'), 'Line break name', 'no line breaks inside a name');
-  assert.deepEqual(memberField({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'en'), { name: `04 \u00b7 ${FSI}Luna${PDI}`, value: 'Lv. 70 \u00b7 1.5M XP' }, 'the rank and the name over the level and the XP');
-  assert.deepEqual(memberField({ position: 12, name: 'Luna', level: null, xp: 12_345 }, 3, 'en'), { name: `012 \u00b7 ${FSI}Luna${PDI}`, value: '12K XP' }, 'a week or a month has no level: the value is the XP');
-  assert.equal(memberField({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'es').value, `Nv. 70 \u00b7 ${compact('es', 1_500_000)} XP`);
+  assert.deepEqual(memberField({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'en'), { name: `04 \u00b7 ${FSI}Luna${PDI}`, value: '-# Lv. 70 \u00b7 1.5M XP' }, 'the rank and the name over the level and the XP, in small text');
+  assert.deepEqual(memberField({ position: 4, name: 'Luna', username: 'luna_99', level: 70, xp: 1_500_000 }, 2, 'en'), { name: `04 \u00b7 ${FSI}Luna${PDI} \u00b7 ${FSI}luna\uff3f99${PDI}`, value: '-# Lv. 70 \u00b7 1.5M XP' }, 'the display name and the username next to it (markdown made harmless)');
+  assert.equal(memberField({ position: 4, name: 'Luna', username: 'LUNA', level: 70, xp: 1 }, 2, 'en').name, `04 \u00b7 ${FSI}Luna${PDI}`, 'the username is left out when it is the same name');
+  assert.deepEqual(memberField({ position: 12, name: 'Luna', level: null, xp: 12_345 }, 3, 'en'), { name: `012 \u00b7 ${FSI}Luna${PDI}`, value: '-# 12K XP' }, 'a week or a month has no level: the value is the XP');
+  assert.equal(memberField({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'es').value, `-# Nv. 70 \u00b7 ${compact('es', 1_500_000)} XP`);
   const nasty = memberField({ position: 4, name: '*'.repeat(80), level: 1, xp: 1 }, 2, 'en');
   assert.ok(nasty.name.length <= 60 && nasty.name.length < LIMITS.name, 'a name made only of Markdown characters still fits a field name');
 
@@ -95,8 +97,8 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   assert.equal(list.image.url, 'attachment://rank-bar.png'); assert.equal(list.description, undefined, 'no text block: the fields are the list');
   assert.equal(list.fields.length, 8, 'the seven places after the podium and the viewer');
   assert.ok(list.fields.every((field) => field.inline === false), 'one field under another, so every row is two lines');
-  assert.match(list.fields[0].name, /^04 \u00b7 \u2068Luna\u2069$/); assert.equal(list.fields[0].value, 'Lv. 80 \u00b7 ' + compact('en', totalXpForLevel(80, cfg) + 300) + ' XP'); assert.match(list.fields[6].name, /^10 \u00b7 /);
-  assert.equal(list.fields[7].name, 'You \u00b7 #312 of 72,159'); assert.match(list.fields[7].value, /^Level 4 \u00b7 [\d,]+ \/ [\d,]+ XP \u00b7 \d+%$/);
+  assert.match(list.fields[0].name, /^04 \u00b7 \u2068Luna\u2069$/); assert.equal(list.fields[0].value, '-# Lv. 80 \u00b7 ' + compact('en', totalXpForLevel(80, cfg) + 300) + ' XP'); assert.match(list.fields[6].name, /^10 \u00b7 /);
+  assert.equal(list.fields[7].name, 'You \u00b7 #312 of 72,159'); assert.match(list.fields[7].value, /^-# Level 4 \u00b7 [\d,]+ \/ [\d,]+ XP \u00b7 \d+%$/);
   assert.equal(list.footer.text, '72,159 member(s) · Page 1/7,216', 'the count is written with separators');
   assert.equal(JSON.stringify(reply.embeds.map((e) => e.toJSON().color)), '[4935513,4935513]', 'both embeds have the same color');
   assert.ok(reply.embeds.every((e) => e.toJSON().fields === undefined || e.toJSON().fields.every((f) => f.name.length > 0 && f.value.length > 0)), 'no empty field');
@@ -167,21 +169,21 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   assert.ok(!(await buildLeaderboardReply({ ...base, viewerId: '77' })).embeds[1].toJSON().fields.some((field) => field.name.startsWith('You')), 'no field for someone with no XP');
   viewerRow = { xp: 5000, level: 4, voice_xp: 800, voice_level: 3 };
   const voice = await buildLeaderboardReply({ ...base, source: 'voice', viewerId: '77' });
-  assert.equal(voice.embeds[0].toJSON().author.name, 'Petto Server • Voice leaderboard'); const voiceYou = voice.embeds[1].toJSON().fields.at(-1); assert.equal(voiceYou.name, 'You \u00b7 #12 of 72,159'); assert.match(voiceYou.value, /^Level 3 \u00b7 /);
+  assert.equal(voice.embeds[0].toJSON().author.name, 'Petto Server • Voice leaderboard'); const voiceYou = voice.embeds[1].toJSON().fields.at(-1); assert.equal(voiceYou.name, 'You \u00b7 #12 of 72,159'); assert.match(voiceYou.value, /^-# Level 3 \u00b7 /);
   const week = await buildLeaderboardReply({ ...base, period: 'week', total: 2, totalPages: 1, viewerId: '77' });
   assert.equal(week.embeds[0].toJSON().author.name, 'Petto Server • Leaderboard · This week');
   const weekFields = (week.embeds[1] ?? week.embeds[0]).toJSON().fields;
-  assert.ok(weekFields.every((field) => !field.value.includes('Lv.')), 'a week has no level'); assert.deepEqual(weekFields.at(-1), { name: 'You \u00b7 #9 of 2', value: '450 XP', inline: false });
+  assert.ok(weekFields.every((field) => !field.value.includes('Lv.')), 'a week has no level'); assert.deepEqual(weekFields.at(-1), { name: 'You \u00b7 #9 of 2', value: '-# 450 XP', inline: false });
   assert.equal(weekFields.length, 1, 'two members are both on the podium, so only the viewer is a field');
   const weekTwo = await buildLeaderboardReply({ ...base, page: 2, period: 'week', total: 12, totalPages: 2 });
-  assert.deepEqual(weekTwo.embeds[0].toJSON().fields.map((field) => field.value), ['12K XP', '900 XP'], 'a week lists only the XP');
+  assert.deepEqual(weekTwo.embeds[0].toJSON().fields.map((field) => field.value), ['-# 12K XP', '-# 900 XP'], 'a week lists only the XP');
   assert.ok(week.files.every((file) => file.name !== 'rank-bar.png'), 'and no bar');
 
   // Spanish and Portuguese.
   const es = await buildLeaderboardReply({ ...base, lang: 'es', viewerId: '77' }); const ef = es.embeds[1].toJSON().fields;
-  assert.match(ef[0].value, /^Nv\. \d+ /); assert.match(ef.at(-1).name, /^Tú \u00b7 #312 de 72,159$/); assert.match(ef.at(-1).value, /^Nivel 4 /); assert.match(es.embeds[1].toJSON().footer.text, /miembro/i);
+  assert.match(ef[0].value, /^-# Nv\. \d+ /); assert.match(ef.at(-1).name, /^Tú \u00b7 #312 de 72,159$/); assert.match(ef.at(-1).value, /^-# Nivel 4 /); assert.match(es.embeds[1].toJSON().footer.text, /miembro/i);
   const pt = await buildLeaderboardReply({ ...base, lang: 'pt-BR', viewerId: '77' });
-  const ptf = pt.embeds[1].toJSON().fields; assert.match(ptf[0].value, /^Nív\. \d+ /); assert.match(ptf.at(-1).name, /^Você \u00b7 #312 de 72\.159$/); assert.match(ptf.at(-1).value, /^Nível 4 /);
+  const ptf = pt.embeds[1].toJSON().fields; assert.match(ptf[0].value, /^-# Nív\. \d+ /); assert.match(ptf.at(-1).name, /^Você \u00b7 #312 de 72\.159$/); assert.match(ptf.at(-1).value, /^-# Nível 4 /);
 
   // The limits of an embed: names made of characters that need an escape fill the fields, and everything still fits what Discord accepts.
   for (const [id, member] of members) member.displayName = '*_~|`'.repeat(10);
