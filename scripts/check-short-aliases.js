@@ -33,7 +33,7 @@ for (const [name, { aliases }] of commands) {
 for (const route of DEFAULT_PREFIX_ROUTES) {
   const command = commands.get(route.command);
   assert.ok(command, `route ${route.alias}: the command ${route.command} does not exist`);
-  // A subcommand of a group is written `group subcommand` (`love hug` of /act).
+  // A subcommand of a group is written `group subcommand` (`love hug` of /action).
   const subcommands = (command.data.options ?? []).flatMap((option) => (option.type === 1 ? [option.name] : option.type === 2 ? (option.options ?? []).map((sub) => `${option.name} ${sub.name}`) : []));
   if (route.subcommand) assert.ok(subcommands.includes(route.subcommand), `route ${route.alias}: ${route.command} has no subcommand ${route.subcommand}`);
 }
@@ -95,9 +95,12 @@ assert.match(gone[0], /no subcommand nothing/);
 const { added, skipped } = generator.generate({ ...info, table: SHORT_ALIAS_TABLE });
 assert.deepEqual(added, {}, `the table is out of date, run npm run gen:short-aliases: ${JSON.stringify(added)}`);
 assert.ok(skipped.length < 20, 'a few subcommands may have no short alias, not many');
-// The same rule, from nothing, gives the same table (it is deterministic).
-const again = generator.generate({ ...info, table: {} }).added;
-assert.deepEqual(generator.sortedTable({ ...again }), generator.sortedTable(SHORT_ALIAS_TABLE), 'the rule gives the committed table when it starts from nothing');
+// The same rule, from the words that were kept when a command was renamed or moved (scripts/short-aliases-kept.json: `!gm` was `!game minecraft` and
+// is `!search minecraft user` now), gives the same table (it is deterministic). Each of the kept words must still be in the table, unchanged.
+const kept = require('./short-aliases-kept.json');
+for (const [word, target] of Object.entries(kept)) assert.equal(SHORT_ALIAS_TABLE[word], target, `the kept word ${word} is in the table`);
+const again = generator.generate({ ...info, table: kept }).added;
+assert.deepEqual(generator.sortedTable({ ...kept, ...again }), generator.sortedTable(SHORT_ALIAS_TABLE), 'the rule gives the committed table when it starts from the kept words');
 // The owner's examples.
 assert.equal(SHORT_ALIAS_TABLE.is, 'image sepia');
 assert.equal(SHORT_ALIAS_TABLE.iro, 'image rotate', '`ir` is the alias of !inrole, so the letters of the subcommand are used');

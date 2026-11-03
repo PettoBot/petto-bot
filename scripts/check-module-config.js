@@ -68,9 +68,9 @@ logger.warn = () => {};
   assert.match(await text('levelconfig'), /Nothing is set up yet/);
 
   const brUsage = await text('brconfig');
-  assert.match(brUsage, /\?boosterrole admin base/);
+  assert.match(brUsage, /\?boosterrole settings base-role/);
   assert.match(brUsage, /\?boosterrole create/, 'every command of the module is shown');
-  assert.ok(brUsage.indexOf('boosterrole admin base') < brUsage.indexOf('boosterrole create'), 'the ones that configure come first');
+  assert.ok(brUsage.indexOf('boosterrole settings base-role') < brUsage.indexOf('boosterrole create'), 'the ones that configure come first');
   assert.match(await text('ticketconfig'), /\?ticket setup/);
   // A module with many commands is shortened, not cut: ticket has dozens and all of them are still there
   const ticket = await text('ticketconfig');

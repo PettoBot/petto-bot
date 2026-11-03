@@ -206,12 +206,12 @@ const baseJob = (extra = {}) => ({
   const role = require('../src/commands/moderation/role.js');
   const json = role.data.toJSON();
   const names = json.options.map((option) => option.name);
-  for (const name of ['add', 'remove', 'create', 'delete', 'edit', 'color', 'icon', 'mentionable', 'hoist', 'bots', 'bots-remove', 'topcolor', 'list', 'in', 'has', 'humans', 'all', 'cancel', 'temp', 'temp-list', 'group']) assert.ok(names.includes(name), `/role ${name} is still there`);
+  for (const name of ['add', 'remove', 'create', 'delete', 'edit', 'color', 'icon', 'mentionable', 'hoist', 'bots', 'bots-remove', 'topcolor', 'list', 'members', 'bulk-by-role', 'humans', 'all', 'cancel', 'temp', 'temp-list', 'group']) assert.ok(names.includes(name), `/role ${name} is still there`);
   for (const name of ['job', 'join', 'sticky']) assert.ok(names.includes(name), `/role ${name} is new`);
   assert.ok(json.options.length <= 25, 'Discord allows 25 subcommands and groups');
   const optionsOf = (name) => json.options.find((option) => option.name === name).options.map((option) => option.name);
   assert.deepEqual(optionsOf('all'), ['role', 'remove', 'preview', 'joined_after', 'joined_before', 'min_roles', 'max_roles', 'reason'], 'the old options come first, in the same order');
-  assert.deepEqual(optionsOf('has'), ['filter_role', 'target_role', 'remove', 'without', 'preview', 'joined_after', 'joined_before', 'min_roles', 'max_roles', 'reason']);
+  assert.deepEqual(optionsOf('bulk-by-role'), ['filter_role', 'target_role', 'remove', 'without', 'preview', 'joined_after', 'joined_before', 'min_roles', 'max_roles', 'reason']);
   assert.deepEqual(optionsOf('humans').slice(0, 2), ['role', 'remove']);
   assert.deepEqual(optionsOf('join'), ['add', 'remove', 'list', 'clear', 'apply'], '/role join holds the join roles');
   assert.deepEqual(optionsOf('sticky'), ['enable', 'disable', 'status']);

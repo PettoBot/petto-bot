@@ -1,4 +1,4 @@
-// Checks the interaction actions of /act: every action is reached by its word with the prefix (`!hug`, `!hf`) and as a slash subcommand
+// Checks the interaction actions of /action: every action is reached by its word with the prefix (`!hug`, `!hf`) and as a slash subcommand
 // with the same code, how the people are named in each form (slash: mentions of both; prefix: names, the typed message already mentions
 // them), nobody is notified, a bot or the author is handled, and the gif sources with a faked `fetch` (the next source, the sources
 // that are down, the kept pictures, nothing to show).
@@ -45,19 +45,19 @@ global.fetch = async (url) => {
       assert.ok(CATALOGS[lang][`roleplay.${name}.reply.button`].length <= 80, `${lang} ${name} button fits`);
     }
   }
-  // The old standalone commands are gone: the actions are only subcommands of /act.
+  // The old standalone commands are gone: the actions are only subcommands of /action.
   const commandFiles = fs.readdirSync(path.join(__dirname, '..', 'src', 'commands', 'roleplay')).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(commandFiles, ['act.js']);
+  assert.deepEqual(commandFiles, ['action.js']);
 
-  // The prefix: every action and its aliases are routes to /act.
+  // The prefix: every action and its aliases are routes to /action.
   const client = { commands: new Collection() };
   loadCommands(client);
-  const act = client.commands.get('act');
+  const act = client.commands.get('action');
   assert.ok(act && act.category === 'roleplay');
   for (const route of actionRoutes()) {
     const loaded = client.commandRoutes.get(route.alias);
     assert.ok(loaded, `!${route.alias} is a route`);
-    assert.equal(loaded.command, 'act');
+    assert.equal(loaded.command, 'action');
     assert.deepEqual(loaded.args, [route.args[0], route.args[1]]);
     assert.equal(loaded.disableName, route.args[1], 'disabling `hug` is that action only');
     assert.equal(client.commands.has(route.alias), false, `${route.alias} is not a command of its own`);
@@ -65,7 +65,7 @@ global.fetch = async (url) => {
   for (const [alias, name] of [['bf', 'brofist'], ['hh', 'handhold'], ['hf', 'highfive'], ['goodbye', 'bye'], ['hello', 'hi'], ['lol', 'laugh'], ['nope', 'no'], ['unhappy', 'sad'], ['agree', 'yes']]) {
     assert.equal(client.commandRoutes.get(alias).args[1], name, `the old alias !${alias} reaches ${name}`);
   }
-  assert.equal(DEFAULT_PREFIX_ROUTES.filter((route) => route.command === 'act').length, actionRoutes().length);
+  assert.equal(DEFAULT_PREFIX_ROUTES.filter((route) => route.command === 'action').length, actionRoutes().length);
   const help = require('../src/commands/utility/help');
   assert.equal(typeof help.execute, 'function');
 
@@ -81,7 +81,7 @@ global.fetch = async (url) => {
   const users = new Map([[ana.id, ana], [bruno.id, bruno], [robot.id, robot]]);
   const botClient = { users: { fetch: async (id) => users.get(id) ?? null }, commands: client.commands };
 
-  /** What `!<typed>` sends, run the way the message event does (the route turns the word into `act group action`). */
+  /** What `!<typed>` sends, run the way the message event does (the route turns the word into `action group action`). */
   async function viaPrefix(typed, rest) {
     const sent = [];
     const route = client.commandRoutes.get(typed);
@@ -96,7 +96,7 @@ global.fetch = async (url) => {
     return sent.at(-1);
   }
 
-  /** What `/act <group> <action> user:<target>` sends. */
+  /** What `/action <group> <action> user:<target>` sends. */
   async function viaSlash(name, target, lang = 'en') {
     const sent = [];
     const interaction = {
@@ -121,9 +121,9 @@ global.fetch = async (url) => {
     assert.equal(prefixed.embeds[0].data.image.url, IMAGE);
     // Slash: both people as mentions, nobody is notified.
     const slashed = await viaSlash(action, bruno);
-    assert.ok(text(slashed).includes(`<@${ana.id}>`) && text(slashed).includes(mention), `/act ${action}: mentions both people`);
+    assert.ok(text(slashed).includes(`<@${ana.id}>`) && text(slashed).includes(mention), `/action ${action}: mentions both people`);
     assert.ok(!text(slashed).includes('Bruno'), 'no plain name next to the mention');
-    assert.deepEqual(slashed.allowedMentions.parse, [], `/act ${action} notifies nobody`);
+    assert.deepEqual(slashed.allowedMentions.parse, [], `/action ${action} notifies nobody`);
     assert.equal(slashed.allowedMentions.repliedUser, false);
   }
   // The same action, three languages.
@@ -193,6 +193,6 @@ global.fetch = async (url) => {
   assert.ok(noGif.embeds[0].data.description, 'the sentence is still sent');
   assert.equal(EMOJIS.hug, '🤗');
 
-  console.log(`Checked the ${ACTIONS.length} actions of /act: routes, both ways of naming the people, no pings, and the gif sources.`);
+  console.log(`Checked the ${ACTIONS.length} actions of /action: routes, both ways of naming the people, no pings, and the gif sources.`);
   setTimeout(() => process.exit(0), 10);
 })().catch((err) => { console.error(err); process.exit(1); });

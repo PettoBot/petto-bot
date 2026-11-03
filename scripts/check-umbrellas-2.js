@@ -80,7 +80,7 @@ const TABLES = {
   game: [
     ['8ball', '8ball', null, null, 'will it rain tomorrow'],
     ['coinflip', 'coinflip', null, null, ''],
-    ['rps', 'rps', null, null, 'rock'],
+    ['rockpaperscissors', 'rps', null, null, 'rock'],
     ['ship', 'ship', null, null, `<@${BEA}> <@${CAL}>`],
     ['roll', 'roll', null, null, '2d6+3'],
     ['choose', 'choose', null, null, 'tea, coffee'],
@@ -93,21 +93,13 @@ const TABLES = {
     ['cat', 'animal', 'cat', null, ''],
     ['dog', 'animal', 'dog', null, ''],
     ['fox', 'animal', 'fox', null, ''],
-    ['minecraft', 'minecraft', 'user', null, 'Notch'],
-    ['minecraft-server', 'minecraft', 'server', null, 'mc.hypixel.net'],
-    ['roblox', 'roblox', 'user', null, 'builderman'],
-    ['steam', 'steam', 'profile', null, 'gaben'],
-    ['chesscom', 'chess', 'chesscom', null, 'hikaru'],
-    ['lichess', 'chess', 'lichess', null, 'DrNykterstein'],
-    ['pokemon', 'pokemon', null, null, 'pikachu'],
-    ['modrinth', 'modrinth', null, null, 'sodium'],
   ],
   me: [
     ['birthday', 'birthday', 'set', null, '25 12'],
     ['birthday-remove', 'birthday', 'remove', null, ''],
     ['birthday-view', 'birthday', 'view', null, `<@${BEA}>`],
-    ['rep', 'rep', 'view', null, `<@${BEA}>`],
-    ['rep-give', 'rep', 'give', null, `<@${BEA}>`],
+    ['reputation', 'rep', 'view', null, `<@${BEA}>`],
+    ['reputation-give', 'rep', 'give', null, `<@${BEA}>`],
     ['prefix', 'myprefix', 'show', null, ''],
     ['prefix-set', 'myprefix', 'set', null, '?!'],
     ['prefix-reset', 'myprefix', 'reset', null, ''],
@@ -122,30 +114,11 @@ const TABLES = {
     ['lastfm-unlink', 'lastfm', 'unlink', null, ''],
     ['spotify', 'spotify', 'view', null, `<@${BEA}>`],
   ],
-  search: [
-    ['anilist', 'anilist', 'anime', null, 'Frieren'],
-    ['tmdb', 'tmdb', 'movie', null, 'Interstellar'],
-    ['itunes', 'itunes', 'song', null, 'creep radiohead'],
-    ['deezer', 'deezer', 'track', null, 'creep radiohead'],
-    ['lastfm', 'lastfm', 'now', null, `<@${BEA}>`],
-    ['youtube', 'youtube', 'video', null, 'lofi beats'],
-    ['twitch', 'twitch', 'channel', null, 'shroud'],
-    ['wikipedia', 'wikipedia', null, null, 'Minecraft'],
-    ['wiki', 'wiki', null, null, 'ban'],
-    ['weather', 'weather', null, null, 'Bogota'],
-    ['time', 'time', null, null, 'Colombia'],
-    ['currency', 'currency', null, null, '100 usd cop'],
-    ['crypto', 'crypto', null, null, 'bitcoin'],
-    ['compute', 'calc', null, null, '(12 + 4) * 3'],
-    ['color', 'color', null, null, '#ff91c2'],
-    ['github', 'github', 'repo', null, 'octocat/hello-world'],
-    ['package', 'package', 'npm', null, 'discord.js'],
-  ],
   staff: [
-    ['imute', 'imute', 'user', 'ModerateMembers', `<@${BEA}> spam`],
-    ['iunmute', 'imute', 'remove', 'ModerateMembers', `<@${BEA}> ok`],
-    ['rmute', 'rmute', 'user', 'ModerateMembers', `<@${BEA}> spam`],
-    ['runmute', 'rmute', 'remove', 'ModerateMembers', `<@${BEA}> ok`],
+    ['image-mute', 'imute', 'user', 'ModerateMembers', `<@${BEA}> spam`],
+    ['image-unmute', 'imute', 'remove', 'ModerateMembers', `<@${BEA}> ok`],
+    ['reaction-mute', 'rmute', 'user', 'ModerateMembers', `<@${BEA}> spam`],
+    ['reaction-unmute', 'rmute', 'remove', 'ModerateMembers', `<@${BEA}> ok`],
     ['voice-mute', 'voice', 'mute', 'MuteMembers', `<@${BEA}> loud`],
     ['voice-unmute', 'voice', 'unmute', 'MuteMembers', `<@${BEA}> ok`],
     ['voice-deafen', 'voice', 'deafen', 'DeafenMembers', `<@${BEA}> loud`],
@@ -157,7 +130,7 @@ const TABLES = {
     ['thread-lock', 'thread', 'lock', 'ManageThreads', ''],
     ['thread-unlock', 'thread', 'unlock', 'ManageThreads', ''],
     ['nuke', 'nuke', null, 'ManageChannels', ''],
-    ['raid', 'raid', 'clean', 'BanMembers', '10m ban raiders'],
+    ['raid-clean', 'raid', 'clean', 'BanMembers', '10m ban raiders'],
     ['raid-list', 'raid', 'list', 'BanMembers', '1h'],
     ['massban', 'massban', null, 'Administrator', `<@${BEA}> <@${CAL}> spam`],
     ['masskick', 'masskick', null, 'Administrator', `<@${BEA}> <@${CAL}> spam`],
@@ -169,8 +142,10 @@ const TABLES = {
   ],
 };
 const UMBRELLAS = Object.keys(TABLES);
-const CATEGORY = { game: 'fun', me: 'utility', search: 'integrations', staff: 'moderation' };
-const NEW_SLASH = ['game', 'me', 'search', 'staff'];
+const CATEGORY = { game: 'fun', me: 'utility', staff: 'moderation' };
+const NEW_SLASH = ['game', 'me', 'staff'];
+// What /search wraps (it is tested with the groups of scripts/check-umbrellas-3.js); the words of /search that these checks type are spied too.
+const SEARCH_FILES = [...new Set([...client.commands.values()].filter((command) => command.category === 'integrations' || ['weather', 'time', 'wiki', 'calc', 'color'].includes(command.data.name)).map((command) => command.data.name))].filter((name) => name !== 'search');
 const commandFile = (name) => client.commands.get(name);
 
 // ---------------------------------------------------------------- the spy: replaces what a wrapped command does with a record of what it was asked
@@ -297,7 +272,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.ok(subcommandsOf(command).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand), `/${umbrella} has subcommands and nothing else: no slash command without subcommands`);
     assert.deepEqual(command.subcommands.map((entry) => [entry.name, entry.wraps, entry.sub ?? null]), TABLES[umbrella].map((row) => [row[0], row[1], row[2]]), `/${umbrella} wraps what was decided`);
   }
-  assert.deepEqual(UMBRELLAS.map((umbrella) => TABLES[umbrella].length), [23, 18, 17, 24]);
+  assert.deepEqual(UMBRELLAS.map((umbrella) => TABLES[umbrella].length), [15, 18, 24]);
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, takes no list that is filled while typing, and reads no
   // shorter way of writing that an umbrella would not pass on.
@@ -333,20 +308,19 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.deepEqual(optionsOf('game', 'coinflip'), []);
   assert.deepEqual(optionsOf('me', 'birthday'), ['day:4:true', 'month:4:true', 'year:4:false']);
   assert.deepEqual(optionsOf('me', 'history-record'), ['enabled:5:true']);
-  assert.deepEqual(optionsOf('search', 'weather'), ['place:3:true']);
   assert.deepEqual(optionsOf('staff', 'massban'), ['users:3:true', 'reason:3:false']);
   assert.deepEqual(optionsOf('staff', 'masswarn'), ['users:3:true', 'reason:3:true']);
   assert.deepEqual(optionsOf('staff', 'voice-move'), ['user:6:true', 'channel:7:true', 'reason:3:false']);
   assert.deepEqual(optionsOf('staff', 'nuke'), []);
   const birthday = subcommandsOf(commandFile('me')).find((sub) => sub.name === 'birthday');
   assert.deepEqual([birthday.options[0].min_value, birthday.options[0].max_value, birthday.options[2].min_value], [1, 31, 1900], 'the limits of an option go with it');
-  const rps = subcommandsOf(commandFile('game')).find((sub) => sub.name === 'rps');
+  const rps = subcommandsOf(commandFile('game')).find((sub) => sub.name === 'rockpaperscissors');
   assert.equal(rps.options[0].choices.length, 3, 'the choices of an option go with it');
   const thread = subcommandsOf(commandFile('staff')).find((sub) => sub.name === 'thread-rename');
   assert.deepEqual(thread.options.map((option) => [option.name, option.max_length ?? null, option.channel_types?.length ?? 0]), [['name', 100, 0], ['thread', null, 3]], 'the name is at most 100 and the thread is a thread');
 
   // ------------------------------------------------------------ the slash command runs the code of the old command, with its options
-  spyOn(wrappedFiles);
+  spyOn([...wrappedFiles, ...SEARCH_FILES]);
   for (const umbrella of UMBRELLAS) {
     for (const [name, file, sub] of TABLES[umbrella]) {
       const result = await slash(umbrella, name);
@@ -367,8 +341,6 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.deepEqual([r.sub, r.values.day, r.values.month, r.values.year], ['set', 25, 12, 1999]);
   r = (await slash('me', 'history-record', { values: { enabled: false } })).ran;
   assert.deepEqual([r.sub, r.values.enabled], ['record', false], 'a false is a value too');
-  r = (await slash('search', 'github', { values: { repository: 'octocat/hello-world' } })).ran;
-  assert.deepEqual([r.file, r.sub, r.values.repository], ['github', 'repo', 'octocat/hello-world']);
   r = (await slash('staff', 'massban', { values: { users: `${BEA} ${CAL}`, reason: 'raid' } })).ran;
   assert.deepEqual([r.file, r.values.users, r.values.reason], ['massban', `${BEA} ${CAL}`, 'raid'], 'the one text of users goes as it is');
   r = (await slash('staff', 'voice-move', { values: { user: BEA, channel: ROOM, reason: 'wrong room' } })).ran;
@@ -379,7 +351,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   restoreSpies();
 
   // ------------------------------------------------------------ the prefix reads what each subcommand takes exactly as the old command does
-  spyOn(wrappedFiles);
+  spyOn([...wrappedFiles, ...SEARCH_FILES]);
   const ran = async (content, options) => (await send(content, options)).ran;
   for (const umbrella of UMBRELLAS) {
     for (const [name, file, sub, , tail] of TABLES[umbrella]) {
@@ -400,7 +372,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.deepEqual([call.values.first, call.values.second], [BEA, CAL], 'with another prefix too');
   call = await ran('!game roll 4d6kh3');
   assert.equal(call.values.dice, '4d6kh3');
-  call = await ran('!game minecraft Notch');
+  call = await ran('!game minecraft Notch'); // a word of before: the lookup moved to /search, the old word reaches the old command
   assert.deepEqual([call.file, call.sub, call.values.player], ['minecraft', 'user', 'Notch']);
   call = await ran('!game minecraft-server mc.hypixel.net');
   assert.deepEqual([call.sub, call.values.address], ['server', 'mc.hypixel.net']);
@@ -437,10 +409,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
 
   // The old words of the wrapped commands, read as the subcommand they stand for.
   for (const [umbrella, words] of Object.entries({
-    game: { cf: 'coinflip', flipcoin: 'coinflip', eightball: '8ball', tod: 'truthordare', wyr: 'wouldyourather', nhie: 'neverhaveiever', mc: 'minecraft', rbx: 'roblox', mr: 'modrinth', pkmn: 'pokemon', pokedex: 'pokemon', pick: 'choose', dice: 'roll', q: 'quote', bigemoji: 'jumbo', uwuify: 'uwu' },
-    me: { bday: 'birthday', reputation: 'rep', myprefix: 'prefix', phist: 'names', globalrank: 'ranking', sp: 'spotify' },
-    search: { ani: 'anilist', apple: 'itunes', dz: 'deezer', lfm: 'lastfm', yt: 'youtube', wp: 'wikipedia', wk: 'wiki', clima: 'weather', tz: 'time', cur: 'currency', coin: 'crypto', c: 'compute', calc: 'compute', calculate: 'compute', math: 'compute', clr: 'color', hex: 'color', gh: 'github', pkg: 'package' },
-    staff: { imagemute: 'imute', reactionmute: 'rmute', recentban: 'raid', mban: 'massban', mkick: 'masskick', mmute: 'massmute', munban: 'massunban', unbanall: 'massunban', munmute: 'massunmute', mwarn: 'masswarn', nuk: 'nuke' },
+    game: { cf: 'coinflip', flipcoin: 'coinflip', eightball: '8ball', tod: 'truthordare', wyr: 'wouldyourather', nhie: 'neverhaveiever', pick: 'choose', dice: 'roll', q: 'quote', bigemoji: 'jumbo', uwuify: 'uwu' },
+    me: { bday: 'birthday', rep: 'reputation', myprefix: 'prefix', phist: 'names', globalrank: 'ranking', sp: 'spotify' },
+    staff: { imute: 'image-mute', imagemute: 'image-mute', picmute: 'image-mute', rmute: 'reaction-mute', reactionmute: 'reaction-mute', raid: 'raid-clean', recentban: 'raid-clean', mban: 'massban', mkick: 'masskick', mmute: 'massmute', munban: 'massunban', unbanall: 'massunban', munmute: 'massunmute', mwarn: 'masswarn', nuk: 'nuke' },
   })) {
     const command = commandFile(umbrella);
     for (const [word, name] of Object.entries(words)) {
@@ -510,11 +481,12 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github', 'voice', 'thread', 'massban', 'snipe']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
   // The booster role is its own slash command, with every subcommand, and not a subcommand of /me any more (`!boosterrole` and `!br` work as before).
   assert.ok(isSlashCommand(commandFile('boosterrole')), '/boosterrole is a slash command');
-  assert.equal(commandFile('boosterrole').data.toJSON().options.length, 11, '/boosterrole has its 9 subcommands and the groups admin and filter');
+  assert.equal(commandFile('boosterrole').data.toJSON().options.length, 12, '/boosterrole has its 9 subcommands and the groups admin, settings and filter');
   assert.ok(!commandFile('me').subcommands.some((sub) => sub.wraps === 'boosterrole' || /^boosterrole/.test(sub.name)), '/me has no booster role subcommand');
   assert.ok(!Object.hasOwn(commandFile('me').prefixSubcommandAliases ?? {}, 'br'), '`!me br` is not a thing any more');
   // The commands that were already slash commands are still registered as they were.
-  for (const name of ['afk', 'remind', 'rank', 'suggest', 'top', 'ban', 'kick']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
+  for (const name of ['afk', 'remind', 'ban', 'kick']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
+  for (const name of ['rank', 'suggest', 'top']) assert.ok(!isSlashCommand(commandFile(name)) && client.commands.has(name), `/${name} is not a slash command any more (/levels rank, /community suggestion submit, /levels leaderboard) and !${name} still works`);
   // `/avatar`, `/userinfo`, `/purge` (and `/serverinfo`, `/unban`, `/timeout`) were replaced by `/user avatar`, `/user info`, `/mod purge`...: the prefix is unchanged.
   for (const name of ['avatar', 'userinfo', 'purge', 'serverinfo', 'unban', 'timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
 
@@ -569,7 +541,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   }
   assert.ok(refusedSlash(await slash('staff', 'nuke', { perms: F.ManageMessages })) && (await slash('staff', 'nuke', { perms: F.ManageChannels })).ran);
   assert.ok(refusedSlash(await slash('staff', 'snipe', { perms: F.ManageChannels })) && (await slash('staff', 'snipe', { perms: F.ManageMessages })).ran);
-  assert.ok(refusedSlash(await slash('staff', 'raid', { perms: F.KickMembers })) && (await slash('staff', 'raid', { perms: F.BanMembers })).ran, 'raid is a ban: Kick Members is not enough');
+  assert.ok(refusedSlash(await slash('staff', 'raid-clean', { perms: F.KickMembers })) && (await slash('staff', 'raid-clean', { perms: F.BanMembers })).ran, 'raid is a ban: Kick Members is not enough');
   // An administrator can do all of it.
   for (const umbrella of UMBRELLAS) for (const [name] of TABLES[umbrella]) assert.ok((await slash(umbrella, name)).ran, `an administrator can /${umbrella} ${name}`);
   // No member (never from a server, but a gate must not open for it).
@@ -583,7 +555,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.ok(refusedSlash(await slash('staff', name, { perms: 0n, roles: [] })), `/staff ${name} is still refused without it`);
     assert.ok((await send(`!staff ${name} ${TABLES.staff.find((row) => row[0] === name)[4]}`.trimEnd(), { perms: 0n, roles: [MODS] })).ran, `!staff ${name} runs for that role with the prefix`);
   }
-  for (const name of ['thread-lock', 'imute', 'raid', 'massban', 'snipe']) assert.ok(refusedSlash(await slash('staff', name, { perms: 0n, roles: [MODS] })), `the role of voice and nuke is not a role for ${name}`);
+  for (const name of ['thread-lock', 'image-mute', 'raid-clean', 'massban', 'snipe']) assert.ok(refusedSlash(await slash('staff', name, { perms: 0n, roles: [MODS] })), `the role of voice and nuke is not a role for ${name}`);
   assert.equal((await slash('staff', 'voice-mute', { perms: F.MuteMembers })).ran.roleAllowed, false, 'with the permission and no role, the command is told it was not the role');
   moderationRoles = {};
   restoreSpies();
@@ -619,16 +591,17 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.deepEqual(commandRules.ruleNames(commandFile('game'), { subcommand: 'cat' }), ['animal', 'game']);
   assert.deepEqual(commandRules.ruleNames(commandFile('game'), { subcommand: '8ball' }), ['8ball', 'game']);
   assert.deepEqual(commandRules.ruleNames(commandFile('me'), { subcommand: 'prefix-set' }), ['myprefix', 'me']);
-  assert.deepEqual(commandRules.ruleNames(commandFile('search'), { subcommand: 'anilist' }), ['anilist', 'search']);
+  assert.deepEqual(commandRules.ruleNames(commandFile('search'), { subcommand: 'anime', group: 'anilist' }), ['anilist', 'search']);
+  assert.deepEqual(commandRules.ruleNames(commandFile('search'), { subcommand: 'weather' }), ['weather', 'search']);
   assert.deepEqual(commandRules.ruleNames(commandFile('staff'), { subcommand: 'voice-mute' }), ['voice', 'staff']);
-  assert.deepEqual(commandRules.ruleNames(commandFile('staff'), { subcommand: 'iunmute' }), ['imute', 'staff']);
+  assert.deepEqual(commandRules.ruleNames(commandFile('staff'), { subcommand: 'image-unmute' }), ['imute', 'staff']);
   assert.deepEqual(commandRules.ruleNames(commandFile('staff'), {}), ['staff']);
   assert.deepEqual(commandRules.permissionNames(commandFile('staff'), { subcommand: 'massban' }), ['staff', 'massban']);
-  for (const [umbrella, argText, expected] of [['game', '', null], ['game', 'cf', 'coinflip'], ['game', 'mc Notch', 'minecraft'], ['me', 'bday 1 1', 'birthday'], ['me', 'prefix-set p!', 'prefix-set'], ['search', 'yt lofi', 'youtube'], ['staff', 'mban <@1>', 'massban'], ['staff', 'voice-move <@1>', 'voice-move']]) {
+  for (const [umbrella, argText, expected] of [['game', '', null], ['game', 'cf', 'coinflip'], ['me', 'bday 1 1', 'birthday'], ['me', 'prefix-set p!', 'prefix-set'], ['staff', 'mban <@1>', 'massban'], ['staff', 'voice-move <@1>', 'voice-move']]) {
     assert.equal(commandRules.subcommandOfText(commandFile(umbrella), argText), expected, `${umbrella} "${argText}" reaches ${expected}`);
   }
 
-  spyOn(wrappedFiles);
+  spyOn([...wrappedFiles, ...SEARCH_FILES]);
   // A rule for the wrapped command stops the subcommand, and only that one.
   rules = [{ command: 'weather', channel_id: null }];
   let result = await slash('search', 'weather');
@@ -640,14 +613,14 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.ok(!(await ran('!weather Bogota')), '!weather itself is refused too (as before)');
   rules = [{ command: 'animal', channel_id: null }];
   for (const name of ['cat', 'dog', 'fox']) assert.ok(refusedSlash(await slash('game', name)) && refusedPrefix(await send(`!game ${name}`)), `/game ${name} is refused when animal is turned off`);
-  assert.ok((await slash('game', '8ball')).ran && (await slash('game', 'minecraft')).ran);
+  assert.ok((await slash('game', '8ball')).ran && (await slash('game', 'coinflip')).ran);
   rules = [{ command: 'voice', channel_id: null }];
   for (const [name] of TABLES.staff.filter((row) => row[1] === 'voice')) assert.ok(refusedSlash(await slash('staff', name)) && refusedPrefix(await send(`!staff ${name} <@${BEA}>`)), `/staff ${name} is refused when voice is turned off`);
-  assert.ok((await slash('staff', 'nuke')).ran && (await slash('staff', 'imute')).ran);
+  assert.ok((await slash('staff', 'nuke')).ran && (await slash('staff', 'image-mute')).ran);
   rules = [{ command: 'massban', channel_id: null }];
   assert.ok(refusedSlash(await slash('staff', 'massban')) && refusedPrefix(await send(`!staff mban <@${BEA}>`)) && (await slash('staff', 'masskick')).ran, 'a rule on massban stops only /staff massban');
   rules = [{ command: 'imute', channel_id: null }];
-  assert.ok(refusedSlash(await slash('staff', 'imute')) && refusedSlash(await slash('staff', 'iunmute')) && (await slash('staff', 'rmute')).ran, 'imute covers both of its subcommands');
+  assert.ok(refusedSlash(await slash('staff', 'image-mute')) && refusedSlash(await slash('staff', 'image-unmute')) && (await slash('staff', 'reaction-mute')).ran, 'imute covers both of its subcommands');
   // The name of the umbrella turns off all of it, and not the old commands.
   for (const umbrella of UMBRELLAS) {
     rules = [{ command: umbrella, channel_id: null }];
@@ -678,7 +651,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   restrictions = { massban: [MODS] };
   assert.ok((await slash('staff', 'massban', { roles: [MODS] })).ran && (await slash('staff', 'masskick', { perms: F.Administrator })).ran, 'a restriction on massban does not reach masskick');
   restrictions = { search: [MODS] };
-  assert.ok(!(await slash('search', 'weather', { perms: 0n })).ran && !(await slash('search', 'github', { perms: 0n })).ran && !(await ran('!search time Colombia', { perms: 0n })), 'a restriction on search asks for the role in every subcommand');
+  assert.ok(!(await slash('search', 'weather', { perms: 0n })).ran && !(await slash('search', 'time', { perms: 0n })).ran && !(await ran('!search time Colombia', { perms: 0n })), 'a restriction on search asks for the role in every subcommand');
   assert.ok(await ran('!weather Bogota', { perms: 0n }), 'and not for the old commands');
   assert.ok((await slash('search', 'weather')).ran, 'an administrator always can');
   restrictions = { game: [MODS] };
@@ -691,7 +664,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   levelDenied = new Set(['staff']);
   assert.ok(!(await slash('staff', 'nuke')).ran && !(await ran('!staff nuke')), 'the level of /staff is asked for all of it');
   levelDenied = new Set(['birthday']);
-  assert.ok(!(await slash('me', 'birthday-remove')).ran && (await slash('me', 'rep')).ran && !(await ran('!me birthday 1 1')));
+  assert.ok(!(await slash('me', 'birthday-remove')).ran && (await slash('me', 'reputation')).ran && !(await ran('!me birthday 1 1')));
   levelDenied = new Set(['search']);
   assert.ok(!(await slash('search', 'wiki')).ran && !(await ran('!search wiki')));
   levelDenied = new Set();
@@ -700,8 +673,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 67, '67 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand, then /ai was added)');
-  assert.equal(chat.length, 64, '64 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 64, '64 commands registered with Discord (61 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 61, '61 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
@@ -758,7 +731,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
       assert.ok(TABLES[umbrella].some((row) => row[0] === target.slice(umbrella.length + 1)), `${target} is a subcommand that exists`);
     }
   }
-  spyOn(wrappedFiles);
+  spyOn([...wrappedFiles, ...SEARCH_FILES]);
   const shortOf = (target) => Object.entries(SHORT_ALIAS_TABLE).find(([, value]) => value === target)[0];
   call = await ran(`!${shortOf('game 8ball')} will it rain`);
   assert.deepEqual([call.file, call.values.question], ['8ball', 'will it rain'], 'a short alias runs the subcommand');
