@@ -52,6 +52,7 @@ const ALLOWED = [
   { file: 'src/commands/automation/voicemaster.js', match: /voicemaster\.ownerOnly/, reason: 'the owner of the temporary voice channel (the member who made it), not the Petto team' },
   { file: 'src/commands/config/antinuke.js', match: /ownerOnly/, reason: 'the owner of the SERVER (and its owner-only switch), not the Petto team' },
   { file: 'src/commands/config/feed.js', match: /canUseFeeds/, reason: 'open to every server by default; FEEDS_PUBLIC=false closes it for a time, it is not gated to the team regardless' },
+  { file: 'src/commands/utility/quests.js', match: /canUseQuests/, reason: 'open to every server by default; QUESTS_PUBLIC=false closes it for a time (the API of the quests), it is not gated to the team regardless' },
   { file: 'src/commands/utility/rollouts.js', match: /canUseRollouts/, reason: 'open to every server by default; ROLLOUTS_PUBLIC=false closes it for a time, it is not gated to the team regardless' },
 ];
 

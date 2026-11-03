@@ -19,8 +19,8 @@ const SUBCOMMANDS = [
   { name: 'birthday', wraps: 'birthday', sub: 'set' },
   { name: 'birthday-remove', wraps: 'birthday', sub: 'remove' },
   { name: 'birthday-view', wraps: 'birthday', sub: 'view' },
-  { name: 'rep', wraps: 'rep', sub: 'view' },
-  { name: 'rep-give', wraps: 'rep', sub: 'give' },
+  { name: 'reputation', wraps: 'rep', sub: 'view' },
+  { name: 'reputation-give', wraps: 'rep', sub: 'give' },
   { name: 'prefix', wraps: 'myprefix', sub: 'show' },
   { name: 'prefix-set', wraps: 'myprefix', sub: 'set' },
   { name: 'prefix-reset', wraps: 'myprefix', sub: 'reset' },
@@ -38,7 +38,7 @@ const SUBCOMMANDS = [
 
 // The words of the old commands, read as the subcommand they stand for (`!me bday 25 12`, `!me phist`).
 const WORDS = {
-  birthday: ['bday', 'bd'], rep: ['reputation'], prefix: ['myprefix', 'userprefix', 'selfprefix', 'upfx'], names: ['phist'], ranking: ['globalranking', 'globalrank', 'publicranking'],
+  birthday: ['bday', 'bd'], reputation: ['rep'], 'reputation-give': ['rep-give'], prefix: ['myprefix', 'userprefix', 'selfprefix', 'upfx'], names: ['phist'], ranking: ['globalranking', 'globalrank', 'publicranking'],
   spotify: ['sp'],
 };
 const SUBCOMMAND_WORDS = Object.fromEntries(Object.entries(WORDS).flatMap(([name, words]) => words.map((word) => [word, name])));

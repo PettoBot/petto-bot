@@ -1,5 +1,5 @@
-// Checks that the rules of a server reach /act like they reach the prefix, with the same function (utils/commandRules.js):
-// `!disablecommand hug` turns off the action `hug` (not the others) for the slash command `/act love hug` and for `!hug`;
+// Checks that the rules of a server reach /action like they reach the prefix, with the same function (utils/commandRules.js):
+// `!disablecommand hug` turns off the action `hug` (not the others) for the slash command `/action love hug` and for `!hug`;
 // `!disablecommand act` turns off every action; a rule for one channel only refuses there; `!restrictcommand hug` asks for the role.
 // A refused slash use is answered privately (ephemeral) with the usual notice.
 process.env.DISCORD_TOKEN ||= 'check';
@@ -33,7 +33,7 @@ const { CATALOGS } = require('../src/i18n');
 
 const client = { commands: new Collection() };
 loadCommands(client);
-const act = client.commands.get('act');
+const act = client.commands.get('action');
 const groupOf = (name) => GROUPS.find((group) => group.actions.includes(name)).name;
 
 const GUILD = '444444444444444444';
@@ -42,11 +42,11 @@ const OTHER_ROOM = '666666666666666667';
 const ana = { id: '111111111111111111', username: 'Ana', globalName: null, displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/1.png' };
 let userSeq = 0;
 
-/** `/act <group> <action>` through the real handler: what it answered, and whether the action ran. */
+/** `/action <group> <action>` through the real handler: what it answered, and whether the action ran. */
 async function slash(action, { channelId = ROOM, roles = [], admin = false } = {}) {
   const replies = [];
   const base = {
-    id: `7777777777777777${String(10 + (userSeq += 1))}`, commandName: 'act', commandType: 1, user: { ...ana, id: String(BigInt(ana.id) + BigInt(userSeq)) },
+    id: `7777777777777777${String(10 + (userSeq += 1))}`, commandName: 'action', commandType: 1, user: { ...ana, id: String(BigInt(ana.id) + BigInt(userSeq)) },
     guild: { id: GUILD, ownerId: '1' }, guildId: GUILD, channelId, channel: { id: channelId },
     member: { id: ana.id, guild: { ownerId: '1' }, permissions: new PermissionsBitField(admin ? PermissionsBitField.Flags.Administrator : 0n), roles: { cache: { has: (id) => roles.includes(id) } } },
     locale: 'en-US', pettoLang: 'en', client,
@@ -69,23 +69,23 @@ const refused = (result) => result.refusal && !result.ran && (result.refusal.fla
 (async () => {
   // Nothing set: it runs.
   let result = await slash('hug');
-  assert.ok(result.ran && !result.refusal, 'with no rule /act love hug runs');
+  assert.ok(result.ran && !result.refusal, 'with no rule /action love hug runs');
 
   // `!disablecommand hug`: refused privately, with the usual notice naming the action; the other actions still run.
   rules = [{ command: 'hug', channel_id: null }];
   result = await slash('hug');
   assert.ok(refused(result), 'hug is refused when it is disabled');
-  assert.ok(text(result.refusal).includes('/act love hug'), 'the notice names the action');
+  assert.ok(text(result.refusal).includes('/action love hug'), 'the notice names the action');
   assert.ok(text(result.refusal).includes('disabled') || text(result.refusal).includes(CATALOGS.en['core.disabled.server'].split('{')[0].trim().slice(0, 6)), 'it is the usual notice');
   assert.ok((await slash('pat')).ran, 'a different action still works');
   assert.ok((await slash('slap')).ran, 'and another one');
 
   // `!disablecommand act`: every action is refused.
-  rules = [{ command: 'act', channel_id: null }];
+  rules = [{ command: 'action', channel_id: null }];
   for (const action of ['hug', 'pat', 'slap', 'yay']) {
     result = await slash(action);
     assert.ok(refused(result), `${action} is refused when act is disabled`);
-    assert.ok(text(result.refusal).includes('/act') && !text(result.refusal).includes('/act love'), 'the notice names the command');
+    assert.ok(text(result.refusal).includes('/action') && !text(result.refusal).includes('/action love'), 'the notice names the command');
   }
 
   // A rule for one channel: refused there only (for the action, and for the whole command).
@@ -94,7 +94,7 @@ const refused = (result) => result.refusal && !result.ran && (result.refusal.fla
   assert.ok(text((await slash('hug', { channelId: ROOM })).refusal).includes(`<#${ROOM}>`), 'the notice names the channel');
   assert.ok((await slash('hug', { channelId: OTHER_ROOM })).ran, 'allowed in another channel');
   assert.ok((await slash('pat', { channelId: ROOM })).ran, 'another action is allowed in that channel');
-  rules = [{ command: 'act', channel_id: ROOM }];
+  rules = [{ command: 'action', channel_id: ROOM }];
   assert.ok(refused(await slash('pat', { channelId: ROOM })) && (await slash('pat', { channelId: OTHER_ROOM })).ran, 'act limited to one channel');
 
   // `!restrictcommand hug @Role`: members without the role are refused (an administrator is not), the other actions are not asked for it.
@@ -105,25 +105,28 @@ const refused = (result) => result.refusal && !result.ran && (result.refusal.fla
   assert.ok((await slash('hug', { roles: ['900000000000000001'] })).ran, 'with the role it runs');
   assert.ok((await slash('hug', { admin: true })).ran, 'an administrator always can');
   assert.ok((await slash('pat')).ran, 'another action is not restricted');
-  restrictions = { act: ['900000000000000002'] };
+  restrictions = { action: ['900000000000000002'] };
   assert.ok(refused(await slash('pat')), 'a restriction on act asks for the role in every action');
   restrictions = {};
 
   // The prefix asks the same function: the names of a use, whichever way it was typed.
   const route = client.commandRoutes.get('hug');
-  assert.deepEqual(commandRules.ruleNames(act, { route }), ['hug', 'act'], '!hug');
-  assert.deepEqual(commandRules.ruleNames(act, { subcommand: 'hug' }), ['hug', 'act'], '/act love hug');
-  assert.deepEqual(commandRules.ruleNames(act, { route: client.commandRoutes.get('hf') }), ['highfive', 'act'], 'a short word is its action');
+  assert.deepEqual(commandRules.ruleNames(act, { route }), ['hug', 'action', 'act'], '!hug');
+  assert.deepEqual(commandRules.ruleNames(act, { subcommand: 'hug' }), ['hug', 'action', 'act'], '/action love hug');
+  assert.deepEqual(commandRules.ruleNames(act, { route: client.commandRoutes.get('hf') }), ['highfive', 'action', 'act'], 'a short word is its action');
   assert.deepEqual(commandRules.ruleNames(client.commands.get('ban'), { subcommand: 'x' }), ['ban'], 'a command without actions has its own name only');
-  assert.equal(commandRules.subcommandOfText(act, 'love hug <@2>'), 'hug', '!act love hug');
+  assert.equal(commandRules.subcommandOfText(act, 'love hug <@2>'), 'hug', '!action love hug');
   assert.equal(commandRules.subcommandOfText(act, 'nothing'), null);
   assert.equal(commandRules.subcommandOfText(client.commands.get('ban'), 'x'), null);
   rules = [{ command: 'hug', channel_id: ROOM }];
-  assert.equal((await commandRules.disabledFor(GUILD, ['hug', 'act'], ROOM)).name, 'hug');
-  assert.equal(await commandRules.disabledFor(GUILD, ['hug', 'act'], OTHER_ROOM), null);
+  assert.equal((await commandRules.disabledFor(GUILD, ['hug', 'action', 'act'], ROOM)).name, 'hug');
+  assert.equal(await commandRules.disabledFor(GUILD, ['hug', 'action', 'act'], OTHER_ROOM), null);
+  rules = [{ command: 'action', channel_id: null }];
+  assert.equal((await commandRules.disabledFor(GUILD, ['hug', 'action', 'act'], ROOM)).name, 'action', 'the whole command disables the action');
+  // A rule saved before the rename, under `act`, still turns off every action.
   rules = [{ command: 'act', channel_id: null }];
-  assert.equal((await commandRules.disabledFor(GUILD, ['hug', 'act'], ROOM)).name, 'act', 'the whole command disables the action');
-  // The command (the prefix typed as `!act love hug`, or `!hug`) is read by messageCreateCommands with this function.
+  assert.equal((await commandRules.disabledFor(GUILD, ['hug', 'action', 'act'], ROOM)).name, 'act', 'a rule saved under the old name `act` still turns off every action');
+  // The command (the prefix typed as `!action love hug`, or `!hug`) is read by messageCreateCommands with this function.
   const source = require('node:fs').readFileSync(path.join(__dirname, '../src/events/messageCreateCommands.js'), 'utf8');
   assert.match(source, /commandRules\.disabledFor\(/);
   assert.match(source, /commandRules\.restrictedForNames\(/);
@@ -133,6 +136,6 @@ const refused = (result) => result.refusal && !result.ran && (result.refusal.fla
   assert.match(slashSource, /commandRules\.restrictedForNames\(/);
   assert.doesNotMatch(slashSource, /disabledCommandsDb\.findCached/);
 
-  console.log('Checked the rules of a server on /act: one action off, the whole command off, one channel, a role restriction, and the same function as the prefix.');
+  console.log('Checked the rules of a server on /action: one action off, the whole command off, one channel, a role restriction, and the same function as the prefix.');
   setTimeout(() => process.exit(0), 10);
 })().catch((err) => { console.error(err); process.exit(1); });

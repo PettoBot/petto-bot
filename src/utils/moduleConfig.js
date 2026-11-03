@@ -34,7 +34,7 @@ const SNOWFLAKE = /^\d{15,25}$/;
  * config.source.*); the cards show them in the language of the server.
  */
 const MODULES = {
-  brconfig: { aliases: ['boosterroleconfig', 'boosterconfig'], title: t('en', 'config.module.brconfig.title'), command: 'boosterrole', show: [/^admin (base|limit|share-limit|cooldown|link|cleanup)/, /^filter/], sources: [{ table: 'booster_role_config' }] },
+  brconfig: { aliases: ['boosterroleconfig', 'boosterconfig'], title: t('en', 'config.module.brconfig.title'), command: 'boosterrole', show: [/^settings /, /^admin (link|cleanup)/, /^filter/], sources: [{ table: 'booster_role_config' }] },
   welcomeconfig: { aliases: [], title: t('en', 'config.module.welcomeconfig.title'), command: 'welcome', sources: [{ table: 'member_events_config', only: /^welcome_/ }] },
   leaveconfig: { aliases: [], title: t('en', 'config.module.leaveconfig.title'), command: 'leave', sources: [{ table: 'member_events_config', only: /^leave_/ }] },
   boostconfig: { aliases: [], title: t('en', 'config.module.boostconfig.title'), command: 'boost', sources: [{ table: 'member_events_config', only: /^boost_/ }] },

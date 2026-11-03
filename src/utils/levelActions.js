@@ -164,7 +164,7 @@ async function checkRewards(guild, member, level, config, source = 'text') {
   return gained;
 }
 
-/** Removes every level-reward role a member currently holds, of both kinds of level (used by /level reset). */
+/** Removes every level-reward role a member currently holds, of both kinds of level (used by /levels manage reset). */
 async function stripRewardRoles(guild, member) {
   const rewards = await levelRewardsDb.listRewards(guild.id, 'all');
   const toRemove = rewards.map((r) => guild.roles.cache.get(r.role_id)).filter((role, index, all) => role && member.roles.cache.has(role.id) && all.indexOf(role) === index);

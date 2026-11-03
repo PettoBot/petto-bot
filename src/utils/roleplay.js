@@ -282,7 +282,7 @@ function actorName(user) {
 }
 
 /**
- * Runs one action of `/act`, the same code for the slash command (`/act love hug user:@Ana`) and the prefix (`!hug @Ana`, which the
+ * Runs one action of `/action`, the same code for the slash command (`/action love hug user:@Ana`) and the prefix (`!hug @Ana`, which the
  * prefix routes turn into `act love hug @Ana`).
  *
  * How the people are named depends on where the command was typed:

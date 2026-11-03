@@ -79,6 +79,8 @@ module.exports = {
   // The rules of a server name the command that is wrapped (`!disablecommand ban` also turns off `/mod ban`, `!restrictcommand channel` `/mod lock`).
   rulesBySubcommand: true,
   ruleKeys: ruleKeysOf(SUBCOMMANDS),
+  // The subcommands and what each wraps (read by the tests).
+  subcommands: SUBCOMMANDS,
   // `/timeout` is not a slash command any more (`/mod tempmute` is the same thing): a rule saved for `timeout` also reaches `/mod tempmute`.
   alsoRuleKeys: { tempmute: ['timeout'] },
   // What `!help mod ban` says is needed.

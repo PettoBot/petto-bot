@@ -119,7 +119,7 @@ const EVERYDAY = new Set([
   'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
   'channels', 'roles', 'emojis', 'boosters', 'inrole', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
   'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
-  '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'act', 'image',
+  '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
   'partner', 'request', 'review', 'uploads', 'stats',
   // /server and /user: lookups (their subcommands are the old info commands); `/server steal` asks for Manage Guild Expressions inside.
@@ -138,6 +138,7 @@ const SELF_GATED = {
   suggestion: { MEMBER: [], why: 'anybody suggests with `suggest`; setup is for Manage Server, the review for the staff roles' },
   quickreply: { MEMBER: ['send', 'list'], why: 'quick replies are used by anybody who may; adding them is for the staff' },
   rollouts: { MEMBER: ['list', 'help'], why: 'the setup is for Manage Server' },
+  quests: { MEMBER: ['list'], why: 'anyone sees the active quests; the setup and the test are for Manage Server' },
   imgonly: { MEMBER: ['list'], why: 'the setup is for Manage Server' },
   urlonly: { MEMBER: ['list', 'sites'], why: 'the setup is for Manage Server' },
   counting: { MEMBER: ['stats', 'leaderboard', 'next', 'config'], why: 'the setup is for Manage Server' },
@@ -147,7 +148,7 @@ const SELF_GATED = {
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
-const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'quests', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
+const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
 
 
 // ---------------------------------------------------------------- a fake Discord for the probes: it records what changes the server
@@ -264,7 +265,7 @@ const OWN_DATA = {
   'me birthday': 'their own birthday', 'me birthday-remove': 'their own birthday', 'me prefix-reset': 'their own prefix', 'me history-clear': 'their own saved names',
   'me history-record': 'their own choice to save names', 'me names': 'their own names (it saves the current one)', 'me nicknames': 'their own nicknames (it saves the current one)',
   'me ranking-on': 'their own visibility in the public ranking', 'me ranking-off': 'their own visibility in the public ranking', 'me lastfm-unlink': 'forgets their own Last.fm name',
-  'me rep-give': 'giving a reputation point is for every member', 'myprefix reset': 'their own prefix', 'profilehistory clear': 'their own saved names',
+  'me reputation-give': 'giving a reputation point is for every member', 'social reputation give': 'giving a reputation point is for every member', 'social birthday set': 'their own birthday', 'social birthday remove': 'their own birthday', 'search lastfm unlink': 'forgets their own Last.fm name', 'myprefix reset': 'their own prefix', 'profilehistory clear': 'their own saved names',
   'profilehistory record': 'their own choice to save names', 'profilehistory names': 'their own names (it saves the current one)', 'profilehistory nicknames': 'their own nicknames (it saves the current one)',
   'remind cancel': 'their own reminder', 'rep give': 'giving a reputation point is for every member',
   // (`review remove` writes only their own review: with a `reviewer` given, which this check always fills, a plain member is refused and writes nothing, see check-community-modules.js)
@@ -384,7 +385,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     }
   }
   assert.ok(staffLeaves.length > 200, `the umbrellas ask for a permission in ${staffLeaves.length} subcommands`);
-  for (const must of ['mod ban', 'mod kick', 'mod purge', 'mod warn', 'mod lock', 'staff massban', 'staff nuke', 'config prefix', 'config disablecommand', 'protect honeypot', 'greet welcome']) {
+  for (const must of ['mod ban', 'mod kick', 'mod purge', 'mod warn', 'mod lock', 'staff massban', 'staff nuke', 'config alias', 'config disabledcommands', 'levels settings', 'modtools case', 'protect honeypot', 'greet welcome']) {
     assert.ok(staffLeaves.some((leaf) => leaf.startsWith(must)), `${must} asks for a permission`);
   }
   if (SHOW_TABLE) console.log(table.map((row) => row.join(' | ')).join('\n'));
@@ -415,7 +416,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // The staff subcommands of a command open at Discord refuse a plain member (ephemeral on the slash command, so the channel does not see it).
   const MUST_REFUSE = ['form create', 'form delete', 'form set', 'form panel', 'rollouts enable', 'rollouts role', 'invites bonus', 'invites config', 'invites reward add', 'invites reset', 'counting setup', 'counting disable', 'counting reset', 'quickreply add', 'quickreply remove',
     'imgonly add', 'imgonly remove', 'urlonly add', 'urlonly remove', 'rep reset', 'report config', 'report disable', 'forum setup', 'forum panel', 'forum delete', 'ticket panel create', 'ticket category add', 'ticket setup', 'confession setup', 'suggestion setup',
-    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'boosterrole admin remove', 'boosterrole admin base', 'boosterrole admin cooldown', 'boosterrole filter add', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer',
+    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'boosterrole admin remove', 'boosterrole settings base-role', 'boosterrole settings cooldown', 'boosterrole filter add', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config alias add', 'protect honeypot add', 'greet welcome setup', 'automation timer',
     // everything that makes Petto post for a person (scripts/check-send-permissions.js runs every way to start them, with real permissions)
     'message send', 'message editembed', 'message sender set', 'message webhook send', 'message panel send', 'message responder add', 'message pagination create'];
   assert.equal(String(byName.get('message').permissionForSubcommand('send')), String(F.ManageMessages), '/message send asks for Manage Messages');
@@ -544,8 +545,8 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   const ping = byName.get('ping');
   assert.equal(json(ping).default_member_permissions ?? null, null, 'ping declares no permission');
   assert.equal(ping.cooldownMs ?? 3000, 3000, 'ping has the usual cooldown');
-  assert.equal(isSlashCommand(ping), true, '/ping is registered with Discord');
-  assert.ok(registered.has('ping'), '/ping is in the commands sent to Discord');
+  assert.equal(isSlashCommand(ping), false, '/ping is not a slash command of its own any more: it is /bot ping');
+  assert.ok(!registered.has('ping') && json(byName.get('bot')).options.some((option) => option.name === 'ping'), '/bot ping is in the commands sent to Discord');
   assert.equal(ping.data.toJSON().default_member_permissions ?? null, null);
   spyOn([ping]);
   for (const text of ['!ping', '!PING', '!p', 'petto ping', 'PETTO ping', 'petto p', '<@123> ping', '<@!123> p', '!ping extra words']) {
@@ -553,7 +554,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     assert.equal(result.ran.length, 1, `\`${text}\` runs ping for a plain member (${JSON.stringify(result.sent)})`);
     assert.equal(result.denied, false);
   }
-  assert.equal((await slashOf(ping, { path: [], node: json(ping) })).ran.length, 1, '/ping runs for a plain member');
+  assert.equal((await slashOf(byName.get('bot'), { path: ['ping'], node: json(byName.get('bot')).options.find((option) => option.name === 'ping') })).ran.length, 1, '/bot ping runs for a plain member');
   unspy();
   // End to end with the real ping: the prefix path answers with both latencies, and so does the slash command.
   const pinged = await typed('!ping');
@@ -620,10 +621,11 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     }
     // Slash: `/ping` and `/help` themselves, and the umbrella subcommand that replaced the other three (open, no permission asked inside).
     spyOn([byName.get('ping'), byName.get('help'), byName.get('serverinfo'), byName.get('userinfo'), byName.get('avatar')]);
-    for (const name of ['ping', 'help']) {
+    for (const name of ['help']) {
       assert.ok(isSlashCommand(byName.get(name)), `/${name} is a slash command`);
       assert.equal((await slashOf(byName.get(name), { path: [], node: json(byName.get(name)) })).ran.length, 1, `/${name} runs for a plain member`);
     }
+    assert.equal(byName.get('bot').permissionForSubcommand?.('ping') ?? null, null, '/bot ping asks for no permission');
     for (const [umbrella, sub, ran] of [['server', 'info', 'serverinfo'], ['user', 'info', 'userinfo'], ['user', 'avatar', 'avatar']]) {
       const command = byName.get(umbrella);
       const leaf = leavesOf(command).find((each) => each.path[0] === sub);
@@ -641,10 +643,10 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
       assert.ok(rules.includes(old), `a rule saved for ${old} also reaches /${replacement} (${rules.join(', ')})`);
     }
     // /ping in the registration: no default_member_permissions, no dm-only or team contexts, in the global commands and in no private server.
-    const pingJson = collectCommandData().find((entry) => entry.name === 'ping');
-    assert.ok(pingJson, '/ping is registered');
-    assert.ok(!('default_member_permissions' in pingJson) || pingJson.default_member_permissions == null, '/ping has no default_member_permissions');
-    assert.ok(!pingJson.contexts && !pingJson.integration_types, '/ping does not narrow where it can be used');
+    const pingJson = collectCommandData().find((entry) => entry.name === 'bot');
+    assert.ok(pingJson && pingJson.options.some((option) => option.name === 'ping'), '/bot ping is registered');
+    assert.ok(!('default_member_permissions' in pingJson) || pingJson.default_member_permissions == null, '/bot has no default_member_permissions');
+    assert.ok(!pingJson.contexts && !pingJson.integration_types, '/bot does not narrow where it can be used');
     assert.ok(!collectPrivateGuildCommandData().some((entry) => entry.data.name === 'ping'), '/ping is not a command of one private server');
     const puts = [];
     const fakeRest = { get: async () => [], put: async (route, { body }) => { puts.push({ route, names: body.map((entry) => entry.name) }); return body; } };
@@ -653,7 +655,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     config.devGuildIds = []; config.devGuildId = null;
     try { await deployCommands({ force: true, strict: true, rest: fakeRest, settings: fakeSettings }); } finally { config.devGuildIds = saved; config.devGuildId = savedOne; }
     const global = puts.find((entry) => entry.route === Routes.applicationCommands(config.clientId));
-    assert.ok(global && global.names.includes('ping') && global.names.includes('help'), 'with no test server set, /ping is in the GLOBAL registration, so every server has it');
+    assert.ok(global && global.names.includes('bot') && global.names.includes('help'), 'with no test server set, /ping is in the GLOBAL registration, so every server has it');
     assert.ok(!puts.some((entry) => entry.route !== Routes.applicationCommands(config.clientId) && entry.names.includes('ping')), '/ping is not registered in one server only');
   }
 

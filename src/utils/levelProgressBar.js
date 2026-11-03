@@ -28,8 +28,15 @@ function buildProgressBarText(progress, length = 20) {
   return '█'.repeat(filled) + '░'.repeat(length - filled);
 }
 
+/** A thin bar of plain characters (no emoji), for when a picture of the bar cannot be attached: `━━━━━━━───────────`. */
+function buildThinBar(progress, length = 20) {
+  const p = Math.min(100, Math.max(0, Number(progress) || 0));
+  const filled = Math.round((p / 100) * length);
+  return '\u2501'.repeat(filled) + '\u2500'.repeat(length - filled);
+}
+
 function buildProgressBar(progress) {
   return HAS_CUSTOM_BAR ? buildProgressBarEmoji(progress) : buildProgressBarText(progress);
 }
 
-module.exports = { buildProgressBar };
+module.exports = { buildProgressBar, buildThinBar };

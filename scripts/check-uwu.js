@@ -35,7 +35,7 @@ assert.equal(uwuLanguage(undefined), 'en');
 // Mentions, links, code, emojis, timestamps and Markdown are left as they were.
 const keep = [
   '<@123456789012345678>', '<@!123456789012345678>', '<@&123456789012345678>', '<#123456789012345678>',
-  '<:wave:123456789012345678>', '<a:dance:123456789012345678>', '<t:1700000000:R>', '</act:123456789012345678>',
+  '<:wave:123456789012345678>', '<a:dance:123456789012345678>', '<t:1700000000:R>', '</action:123456789012345678>',
   'https://example.com/really_long_path?l=r&x=1#frag', '<https://example.com/a>', 'www.example.com/lorem',
   '`inline code l r`', '```js\nconst l = r;\nconsole.log("really");\n```', ':smile:', '😀', '👍🏽', '🏳️‍🌈',
 ];

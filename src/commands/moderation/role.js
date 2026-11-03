@@ -53,7 +53,7 @@ module.exports = {
   prefixBareFlags: true,
   prefixFlagOnlyOptions: ['joined_after', 'joined_before', 'min_roles', 'max_roles'],
   // The words of the old command are accepted as the subcommand they stand for (`!role status` is `!role job`).
-  prefixSubcommandAliases: { status: 'job', jobs: 'job', give: 'add', set: 'add', take: 'remove', rmv: 'remove', make: 'create', del: 'delete', rename: 'edit', editname: 'edit', colour: 'color', mention: 'mentionable', kill: 'cancel', templist: 'temp-list', temprole: 'temp' },
+  prefixSubcommandAliases: { in: 'members', has: 'bulk-by-role', status: 'job', jobs: 'job', give: 'add', set: 'add', take: 'remove', rmv: 'remove', make: 'create', del: 'delete', rename: 'edit', editname: 'edit', colour: 'color', mention: 'mentionable', kill: 'cancel', templist: 'temp-list', temprole: 'temp' },
   data: addSubcommands(
     new SlashCommandBuilder()
     .setName('role')
@@ -87,11 +87,11 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('bots-remove').setDescription('Remove a role from every bot in the server.').addRoleOption((opt) => opt.setName('role').setDescription('Role to remove').setRequired(true)).addBooleanOption((opt) => opt.setName('preview').setDescription('Only count who would change, nothing is changed').setRequired(false)).addStringOption((opt) => opt.setName('reason').setDescription('Reason (shown in the audit log)').setRequired(false)))
     .addSubcommand((sub) => sub.setName('topcolor').setDescription("Copy a member's top role color onto another role.").addRoleOption((opt) => opt.setName('role').setDescription('Role to recolor').setRequired(true)).addUserOption((opt) => opt.setName('member').setDescription('Copy color from this member\'s top role').setRequired(true)))
     .addSubcommand((sub) => sub.setName('list').setDescription('Browse all roles in the server.'))
-    .addSubcommand((sub) => sub.setName('in').setDescription('List members who have a specific role.').addRoleOption((opt) => opt.setName('role').setDescription('Role').setRequired(true)))
+    .addSubcommand((sub) => sub.setName('members').setDescription('List members who have a specific role.').addRoleOption((opt) => opt.setName('role').setDescription('Role').setRequired(true)))
     .addSubcommand((sub) =>
       addMassOptions(
         sub
-          .setName('has')
+          .setName('bulk-by-role')
           .setDescription('Bulk add/remove a role for every member who has another role.')
           .addRoleOption((opt) => opt.setName('filter_role').setDescription('Members must have this role').setRequired(true))
           .addRoleOption((opt) => opt.setName('target_role').setDescription('Role to add or remove').setRequired(true)),
@@ -168,8 +168,8 @@ module.exports = {
     if (sub === 'bots-remove') return botsRole(interaction, false);
     if (sub === 'topcolor') return topcolorRole(interaction);
     if (sub === 'list') return listRoles(interaction);
-    if (sub === 'in') return inRole(interaction);
-    if (sub === 'has') return hasRole(interaction);
+    if (sub === 'members') return inRole(interaction);
+    if (sub === 'bulk-by-role') return hasRole(interaction);
     if (sub === 'humans') return humansRole(interaction);
     if (sub === 'all') return allRole(interaction);
     if (sub === 'temp') return tempRole(interaction);

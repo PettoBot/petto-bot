@@ -68,9 +68,9 @@ logger.warn = () => {};
   assert.match(await text('levelconfig'), /Nothing is set up yet/);
 
   const brUsage = await text('brconfig');
-  assert.match(brUsage, /\?boosterrole admin base/);
+  assert.match(brUsage, /\?boosterrole settings base-role/);
   assert.match(brUsage, /\?boosterrole create/, 'every command of the module is shown');
-  assert.ok(brUsage.indexOf('boosterrole admin base') < brUsage.indexOf('boosterrole create'), 'the ones that configure come first');
+  assert.ok(brUsage.indexOf('boosterrole settings base-role') < brUsage.indexOf('boosterrole create'), 'the ones that configure come first');
   assert.match(await text('ticketconfig'), /\?ticket setup/);
   // A module with many commands is shortened, not cut: ticket has dozens and all of them are still there
   const ticket = await text('ticketconfig');
@@ -85,13 +85,14 @@ logger.warn = () => {};
   const banText = await buildCardText(ban.configModule ?? { generated: true, title: 'Ban', command: 'ban', sources: [] }, { guildId: '1', prefix: '?', commands: client.commands });
   assert.match(banText, /^### Ban\n-# /);
   assert.match(banText, /\?ban /);
-  for (const name of ['hugconfig', 'questsconfig', 'setupconfig', 'banconfigconfig', 'partnerconfigconfig']) assert.equal(client.commands.has(name), false, `${name} is not generated`);
+  for (const name of ['hugconfig', 'setupconfig', 'banconfigconfig', 'partnerconfigconfig']) assert.equal(client.commands.has(name), false, `${name} is not generated`);
   assert.equal([...client.commands.keys()].filter((key) => key.length > 32).length, 0, 'no name is longer than Discord allows');
   // The short name of a command has its card too: !ar is !autoresponder, so !arconfig is !autoresponderconfig
   assert.equal(client.commandAliases.get('arconfig'), 'autoresponderconfig', '!arconfig works');
   assert.equal(client.commandAliases.get('bumpconfig'), undefined, 'a name that is a card of its own is not an alias');
   assert.equal(client.commands.get('bumpconfig').data.name, 'bumpconfig');
-  assert.equal(client.commandAliases.get('questconfig'), undefined, 'the team commands have no card');
+  assert.equal(client.commandAliases.get('questconfig'), 'questsconfig', 'quests is a public command now: it has its generated card, and !questconfig reaches it');
+  assert.equal(client.commandAliases.get('slotsconfig'), undefined, 'the team commands have no card');
   assert.equal(formatValue('enabled', false), '**Off**');
   assert.equal(formatValue('role_id', '222222222222222222'), '<@&222222222222222222>');
   assert.equal(formatValue('x_seconds', 10), '10s');

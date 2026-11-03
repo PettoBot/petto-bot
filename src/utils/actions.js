@@ -1,4 +1,4 @@
-// The interaction actions of `/act` (hug, pat, slap...): which group each one lives in, the short words that reach it with the
+// The interaction actions of `/action` (hug, pat, slap...): which group each one lives in, the short words that reach it with the
 // prefix (`!hug`, `!hf`) and the emoji of its response button. The texts of an action are in the roleplay catalogs
 // (`roleplay.<name>.*`) and the descriptions in `cmd.roleplay.act.<group>.<name>.*`.
 //
@@ -12,7 +12,7 @@ const GROUPS = [
   { name: 'react', actions: ['confused', 'think', 'surprised', 'woah', 'shrug', 'facepalm', 'lurk', 'cool', 'hi', 'bye', 'wave', 'highfive', 'brofist', 'handshake', 'yes', 'no', 'nod', 'thumbsup', 'clap', 'slowclap', 'celebrate', 'yay', 'cheers'] },
 ];
 
-// The words that also reach an action with the prefix (`!hf` is `/act react highfive`).
+// The words that also reach an action with the prefix (`!hf` is `/action react highfive`).
 const ALIASES = {
   brofist: ['bf'], bye: ['goodbye'], handhold: ['hh'], handshake: ['shake'], hi: ['hello'], highfive: ['hf'], laugh: ['lol'],
   no: ['nope'], sad: ['unhappy'], yes: ['agree'], evillaugh: ['evil'], slowclap: ['sclap'], thumbsup: ['thumbs'], facepalm: ['fp'],
@@ -30,7 +30,7 @@ const EMOJIS = {
 };
 
 // <descriptions>
-// The English description of each action (the builder of /act uses them; the catalogs hold the translations).
+// The English description of each action (the builder of /action uses them; the catalogs hold the translations).
 const DESCRIPTIONS = {
   hug: 'Give someone a warm hug.',
   cuddle: 'Share a cozy cuddle.',
@@ -114,7 +114,7 @@ const DESCRIPTIONS = {
 };
 // </descriptions>
 
-const COMMAND_NAME = 'act';
+const COMMAND_NAME = 'action';
 const ACTIONS = GROUPS.flatMap((group) => group.actions.map((name) => ({ name, group: group.name, aliases: ALIASES[name] ?? [] })));
 const BY_NAME = new Map(ACTIONS.map((action) => [action.name, action]));
 
@@ -130,7 +130,7 @@ function actionRoutes() {
     command: COMMAND_NAME,
     args: [action.group, action.name],
     subcommand: `${action.group} ${action.name}`,
-    // `!disablecommand hug` turns off that action only, not all of `/act`.
+    // `!disablecommand hug` turns off that action only, not all of `/action`.
     disableName: action.name,
   })));
 }

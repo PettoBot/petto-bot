@@ -60,7 +60,7 @@ const user = client.commands.get('user');
 const infoFile = (name) => path.join(root, 'src', 'commands', name === 'steal' ? 'utility' : 'info', `${name}.js`);
 
 // What each subcommand of each umbrella wraps (`file` of the old command), and the new ones that have a function of their own.
-const SERVER = { info: 'serverinfo', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo', inrole: 'inrole', bots: 'bots', summary: 'summary', steal: 'steal' };
+const SERVER = { info: 'serverinfo', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo', 'role-members': 'inrole', bots: 'bots', summary: 'summary', steal: 'steal' };
 const SERVER_NEW = { icon: 'servericon', banner: 'serverbanner', splash: 'serversplash' };
 const USER = { info: 'userinfo', avatar: 'avatar', banner: 'banner', cosmetics: 'usercosmetics', permissions: 'permissions', id: 'snowflake', 'first-message': 'firstmessage', activity: 'activity' };
 const subcommandsOf = (command) => command.data.toJSON().options;
@@ -155,7 +155,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.equal(command.data.toJSON().dm_permission, false);
     assert.equal(command.data.toJSON().default_member_permissions ?? null, null, `${command.data.name} is for everyone, like the commands it wraps`);
   }
-  assert.deepEqual(subcommandsOf(server).map((sub) => sub.name), ['info', 'icon', 'banner', 'splash', 'roles', 'channels', 'emojis', 'boosters', 'channel', 'role', 'emoji', 'invite', 'inrole', 'bots', 'summary', 'steal']);
+  assert.deepEqual(subcommandsOf(server).map((sub) => sub.name), ['info', 'icon', 'banner', 'splash', 'roles', 'channels', 'emojis', 'boosters', 'channel', 'role', 'emoji', 'invite', 'role-members', 'bots', 'summary', 'steal']);
   assert.deepEqual(subcommandsOf(user).map((sub) => sub.name), ['info', 'avatar', 'banner', 'cosmetics', 'permissions', 'id', 'first-message', 'activity']);
   assert.ok(subcommandsOf(server).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand) && subcommandsOf(user).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand));
   assert.equal(client.commands.has('server') && client.commandAliases.has('server'), false, '`server` is the command now, no longer a word of serverinfo');
@@ -327,7 +327,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'icon' }), ['servericon', 'server']);
   assert.deepEqual(commandRules.ruleNames(server, { route: client.commandRoutes.get('servericon') }), ['servericon', 'server']);
   assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'steal' }), ['steal', 'server']);
-  assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'inrole' }), ['inrole', 'server']);
+  assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'role-members' }), ['inrole', 'server']);
   assert.deepEqual(commandRules.ruleNames(user, { subcommand: 'cosmetics' }), ['usercosmetics', 'user']);
   assert.deepEqual(commandRules.ruleNames(user, { subcommand: 'first-message' }), ['firstmessage', 'user']);
   assert.deepEqual(commandRules.ruleNames(user, { subcommand: 'activity' }), ['activity', 'user']);
@@ -431,7 +431,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   {
     const EXPRESSIONS = PermissionFlagsBits.ManageGuildExpressions;
     assert.equal(server.permissionForSubcommand('steal'), EXPRESSIONS, '!help says /server steal needs Manage Guild Expressions');
-    for (const sub of ['info', 'inrole', 'summary', 'roles']) assert.equal(server.permissionForSubcommand(sub) ?? null, null, `/server ${sub} is open`);
+    for (const sub of ['info', 'role-members', 'summary', 'roles']) assert.equal(server.permissionForSubcommand(sub) ?? null, null, `/server ${sub} is open`);
     result = await slash('server', 'steal', { values: { emoji: '<:a:123>' } });
     assert.ok(!result.ran && ephemeral(result.replies[0]), 'a plain member is refused /server steal, in private, and nothing ran');
     assert.ok(!(await slash('server', 'steal', { perms: PermissionFlagsBits.ManageGuild, values: { emoji: '<:a:123>' } })).ran, 'Manage Server is not Manage Guild Expressions');
@@ -442,11 +442,11 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.deepEqual(await ran('!server steal <:a:123>'), ['steal'], 'with the permission the prefix runs it');
     assert.deepEqual(await ran('!stl <:a:123>'), ['steal'], '!stl is still steal');
     assert.deepEqual(await ran('!server stl <:a:123>'), ['steal'], '!server stl is the subcommand');
-    assert.equal(commandRules.subcommandOfText(server, 'ir 900000000000000001'), 'inrole', '!server ir is inrole');
-    assert.equal(commandRules.subcommandOfText(server, 'members x'), 'inrole', '!server members is inrole');
+    assert.equal(commandRules.subcommandOfText(server, 'ir 900000000000000001'), 'role-members', '!server ir is role-members');
+    assert.equal(commandRules.subcommandOfText(server, 'members x'), 'role-members', '!server members is role-members');
     assert.deepEqual(await ran('!server digest'), ['summary'], '!server digest is summary');
     assert.deepEqual(await ran('!inrole'), [], '!inrole alone still asks for its role (it is the old command)');
-    for (const sub of ['steal', 'inrole', 'summary']) {
+    for (const sub of ['steal', 'role-members', 'summary']) {
       const name = SERVER[sub];
       rules = [{ command: name, channel_id: null }];
       assert.ok(refusedSlash(await slash('server', sub, { admin: true })), `/server ${sub} is refused when ${name} is turned off`);
@@ -463,8 +463,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   // ------------------------------------------------------------ Discord: the descriptions in Spanish and Portuguese, the numbers and the sizes
   const registered = collectCommandData();
   const chat = registered.filter((json) => (json.type ?? 1) === 1);
-  assert.equal(registered.length, 67, '67 commands registered with Discord (71 before /serverinfo, /userinfo, /avatar, /unban, /purge and /timeout were replaced by their umbrella subcommand, then /ai was added)');
-  assert.equal(chat.length, 64, '64 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 65, '65 commands registered with Discord (62 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const size = (value) => [...String(value ?? '')].length;
   const LOCALES = ['es-ES', 'es-419', 'pt-BR'];

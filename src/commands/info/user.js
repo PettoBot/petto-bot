@@ -34,6 +34,8 @@ module.exports = {
   // The rules of a server name the command that is wrapped (`!disablecommand avatar` also turns off `/user avatar`).
   rulesBySubcommand: true,
   ruleKeys: ruleKeysOf(SUBCOMMANDS),
+  // The subcommands and what each wraps (read by the tests).
+  subcommands: SUBCOMMANDS,
   data: addSubcommands(
     new SlashCommandBuilder().setName('user').setDMPermission(false).setDescription('Information about a member: details, avatar, banner, permissions, activity and more.'),
     SUBCOMMANDS,

@@ -10,16 +10,18 @@ const { t, languageOf } = require('../../i18n');
 const listText = (list) => list.map((prefix) => `\`${prefix}\``).join(' · ');
 
 module.exports = {
+  // The prefixes of the server: a slash command of its own (`/prefix show`, `/prefix add`...) as well as `!prefix`, the same code. It used to be a group of `/config`.
+  registerSlash: true,
   aliases: ['pfx'],
   // `!prefix` shows the list; `!prefix ?` (a first word that is not a subcommand) is the old way of setting the only prefix.
-  prefixDefaultSubcommand: (tokens) => (tokens.length ? 'set' : 'show'),
-  prefixSubcommandAliases: { list: 'show', delete: 'remove', del: 'remove', rm: 'remove', default: 'reset', defaults: 'reset' },
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? 'set' : 'view'),
+  prefixSubcommandAliases: { show: 'view', list: 'view', delete: 'remove', del: 'remove', rm: 'remove', default: 'reset', defaults: 'reset' },
   data: new SlashCommandBuilder()
     .setName('prefix')
     .setDescription('View or change the command prefixes of the server.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('show').setDescription('Show the prefixes of this server.'))
+    .addSubcommand((s) => s.setName('view').setDescription('Show the prefixes of this server.'))
     .addSubcommand((s) => s.setName('add').setDescription('Add a prefix.')
       .addStringOption((o) => o.setName('prefix').setDescription('The new prefix, up to 12 characters, no spaces').setRequired(true)))
     .addSubcommand((s) => s.setName('remove').setDescription('Remove a prefix.')
@@ -30,7 +32,7 @@ module.exports = {
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
-    const sub = interaction.options.getSubcommand(false) ?? 'show';
+    const sub = interaction.options.getSubcommand(false) ?? 'view';
     const guildId = interaction.guild.id;
     const list = guildPrefixes.prefixesOf(await ensureGuild(guildId));
     const main = list[0];
@@ -44,7 +46,7 @@ module.exports = {
     };
     const wordNote = (prefix) => (guildPrefixes.isWordPrefix(prefix) ? `\n${t(lang, 'core.prefix.wordNote', { prefix })}` : '');
 
-    if (sub === 'show') {
+    if (sub === 'view') {
       const text = `${t(lang, 'core.prefix.list', { list: listText(list), bot: `${interaction.client.user}` })}\n${t(lang, 'core.prefix.usage', { prefix: main, defaults: listText(guildPrefixes.DEFAULT_PREFIXES), max: guildPrefixes.MAX_PREFIXES, length: guildPrefixes.MAX_LENGTH })}`;
       return card(text);
     }

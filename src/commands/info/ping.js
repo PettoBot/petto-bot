@@ -26,8 +26,7 @@ function buildPingCard({ guildMs, apiMs, shard, shardCount, guilds, lang = 'en' 
 }
 
 module.exports = {
-  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
-  registerSlash: true,
+  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
   aliases: ['p'],
   buildPingCard,
   data: new SlashCommandBuilder()

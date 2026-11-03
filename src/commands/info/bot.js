@@ -11,6 +11,8 @@ const { defineUmbrella } = require('../../utils/umbrella');
 
 // `group`: a command with subcommands, all of them; `name`: a command with none.
 const SUBCOMMANDS = [
+  { name: 'info', wraps: 'botinfo' },
+  { name: 'ping', wraps: 'ping' },
   { name: 'uptime', wraps: 'uptime' },
   { name: 'version', wraps: 'version' },
   { group: 'votes', wraps: 'votes' },
@@ -19,6 +21,6 @@ const SUBCOMMANDS = [
 
 module.exports = defineUmbrella({
   name: 'bot',
-  description: 'About Petto: how long it has been running, its version, its votes and Premium.',
+  description: 'About Petto: information, latency, uptime, version, votes and Premium.',
   subcommands: SUBCOMMANDS,
 });

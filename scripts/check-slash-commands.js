@@ -10,14 +10,13 @@ const {
 } = require('discord.js');
 const { collectCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand } = require('../src/handlers/commandHandler');
 
-// The interaction actions (hug, pat, slap...) are all subcommands of the one command /act (Discord allows 100 slash commands, and
+// The interaction actions (hug, pat, slap...) are all subcommands of the one command /action (Discord allows 100 slash commands, and
 // every action used to be its own); everything else is listed by name. A change here is a change of what members see in
 // Discord's `/` menu, so it is made on purpose.
 const ROLEPLAY = 1;
 const ESSENTIAL = [
   // Everyday commands that also work with `/` (they keep working with the prefix).
-  'afk', 'ban', 'botinfo', 'channel', 'embed', 'giveaway', 'help', 'kick', 'ping', 'poll', 'rank', 'remind',
-  'suggest', 'ticket', 'top', 'warn',
+  'afk', 'ban', 'channel', 'embed', 'giveaway', 'help', 'kick', 'remind', 'ticket', 'warn',
   // The two umbrellas: everything about a server (`/server info`, `icon`...) and about a member (`/user info`, `avatar`...). `/serverinfo`,
   // `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are NOT registered any more: `/server info`, `/user info`, `/user avatar`,
   // `/mod unban`, `/mod purge` and `/mod tempmute` have every option and action of them (the prefix words work as before).
@@ -29,16 +28,19 @@ const ESSENTIAL = [
   // `rep`...), lookups (`/search weather`, `youtube`...) and the staff tools that do not fit `/mod` (`/staff massban`, `voice-mute`...). Each one only
   // has subcommands, and `/staff` asks for the permission of the command each one wraps when it runs. The rest of the prefix commands move little by little.
   'game', 'me', 'search', 'staff',
-  // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config prefix set`,
-  // `/protect honeypot add`, `/auto timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
+  // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config alias add`,
+  // `/protect honeypot add`, `/automation timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
   // only has subcommands (scripts/check-umbrellas-3.js).
-  'auto', 'bot', 'community', 'config', 'contrib', 'greet', 'message', 'protect', 'special',
+  'automation', 'bot', 'community', 'config', 'contributions', 'greet', 'message', 'protect', 'specialchannels',
   'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
-  'identity', 'image', 'invites', 'level', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
+  'identity', 'image', 'invites', 'levels', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // The booster role, apart from /me: the old command with all its subcommands (member ones open, `admin` and `filter` check Manage Server inside).
   'boosterrole',
   // The AI that answers questions: `/ai ask` and `/ai usage` (open to every member; the first one has a daily limit for free members).
   'ai',
+  // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), the
+  // prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
+  'modtools', 'prefix', 'quests', 'social',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];
@@ -51,7 +53,7 @@ const roleplay = new Set(findCommandFiles(COMMANDS_DIR).filter((file) => file.in
 // Discord's limits for one command, from its documentation (docs.discord.com/developers/interactions/application-commands).
 const LIMITS = { chatCommands: 100, perLevel: 25, nameLength: 32, descriptionLength: 100, commandSize: 8000 };
 
-assert.deepEqual([...roleplay], ['act'], 'the interaction actions are the subcommands of /act');
+assert.deepEqual([...roleplay], ['action'], 'the interaction actions are the subcommands of /action');
 assert.deepEqual(chat.map((json) => json.name).filter((name) => !roleplay.has(name)).sort(), [...ESSENTIAL].sort(), 'the slash commands besides roleplay are exactly the listed ones');
 assert.deepEqual(registered.filter((json) => (json.type ?? 1) !== 1).map((json) => json.name).sort(), [...CONTEXT_MENUS].sort(), 'the context menus');
 assert.equal(registered.length, EXPECTED_TOTAL, `${EXPECTED_TOTAL} commands are registered`);
@@ -124,28 +126,28 @@ for (const json of registered) {
 }
 assert.deepEqual(problems, [], `Slash commands Discord would refuse:\n${problems.join('\n')}`);
 
-// /act: every action is a subcommand of a group, with the optional member, inside what Discord allows for one command.
+// /action: every action is a subcommand of a group, with the optional member, inside what Discord allows for one command.
 {
   const { ACTIONS, GROUPS } = require('../src/utils/actions');
-  const act = chat.find((json) => json.name === 'act');
-  assert.ok(act, '/act is registered');
+  const act = chat.find((json) => json.name === 'action');
+  assert.ok(act, '/action is registered');
   const groups = act.options;
-  assert.ok(groups.length > 0 && groups.length <= LIMITS.perLevel, `/act has ${groups.length} groups (at most ${LIMITS.perLevel})`);
-  assert.ok(groups.every((group) => group.type === ApplicationCommandOptionType.SubcommandGroup), '/act holds only groups, so every group can grow to 25 actions');
+  assert.ok(groups.length > 0 && groups.length <= LIMITS.perLevel, `/action has ${groups.length} groups (at most ${LIMITS.perLevel})`);
+  assert.ok(groups.every((group) => group.type === ApplicationCommandOptionType.SubcommandGroup), '/action holds only groups, so every group can grow to 25 actions');
   assert.deepEqual(groups.map((group) => group.name), GROUPS.map((group) => group.name));
-  for (const group of groups) assert.ok(group.options.length <= LIMITS.perLevel, `/act ${group.name} has ${group.options.length} actions (at most ${LIMITS.perLevel})`);
+  for (const group of groups) assert.ok(group.options.length <= LIMITS.perLevel, `/action ${group.name} has ${group.options.length} actions (at most ${LIMITS.perLevel})`);
   const registeredActions = groups.flatMap((group) => group.options.map((sub) => sub.name));
-  assert.deepEqual([...registeredActions].sort(), ACTIONS.map((action) => action.name).sort(), '/act has every action once');
+  assert.deepEqual([...registeredActions].sort(), ACTIONS.map((action) => action.name).sort(), '/action has every action once');
   for (const group of groups) {
     for (const sub of group.options) {
-      assert.deepEqual(sub.options.map((option) => [option.name, option.type, Boolean(option.required)]), [['user', ApplicationCommandOptionType.User, false]], `/act ${group.name} ${sub.name} takes an optional user`);
+      assert.deepEqual(sub.options.map((option) => [option.name, option.type, Boolean(option.required)]), [['user', ApplicationCommandOptionType.User, false]], `/action ${group.name} ${sub.name} takes an optional user`);
     }
   }
   assert.deepEqual(act.name_localizations, { 'es-ES': 'accion', 'es-419': 'accion', 'pt-BR': 'acao' });
   const english = totalLength(act, null);
   const sizes = [null, 'es-ES', 'pt-BR'].map((locale) => totalLength(act, locale));
-  assert.ok(Math.max(...sizes) < LIMITS.commandSize, `/act is ${Math.max(...sizes)} characters (at most ${LIMITS.commandSize})`);
-  console.log(`/act: ${groups.length} groups, ${registeredActions.length} actions, ${english} characters in English (${Math.max(...sizes)} in the longest language, Discord allows ${LIMITS.commandSize}).`);
+  assert.ok(Math.max(...sizes) < LIMITS.commandSize, `/action is ${Math.max(...sizes)} characters (at most ${LIMITS.commandSize})`);
+  console.log(`/action: ${groups.length} groups, ${registeredActions.length} actions, ${english} characters in English (${Math.max(...sizes)} in the longest language, Discord allows ${LIMITS.commandSize}).`);
 }
 
 // The builders of discord.js validate each command again when its JSON is made (names, lengths, required before optional).

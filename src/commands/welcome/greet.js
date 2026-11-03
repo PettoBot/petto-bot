@@ -15,7 +15,7 @@ const SUBCOMMANDS = [
   { group: 'leave', wraps: 'leave' },
   { group: 'boost', wraps: 'boost' },
   { group: 'dmonjoin', wraps: 'dmonjoin' },
-  { group: 'poj', wraps: 'poj' },
+  { group: 'pingonjoin', wraps: 'poj' },
 ];
 
 // The join roles and the sticky roles are groups of `/role` now (`/role join`, `/role sticky`): they are not here as slash commands any more, but the

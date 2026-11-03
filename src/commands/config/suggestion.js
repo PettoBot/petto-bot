@@ -39,6 +39,7 @@ module.exports = {
     .setName('suggestion')
     .setDescription('Set up suggestions and answer them: approve, deny, consider, implement (with the ID).')
     .setDMPermission(false)
+    .addSubcommand((s) => s.setName('submit').setDescription('Make a suggestion for this server. The server votes on it.').addStringOption((o) => o.setName('text').setDescription('Your suggestion (a link to a picture can go inside it)').setMaxLength(suggestions.MAX_CONTENT).setRequired(true)))
     .addSubcommand((s) => s.setName('setup').setDescription('Turn suggestions on in a channel.').addChannelOption((o) => o.setName('channel').setDescription('Where the suggestions go').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)))
     .addSubcommand((s) => s.setName('enable').setDescription('Turn suggestions on.'))
     .addSubcommand((s) => s.setName('disable').setDescription('Turn suggestions off.'))
@@ -63,6 +64,8 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
+    // Anybody may suggest: this is the old `/suggest`, with the same code.
+    if (sub === 'submit') return require('../utility/suggest').execute(interaction);
     const lang = await languageOf(interaction);
     const config = await db.getConfig(interaction.guild.id);
     const manager = interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild);

@@ -602,7 +602,7 @@ module.exports = {
       }
     }
 
-    // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /act (`hug`) or the whole command
+    // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /action (`hug`) or the whole command
     // (`act`) can be restricted or turned off.
     const ruleNames = commandRules.ruleNames(command, { subcommand, group });
     // !restrictcommand: only the roles chosen for this command (administrators always can).
@@ -619,8 +619,8 @@ module.exports = {
       const found = await commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb);
       if (found) {
         const disabled = found.row;
-        // `/act love hug` when the rule is for the action, `/act` when it is for the whole command.
-        const shown = found.name === command.data.name ? `/${command.data.name}` : `/${[command.data.name, interaction.options.getSubcommandGroup?.(false), found.name].filter(Boolean).join(' ')}`;
+        // `/action love hug` when the rule is for the action, `/action` when it is for the whole command.
+        const shown = found.name === command.data.name || (command.legacyRuleNames ?? []).includes(found.name) ? `/${command.data.name}` : `/${[command.data.name, interaction.options.getSubcommandGroup?.(false), found.name].filter(Boolean).join(' ')}`;
         const text = disabled.channel_id
           ? t(lang, 'core.disabled.channel', { emoji: EMOJI.WARNING, command: shown, channel: `<#${disabled.channel_id}>` })
           : t(lang, 'core.disabled.server', { emoji: EMOJI.WARNING, command: shown });
