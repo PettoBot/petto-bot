@@ -16,10 +16,10 @@ const base64 = (bar) => bar.buffer.toString('base64');
 
 (async () => {
   delete process.env.RANK_BAR_THEME;
-  // The theme of a date: Halloween October 15 to November 2, Christmas December 1 to January 5, normal otherwise.
+  // The theme of a date: Halloween all of October, Christmas November 1 to January 10, normal otherwise.
   const day = (text) => themeFor(new Date(`${text}T12:00:00Z`));
-  assert.deepEqual(['2026-10-14', '2026-10-15', '2026-11-02', '2026-11-03', '2026-11-30', '2026-12-01', '2027-01-05', '2027-01-06', '2026-07-01'].map(day),
-    ['normal', 'halloween', 'halloween', 'normal', 'normal', 'christmas', 'christmas', 'normal', 'normal']);
+  assert.deepEqual(['2026-09-30', '2026-10-01', '2026-10-31', '2026-11-01', '2026-12-31', '2027-01-10', '2027-01-11', '2026-07-01'].map(day),
+    ['normal', 'halloween', 'halloween', 'christmas', 'christmas', 'christmas', 'normal', 'normal']);
   assert.deepEqual(THEMES, ['normal', 'halloween', 'christmas']);
   for (const [value, expected] of [['halloween', 'halloween'], ['Christmas', 'christmas'], [' normal ', 'normal'], ['auto', day('2026-10-20')], ['nonsense', day('2026-10-20')], ['', day('2026-10-20')]]) {
     process.env.RANK_BAR_THEME = value;
