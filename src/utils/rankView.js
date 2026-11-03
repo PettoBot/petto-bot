@@ -5,9 +5,6 @@ const { buildThinBar } = require('./levelProgressBar');
 const { renderRankBar } = require('./rankBar');
 const { t, formatNumber, currentLanguage } = require('../i18n');
 
-// Discord needs some text in every field; this one is not shown.
-const ZERO_WIDTH = '\u200b';
-
 /** `1h 20m` for a number of minutes. */
 function formatMinutes(minutes) {
   const total = Math.max(0, Math.round(Number(minutes) || 0));
@@ -22,7 +19,7 @@ function formatMinutes(minutes) {
  * number (level, rank, experience, progress with the bar) and the total experience with the time at the bottom. It has no color.
  * `data` is the member's `levelData`. With `withCard` the card is
  * the picture and the avatar thumbnail is left out. With `barName` (the file name of the drawn progress bar, attached to the message) the bar
- * is the picture under the fields and the Progress field holds no text; without a picture the bar is a thin line of plain characters.
+ * is the picture under the fields; without a picture the Progress field holds a thin bar of plain characters.
  */
 function buildRankEmbed({ data, name, avatarUrl, withCard = false, barName = null, date = new Date(), lang = currentLanguage() }) {
   const voice = data.source === 'voice';
@@ -36,8 +33,11 @@ function buildRankEmbed({ data, name, avatarUrl, withCard = false, barName = nul
     { name: t(lang, voice ? 'leveling.rankView.voiceRank' : 'leveling.rankView.serverRank'), value: rank },
     { name: t(lang, 'leveling.rankView.experience'), value: `${n(data.xpCurrent)}/${n(data.xpNeeded)} XP` },
   ];
-  // The picture of the bar goes under all the fields, so the voice time comes before the Progress title that sits just above it.
-  const progress = { name: t(lang, 'leveling.rankView.progress', { percent: data.progress }), value: barName && !withCard ? ZERO_WIDTH : buildThinBar(data.progress) };
+  // The picture of the bar goes under all the fields, so the voice time comes before the Progress title that sits just above it. Under the
+  // title there is a short line (the XP missing for the next level) when a picture or the card shows the bar, and a thin line of plain characters
+  // when nothing does.
+  const shown = Boolean(barName) || withCard;
+  const progress = { name: t(lang, 'leveling.rankView.progress', { percent: data.progress }), value: shown ? t(lang, 'leveling.rankView.toNext', { xp: n(data.xpToNext), level: n(data.level + 1) }) : buildThinBar(data.progress) };
   const time = voice ? [{ name: t(lang, 'leveling.rankView.voiceTime'), value: formatMinutes(data.voiceMinutes) }] : [];
   embed.addFields(barName && !withCard ? [...fields, ...time, progress] : [...fields, progress, ...time]);
 

@@ -1,7 +1,7 @@
 // The leaderboard of `/top` laid out as an embed with two generated pictures, both small and cached: on the first page a podium strip with the top
 // three (avatar, medal, name, level and XP), and at the bottom the position of the person who asked, with the same progress bar picture as `/rank`.
-// The other places are an aligned table (position, name, level, XP) in a code block. When a picture cannot be had, the embed still answers: the
-// table then lists everybody and the bar is a thin line of plain characters.
+// The other places are one line of text each (`04` **Name** · Lv. 70 · 1.5M XP) that wraps by itself, so a long name cannot break anything. When a
+// picture cannot be had, the embed still answers: the lines then list everybody and the bar is a thin line of plain characters.
 const crypto = require('node:crypto');
 const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const levelUsersDb = require('../db/levelUsers');
@@ -17,10 +17,14 @@ const { t, tn, formatNumber, currentLanguage } = require('../i18n');
 
 const PER_PAGE = 10;
 const COLOR = 0x4b4f59;
-const NAME_WIDTH = 12;
+const NAME_WIDTH = 18; // how many columns of a name are shown; a wide character (Chinese, an emoji) takes two
 const PODIUM_FILE = 'podium.webp';
 const NUMBER_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
-const EMOJI = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u{1F3FB}-\u{1F3FF}‍️⃣]/gu;
+const PICTOGRAPH = /^[\p{Extended_Pictographic}\p{Regional_Indicator}]/u;
+const WIDE = /^[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]/;
+// Characters that can reorder the text around a name or hide it: bidirectional controls and zero-width marks (the joiner of an emoji is kept).
+const CONTROLS = /[\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff\u0000-\u001f\u007f]/g;
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const TITLES = {
   messages: { all: 'leveling.top.title', week: 'leveling.top.titleWeek', month: 'leveling.top.titleMonth' },
   voice: { all: 'leveling.top.titleVoice', week: 'leveling.top.titleVoiceWeek', month: 'leveling.top.titleVoiceMonth' },
@@ -34,11 +38,45 @@ function compact(lang, value) {
   return new Intl.NumberFormat(NUMBER_LOCALES[lang] ?? 'en-US', { notation: 'compact' }).format(Number(value) || 0);
 }
 
-/** A name that fits a column of a code block: no emoji or backticks (they would break the alignment or the block), cut with an ellipsis. */
-function columnName(name, width = NAME_WIDTH) {
-  const clean = Array.from(String(name).replace(EMOJI, '').replace(/`/g, "'").replace(/\s+/g, ' ').trim());
-  if (!clean.length) return '?';
-  return clean.length > width ? `${clean.slice(0, width - 1).join('').trimEnd()}…` : clean.join('');
+/** The columns a letter takes: two for a wide character or an emoji, one for the rest. */
+const columns = (grapheme) => (PICTOGRAPH.test(grapheme) || WIDE.test(grapheme) ? 2 : 1);
+
+/**
+ * A name made safe to put in bold in a line of text: bidirectional and zero-width controls removed, cut by letters (graphemes, so an emoji or an
+ * accented letter is never split) to `width` columns with an ellipsis, Markdown and mentions escaped, and isolated so a right-to-left name cannot
+ * reorder what is around it. A name with nothing left is a question mark.
+ */
+function displayName(name, width = NAME_WIDTH) {
+  const letters = Array.from(SEGMENTER.segment(String(name).replace(/\s+/g, ' ').replace(CONTROLS, '').trim()), (part) => part.segment);
+  if (!letters.length) return '?';
+  let text = letters.join('');
+  if (letters.reduce((sum, letter) => sum + columns(letter), 0) > width) {
+    let used = 0;
+    const kept = [];
+    for (const letter of letters) {
+      if (used + columns(letter) > width - 1) break; // one column is left for the ellipsis
+      used += columns(letter);
+      kept.push(letter);
+    }
+    text = `${kept.join('').trimEnd()}\u2026`;
+  }
+  text = text.replace(/[\\*_~|`>#@<\[\]():]/g, '\\$&');
+  return `\u2068${text}\u2069`;
+}
+
+/** One place of the leaderboard as a line of text: `04` **Name** · Lv. 70 · 1.5M XP (a week or a month has no level). */
+function memberLine(entry, pos, lang) {
+  // The level and the XP never split (a no-break space inside each piece and around the dot), so when a line wraps, the numbers move together.
+  const stats = [];
+  if (entry.level !== null) stats.push(t(lang, 'leveling.board.podiumLevel', { level: formatNumber(lang, entry.level) }));
+  stats.push(`${compact(lang, entry.xp)} XP`);
+  return `\`${String(entry.position).padStart(pos, '0')}\` **${displayName(entry.name)}**\u00a0\u00b7 ${stats.map((text) => text.replace(/ /g, '\u00a0')).join('\u00a0\u00b7\u00a0')}`;
+}
+
+/** The places that are not on the podium, one line each. */
+function buildLines(entries, lang) {
+  const pos = Math.max(2, String(entries[entries.length - 1].position).length);
+  return entries.map((entry) => memberLine(entry, pos, lang)).join('\n');
 }
 
 /** The rows of a page: who, level, XP and what is needed, for the all-time ranking or for a week or a month. */
@@ -144,10 +182,10 @@ async function buildLeaderboardReply({ guild, page, totalPages, total, source = 
   const list = podium ? new EmbedBuilder().setColor(COLOR) : header;
   const parts = [];
   if (!entries.length) parts.push(t(lang, 'leveling.top.noData'));
-  if (rest.length) parts.push(buildTable(rest, lang));
+  if (rest.length) parts.push(buildLines(rest, lang));
   const viewer = await viewerBlock({ guild, viewerId, source, period, config, total, lang });
   if (viewer) {
-    parts.push(viewer.text);
+    parts.push(`\n${viewer.text}`);
     const bar = viewer.progress === undefined ? null : await renderRankBar({ percent: viewer.progress, voice: viewer.voice }).catch(() => null);
     if (bar) { files.push(new AttachmentBuilder(bar.buffer, { name: bar.name })); list.setImage(`attachment://${bar.name}`); }
     else if (viewer.progress !== undefined) parts.push(buildThinBar(viewer.progress));
@@ -157,4 +195,4 @@ async function buildLeaderboardReply({ guild, page, totalPages, total, source = 
   return { embeds: podium ? [header, list] : [list], files, attachments: [] };
 }
 
-module.exports = { PER_PAGE, compact, columnName, buildTable, buildLeaderboardReply, clearBoardImages: () => podiums.clear(), boardImageCacheSize: () => podiums.stats() };
+module.exports = { PER_PAGE, compact, displayName, memberLine, buildLines, buildLeaderboardReply, clearBoardImages: () => podiums.clear(), boardImageCacheSize: () => podiums.stats() };

@@ -50,14 +50,17 @@ assert.equal(embed.footer.text, `Total Experience: ${data.xp.toLocaleString('en-
 assert.ok(embed.timestamp, 'with the time');
 assert.equal(embed.thumbnail.url, 'https://cdn.test/a.png'); assert.equal(embed.image, undefined, 'without a card the avatar is the thumbnail');
 const withCard = buildRankEmbed({ data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', withCard: true }).toJSON();
-assert.equal(withCard.image.url, 'attachment://card.png'); assert.equal(withCard.thumbnail, undefined, 'with a card the picture is the card');
+assert.equal(withCard.image.url, 'attachment://card.png'); assert.match(withCard.fields[3].value, /XP to level 6$/, 'with the card the Progress line is the XP to the next level'); assert.equal(withCard.thumbnail, undefined, 'with a card the picture is the card');
 const voiceEmbed = buildRankEmbed({ data: { ...data, source: 'voice', streak: 0 }, name: 'Liam' }).toJSON();
-const drawn = buildRankEmbed({ data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', barName: 'rank-bar.webp' }).toJSON();
-assert.equal(drawn.image.url, 'attachment://rank-bar.webp', 'the drawn bar is the picture under the fields');
+const drawn = buildRankEmbed({ data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', barName: 'rank-bar.png' }).toJSON();
+assert.equal(drawn.image.url, 'attachment://rank-bar.png', 'the drawn bar is the picture under the fields');
 assert.equal(drawn.thumbnail.url, 'https://cdn.test/a.png', 'the avatar stays at the side');
 assert.deepEqual(drawn.fields.map((field) => field.name), fieldNames, 'the same fields');
-assert.equal(drawn.fields[3].value, '\u200b', 'the Progress field holds no text when the picture shows the bar');
-const drawnVoice = buildRankEmbed({ data: { ...data, source: 'voice' }, name: 'Liam', barName: 'rank-bar.webp' }).toJSON();
+assert.equal(drawn.fields[3].value, `${(data.xpNeeded - data.xpCurrent).toLocaleString('en-US')} XP to level 6`, 'under the Progress title there is a line, not a blank: the XP missing for the next level');
+assert.equal(buildRankEmbed({ data, name: 'Liam', barName: 'rank-bar.png', lang: 'es' }).toJSON().fields[3].value, `${(data.xpNeeded - data.xpCurrent).toLocaleString('es-419')} XP para el nivel 6`);
+assert.equal(buildRankEmbed({ data, name: 'Liam', barName: 'rank-bar.png', lang: 'pt-BR' }).toJSON().fields[3].value, `${(data.xpNeeded - data.xpCurrent).toLocaleString('pt-BR')} XP para o nível 6`);
+assert.ok(!drawn.fields.some((field) => field.value === '\u200b'), 'no field is left blank');
+const drawnVoice = buildRankEmbed({ data: { ...data, source: 'voice' }, name: 'Liam', barName: 'rank-bar.png' }).toJSON();
 assert.equal(drawnVoice.fields[drawnVoice.fields.length - 1].name, `Progress (${data.progress}%)`, 'the Progress title is the last field, right above the bar');
 assert.equal(voiceEmbedPlainOrder(), true, 'without a picture the voice time stays last');
 function voiceEmbedPlainOrder() { const f = buildRankEmbed({ data: { ...data, source: 'voice' }, name: 'Liam' }).toJSON().fields; return f[f.length - 1].name === 'Time in voice'; }
@@ -84,9 +87,9 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'p
   reply = await buildRankReply({ ...base, style: 'embed' });
   assert.equal(reply.embeds.length, 1, 'style embed sends the embed');
   assert.equal(reply.files.length, 1, 'with the drawn bar attached');
-  assert.equal(reply.files[0].name, 'rank-bar.webp', 'under a name that does not change');
-  assert.equal(reply.embeds[0].toJSON().image.url, 'attachment://rank-bar.webp');
-  assert.equal(reply.files[0].attachment.subarray(8, 12).toString('latin1'), 'WEBP', 'a real WebP file');
+  assert.equal(reply.files[0].name, 'rank-bar.png', 'under a name that does not change');
+  assert.equal(reply.embeds[0].toJSON().image.url, 'attachment://rank-bar.png');
+  assert.equal(reply.files[0].attachment.subarray(1, 4).toString('latin1'), 'PNG', 'a real PNG file');
   barFails = true;
   reply = await buildRankReply({ ...base, style: 'embed' });
   assert.equal(reply.files, undefined, 'a bar that cannot be drawn is not attached');
@@ -99,7 +102,7 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'p
   reply = await buildRankReply({ ...base, style: 'card' });
   assert.equal(reply.files.length, 1); assert.equal(reply.embeds.length, 1, 'a card that cannot be drawn leaves the embed (with its bar)');
   reply = await buildRankReply({ ...base, style: 'both' });
-  assert.equal(reply.embeds[0].toJSON().image.url, 'attachment://rank-bar.webp');
+  assert.equal(reply.embeds[0].toJSON().image.url, 'attachment://rank-bar.png');
   reply = await buildRankReply({ ...base, style: 'embed', lang: 'es' });
   assert.equal(reply.embeds[0].toJSON().fields[0].name, 'Nivel', 'the language reaches the embed');
   console.log('Checked the rank numbers, the embed and the card, embed or both styles.');

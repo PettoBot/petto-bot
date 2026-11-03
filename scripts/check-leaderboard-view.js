@@ -1,4 +1,4 @@
-// Checks the leaderboard embed with pictures (utils/leaderboardView.js): the podium picture of the first three, the aligned table, the position of
+// Checks the leaderboard embed with pictures (utils/leaderboardView.js): the podium picture of the first three, the lines of text, the position of
 // whoever asked with the progress bar picture, avatars that fail, the caches (finished pictures, avatars, one render for identical requests, the limit
 // of pictures drawn at once), and the plain embed that is still answered when a picture cannot be had. The database and the downloads are replaced.
 const assert = require('node:assert/strict');
@@ -31,7 +31,7 @@ const realBar = require('../src/utils/rankBar');
 let barFails = false;
 stub('src/utils/rankBar.js', { ...realBar, renderRankBar: async (options) => { if (barFails) throw new Error('no bar'); return realBar.renderRankBar(options); } });
 
-const { buildLeaderboardReply, compact, columnName, buildTable, clearBoardImages, boardImageCacheSize } = require('../src/utils/leaderboardView');
+const { buildLeaderboardReply, compact, displayName, memberLine, clearBoardImages, boardImageCacheSize } = require('../src/utils/leaderboardView');
 const { avatarLink, setAvatarFetcher, clearAvatars, avatarCacheSize, loadAvatar } = require('../src/utils/avatarCache');
 const { createPictureCache } = require('../src/utils/renderQueue');
 
@@ -54,27 +54,40 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   // Small helpers.
   assert.equal(compact('en', 2_400_000), '2.4M'); assert.equal(compact('en', 710_300), '710K'); assert.equal(compact('en', 950), '950'); assert.equal(compact('en', 0), '0');
   assert.match(compact('es', 2_400_000), /^2[.,]4\s?M$/); assert.match(compact('pt-BR', 2_400_000), /^2,4\s?(mi|M)/);
-  assert.equal(columnName('Mochi'), 'Mochi'); assert.equal(columnName('A very long member name'), 'A very long…'); assert.equal(columnName('\u{1F431}\u{1F525}'), '?', 'a name of emoji only');
-  assert.equal(columnName('a`b```c'), "a'b'''c", 'no backticks to break the block'); assert.equal(columnName('  two   spaces '), 'two spaces');
-  const table = buildTable([{ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, { position: 5, name: 'Wide Wide Wide Wide', level: 5, xp: 900 }], 'en');
-  const lines = table.split('\n').slice(1, -1);
-  assert.ok(table.startsWith('```\n') && table.endsWith('\n```') && lines.length === 3);
-  assert.equal(new Set(lines.map((line) => Array.from(line).length)).size, 1, 'every line of the table has the same width');
+  // The names in the lines: cut by letters with an ellipsis, Markdown and mentions escaped, isolated, whatever they are made of.
+  const FSI = '\u2068', PDI = '\u2069';
+  const bare = (name, width) => displayName(name, width).slice(1, -1);
+  assert.equal(displayName('Mochi'), `${FSI}Mochi${PDI}`, 'a name is wrapped in isolates, so a right-to-left name cannot reorder its neighbours');
+  assert.equal(bare('x'.repeat(18)), 'x'.repeat(18), 'eighteen columns fit'); assert.equal(bare('x'.repeat(19)), `${'x'.repeat(17)}\u2026`, 'one more is cut');
+  const long = bare('Supercalifragilisticexpialidocious-Mochi-Ultra'); assert.ok(long.endsWith('\u2026') && Array.from(long).length <= 18, `a 45 character name is cut (${long})`);
+  assert.equal(bare('\u{1F431}\u{1F525}\u2728'), '\u{1F431}\u{1F525}\u2728', 'a name of emoji only is kept, not turned into a question mark');
+  const family = '\u{1F468}\u200d\u{1F469}\u200d\u{1F467}'; assert.equal(bare(`${family}${'a'.repeat(30)}`).startsWith(family), true, 'an emoji made of several parts is one letter and is never split');
+  assert.ok(Array.from(bare('\u{1F431}'.repeat(30))).length <= 9 && bare('\u{1F431}'.repeat(30)).endsWith('\u2026'), 'emoji count two columns');
+  assert.equal(Array.from(bare('\u6f22'.repeat(30))).length, 9, 'wide letters count two columns');
+  assert.equal(bare('**bold** _it_ ~~s~~ ||sp|| `c` > #h [a](b)', 80), '\\*\\*bold\\*\\* \\_it\\_ \\~\\~s\\~\\~ \\|\\|sp\\|\\| \\`c\\` \\> \\#h \\[a\\]\\(b\\)', 'Markdown is escaped');
+  assert.equal(bare('<@123> @everyone', 80), '\\<\\@123\\> \\@everyone', 'mentions are escaped'); assert.equal(bare('https://x.test', 80), 'https\\://x.test', 'and a link is not made');
+  assert.equal(bare('\u202eevil\u202c\u200b\u2066name'), 'evilname', 'bidirectional and zero-width controls are removed');
+  const arabic = '\u0645\u0631\u062d\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645'; assert.equal(bare(arabic), arabic, 'a right-to-left name is kept');
+  assert.equal(displayName('   '), '?'); assert.equal(displayName('\u200b\u200b'), '?'); assert.equal(bare('Line\nbreak\tname'), 'Line break name', 'no line breaks inside a name');
+  const line = memberLine({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'en');
+  assert.equal(line, `\`04\` **${FSI}Luna${PDI}**\u00a0\u00b7 Lv.\u00a070\u00a0\u00b7\u00a01.5M\u00a0XP`);
+  assert.equal(memberLine({ position: 12, name: 'Luna', level: null, xp: 12_345 }, 3, 'en'), `\`012\` **${FSI}Luna${PDI}**\u00a0\u00b7 12K\u00a0XP`, 'a week or a month has no level');
+  assert.equal(memberLine({ position: 4, name: 'Luna', level: 70, xp: 1_500_000 }, 2, 'es'), `\`04\` **${FSI}Luna${PDI}**\u00a0\u00b7 Nv.\u00a070\u00a0\u00b7\u00a0${compact('es', 1_500_000).replace(/ /g, '\u00a0')}\u00a0XP`);
 
   // Ten rows: the podium picture first, then the table of the other seven, then the viewer with the bar.
   const reply = await buildLeaderboardReply({ ...base, viewerId: '77' });
   assert.equal(reply.embeds.length, 2); assert.deepEqual(reply.attachments, []);
-  assert.deepEqual(reply.files.map((file) => file.name), ['podium.webp', 'rank-bar.webp']);
-  assert.ok(reply.files.every((file) => isWebp(file.attachment)), 'real WebP files');
+  assert.deepEqual(reply.files.map((file) => file.name), ['podium.webp', 'rank-bar.png']);
+  assert.ok(isWebp(reply.files[0].attachment) && reply.files[1].attachment.subarray(1, 4).toString('latin1') === 'PNG', 'a real WebP podium and a real PNG bar');
   const podium = await loadImage(reply.files[0].attachment);
   assert.deepEqual([podium.width, podium.height], [900, 380]);
   assert.ok(reply.files[0].attachment.length < 40_000, `the podium is small (${reply.files[0].attachment.length} bytes)`);
   const [head, list] = reply.embeds.map((e) => e.toJSON());
   assert.equal(head.image.url, 'attachment://podium.webp'); assert.equal(head.author.name, 'Petto Server • Leaderboard'); assert.ok(head.author.icon_url);
-  assert.equal(list.image.url, 'attachment://rank-bar.webp');
-  const tableLines = list.description.split('```')[1].split('\n').filter(Boolean);
-  assert.equal(tableLines.length, 1 + 7, 'the header and the seven rows after the podium');
-  assert.match(tableLines[1], /^04 Luna\s+80\s+/); assert.match(tableLines[7], /^10 Sol/);
+  assert.equal(list.image.url, 'attachment://rank-bar.png');
+  const lines = list.description.split('\n').filter((text) => text.startsWith('`'));
+  assert.equal(lines.length, 7, 'the seven places after the podium, one line each'); assert.ok(!list.description.includes('```'), 'no code block');
+  assert.match(lines[0], /^`04` \*\*\u2068Luna\u2069\*\*\u00a0· Lv\.\u00a080\u00a0·\u00a0/); assert.match(lines[6], /^`10` /);
   assert.match(list.description, /\*\*You\*\*.*#312.* of 72,159.*Level \*\*4\*\*/); assert.match(list.description, /-# .* XP/);
   assert.equal(list.footer.text, '72,159 member(s) · Page 1/7,216', 'the count is written with separators');
   assert.equal(JSON.stringify(reply.embeds.map((e) => e.toJSON().color)), '[4935513,4935513]', 'both embeds have the same color');
@@ -82,8 +95,8 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   // The second page has no podium: one embed with all ten rows.
   const second = await buildLeaderboardReply({ ...base, page: 2 });
   assert.equal(second.embeds.length, 1); assert.equal(second.files.length, 0, 'no viewer, no podium, no pictures');
-  assert.equal(second.embeds[0].toJSON().description.split('```')[1].split('\n').filter(Boolean).length, 11);
-  assert.match(second.embeds[0].toJSON().description.split('\n').find((line) => /^11 /.test(line)), /^11 /);
+  assert.equal(second.embeds[0].toJSON().description.split('\n').filter((text) => text.startsWith('`')).length, 10);
+  assert.match(second.embeds[0].toJSON().description, /^`11` /, 'the second page starts at 11');
 
   // Few rows and none.
   rowCount = 3; let r = await buildLeaderboardReply({ ...base });
@@ -134,7 +147,7 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   podiumFails = true; barFails = true; clearBoardImages();
   const plain = await buildLeaderboardReply({ ...base, viewerId: '77' });
   assert.equal(plain.embeds.length, 1); assert.equal(plain.files.length, 0); assert.equal(plain.embeds[0].toJSON().image, undefined);
-  assert.equal(plain.embeds[0].toJSON().description.split('```')[1].split('\n').filter(Boolean).length, 11, 'all ten rows are in the table');
+  assert.equal(plain.embeds[0].toJSON().description.split('\n').filter((text) => text.startsWith('`')).length, 10, 'all ten rows are listed');
   assert.match(plain.embeds[0].toJSON().description, /[─━]{20}/, 'a thin bar of plain characters');
   assert.ok(!/<:|\p{Extended_Pictographic}/u.test(plain.embeds[0].toJSON().description), 'no emoji');
   podiumFails = false; barFails = false;
@@ -148,14 +161,14 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   const week = await buildLeaderboardReply({ ...base, period: 'week', total: 2, totalPages: 1, viewerId: '77' });
   assert.equal(week.embeds[0].toJSON().author.name, 'Petto Server • Leaderboard · This week');
   const weekText = week.embeds[1]?.toJSON().description ?? week.embeds[0].toJSON().description;
-  assert.ok(!weekText.includes(' Lv '), 'a week has no level column'); assert.match(weekText, /\*\*You\*\*.*#9.* of 2.*450 XP/);
-  assert.ok(week.files.every((file) => file.name !== 'rank-bar.webp'), 'and no bar');
+  assert.ok(!weekText.includes('Lv.'), 'a week has no level'); assert.match(weekText, /\*\*You\*\*.*#9.* of 2.*450 XP/);
+  assert.ok(week.files.every((file) => file.name !== 'rank-bar.png'), 'and no bar');
 
   // Spanish and Portuguese.
   const es = await buildLeaderboardReply({ ...base, lang: 'es', viewerId: '77' }); const ed = es.embeds[1].toJSON().description;
-  assert.match(ed, /Miembro/); assert.match(ed, /\*\*Tú\*\*/); assert.match(es.embeds[1].toJSON().footer.text, /miembro/i);
+  assert.match(ed, /Nv\.\u00a0\d+/); assert.match(ed, /\*\*Tú\*\*/); assert.match(es.embeds[1].toJSON().footer.text, /miembro/i);
   const pt = await buildLeaderboardReply({ ...base, lang: 'pt-BR', viewerId: '77' });
-  assert.match(pt.embeds[1].toJSON().description, /Membro/); assert.match(pt.embeds[1].toJSON().description, /\*\*Você\*\*/);
+  assert.match(pt.embeds[1].toJSON().description, /Nív\.\u00a0\d+/); assert.match(pt.embeds[1].toJSON().description, /\*\*Você\*\*/);
 
   // The cache of pictures and the limit of pictures drawn at once.
   const cache = createPictureCache({ ttlMs: 30, maxEntries: 5 });
@@ -172,5 +185,5 @@ const base = { guild, page: 1, totalPages: 7216, total: 72_159, config: cfg, lan
   await Promise.all(Array.from({ length: 8 }, (_, i) => slow.get(`s${i}`, async () => { active += 1; peak = Math.max(peak, active); await new Promise((resolve) => setTimeout(resolve, 10)); active -= 1; return { buffer: Buffer.alloc(1) }; })));
   assert.equal(peak, 2, 'no more than the limit are drawn at once'); delete process.env.IMAGE_RENDER_CONCURRENCY;
   clearBoardImages(); clearAvatars();
-  console.log('Checked the leaderboard embed: podium picture, table, your position, avatars, caches, limits and the plain fallback.');
+  console.log('Checked the leaderboard embed: podium picture, lines, your position, avatars, caches, limits and the plain fallback.');
 })().catch((error) => { console.error(error); process.exit(1); });

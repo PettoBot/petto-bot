@@ -4,7 +4,19 @@
 // level and XP on the face of the block. It knows nothing about Discord or the database: the caller passes ready texts and avatars.
 const { createCanvas } = require('@napi-rs/canvas');
 const { registerCardFonts, canvasFont, printable } = require('./cardFonts');
-const { shade } = require('./progressBarImage');
+
+function rgb(hex) {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+/** `hex` moved toward white (amount above 0) or toward black (below 0), as a canvas color. */
+function shade(hex, amount, alpha = 1) {
+  const [r, g, b] = rgb(hex);
+  const target = amount >= 0 ? 255 : 0;
+  const k = Math.abs(amount);
+  const mix = (c) => Math.round(c + (target - c) * k);
+  return `rgba(${mix(r)},${mix(g)},${mix(b)},${alpha})`;
+}
 
 const WIDTH = 900;
 const HEIGHT = 380;

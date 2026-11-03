@@ -1,10 +1,9 @@
 // Times the pictures of the rank with fake data and no network: the default rank card (the layered card renderer, unchanged), the new progress
-// bar of the rank embed (first render and cached) and the optional glass card. Not part of `npm run check`.
+// bar of the rank embed (first render and cached) and the leaderboard with the podium picture. Not part of `npm run check`.
 //   node scripts/bench-cards.js            all of them
 //   node scripts/bench-cards.js legacy     only the default rank card, step by step (fonts, background, avatar, drawing, encode)
 //   node scripts/bench-cards.js bar        only the progress bar, with PNG vs WebP vs JPEG
 //   node scripts/bench-cards.js board      only the leaderboard with the podium picture
-//   node scripts/bench-cards.js glass      only the optional glass card
 // A cold time needs a fresh process, so run one mode at a time to see it.
 const path = require('node:path');
 const { createCanvas } = require('@napi-rs/canvas');
@@ -71,22 +70,26 @@ async function legacy() {
 }
 
 async function bar() {
-  const { renderRankBar, clearRankBars } = require('../src/utils/rankBar');
-  const { drawProgressBar } = require('../src/imgutils/progressBarImage');
-  console.log('RANK BAR picture (640x40, WebP)');
+  const { renderRankBar, clearRankBars, THEMES } = require('../src/utils/rankBar');
+  const { drawProgressBar, themeColor } = require('../src/imgutils/progressBarImage');
+  console.log('RANK BAR picture (640x56, PNG)');
   const cold = [];
-  for (const percent of [64, 12, 100, 0, 1, 47, 83, 5]) cold.push((await timed(() => renderRankBar({ percent })))[0]);
+  for (const percent of [64, 12, 100, 0, 1, 47, 83, 5]) cold.push((await timed(() => renderRankBar({ percent, theme: 'normal' })))[0]);
   console.log(`  first render of a bar: ${fixed(cold[0])} ms the very first (drawing and encoding warm-up), then ${fixed(cold.slice(1).reduce((a, b) => a + b, 0) / (cold.length - 1))} ms on average`);
   const hits = [];
-  for (let i = 0; i < 200; i++) hits.push((await timed(() => renderRankBar({ percent: 64 })))[0]);
+  for (let i = 0; i < 200; i++) hits.push((await timed(() => renderRankBar({ percent: 64, theme: 'normal' })))[0]);
   hits.sort((a, b) => a - b);
   console.log(`  the same bar again (cache hit): median ${hits[100].toFixed(3)} ms`);
-  const sample = drawProgressBar(64, '#ffb199');
-  for (const [type, quality] of [['webp', 92], ['webp', 80], ['png', undefined], ['jpeg', 90]]) {
-    const times = []; let bytes = 0;
-    for (let i = 0; i < 15; i++) { const [ms, buffer] = await timed(() => sample.encode(type, quality)); times.push(ms); bytes = buffer.length; }
-    times.sort((a, b) => a - b);
-    console.log(`  encode ${type}${quality ? ` q${quality}` : ''}: median ${fixed(times[7])} ms, ${bytes} bytes${type === 'jpeg' ? ' (no transparency)' : ''}`);
+  for (const theme of THEMES) {
+    const sample = drawProgressBar(64, themeColor(theme), theme);
+    const parts = [];
+    for (const [type, quality] of [['png'], ['webp', 90], ['jpeg', 90]]) {
+      const times = []; let bytes = 0;
+      for (let i = 0; i < 15; i++) { const [ms, buffer] = await timed(() => sample.encode(type, quality)); times.push(ms); bytes = buffer.length; }
+      times.sort((a, b) => a - b);
+      parts.push(`${type}${quality ? ` q${quality}` : ''} ${fixed(times[7])} ms ${bytes} B`);
+    }
+    console.log(`  ${theme}: ${parts.join(' | ')}`);
   }
   clearRankBars();
 }
@@ -114,20 +117,9 @@ async function board() {
   for (let i = 0; i < 50; i++) hits.push((await timed(() => buildLeaderboardReply(args)))[0]);
   hits.sort((a, b) => a - b);
   clearAvatars();
-  console.log('LEADERBOARD podium picture + table + your position (900x380 WebP)');
+  console.log('LEADERBOARD podium picture + lines + your position (900x380 WebP)');
   console.log(`  fonts ${fixed(fontMs)} ms; first page built (cold, includes drawing the podium, the bar and 3 avatar decodes): ${fixed(first)} ms; ${reply.files.map((f) => `${f.name} ${f.attachment.length} B`).join(', ')}`);
   console.log(`  podium drawn again (avatars cached, picture not): median ${fixed(runs[4])} ms; page with every picture cached: median ${hits[25].toFixed(2)} ms (this includes the table and the embeds)`);
-}
-
-async function glass() {
-  const { renderGlassRankCard } = require('../src/imgutils/glassRankCard');
-  const { registerCardFonts } = require('../src/imgutils/cardFonts');
-  const [fontMs] = await timed(async () => registerCardFonts());
-  const runs = [];
-  for (let i = 0; i < 8; i++) runs.push(await timed(() => renderGlassRankCard({ data: LEVEL_DATA, name: 'Mochi', avatar: null, lang: 'en' })));
-  const warm = runs.slice(1).map((run) => run[0]).sort((a, b) => a - b)[3];
-  console.log('OPTIONAL glass rank card (900x300, WebP, not wired to anything)');
-  console.log(`  fonts ${fixed(fontMs)} ms, first render ${fixed(runs[0][0])} ms, warm median ${fixed(warm)} ms, ${runs[0][1].length} bytes`);
 }
 
 (async () => {
@@ -135,5 +127,4 @@ async function glass() {
   if (mode === 'legacy' || mode === 'all') await legacy();
   if (mode === 'bar' || mode === 'all') await bar();
   if (mode === 'board' || mode === 'all') await board();
-  if (mode === 'glass' || mode === 'all') await glass();
 })().catch((error) => { console.error(error); process.exit(1); });
