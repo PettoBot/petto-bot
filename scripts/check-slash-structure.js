@@ -176,7 +176,6 @@ for (const command of all.values()) {
 // What is left out on purpose, with the reason.
 const LEFT_OUT = {
   timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/mod tempmute` and `/modtools mute temp` are the same)',
-  quests: 'hidden from `!help` while the Quest API is in test: `!quests` stays a prefix command until it is public',
 };
 // The join roles and the sticky roles are groups of `/role` (`/role join`, `/role sticky`), which is not an umbrella.
 const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky' };

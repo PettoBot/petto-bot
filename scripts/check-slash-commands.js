@@ -40,7 +40,7 @@ const ESSENTIAL = [
   'ai',
   // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), the
   // prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
-  'modtools', 'prefix', 'social',
+  'modtools', 'prefix', 'quests', 'social',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];

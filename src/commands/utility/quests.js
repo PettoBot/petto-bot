@@ -1,6 +1,6 @@
 // Alerts for Discord Quests: a message in a channel when a new Quest appears, in a card the server can style or in one of
 // its saved embeds. The data comes from api.discordquest.com, which allowed Petto's team to try it, so for now only the
-// team and the testers can set it up when QUESTS_PUBLIC=false (see config.js); by default every server can.
+// team and the testers can set it up when QUESTS_PUBLIC=false (see config.js); by default every server can. It is a public command, in `!help` and in the `/` menu.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -26,8 +26,8 @@ function readList(text, allowed) {
 }
 
 module.exports = {
-  prefixOnly: true,
-  hiddenFromHelp: true,
+  // A slash command of its own (`/quests enable`, `/quests list`...) as well as `!quests`, the same code.
+  registerSlash: true,
   aliases: ['quest', 'misiones'],
   prefixRawOptions: { thread: actionAndText, method: actionAndText },
   data: new SlashCommandBuilder()

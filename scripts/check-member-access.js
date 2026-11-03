@@ -138,6 +138,7 @@ const SELF_GATED = {
   suggestion: { MEMBER: [], why: 'anybody suggests with `suggest`; setup is for Manage Server, the review for the staff roles' },
   quickreply: { MEMBER: ['send', 'list'], why: 'quick replies are used by anybody who may; adding them is for the staff' },
   rollouts: { MEMBER: ['list', 'help'], why: 'the setup is for Manage Server' },
+  quests: { MEMBER: ['list'], why: 'anyone sees the active quests; the setup and the test are for Manage Server' },
   imgonly: { MEMBER: ['list'], why: 'the setup is for Manage Server' },
   urlonly: { MEMBER: ['list', 'sites'], why: 'the setup is for Manage Server' },
   counting: { MEMBER: ['stats', 'leaderboard', 'next', 'config'], why: 'the setup is for Manage Server' },
@@ -147,7 +148,7 @@ const SELF_GATED = {
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
-const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'quests', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
+const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
 
 
 // ---------------------------------------------------------------- a fake Discord for the probes: it records what changes the server

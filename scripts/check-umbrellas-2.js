@@ -673,8 +673,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 64, '64 commands registered with Discord (61 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 61, '61 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 65, '65 commands registered with Discord (62 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
