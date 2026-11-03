@@ -9,12 +9,12 @@ const entries = () => Math.min(5000, Math.max(16, Math.floor(Number(process.env.
 const format = () => (String(process.env.RANK_BAR_FORMAT).toLowerCase() === 'webp' ? 'webp' : 'png');
 const QUALITY = 90;
 
-/** The theme of a date: Halloween from October 15 to November 2, Christmas from December 1 to January 5 (UTC), the normal one otherwise. */
+/** The theme of a date: Halloween all of October, Christmas from November 1 to January 10 (UTC), the normal one otherwise. */
 function themeFor(date = new Date()) {
   const month = date.getUTCMonth() + 1;
   const day = date.getUTCDate();
-  if ((month === 10 && day >= 15) || (month === 11 && day <= 2)) return 'halloween';
-  if (month === 12 || (month === 1 && day <= 5)) return 'christmas';
+  if (month === 10) return 'halloween';
+  if (month === 11 || month === 12 || (month === 1 && day <= 10)) return 'christmas';
   return 'normal';
 }
 
