@@ -1,7 +1,8 @@
 // The leaderboard of `/top` laid out as an embed with two generated pictures, both small and cached: on the first page a podium strip with the top
 // three (avatar, medal, name, level and XP), and at the bottom the position of the person who asked, with the same progress bar picture as `/rank`.
-// The other places are one line of text each (`04` **Name** · Lv. 70 · 1.5M XP) that wraps by itself, so a long name cannot break anything. When a
-// picture cannot be had, the embed still answers: the lines then list everybody and the bar is a thin line of plain characters.
+// The other places are one embed field each (name: `04 · Luna`, value: `Lv. 70 · 1.5M XP`), so every row is two lines whatever the name is: the name
+// is cut to fit and never wraps. When a picture cannot be had, the embed still answers: the fields then list everybody and the bar is a thin line
+// of plain characters.
 const crypto = require('node:crypto');
 const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const levelUsersDb = require('../db/levelUsers');
@@ -24,6 +25,9 @@ const PICTOGRAPH = /^[\p{Extended_Pictographic}\p{Regional_Indicator}]/u;
 const WIDE = /^[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]/;
 // Characters that can reorder the text around a name or hide it: bidirectional controls and zero-width marks (the joiner of an emoji is kept).
 const CONTROLS = /[\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff\u0000-\u001f\u007f]/g;
+// Characters that Discord could read as formatting, a mention or a link are shown as look-alikes (a field name is not a place where a backslash is
+// sure to be taken as an escape), so a name can never format, ping or link anything and nothing needs unescaping.
+const LOOKALIKES = { '\\': '\uff3c', '*': '\u2217', _: '\uff3f', '~': '\u223c', '|': '\uffe8', '`': '\u02cb', '>': '\u203a', '<': '\u2039', '#': '\uff03', '@': '\uff20', '[': '\uff3b', ']': '\uff3d', '(': '\uff08', ')': '\uff09', ':': '\uff1a' };
 const SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const TITLES = {
   messages: { all: 'leveling.top.title', week: 'leveling.top.titleWeek', month: 'leveling.top.titleMonth' },
@@ -47,7 +51,7 @@ const columns = (grapheme) => (PICTOGRAPH.test(grapheme) || WIDE.test(grapheme) 
  * reorder what is around it. A name with nothing left is a question mark.
  */
 function displayName(name, width = NAME_WIDTH) {
-  const letters = Array.from(SEGMENTER.segment(String(name).replace(/\s+/g, ' ').replace(CONTROLS, '').trim()), (part) => part.segment);
+  const letters = Array.from(SEGMENTER.segment(String(name).replace(/\s+/g, ' ').replace(CONTROLS, '').trim().replace(/[\\*_~|`><#@[\]():]/g, (char) => LOOKALIKES[char])), (part) => part.segment);
   if (!letters.length) return '?';
   let text = letters.join('');
   if (letters.reduce((sum, letter) => sum + columns(letter), 0) > width) {
@@ -60,23 +64,30 @@ function displayName(name, width = NAME_WIDTH) {
     }
     text = `${kept.join('').trimEnd()}\u2026`;
   }
-  text = text.replace(/[\\*_~|`>#@<\[\]():]/g, '\\$&');
   return `\u2068${text}\u2069`;
 }
 
-/** One place of the leaderboard as a line of text: `04` **Name** · Lv. 70 · 1.5M XP (a week or a month has no level). */
-function memberLine(entry, pos, lang) {
-  // The level and the XP never split (a no-break space inside each piece and around the dot), so when a line wraps, the numbers move together.
+// `stacked` is one field per row, each on its own lines; `inline` puts two rows side by side (a third, empty, field fills each Discord row of three).
+const LAYOUTS = { stacked: { inline: false, width: NAME_WIDTH }, inline: { inline: true, width: 12 } };
+const BLANK = '\u200b';
+
+/** One place of the leaderboard as a field: `04 · Luna` over `Lv. 70 · 1.5M XP` (a week or a month has no level, so the value is the XP). */
+function memberField(entry, pos, lang, width = NAME_WIDTH) {
   const stats = [];
   if (entry.level !== null) stats.push(t(lang, 'leveling.board.podiumLevel', { level: formatNumber(lang, entry.level) }));
   stats.push(`${compact(lang, entry.xp)} XP`);
-  return `\`${String(entry.position).padStart(pos, '0')}\` **${displayName(entry.name)}**\u00a0\u00b7 ${stats.map((text) => text.replace(/ /g, '\u00a0')).join('\u00a0\u00b7\u00a0')}`;
+  return { name: `${String(entry.position).padStart(pos, '0')} \u00b7 ${displayName(entry.name, width)}`, value: stats.join(' \u00b7 ') };
 }
 
-/** The places that are not on the podium, one line each. */
-function buildLines(entries, lang) {
+/** The fields of the places that are not on the podium, in the layout asked for. */
+function buildFields(entries, lang, layout = 'stacked') {
+  const { inline, width } = LAYOUTS[layout] ?? LAYOUTS.stacked;
   const pos = Math.max(2, String(entries[entries.length - 1].position).length);
-  return entries.map((entry) => memberLine(entry, pos, lang)).join('\n');
+  const cells = entries.map((entry) => ({ ...memberField(entry, pos, lang, width), inline }));
+  if (!inline) return cells;
+  const rows = [];
+  for (let i = 0; i < cells.length; i += 2) rows.push(cells[i], cells[i + 1] ?? { name: BLANK, value: BLANK, inline: true }, { name: BLANK, value: BLANK, inline: true });
+  return rows;
 }
 
 /** The rows of a page: who, level, XP and what is needed, for the all-time ranking or for a week or a month. */
@@ -126,48 +137,52 @@ async function podiumFile(top, lang) {
   }
 }
 
-/** The aligned table of the rows that are not on the podium, as a code block. */
-function buildTable(entries, lang) {
-  const hasLevel = entries.every((entry) => entry.level !== null);
-  const pos = Math.max(2, String(entries[entries.length - 1].position).length);
-  const levels = entries.map((entry) => (hasLevel ? String(entry.level) : ''));
-  const xps = entries.map((entry) => compact(lang, entry.xp));
-  const lvW = hasLevel ? Math.max(2, ...levels.map((v) => v.length)) : 0;
-  const xpW = Math.max(2, ...xps.map((v) => v.length));
-  const line = (a, b, c, d) => `${a} ${b}${hasLevel ? ` ${c.padStart(lvW)}` : ''} ${d.padStart(xpW)}`;
-  const header = line('#'.padStart(pos), t(lang, 'leveling.board.colMember').padEnd(NAME_WIDTH), t(lang, 'leveling.board.colLevel'), t(lang, 'leveling.board.colXp'));
-  const body = entries.map((entry, i) => line(String(entry.position).padStart(pos, '0'), columnName(entry.name).padEnd(NAME_WIDTH), levels[i], xps[i]));
-  return `\`\`\`\n${[header, ...body].join('\n')}\n\`\`\``;
-}
-
-/** The position of the person who asked, as the text under the table and the progress bar picture (null for a week or a month: it has no level). */
+/** The position of the person who asked, as a field and the percentage for the bar picture (none for a week or a month: it has no level). */
 async function viewerBlock({ guild, viewerId, source, period, config, total, lang }) {
   if (!viewerId) return null;
   const voice = source === 'voice';
+  const n = (value) => formatNumber(lang, value);
   try {
     if (period !== 'all') {
       const standing = await periods.memberStanding(guild.id, viewerId, period, voice ? 'voice' : 'text');
-      return standing ? { text: t(lang, 'leveling.board.youPeriod', { position: formatNumber(lang, standing.position), total: formatNumber(lang, total), xp: formatNumber(lang, standing.xp) }) } : null;
+      return standing ? { name: t(lang, 'leveling.board.youName', { rank: n(standing.position), total: n(total) }), value: `${n(standing.xp)} XP` } : null;
     }
     const userData = await levelUsersDb.getUser(guild.id, viewerId);
     const xp = Number(voice ? userData?.voice_xp ?? 0 : userData?.xp ?? 0);
     if (!userData || xp <= 0) return null;
     const rank = await (voice ? levelUsersDb.getVoiceRank : levelUsersDb.getRank)(guild.id, xp);
     const data = buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank, total });
-    const n = (value) => formatNumber(lang, value);
-    const text = `${t(lang, 'leveling.board.youLine', { rank: n(rank), total: n(total), level: n(data.level) })}\n-# ${t(lang, 'leveling.board.youXp', { current: n(data.xpCurrent), needed: n(data.xpNeeded), percent: data.progress })}`;
-    return { text, progress: data.progress, voice };
+    return {
+      name: t(lang, 'leveling.board.youName', { rank: n(rank), total: n(total) }),
+      value: t(lang, 'leveling.board.youValue', { level: n(data.level), current: n(data.xpCurrent), needed: n(data.xpNeeded), percent: data.progress }),
+      progress: data.progress, voice,
+    };
   } catch {
     return null;
   }
 }
 
+// What Discord accepts in one message: 25 fields in an embed, 256 characters in a field name, 1024 in a value and 6000 in all the embeds together.
+const LIMITS = { fields: 25, name: 256, value: 1024, total: 6000 };
+const embedLength = (embed) => {
+  const d = embed.data;
+  return (d.title?.length ?? 0) + (d.description?.length ?? 0) + (d.author?.name?.length ?? 0) + (d.footer?.text?.length ?? 0) + (d.fields ?? []).reduce((sum, f) => sum + f.name.length + f.value.length, 0);
+};
+/** Keeps the embeds inside those limits: a field is cut to its size, and the last places of the list go first when the whole is too long. */
+function fitLimits(embeds, keepLast = 0) {
+  for (const embed of embeds) {
+    if (embed.data.fields) embed.data.fields = embed.data.fields.slice(0, LIMITS.fields).map((f) => ({ ...f, name: f.name.slice(0, LIMITS.name), value: f.value.slice(0, LIMITS.value) }));
+  }
+  const list = embeds[embeds.length - 1];
+  while (embeds.reduce((sum, embed) => sum + embedLength(embed), 0) > LIMITS.total - 200 && list.data.fields.length > keepLast) list.data.fields.splice(list.data.fields.length - keepLast - 1, 1);
+}
+
 /**
  * The reply for one page: `{ embeds, files, attachments }` (the last one empties the old files when a page is edited in place).
- * `total` and `totalPages` come from the command. `viewerId` is who asked, for the "You" line. Database errors are the caller's, as before; a
- * picture that cannot be had never makes the page fail.
+ * `total` and `totalPages` come from the command. `viewerId` is who asked, for the "You" field. `layout` is `stacked` (default) or `inline`.
+ * Database errors are the caller's, as before; a picture that cannot be had never makes the page fail.
  */
-async function buildLeaderboardReply({ guild, page, totalPages, total, source = 'messages', period = 'all', config, lang = currentLanguage(), viewerId = null }) {
+async function buildLeaderboardReply({ guild, page, totalPages, total, source = 'messages', period = 'all', config, lang = currentLanguage(), viewerId = null, layout = 'stacked' }) {
   const entries = await loadEntries(guild, { page, source, period, config });
   const title = t(lang, TITLES[source === 'voice' ? 'voice' : 'messages'][period], { server: guild.name });
   const footer = tn(lang, 'leveling.top.footer', total, { page: formatNumber(lang, page), pages: formatNumber(lang, totalPages) });
@@ -178,21 +193,22 @@ async function buildLeaderboardReply({ guild, page, totalPages, total, source = 
   const podium = page === 1 && entries.length ? await podiumFile(entries.slice(0, 3), lang) : null;
   if (podium) { files.push(new AttachmentBuilder(podium.buffer, { name: podium.name })); header.setImage(`attachment://${podium.name}`); }
   const rest = podium ? entries.slice(3) : entries;
-
-  const list = podium ? new EmbedBuilder().setColor(COLOR) : header;
-  const parts = [];
-  if (!entries.length) parts.push(t(lang, 'leveling.top.noData'));
-  if (rest.length) parts.push(buildLines(rest, lang));
   const viewer = await viewerBlock({ guild, viewerId, source, period, config, total, lang });
+
+  // The places after the podium and the viewer go in a second embed; when there is nothing for it, the first one carries the footer.
+  const list = podium && (rest.length || viewer) ? new EmbedBuilder().setColor(COLOR) : header;
+  if (!entries.length) list.setDescription(t(lang, 'leveling.top.noData'));
+  const fields = rest.length ? buildFields(rest, lang, layout) : [];
   if (viewer) {
-    parts.push(`\n${viewer.text}`);
     const bar = viewer.progress === undefined ? null : await renderRankBar({ percent: viewer.progress, voice: viewer.voice }).catch(() => null);
     if (bar) { files.push(new AttachmentBuilder(bar.buffer, { name: bar.name })); list.setImage(`attachment://${bar.name}`); }
-    else if (viewer.progress !== undefined) parts.push(buildThinBar(viewer.progress));
+    fields.push({ name: viewer.name, value: bar || viewer.progress === undefined ? viewer.value : `${viewer.value}\n${buildThinBar(viewer.progress)}`, inline: false });
   }
-  if (parts.length) list.setDescription(parts.join('\n'));
+  if (fields.length) list.addFields(fields);
   list.setFooter({ text: footer });
-  return { embeds: podium ? [header, list] : [list], files, attachments: [] };
+  const embeds = list === header ? [header] : [header, list];
+  fitLimits(embeds, viewer ? 1 : 0);
+  return { embeds, files, attachments: [] };
 }
 
-module.exports = { PER_PAGE, compact, displayName, memberLine, buildLines, buildLeaderboardReply, clearBoardImages: () => podiums.clear(), boardImageCacheSize: () => podiums.stats() };
+module.exports = { PER_PAGE, LIMITS, fitLimits, compact, displayName, memberField, buildFields, buildLeaderboardReply, clearBoardImages: () => podiums.clear(), boardImageCacheSize: () => podiums.stats() };

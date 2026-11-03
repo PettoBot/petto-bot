@@ -61,14 +61,16 @@ const base64 = (bar) => bar.buffer.toString('base64');
     assert.ok(near(await pixel(theme, 50, 200, true), rgb(themeColor(theme, true))), `${theme}: voice fill`);
     assert.ok(near(await pixel(theme, 0, 200), rgb(tracks[theme])), `${theme}: an empty bar has no fill`);
     assert.ok(near(await pixel(theme, 1, 16), rgb(themeColor(theme))), `${theme}: one percent is still a visible dot`);
-    assert.ok(near(await pixel(theme, 100, theme === 'halloween' ? 530 : 620), rgb(themeColor(theme))), `${theme}: a full bar is filled to the end`);
+    assert.ok(near(await pixel(theme, 100, theme === 'halloween' ? 580 : 620), rgb(themeColor(theme))), `${theme}: a full bar is filled to the end`);
   }
   const corner = createCanvas(640, 56).getContext('2d');
   corner.drawImage(await loadImage((await renderRankBar({ percent: 50, theme: 'normal' })).buffer), 0, 0);
   assert.equal(corner.getImageData(4, 4, 1, 1).data[3], 0, 'the normal theme draws nothing around the pill');
-  const bats = createCanvas(640, 56).getContext('2d');
-  bats.drawImage(await loadImage((await renderRankBar({ percent: 50, theme: 'halloween' })).buffer), 0, 0);
-  assert.ok(bats.getImageData(600, 32, 1, 1).data[3] > 200, 'Halloween has a bat at the right end, where the pill stops short');
+  const night = createCanvas(640, 56).getContext('2d');
+  night.drawImage(await loadImage((await renderRankBar({ percent: 50, theme: 'halloween' })).buffer), 0, 0);
+  assert.ok(night.getImageData(610, 8, 1, 1).data[3] > 200 && near([...night.getImageData(610, 8, 1, 1).data].slice(0, 3), [244, 240, 255], 30), 'Halloween has a ghost near the right end');
+  const pill = (data) => [...data.getImageData(630, 28, 1, 1).data];
+  assert.ok(pill(night)[3] > 200, 'and its pill is as long as the others (it reaches the right end)');
 
   // The colors: the theme's own for messages and for voice, the one given when it is a hex, never a value that is not.
   assert.equal(barColor(undefined, false, 'normal'), '#6485a7'); assert.equal(barColor(undefined, true, 'normal'), themeColor('normal', true));
