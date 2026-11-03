@@ -216,7 +216,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.deepEqual(mod.ruleKeys[name], file, `the rules of /mod ${name} are the ones of ${file}`);
   }
   const optionsOf = (name) => (subcommandsOf(mod).find((sub) => sub.name === name).options ?? []).map((option) => `${option.name}:${option.type}:${Boolean(option.required)}`);
-  assert.deepEqual(optionsOf('ban'), ['user:6:true', 'delete_message_days:4:false', 'reason:3:false']);
+  assert.deepEqual(optionsOf('ban'), ['user:6:true', 'delete_message_days:4:false', 'duration:3:false', 'reason:3:false'], 'a duration makes the ban temporary');
   assert.deepEqual(optionsOf('tempban'), ['user:6:true', 'duration:3:true', 'delete_message_days:4:false', 'reason:3:false']);
   assert.deepEqual(optionsOf('warn'), ['user:6:true', 'reason:3:true']);
   assert.deepEqual(optionsOf('case'), ['case:4:true']);
@@ -395,6 +395,14 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.equal(call.user, BEA, 'with another prefix too');
   call = await ran(`!mod ban <@${BEA}> 5 for ads`);
   assert.deepEqual([call.delete_message_days, call.reason], [5, 'for ads'], 'the days of messages, when written');
+  call = await ran(`!mod ban <@${BEA}> 7d ads`);
+  assert.deepEqual([call.file, call.sub, call.duration, call.reason, call.delete_message_days], ['ban', 'user', '7d', 'ads', null], 'a length of time right after the member is read as the duration (the handler makes the ban temporary)');
+  call = await ran(`!mod ban <@${BEA}> 5 7d ads`);
+  assert.deepEqual([call.delete_message_days, call.duration, call.reason], [5, '7d', 'ads'], 'the days of messages first, then the duration');
+  call = await ran(`!mod mute <@${BEA}> 3d spam`);
+  assert.deepEqual([call.file, call.sub, call.duration, call.reason], ['mute', 'user', '3d', 'spam'], '!mod mute @x 3d reason is read as a duration and a reason');
+  call = await ran(`!mod mute <@${BEA}> spam all day`);
+  assert.deepEqual([call.duration, call.reason], [null, 'spam all day'], 'a reason that is not a time stays the reason');
   call = await ran(`!mod tempban <@${BEA}> 2d ads`);
   assert.deepEqual([call.file, call.sub, call.duration, call.reason], ['ban', 'temp', '2d', 'ads']);
   call = await ran(`!mod k <@${BEA}> rude`);

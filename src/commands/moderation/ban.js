@@ -14,7 +14,8 @@ const { logSanction } = require('../../utils/caseLog');
 const { sendLog } = require('../../logging/engine');
 const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
-const { parseDuration, formatDuration } = require('../../utils/duration');
+const { parseDuration, formatDuration, splitLeadingDuration } = require('../../utils/duration');
+const { withOptionValues } = require('../../utils/optionOverrides');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { addHardBan, getHardBan, removeHardBan, canLiftHardBan, listHardBanIds } = require('../../db/hardBans');
@@ -45,6 +46,7 @@ module.exports = {
         .setDescription('Ban a single member.')
         .addUserOption((opt) => opt.setName('user').setDescription('The user to ban').setRequired(true))
         .addIntegerOption((opt) => opt.setName('delete_message_days').setDescription("Delete this many days of the user's recent messages (0-7)").setMinValue(0).setMaxValue(7).setRequired(false))
+        .addStringOption((opt) => opt.setName('duration').setDescription('Make it temporary: e.g. 3d, 2w').setRequired(false))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the ban').setRequired(false)),
     )
     .addSubcommand((sub) =>
@@ -87,7 +89,14 @@ module.exports = {
   hardBanUser: (interaction) => banUser(interaction, { hard: true }),
 };
 
-async function banUser(interaction, { hard = false } = {}) {
+/** `!ban @member 7d spam` (or the duration option of the slash command) is the temporary ban: no `temp` word needed. A hard ban is never temporary. */
+async function banUser(rawInteraction, { hard = false } = {}) {
+  let interaction = rawInteraction;
+  if (!hard) {
+    const split = splitLeadingDuration(rawInteraction.options.getString('duration'), rawInteraction.options.getString('reason'));
+    interaction = withOptionValues(rawInteraction, { duration: split.duration, reason: split.reason });
+    if (split.duration) return tempBan(interaction);
+  }
   const lang = await languageOf(interaction);
   const type = hard ? 'hardban' : 'ban';
   const targetUser = interaction.options.getUser('user', true);

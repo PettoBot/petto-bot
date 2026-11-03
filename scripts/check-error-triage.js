@@ -52,6 +52,7 @@ function checkClassification() {
     [api(50001, 'Missing Access', { status: 403 }), 'missing-access'],
     [api(50013, 'Missing Permissions', { status: 403 }), 'missing-permissions'],
     [api(50007, 'Cannot send messages to this user', { status: 403 }), 'dm-closed'],
+    [api(50278, 'Cannot send messages to this user due to having no mutual guilds', { status: 403 }), 'dm-no-mutual-server'],
     [api(30005, 'Maximum number of server roles reached'), 'discord-limit'],
     [api(30007, 'Maximum number of webhooks reached'), 'discord-limit'],
     [Object.assign(new Error('You are being rate limited.'), { status: 429 }), 'rate-limit'],

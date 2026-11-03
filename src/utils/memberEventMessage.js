@@ -18,6 +18,8 @@ const deliver = (channel, kind, payload) => (IDENTITY_FEATURE[kind] ? sendAs(cha
 // Admin-authored announcement text (staff decided what it says, e.g. "{user} welcome!") —
 // unlike auto-generated content, it's fine (expected, even) for this to actually ping.
 const ANNOUNCEMENT_MENTIONS = { parse: ['users', 'roles'] };
+const NO_MUTUAL_SERVER = 50278;
+const DMS_CLOSED = 50007;
 
 /**
  * The welcome text `!setup` saves when the server wrote none is stored in English; it is sent (and shown) in the server's
@@ -82,6 +84,9 @@ async function sendMemberEvent({ guild, channel, kind, messageText: storedText, 
       logger.warn(`Member event "${kind}" in guild ${guild.id}: {reactreply} with no other text has nothing to react to.`);
     }
   } catch (err) {
+    // A direct message that Discord refuses for a reason that is not Petto's: 50278 (the member and Petto share no server yet, or not any more: they were
+    // just let in, or they already left) and 50007 (their direct messages are closed). The caller decides whether to try again; nothing is logged as an error.
+    if (dmOrigin && (err?.code === NO_MUTUAL_SERVER || err?.code === DMS_CLOSED)) return { failed: err.code };
     logger.error(`Failed to send member event "${kind}" in guild ${guild.id}:`, err);
   }
 }
@@ -99,4 +104,4 @@ function describeMessage(message, lang = currentLanguage()) {
   return [t(lang, 'welcome.common.code', { embeds: parsed.embeds.length, buttons: parsed.buttons.length }), ...parsed.warnings.map((line) => `- ${line}`)].join('\n');
 }
 
-module.exports = { sendMemberEvent, localizeDefaultText, shortMessage, describeMessage };
+module.exports = { NO_MUTUAL_SERVER, DMS_CLOSED, sendMemberEvent, localizeDefaultText, shortMessage, describeMessage };
