@@ -1,18 +1,18 @@
 // The rules a server sets for a command, checked the same way for the prefix and for the slash command:
 //   - `!disablecommand` (a command turned off for the server or for a channel);
 //   - `!restrictcommand` (only some roles may use it).
-// A command whose actions are subcommands (`/act love hug`) can have a rule for one action (`hug`) or for the whole command (`act`),
+// A command whose actions are subcommands (`/action love hug`) can have a rule for one action (`hug`) or for the whole command (`act`),
 // and a use is refused by the first rule found, the action's first.
 // An umbrella command (`/server`, `/user`: utils/umbrella.js) names the rule of each subcommand with `ruleKeys`: the old command it wraps
 // (`/server info` is `serverinfo`, `/user avatar` is `avatar`) or the key of a new subcommand (`servericon`), so a rule that existed
 // before for `serverinfo` also reaches `/server info` and `!server`, and `server` turns off all of them.
 const disabledDb = require('../db/disabledCommands');
 const { restrictedFor } = require('./commandRestrictions');
-const { tokenize, resolveSubcommandOptions } = require('../handlers/prefixInteraction');
+const { tokenize, normalizeTokens, resolveSubcommandOptions } = require('../handlers/prefixInteraction');
 
 /**
  * The names a rule for this use can be saved under, the most specific first: the action (`hug`), then the command (`act`).
- * `route` is the prefix route that was typed (`!hug`), `subcommand` the subcommand that was chosen (`hug` of `/act love hug`).
+ * `route` is the prefix route that was typed (`!hug`), `subcommand` the subcommand that was chosen (`hug` of `/action love hug`).
  */
 function ruleNames(command, { route = null, subcommand = null, group = null, via = null } = {}) {
   const names = [];
@@ -20,14 +20,18 @@ function ruleNames(command, { route = null, subcommand = null, group = null, via
   else if (command.rulesBySubcommand && subcommand) names.push(ruleKeyOf(command, subcommand, group), ...otherRuleKeys(command, subcommand, group));
   // A group of a command that is the old command of another name (`/role join` is `joinrole`): the rules of that command reach it too.
   if (group && command.groupRuleKeys?.[group]) names.push(command.groupRuleKeys[group]);
-  names.push(command.data.name);
+  names.push(command.data.name, ...(command.legacyRuleNames ?? []));
   // The umbrella a prefix use came through (`!config prefix set` runs `!prefix set`): its own rules apply too.
   if (via) names.push(via);
   return [...new Set(names)];
 }
 
-/** The key of the rules of a subcommand of an umbrella: the command it wraps. A group (`/protect antiscam set`) is named by the command it wraps. */
+/**
+ * The key of the rules of a subcommand of an umbrella: the command it wraps. A group (`/protect antiscam set`) is named by the command it wraps,
+ * and a leaf of a group put together by hand (`/levels voice xp`) by `group leaf`.
+ */
 function ruleKeyOf(command, subcommand, group = null) {
+  if (group && command.ruleKeys?.[`${group} ${subcommand}`]) return command.ruleKeys[`${group} ${subcommand}`];
   if (group && command.ruleKeys?.[group]) return command.ruleKeys[group];
   return command.ruleKeys?.[subcommand] ?? subcommand;
 }
@@ -39,10 +43,10 @@ function otherRuleKeys(command, subcommand, group = null) {
 
 /** The names a custom permission level (`!permissions`) is looked up under: the command, and the old command a subcommand wraps. */
 function permissionNames(command, { subcommand = null, group = null, via = null } = {}) {
-  const wrapped = command.ruleKeys && subcommand ? (group && command.ruleKeys[group]) || command.ruleKeys[subcommand] : null;
+  const wrapped = command.ruleKeys && subcommand ? (group && (command.ruleKeys[`${group} ${subcommand}`] || command.ruleKeys[group])) || command.ruleKeys[subcommand] : null;
   const others = wrapped ? otherRuleKeys(command, subcommand, group) : [];
   const grouped = group ? command.groupRuleKeys?.[group] : null;
-  return [...new Set([command.data.name, wrapped, ...others, grouped, via].filter(Boolean))];
+  return [...new Set([command.data.name, ...(command.legacyRuleNames ?? []), wrapped, ...others, grouped, via].filter(Boolean))];
 }
 
 /**
@@ -52,11 +56,20 @@ function permissionNames(command, { subcommand = null, group = null, via = null 
 function subcommandOfText(command, argText) {
   if (!command.rulesBySubcommand) return null;
   const json = command.data.toJSON();
-  const tokens = tokenize(argText);
-  if (tokens[0]) tokens[0] = command.prefixSubcommandAliases?.[tokens[0].toLowerCase()] ?? tokens[0];
+  const tokens = normalizeTokens(command, tokenize(argText));
   const fallback = typeof command.prefixDefaultSubcommand === 'function' ? command.prefixDefaultSubcommand(tokens) : command.prefixDefaultSubcommand;
   const resolved = resolveSubcommandOptions(json, tokens) ?? (fallback ? resolveSubcommandOptions(json, [fallback, ...tokens]) : null);
   return resolved?.subcommand ?? null;
+}
+
+/** The group of the subcommand a prefix use will run (`!levels voice xp 5` is `voice`), or null: the same reading as `subcommandOfText`. */
+function groupOfText(command, argText) {
+  if (!command.rulesBySubcommand) return null;
+  const json = command.data.toJSON();
+  const tokens = normalizeTokens(command, tokenize(argText));
+  const fallback = typeof command.prefixDefaultSubcommand === 'function' ? command.prefixDefaultSubcommand(tokens) : command.prefixDefaultSubcommand;
+  const resolved = resolveSubcommandOptions(json, tokens) ?? (fallback ? resolveSubcommandOptions(json, [fallback, ...tokens]) : null);
+  return resolved?.subcommandGroup ?? null;
 }
 
 /** The first rule that turns the command off here: `{ name, row }` (the name it was saved under, the rule), or null. */
@@ -77,4 +90,4 @@ async function restrictedForNames(guildId, names, member, check = restrictedFor)
   return null;
 }
 
-module.exports = { ruleNames, permissionNames, subcommandOfText, disabledFor, restrictedForNames };
+module.exports = { ruleNames, permissionNames, subcommandOfText, groupOfText, disabledFor, restrictedForNames };

@@ -8,6 +8,11 @@
 // (`!disablecommand`, `!restrictcommand`) use the name of the wrapped command (`serverinfo` for `/server info`) or the `rule` key of a new
 // subcommand (`servericon`), and the name of the umbrella turns off all of it (see utils/commandRules.js).
 //
+// A group can also be put together by hand (`{ group: 'voice', description, leaves: [{ name: 'xp', wraps: 'level', sub: 'voice-xp' }, ...] }`): each leaf wraps
+// one subcommand (`sub`, or `sub` inside the group `subGroup`) of any command, so the settings of a command with many subcommands can be shown
+// in groups that read well while the old command stays as it was. `wrapsGroup` wraps one group of a command as a group (`{ group: 'reward',
+// wraps: 'level', wrapsGroup: 'reward' }`). `legacy` lists old words that the prefix still reads as that entry (`!levels voice-xp 5`).
+//
 // A command that has subcommands of its own can be wrapped whole as a GROUP: `{ group: 'antiscam', wraps: 'antiscam' }` becomes the group
 // `/protect antiscam` with every subcommand of the wrapped command, each with its options (Discord allows two levels, so a command that
 // has groups of its own cannot be wrapped: it is registered by itself). With the prefix, the first word of such an umbrella sends the
@@ -80,14 +85,25 @@ function copyOptions(sub, options) {
 }
 
 /** Adds a subcommand that wraps a command (or one subcommand `sub` of it) to a builder of a subcommand: the same description and options. */
-function fillSubcommand(sub, name, node, description = node.description) {
-  sub.setName(name).setDescription(description);
+function fillSubcommand(sub, name, node, description) {
+  sub.setName(name).setDescription(description ?? node.description);
   copyOptions(sub, node.options);
   return sub;
 }
 
-/** The subcommands of a wrapped command, from its JSON; a command with groups of its own cannot be wrapped whole (Discord allows two levels). */
+/** The node of a wrapped command that an entry stands for: the command, one of its subcommands (`sub`) or one inside a group of it (`subGroup`). */
+function nodeOf(json, entry) {
+  if (entry.subGroup) return json.options.find((option) => option.name === entry.subGroup).options.find((option) => option.name === entry.sub);
+  return entry.sub ? json.options.find((option) => option.name === entry.sub) : json;
+}
+
+/** The subcommands of a wrapped command (or of its group `wrapsGroup`), from its JSON; a command with groups of its own cannot be wrapped whole (Discord allows two levels). */
 function subcommandsOfWrapped(entry, json) {
+  if (entry.wrapsGroup) {
+    const group = (json.options ?? []).find((option) => option.type === ApplicationCommandOptionType.SubcommandGroup && option.name === entry.wrapsGroup);
+    if (!group?.options?.length) throw new Error(`/${entry.wraps} has no group called ${entry.wrapsGroup}`); // i18n-ignore: internal error
+    return group.options;
+  }
   const subs = (json.options ?? []).filter((option) => option.type === ApplicationCommandOptionType.Subcommand);
   if ((json.options ?? []).some((option) => option.type === ApplicationCommandOptionType.SubcommandGroup) || !subs.length) {
     throw new Error(`/${entry.wraps} cannot be a group of an umbrella: it needs subcommands and no groups of its own`); // i18n-ignore: internal error
@@ -101,6 +117,17 @@ function subcommandsOfWrapped(entry, json) {
  */
 function addSubcommands(builder, subcommands, load) {
   for (const entry of subcommands) {
+    if (entry.group && entry.leaves) {
+      builder.addSubcommandGroup((group) => {
+        group.setName(entry.group).setDescription(entry.description);
+        for (const leaf of entry.leaves) {
+          const node = nodeOf(slashJson(load(leaf.wraps)), leaf);
+          group.addSubcommand((sub) => fillSubcommand(sub, leaf.name, node, leaf.description ?? node.description));
+        }
+        return group;
+      });
+      continue;
+    }
     if (entry.group) {
       const json = slashJson(load(entry.wraps));
       builder.addSubcommandGroup((group) => {
@@ -117,8 +144,7 @@ function addSubcommands(builder, subcommands, load) {
         return sub;
       }
       const json = slashJson(load(entry.wraps));
-      const node = entry.sub ? json.options.find((option) => option.name === entry.sub) : json;
-      return fillSubcommand(sub, entry.name, node);
+      return fillSubcommand(sub, entry.name, nodeOf(json, entry), entry.description);
     });
   }
   return builder;
@@ -131,7 +157,9 @@ function addSubcommands(builder, subcommands, load) {
 function expandGroups(subcommands, load) {
   return subcommands.flatMap((entry) => {
     if (!entry.group) return [entry];
-    return subcommandsOfWrapped(entry, slashJson(load(entry.wraps))).map((node) => ({ group: entry.group, name: node.name, wraps: entry.wraps, sub: node.name }));
+    // A group put together by hand: each leaf is read on its own (the rules of the server name `group leaf`).
+    if (entry.leaves) return entry.leaves.map((leaf) => ({ ...leaf, group: entry.group, composed: true }));
+    return subcommandsOfWrapped(entry, slashJson(load(entry.wraps))).map((node) => ({ group: entry.group, name: node.name, wraps: entry.wraps, sub: node.name, ...(entry.wrapsGroup ? { subGroup: entry.wrapsGroup } : {}) }));
   });
 }
 
@@ -146,8 +174,9 @@ async function runSubcommand(subcommands, load, interaction, client) {
 
 /** `{ subcommand or group: key of the rules }`: the wrapped command's name, or the `rule` of a subcommand that has no old command. */
 function ruleKeysOf(subcommands) {
-  // A group is named by the command it wraps (`antiscam`), the same key for each of its subcommands.
-  return Object.fromEntries(subcommands.map((entry) => [entry.group ?? entry.name, entry.wraps ?? entry.rule]));
+  // A group is named by the command it wraps (`antiscam`), the same key for each of its subcommands; a leaf of a group put together by hand is
+  // named `group leaf` (`voice xp`), because each one wraps something else.
+  return Object.fromEntries(subcommands.map((entry) => [entry.composed ? `${entry.group} ${entry.name}` : entry.group ?? entry.name, entry.wraps ?? entry.rule]));
 }
 
 /**
@@ -246,13 +275,13 @@ function findLeaf(subcommands, group, name) {
 
 /** The interaction a wrapped command gets for a subcommand of an umbrella (see `wrapInteraction`). */
 function wrappedInteraction(interaction, entry, wrapped) {
-  return wrapInteraction(interaction, { subcommand: entry.sub ?? null, overrides: { commandName: wrapped.data.name } });
+  return wrapInteraction(interaction, { subcommand: entry.sub ?? null, group: entry.subGroup ?? null, overrides: { commandName: wrapped.data.name } });
 }
 
 /**
  * The `execute`, `autocomplete` and `!help` hook of an umbrella that wraps commands with `{ name, wraps, sub? }` entries (or the subcommands of
  * a group, `{ group, name, wraps, sub }`: pass the list from `expandGroups`): it asks for the permission of the wrapped command, then runs its
- * own code with its own subcommand (`/mod ban` is `ban user`, `/game minecraft` is `minecraft user`, `/protect antiscam set` is `antiscam set`).
+ * own code with its own subcommand (`/mod ban` is `ban user`, `/search minecraft user` is `minecraft user`, `/protect antiscam set` is `antiscam set`).
  * Every umbrella that wraps commands uses it, so the gate does not depend on remembering it: a command with no permission is open.
  */
 function wrappedExecutor(load, subcommands) {
@@ -272,6 +301,7 @@ function wrappedExecutor(load, subcommands) {
       // The wrapped command reads its own subcommand (`ban user`) and its own configured role, as if it had been typed as the old command.
       return wrapped.execute(wrapInteraction(interaction, {
         subcommand: entry.sub ?? null,
+        group: entry.subGroup ?? null,
         overrides: { commandName: wrapped.data.name, pettoModerationRoleAllowed: roleAllowed },
       }), client);
     },
@@ -305,12 +335,20 @@ function wrappedExecutor(load, subcommands) {
 function prefixWordsOf(subcommands, load) {
   const words = {};
   const names = new Set(subcommands.map((entry) => entry.group ?? entry.name));
+  const add = (word, route) => { if (word && !names.has(word) && !words[word]) words[word] = route; };
   for (const entry of subcommands) {
+    // A group put together by hand is read by the umbrella itself; only the old words that stood for one of its leaves go to the old command.
+    if (entry.leaves) {
+      for (const leaf of entry.leaves) for (const word of leaf.legacy ?? []) add(word, { command: leaf.wraps, args: [leaf.subGroup, leaf.sub].filter(Boolean) });
+      continue;
+    }
     if (!entry.wraps) continue;
     const key = entry.group ?? entry.name;
-    const route = { command: entry.wraps, args: entry.group || !entry.sub ? [] : [entry.sub] };
+    const args = entry.group ? (entry.wrapsGroup ? [entry.wrapsGroup] : []) : [entry.subGroup, entry.sub].filter(Boolean);
+    const route = { command: entry.wraps, args };
     words[key] = route;
-    for (const alias of [...(load(entry.wraps).aliases ?? []), ...aliasesFor(entry.wraps)]) if (!names.has(alias) && !words[alias]) words[alias] = route;
+    // The name of the old command is still a word of the umbrella (`!automation autothread`), and so are its aliases and the words written for the entry.
+    for (const alias of [entry.wraps, ...(load(entry.wraps).aliases ?? []), ...aliasesFor(entry.wraps), ...(entry.legacy ?? [])]) add(alias, route);
   }
   return words;
 }
@@ -324,18 +362,22 @@ function prefixWordsOf(subcommands, load) {
  *   - the prefix sends the first word to the wrapped command (`prefixWords`), `!<umbrella>` alone lists what it holds, and the rules of a
  *     server (`!disablecommand`, `!restrictcommand`, a permission level) name the wrapped command, or the umbrella to stop all of it.
  */
-function defineUmbrella({ name, description, subcommands, load = loadByName }) {
+function defineUmbrella({ name, description, subcommands, load = loadByName, aliases = [], legacyRuleNames = [], legacyRoutes = {}, legacyRuleKeys = {} }) {
   const leaves = expandGroups(subcommands, load);
   const executor = wrappedExecutor(load, leaves);
   return {
     registerSlash: true,
     umbrella: true,
     listSubcommandsWhenEmpty: true,
-    prefixWords: prefixWordsOf(leaves, load),
+    // The words that reached the command before it had this name (`!auto`), and the rules a server saved under it.
+    aliases,
+    legacyRuleNames,
+    // The first words of older versions of the umbrella that go to a command (`!config prefix set` is `!prefix set`).
+    prefixWords: { ...prefixWordsOf(subcommands, load), ...Object.fromEntries(Object.entries(legacyRoutes).filter(([word]) => !subcommands.some((entry) => (entry.group ?? entry.name) === word))) },
     rulesBySubcommand: true,
-    ruleKeys: ruleKeysOf(leaves),
+    ruleKeys: { ...ruleKeysOf(leaves), ...legacyRuleKeys },
     permissionForSubcommand: executor.permissionForSubcommand,
-    // The entries and what each one wraps (read by the tests and by the translations).
+    // The entries and what each wraps (read by the tests and by the translations).
     subcommands,
     leaves,
     data: addSubcommands(new SlashCommandBuilder().setName(name).setDMPermission(false).setDescription(description), subcommands, load),
@@ -344,4 +386,4 @@ function defineUmbrella({ name, description, subcommands, load = loadByName }) {
   };
 }
 
-module.exports = { defineUmbrella, loadByName, addSubcommands, expandGroups, prefixWordsOf, findLeaf, runSubcommand, ruleKeysOf, copyOptions, wrapInteraction, prefixOptionsOf, permissionBitsOf, checkPermission, wrappedExecutor };
+module.exports = { nodeOf, defineUmbrella, loadByName, addSubcommands, expandGroups, prefixWordsOf, findLeaf, runSubcommand, ruleKeysOf, copyOptions, wrapInteraction, prefixOptionsOf, permissionBitsOf, checkPermission, wrappedExecutor };

@@ -18,6 +18,22 @@ function tokenize(content) {
 }
 
 /**
+ * The words typed after a command, with the old ways of writing the first one turned into what the command has now: a word that stands for a
+ * subcommand (`prefixSubcommandAliases`: `!role in` is `members`) and a path of two words that moved (`prefixPathAliases`: `!boosterrole admin base` is
+ * `settings base-role`). Pure; the same reading is used to run the command, to find its rules and to explain how to write it.
+ */
+function normalizeTokens(command, tokens) {
+  const normalized = [...tokens];
+  const paths = command.prefixPathAliases;
+  if (paths && normalized.length >= 2) {
+    const moved = paths[`${normalized[0]} ${normalized[1]}`.toLowerCase()];
+    if (moved) return [...moved.split(' '), ...normalized.slice(2)];
+  }
+  if (normalized[0]) normalized[0] = command.prefixSubcommandAliases?.[normalized[0].toLowerCase()] ?? normalized[0];
+  return normalized;
+}
+
+/**
  * Walks a command's `.data.toJSON()` shape to find which (sub)command the first
  * one or two tokens select, returning its declared options (still ordered
  * required-first, same as Discord enforces when the SlashCommandBuilder was built)
@@ -382,11 +398,7 @@ function applyChoices(optionDefs, values) {
 async function buildInteractionFromMessage(message, command, argText) {
   const tokens = tokenize(argText);
   const json = command.data.toJSON();
-  const subcommandAliases = command.prefixSubcommandAliases ?? {};
-  const normalizedTokens = [...tokens];
-  if (normalizedTokens[0]) {
-    normalizedTokens[0] = subcommandAliases[normalizedTokens[0].toLowerCase()] ?? normalizedTokens[0];
-  }
+  const normalizedTokens = normalizeTokens(command, tokens);
 
   // The subcommand to use when the first word is not one: a name, or a function of the words typed (`!github PettoBot/petto-bot`
   // is `repo`, `!github octocat` is `user`) that returns a name or null.
@@ -442,4 +454,4 @@ async function buildInteractionFromMessage(message, command, argText) {
   return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values });
 }
 
-module.exports = { applyChoices, tokenize, resolveSubcommandOptions, parseOptions, buildPseudoInteraction, buildInteractionFromMessage };
+module.exports = { normalizeTokens, applyChoices, tokenize, resolveSubcommandOptions, parseOptions, buildPseudoInteraction, buildInteractionFromMessage };

@@ -2,7 +2,7 @@
 // missing. It shows what went wrong in one line, the way to write it, what each option is, and what the person probably meant.
 const { ContainerBuilder, MessageFlags, TextDisplayBuilder } = require('discord.js');
 const { EMOJI } = require('./emojis');
-const { resolveSubcommandOptions, tokenize } = require('../handlers/prefixInteraction');
+const { normalizeTokens, resolveSubcommandOptions, tokenize } = require('../handlers/prefixInteraction');
 const { t, currentLanguage, commandDescription } = require('../i18n');
 const { COLORS, semanticColor } = require('./colors');
 
@@ -100,9 +100,7 @@ function unknownSubcommandCard({ command, prefix, name, typed, lang = currentLan
 function resolveTyped(command, argText) {
   const json = command.data.toJSON();
   const tokens = tokenize(argText ?? '');
-  const aliases = command.prefixSubcommandAliases ?? {};
-  const normalized = [...tokens];
-  if (normalized[0]) normalized[0] = aliases[normalized[0].toLowerCase()] ?? normalized[0];
+  const normalized = normalizeTokens(command, tokens);
   const resolved = resolveSubcommandOptions(json, normalized) ?? (command.prefixDefaultSubcommand ? resolveSubcommandOptions(json, [command.prefixDefaultSubcommand, ...normalized]) : null);
   return resolved ? { path: [resolved.subcommandGroup, resolved.subcommand].filter(Boolean).join(' '), options: resolved.optionDefs } : null;
 }
