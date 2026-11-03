@@ -1,4 +1,4 @@
-// What /rank answers: the rank card, the embed with the progress bar, or both, as the server chose.
+// What /levels rank answers: the rank card, the embed with the progress bar, or both, as the server chose.
 const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const { renderRankCard, CARD_FILE_NAME } = require('./cardService');
 const { buildProgressBar } = require('./levelProgressBar');
@@ -42,7 +42,7 @@ function buildRankEmbed({ data, name, avatarUrl, withCard = false, date = new Da
 }
 
 /**
- * The message for /rank. `style` is `card`, `embed` or `both`. A card that cannot be drawn leaves the embed, so a rank is
+ * The message for /levels rank. `style` is `card`, `embed` or `both`. A card that cannot be drawn leaves the embed, so a rank is
  * always answered.
  */
 async function buildRankReply({ style, ctx, data, name, avatarUrl, cardName, source, lang = currentLanguage() }) {

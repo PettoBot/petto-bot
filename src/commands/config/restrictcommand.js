@@ -16,7 +16,7 @@ function commandName(client, raw, userId = null) {
   const name = String(raw ?? '').trim().replace(/^[!/]/, '').toLowerCase();
   if (!name || isHiddenWordFor(client, name, userId)) return null; // a command hidden everywhere (`/music`) does not exist for the people outside the team
   if (client.commands.has(name)) return name;
-  // A shortcut of one action of a command (`hug` of /act) is restricted on its own, under its own name.
+  // A shortcut of one action of a command (`hug` of /action) is restricted on its own, under its own name.
   const route = client.commandRoutes?.get(name);
   return client.commandAliases?.get(name) ?? route?.disableName ?? route?.command ?? null;
 }

@@ -10,7 +10,7 @@ exports.buildRoleplayButtonRow = buildRoleplayButtonRow;
 const discord_js_1 = require("discord.js");
 const { CATALOGS, currentLanguage, t, tn } = require('../i18n');
 exports.ROLEPLAY_BUTTON_PREFIX = 'rp:';
-// The emoji of each action's response button lives with the actions of /act.
+// The emoji of each action's response button lives with the actions of /action.
 const { EMOJIS: RESPONSE_EMOJIS } = require('./actions');
 // Actions with their own texts in the roleplay catalog; any other action (an old or hand-made button) gets the generic ones.
 function hasTexts(action) {

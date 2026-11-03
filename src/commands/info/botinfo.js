@@ -5,8 +5,7 @@ const { version: pettoVersion } = require('../../../package.json');
 const { t, formatDecimal, languageOf } = require('../../i18n');
 
 module.exports = {
-  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
-  registerSlash: true,
+  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
   data: new SlashCommandBuilder().setName('botinfo').setDescription('Shows information about Petto.').setDMPermission(false),
   aliases: ['about'],
 

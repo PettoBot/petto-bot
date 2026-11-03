@@ -20,10 +20,13 @@ const SUBCOMMANDS = [
   { group: 'review', wraps: 'review' },
   { name: 'profile', wraps: 'profile' },
   { group: 'profileconfig', wraps: 'profileconfig' },
+  { name: 'poll', wraps: 'poll' },
 ];
 
 module.exports = defineUmbrella({
   name: 'community',
-  description: 'Members and staff: suggestions, confessions, requests, reviews and profiles, with their setup.',
+  description: 'Members and staff: suggestions, confessions, requests, reviews, profiles and polls.',
   subcommands: SUBCOMMANDS,
+  // `/suggest` is `/community suggestion submit` now: the rules a server saved for `suggest` still reach it.
+  legacyRuleKeys: { 'suggestion submit': 'suggest' }, // i18n-ignore: a rule key, never shown
 });

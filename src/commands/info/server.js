@@ -31,7 +31,7 @@ const SUBCOMMANDS = [
   { name: 'role', wraps: 'roleinfo' },
   { name: 'emoji', wraps: 'emojiinfo' },
   { name: 'invite', wraps: 'inviteinfo' },
-  { name: 'inrole', wraps: 'inrole' },
+  { name: 'role-members', wraps: 'inrole' },
   { name: 'bots', wraps: 'bots' },
   { name: 'summary', wraps: 'summary' },
   { name: 'steal', wraps: 'steal' },
@@ -50,7 +50,7 @@ module.exports = {
     logo: 'icon', pic: 'icon',
     chs: 'channels', rl: 'roles', rolelist: 'roles', emotes: 'emojis', emojilist: 'emojis', boosts: 'boosters', boost: 'boosters',
     channelinfo: 'channel', ci: 'channel', roleinfo: 'role', ri: 'role', emojiinfo: 'emoji', ei: 'emoji', inviteinfo: 'invite', ii: 'invite',
-    ir: 'inrole', members: 'inrole', digest: 'summary', weekly: 'summary', stl: 'steal',
+    ir: 'role-members', inrole: 'role-members', members: 'role-members', digest: 'summary', weekly: 'summary', stl: 'steal',
   },
   // The rules of a server name the command that is wrapped (`!disablecommand serverinfo` also turns off `/server info`), or `servericon`...
   rulesBySubcommand: true,

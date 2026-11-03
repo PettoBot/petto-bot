@@ -1,4 +1,4 @@
-// In-memory draft store for the /poll builder panel — one draft per user while they're
+// In-memory draft store for the /community poll builder panel — one draft per user while they're
 // building it, never persisted (nothing here matters once the poll is actually posted).
 const DRAFT_TTL_MS = 15 * 60_000;
 

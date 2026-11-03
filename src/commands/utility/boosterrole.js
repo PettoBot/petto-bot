@@ -12,8 +12,8 @@ const { t, tn, languageOf } = require('../../i18n');
 const COOLDOWN_CONFIG_FIELD = { color: 'color_cooldown_ms', icon: 'icon_cooldown_ms', rename: 'rename_cooldown_ms' };
 
 module.exports = {
-  // Also a slash command, with every subcommand (`/boosterrole color`, `/boosterrole admin base`...): the prefix keeps working. The staff ones
-  // (`admin`, `filter`) check Manage Server when they run; the member ones are open.
+  // Also a slash command, with every subcommand (`/boosterrole color`, `/boosterrole settings base-role`...): the prefix keeps working. The staff ones
+  // (`admin`, `settings`, `filter`) check Manage Server when they run; the member ones are open.
   registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('boosterrole')
@@ -26,14 +26,14 @@ module.exports = {
         .setDescription('Create your booster role. Requires boosting.')
         .addStringOption((o) => o.setName('name').setDescription('Role name').setRequired(true))
         .addStringOption((o) => o.setName('hex').setDescription('#RRGGBB').setRequired(false))
-        .addStringOption((o) => o.setName('hex2').setDescription('Second #RRGGBB for a gradient').setRequired(false)),
+        .addStringOption((o) => o.setName('second_hex').setDescription('Second #RRGGBB for a gradient').setRequired(false)),
     )
     .addSubcommand((s) =>
       s
         .setName('color')
         .setDescription('Create/update your booster role color. Requires boosting.')
         .addStringOption((o) => o.setName('hex').setDescription('#RRGGBB').setRequired(true))
-        .addStringOption((o) => o.setName('hex2').setDescription('Second #RRGGBB for a gradient').setRequired(false)),
+        .addStringOption((o) => o.setName('second_hex').setDescription('Second #RRGGBB for a gradient').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('rename').setDescription('Rename your booster role. Requires boosting.').addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true)))
     .addSubcommand((s) => s.setName('icon').setDescription('Set your booster role icon. Requires boosting.').addStringOption((o) => o.setName('input').setDescription('Image URL, custom emoji, or sticker ID (or just attach an image)').setRequired(false)))
@@ -46,14 +46,14 @@ module.exports = {
     .addSubcommandGroup((g) =>
       g
         .setName('admin')
-        .setDescription('(Staff) Directly manage any member\'s booster role, and server-wide settings.')
+        .setDescription('(Staff) Directly manage any member\'s booster role.')
         .addSubcommand((s) =>
           s
             .setName('set')
             .setDescription('Create/update a member\'s booster role directly (bypasses their cooldowns/limit).')
             .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
             .addStringOption((o) => o.setName('hex').setDescription('#RRGGBB').setRequired(false))
-            .addStringOption((o) => o.setName('hex2').setDescription('Second #RRGGBB for a gradient').setRequired(false))
+            .addStringOption((o) => o.setName('second_hex').setDescription('Second #RRGGBB for a gradient').setRequired(false))
             .addStringOption((o) => o.setName('name').setDescription('Role name').setRequired(false)),
         )
         .addSubcommand((s) => s.setName('rename').setDescription('Rename a member\'s booster role.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)).addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true)))
@@ -62,7 +62,13 @@ module.exports = {
         .addSubcommand((s) => s.setName('list').setDescription('List every booster role in this server.'))
         .addSubcommand((s) => s.setName('link').setDescription('Associate an existing role with a member as their booster role.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
         .addSubcommand((s) => s.setName('cleanup').setDescription('Delete booster roles belonging to members who are no longer boosting.'))
-        .addSubcommand((s) => s.setName('base').setDescription('New booster roles are placed just above this role.').addRoleOption((o) => o.setName('role').setDescription('Base role').setRequired(true)))
+    )
+
+    .addSubcommandGroup((g) =>
+      g
+        .setName('settings')
+        .setDescription('(Staff) Server-wide settings of booster roles: where they go, how many, how often they change.')
+        .addSubcommand((s) => s.setName('base-role').setDescription('New booster roles are placed just above this role.').addRoleOption((o) => o.setName('role').setDescription('Base role').setRequired(true)))
         .addSubcommand((s) => s.setName('limit').setDescription('Max booster roles per member (0 = unlimited).').addIntegerOption((o) => o.setName('count').setDescription('Limit').setRequired(true).setMinValue(0)))
         .addSubcommand((s) =>
           s
@@ -84,12 +90,16 @@ module.exports = {
     ),
 
   aliases: ['br'],
+  // The server settings moved from `admin` to `settings`: `!boosterrole admin base @Role` and the others are still read.
+  prefixPathAliases: { 'admin base': 'settings base-role', 'admin limit': 'settings limit', 'admin cooldown': 'settings cooldown', 'admin share-limit': 'settings share-limit' }, // i18n-ignore: words people type, never shown
 
   async execute(interaction) {
     const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
 
     if (group === 'admin') return adminCmd(interaction, sub);
+    // The settings of the server were part of `admin`: the code is the same (`base-role` was `base`).
+    if (group === 'settings') return adminCmd(interaction, sub === 'base-role' ? 'base' : sub);
     if (group === 'filter') return filterCmd(interaction, sub);
     // Turned off on the dashboard: boosters cannot make or change a role, but can still remove theirs and see or end its sharing.
     if (SELF_CHANGES.has(sub) && !(await boosterRolesOn(interaction))) return;
@@ -160,7 +170,7 @@ async function selfCreate(interaction) {
 
   const name = interaction.options.getString('name', true);
   const hex1Raw = interaction.options.getString('hex');
-  const hex2Raw = interaction.options.getString('hex2');
+  const hex2Raw = interaction.options.getString('second_hex');
 
   const hex1 = hex1Raw ? actions.parseHex(hex1Raw) : null;
   if (hex1Raw && !hex1) {
@@ -204,7 +214,7 @@ async function selfColor(interaction) {
   if (!(await requireBotCanManageRoles(interaction))) return;
 
   const hex1 = actions.parseHex(interaction.options.getString('hex', true));
-  const hex2Raw = interaction.options.getString('hex2');
+  const hex2Raw = interaction.options.getString('second_hex');
   if (!hex1) {
     await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex'), flags: MessageFlags.Ephemeral });
     return;
@@ -483,7 +493,7 @@ async function adminSet(interaction) {
   const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const hex1Raw = interaction.options.getString('hex');
-  const hex2Raw = interaction.options.getString('hex2');
+  const hex2Raw = interaction.options.getString('second_hex');
   const name = interaction.options.getString('name');
 
   if (!hex1Raw && !hex2Raw && !name) {

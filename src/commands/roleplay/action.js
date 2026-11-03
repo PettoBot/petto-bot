@@ -42,7 +42,10 @@ for (const group of GROUPS) {
 }
 
 module.exports = {
-  // The rules of a server (!disablecommand, !restrictcommand) can name one action (`hug`) as well as the command (`act`).
+  // `/act` was the name of this command: the word still works with the prefix (`!act love hug`) and the rules a server saved for `act` still apply.
+  aliases: ['act'],
+  legacyRuleNames: ['act'],
+  // The rules of a server (!disablecommand, !restrictcommand) can name one action (`hug`) as well as the command (`action`).
   rulesBySubcommand: true,
   cooldownMs: 2_500,
   data,

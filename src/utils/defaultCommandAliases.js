@@ -190,7 +190,7 @@ const BASE_PREFIX_ROUTES = [
   { alias: 'lic', command: 'chess', args: ['lichess'], subcommand: 'lichess' },
   { alias: 'dominant', command: 'image', args: ['hex'], subcommand: 'hex' },
   { alias: 'dominantcolor', command: 'image', args: ['hex'], subcommand: 'hex' },
-  // Every action of /act is its own word with the prefix: `!hug @member` is `!act love hug @member`.
+  // Every action of /action is its own word with the prefix: `!hug @member` is `!act love hug @member`.
   ...actionRoutes(),
   // The snipe family: `!editsnipe` is `!snipe edited`, `!reactionsnipe` is `!snipe reactions`, `!clearsnipe` is `!snipe clear`.
   { alias: 'editsnipe', command: 'snipe', args: ['edited'], subcommand: 'edited' },
@@ -199,6 +199,12 @@ const BASE_PREFIX_ROUTES = [
   { alias: 'rsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
   { alias: 'clearsnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
   { alias: 'csnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
+  // The words that were short for `/config prefix`, which is `/prefix` now: they keep working.
+  { alias: 'cpa', command: 'prefix', args: ['add'], subcommand: 'add' },
+  { alias: 'cpr', command: 'prefix', args: ['remove'], subcommand: 'remove' },
+  { alias: 'cpre', command: 'prefix', args: ['reset'], subcommand: 'reset' },
+  { alias: 'cps', command: 'prefix', args: ['view'], subcommand: 'view' },
+  { alias: 'cpse', command: 'prefix', args: ['set'], subcommand: 'set' },
   // Forum support: `!tl` (thread lock) is `!forum lock`, as in the bots that came before; `!tul` is `!forum unlock`.
   { alias: 'tl', command: 'forum', args: ['lock'], subcommand: 'lock' },
   { alias: 'tul', command: 'forum', args: ['unlock'], subcommand: 'unlock' },

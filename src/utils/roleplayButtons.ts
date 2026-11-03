@@ -16,7 +16,7 @@ export interface RoleplayButtonInput {
   targetId: string;
 }
 
-// The emoji of each action's response button lives with the actions of /act.
+// The emoji of each action's response button lives with the actions of /action.
 const { EMOJIS: RESPONSE_EMOJIS } = require('./actions') as { EMOJIS: Record<string, string> };
 
 // Actions with their own texts in the roleplay catalog; any other action (an old or hand-made button) gets the generic ones.

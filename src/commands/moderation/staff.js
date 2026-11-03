@@ -17,10 +17,10 @@ const FOLDERS = { snipe: 'utility' };
 const load = (name) => require(`../${FOLDERS[name] ?? 'moderation'}/${name}`);
 
 const SUBCOMMANDS = [
-  { name: 'imute', wraps: 'imute', sub: 'user' },
-  { name: 'iunmute', wraps: 'imute', sub: 'remove' },
-  { name: 'rmute', wraps: 'rmute', sub: 'user' },
-  { name: 'runmute', wraps: 'rmute', sub: 'remove' },
+  { name: 'image-mute', wraps: 'imute', sub: 'user' },
+  { name: 'image-unmute', wraps: 'imute', sub: 'remove' },
+  { name: 'reaction-mute', wraps: 'rmute', sub: 'user' },
+  { name: 'reaction-unmute', wraps: 'rmute', sub: 'remove' },
   { name: 'voice-mute', wraps: 'voice', sub: 'mute' },
   { name: 'voice-unmute', wraps: 'voice', sub: 'unmute' },
   { name: 'voice-deafen', wraps: 'voice', sub: 'deafen' },
@@ -32,7 +32,7 @@ const SUBCOMMANDS = [
   { name: 'thread-lock', wraps: 'thread', sub: 'lock' },
   { name: 'thread-unlock', wraps: 'thread', sub: 'unlock' },
   { name: 'nuke', wraps: 'nuke' },
-  { name: 'raid', wraps: 'raid', sub: 'clean' },
+  { name: 'raid-clean', wraps: 'raid', sub: 'clean' },
   { name: 'raid-list', wraps: 'raid', sub: 'list' },
   { name: 'massban', wraps: 'massban' },
   { name: 'masskick', wraps: 'masskick' },
@@ -45,7 +45,8 @@ const SUBCOMMANDS = [
 
 // The words of the old commands, read as the subcommand they stand for (`!staff mban @x @y spam`, `!staff picmute @x`).
 const WORDS = {
-  imute: ['imagemute', 'picmute'], rmute: ['reactionmute'], raid: ['recentban', 'chunkban', 'raidban'], nuke: ['nuk'], massban: ['mban'], masskick: ['mkick'],
+  'image-mute': ['imute', 'imagemute', 'picmute'], 'image-unmute': ['iunmute'], 'reaction-mute': ['rmute', 'reactionmute'], 'reaction-unmute': ['runmute'],
+  'raid-clean': ['raid', 'recentban', 'chunkban', 'raidban'], nuke: ['nuk'], massban: ['mban'], masskick: ['mkick'],
   massmute: ['mmute'], massunban: ['munban', 'unbanall'], massunmute: ['munmute'], masswarn: ['mwarn'], snipe: ['sniped'],
 };
 const SUBCOMMAND_WORDS = Object.fromEntries(Object.entries(WORDS).flatMap(([name, words]) => words.map((word) => [word, name])));

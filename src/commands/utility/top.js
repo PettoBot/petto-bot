@@ -68,8 +68,7 @@ async function buildPeriodPage(guild, page, source, period, lang = currentLangua
 }
 
 module.exports = {
-  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
-  registerSlash: true,
+  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
   data: new SlashCommandBuilder()
     .setName('top')
     .setDescription('Server XP leaderboard.')

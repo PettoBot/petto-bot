@@ -9,8 +9,7 @@ const V2 = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? V2 | MessageFlags.Ephemeral : V2, allowedMentions: { parse: [] } });
 
 module.exports = {
-  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
-  registerSlash: true,
+  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
   aliases: ['sug'],
   data: new SlashCommandBuilder()
     .setName('suggest')

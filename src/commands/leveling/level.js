@@ -24,8 +24,7 @@ const ACTION_CHOICES = [
 ];
 
 module.exports = {
-  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
-  registerSlash: true,
+  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
   aliases: ['xp'],
   // `reward add` and `reward remove` take the kind of level last (Discord wants the optional options after the required ones), and the prefix
   // still reads it first as it always did: `!xp reward add voice 5 @Role` is read as `!xp reward add 5 @Role voice`.
@@ -49,15 +48,15 @@ module.exports = {
     )
     .addSubcommand((s) => s.setName('voice-xp').setDescription('XP awarded per minute in voice.').addIntegerOption((o) => o.setName('amount').setDescription('XP per minute').setRequired(true).setMinValue(0)))
     .addSubcommand((s) => s.setName('voice-enable').setDescription('Turn voice leveling on/off.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
-    .addSubcommand((s) => s.setName('voice-curve').setDescription('Tune the voice XP-per-level formula.').addNumberOption((o) => o.setName('a').setDescription('Cubic coefficient').setRequired(false)).addNumberOption((o) => o.setName('b').setDescription('Square coefficient').setRequired(false)).addNumberOption((o) => o.setName('c').setDescription('Linear coefficient').setRequired(false)).addNumberOption((o) => o.setName('difficulty').setDescription('Overall multiplier').setRequired(false)).addIntegerOption((o) => o.setName('rounding').setDescription('Round totals to nearest N').setRequired(false).setMinValue(0)))
+    .addSubcommand((s) => s.setName('voice-curve').setDescription('Tune the voice XP-per-level formula.').addNumberOption((o) => o.setName('cubic').setDescription('Cubic coefficient').setRequired(false)).addNumberOption((o) => o.setName('square').setDescription('Square coefficient').setRequired(false)).addNumberOption((o) => o.setName('linear').setDescription('Linear coefficient').setRequired(false)).addNumberOption((o) => o.setName('difficulty').setDescription('Overall multiplier').setRequired(false)).addIntegerOption((o) => o.setName('rounding').setDescription('Round totals to nearest N').setRequired(false).setMinValue(0)))
     .addSubcommand((s) => s.setName('cooldown').setDescription('Seconds between message-XP awards, per member.').addIntegerOption((o) => o.setName('seconds').setDescription('Cooldown').setRequired(true).setMinValue(0)))
     .addSubcommand((s) =>
       s
         .setName('curve')
         .setDescription('Advanced: tune the XP-per-level formula (a*L^3 + b*L^2 + c*L) * difficulty, rounded.')
-        .addNumberOption((o) => o.setName('a').setDescription('Cubic coefficient (default 1)').setRequired(false))
-        .addNumberOption((o) => o.setName('b').setDescription('Square coefficient (default 50)').setRequired(false))
-        .addNumberOption((o) => o.setName('c').setDescription('Linear coefficient (default 100)').setRequired(false))
+        .addNumberOption((o) => o.setName('cubic').setDescription('Cubic coefficient (default 1)').setRequired(false))
+        .addNumberOption((o) => o.setName('square').setDescription('Square coefficient (default 50)').setRequired(false))
+        .addNumberOption((o) => o.setName('linear').setDescription('Linear coefficient (default 100)').setRequired(false))
         .addNumberOption((o) => o.setName('difficulty').setDescription('Overall multiplier (default 2.5)').setRequired(false))
         .addIntegerOption((o) => o.setName('rounding').setDescription('Round totals to the nearest N (default 50, 0 = off)').setRequired(false).setMinValue(0)),
     )
@@ -296,9 +295,9 @@ function curvePreview(config, separator, lang) {
 
 async function voiceCurveCmd(interaction, lang) {
   const patch = {};
-  const a = interaction.options.getNumber('a');
-  const b = interaction.options.getNumber('b');
-  const c = interaction.options.getNumber('c');
+  const a = interaction.options.getNumber('cubic');
+  const b = interaction.options.getNumber('square');
+  const c = interaction.options.getNumber('linear');
   const difficulty = interaction.options.getNumber('difficulty');
   const rounding = interaction.options.getInteger('rounding');
   if (a != null) patch.voice_curve_a = a;
@@ -325,9 +324,9 @@ async function cooldownCmd(interaction, lang) {
 
 async function curveCmd(interaction, lang) {
   const patch = {};
-  const a = interaction.options.getNumber('a');
-  const b = interaction.options.getNumber('b');
-  const c = interaction.options.getNumber('c');
+  const a = interaction.options.getNumber('cubic');
+  const b = interaction.options.getNumber('square');
+  const c = interaction.options.getNumber('linear');
   const difficulty = interaction.options.getNumber('difficulty');
   const rounding = interaction.options.getInteger('rounding');
   if (a != null) patch.curve_a = a;
@@ -644,7 +643,7 @@ async function rankStyleCmd(interaction, lang) {
   await reply(interaction, t(lang, `leveling.rankStyle.${kind}${config?.rank_card ? 'Named' : ''}`, { emoji: EMOJI.APPROVE, card: config?.rank_card }));
 }
 
-// The rules a person can change with `/level rules setting value`, with the column, the kind of value and its range.
+// The rules a person can change with `/levels settings rules setting value`, with the column, the kind of value and its range.
 const RULE_SETTINGS = {
   min_chars: { column: 'min_message_chars', kind: 'number', min: 0, max: 200 },
   anti_repeat: { column: 'anti_repeat', kind: 'flag' },

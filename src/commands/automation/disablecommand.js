@@ -80,7 +80,7 @@ async function realName(client, guildId, raw, userId = null) {
   // A command hidden everywhere (`/music`) does not exist for the people outside the team.
   if (!name || isHiddenWordFor(client, name, userId)) return null;
   if (client.commands.has(name)) return name;
-  // A shortcut of one action of a command (`hug` of /act) is disabled on its own, under its own name.
+  // A shortcut of one action of a command (`hug` of /action) is disabled on its own, under its own name.
   const route = client.commandRoutes?.get(name);
   const known = client.commandAliases?.get(name) ?? route?.disableName ?? route?.command;
   if (known) return known;
