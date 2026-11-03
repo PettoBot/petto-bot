@@ -712,4 +712,9 @@ module.exports = {
   'cmd.moderation.role.sticky.enable.desc': 'Ativa os cargos persistentes.',
   'cmd.moderation.role.sticky.disable.desc': 'Desativa os cargos persistentes.',
   'cmd.moderation.role.sticky.status.desc': 'Mostra se os cargos persistentes estão ativados.',
+  'cmd.moderation.ban.user.opt.duration.desc': 'Torne temporário: ex.: 3d, 2w',
+  'cmd.moderation.mod.ban.opt.duration.desc': 'Torne temporário: ex.: 3d, 2w',
+  'cmd.moderation.mod.mute.opt.duration.desc': 'Torne temporário: ex.: 3d, 12h (máx. 28d)',
+  'cmd.moderation.modtools.mute.user.opt.duration.desc': 'Torne temporário: ex.: 3d, 12h (máx. 28d)',
+  'cmd.moderation.mute.user.opt.duration.desc': 'Torne temporário: ex.: 3d, 12h (máx. 28d)',
 };

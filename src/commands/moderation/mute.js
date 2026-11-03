@@ -7,7 +7,8 @@ const { logSanction } = require('../../utils/caseLog');
 const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { ensureMuteRole } = require('../../utils/muteRole');
 const { resolveUsers } = require('../../utils/userResolve');
-const { parseDuration, formatDuration } = require('../../utils/duration');
+const { parseDuration, formatDuration, splitLeadingDuration } = require('../../utils/duration');
+const { withOptionValues } = require('../../utils/optionOverrides');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
@@ -31,6 +32,7 @@ module.exports = {
         .setName('user')
         .setDescription('Mute a single member indefinitely, until manually unmuted.')
         .addUserOption((opt) => opt.setName('user').setDescription('The user to mute').setRequired(true))
+        .addStringOption((opt) => opt.setName('duration').setDescription('Make it temporary: e.g. 3d, 12h (max 28d)').setRequired(false))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the mute').setRequired(false)),
     )
     .addSubcommand((sub) =>
@@ -75,7 +77,11 @@ module.exports = {
   },
 };
 
-async function muteUser(interaction) {
+/** `!mute @member 3d spam` (or the duration option of the slash command) is the temporary mute: no `temp` word needed. */
+async function muteUser(rawInteraction) {
+  const split = splitLeadingDuration(rawInteraction.options.getString('duration'), rawInteraction.options.getString('reason'));
+  const interaction = withOptionValues(rawInteraction, { duration: split.duration, reason: split.reason });
+  if (split.duration) return tempMute(interaction);
   const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');

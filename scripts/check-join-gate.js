@@ -93,6 +93,7 @@ stub('src/utils/inviteContext.js', { inviteInfoFor: async (member, { recorded = 
 const pings = [];
 
 const memberEvents = require('../src/db/memberEvents');
+process.env.JOIN_DM_DELAY_MS = '0'; // the DM of a join waits a few seconds in production; here it goes at once
 const gate = require('../src/utils/joinGate');
 const welcome = require('../src/events/guildMemberAddWelcome');
 const dmJoin = require('../src/events/guildMemberAddDmJoin');

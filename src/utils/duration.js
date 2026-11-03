@@ -68,4 +68,37 @@ function formatDuration(msValue, lang = i18n.currentLanguage()) {
   return i18n.formatDuration(lang, msValue);
 }
 
-module.exports = { parseDuration, formatDuration };
+// A length of time written as one word with a unit ("3d", "12h", "1h30m", "2semanas"). A bare number is not one: "7" in `!ban @x 7 spam` is the days of messages to delete.
+const WORD_DURATION = /^\d+(?:[.,]\d+)?[a-záéíóúñêç]+(?:\d+(?:[.,]\d+)?[a-záéíóúñêç]+)*$/i;
+
+/**
+ * @param {unknown} token
+ * @returns {boolean} whether the word is a length of time with its unit
+ */
+function looksLikeDuration(token) {
+  const text = String(token ?? '').trim();
+  return text.length > 0 && text.length <= 64 && WORD_DURATION.test(text) && parseDuration(text) !== null;
+}
+
+/**
+ * `!mute @member 3d spam` and `!ban @member 7d spam` are temporary: a length of time right after the member says so, with no `temp` word.
+ * `durationOption` is what the command read for its `duration` option (the prefix reader fills it with the first word after the member when it looks like a
+ * time, and a slash command has it as an option) and `reasonText` the reason. When the word is not a real length of time (a plain number, a word) it goes
+ * back to the front of the reason, so a reason is never lost. Returns the duration to use (or null for a permanent action) and the reason left.
+ * @param {string | null | undefined} durationOption
+ * @param {string | null | undefined} reasonText
+ * @returns {{ duration: string | null, reason: string | null }}
+ */
+function splitLeadingDuration(durationOption, reasonText) {
+  const given = String(durationOption ?? '').trim();
+  const reason = String(reasonText ?? '').trim();
+  if (given) {
+    if (looksLikeDuration(given)) return { duration: given, reason: reason || null };
+    return { duration: null, reason: [given, reason].filter(Boolean).join(' ') || null };
+  }
+  const [first, ...rest] = reason.split(/\s+/);
+  if (first && looksLikeDuration(first)) return { duration: first, reason: rest.join(' ') || null };
+  return { duration: null, reason: reason || null };
+}
+
+module.exports = { parseDuration, formatDuration, looksLikeDuration, splitLeadingDuration };

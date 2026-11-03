@@ -712,4 +712,9 @@ module.exports = {
   'cmd.moderation.role.sticky.enable.desc': 'Activa los roles persistentes.',
   'cmd.moderation.role.sticky.disable.desc': 'Desactiva los roles persistentes.',
   'cmd.moderation.role.sticky.status.desc': 'Muestra si los roles persistentes están activados.',
+  'cmd.moderation.ban.user.opt.duration.desc': 'Hazlo temporal: p. ej. 3d, 2w',
+  'cmd.moderation.mod.ban.opt.duration.desc': 'Hazlo temporal: p. ej. 3d, 2w',
+  'cmd.moderation.mod.mute.opt.duration.desc': 'Hazlo temporal: p. ej. 3d, 12h (máx. 28d)',
+  'cmd.moderation.modtools.mute.user.opt.duration.desc': 'Hazlo temporal: p. ej. 3d, 12h (máx. 28d)',
+  'cmd.moderation.mute.user.opt.duration.desc': 'Hazlo temporal: p. ej. 3d, 12h (máx. 28d)',
 };

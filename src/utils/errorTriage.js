@@ -26,6 +26,7 @@ const API_CODES = Object.freeze({
   50001: { kind: 'missing-access', fix: FIX.ASK_SERVER, server: true, explain: 'Missing Access: Petto cannot see that channel or server. The server has to give Petto access; it is their setup.' },
   50013: { kind: 'missing-permissions', fix: FIX.ASK_SERVER, server: true, explain: 'Missing Permissions: the server did not give Petto a permission it needs there, or the role Petto tried to give is above the highest role of Petto (the server has to move the role of Petto up). It is their setup, not a bug.' },
   160002: { kind: 'missing-history', fix: FIX.ASK_SERVER, server: true, explain: 'Cannot reply without Read Message History: the server has to give Petto that permission in the channel.' },
+  50278: { kind: 'dm-no-mutual-server', fix: FIX.NONE, explain: 'Cannot send messages to this user due to having no mutual guilds: the person was just let in (Discord does not count the server yet) or already left, so there is no server they share with Petto. Normal; Petto tries again a few times for a join message.' },
   50007: { kind: 'dm-closed', fix: FIX.NONE, explain: 'Cannot send messages to this user: the person has direct messages closed. Normal.' },
   40333: { kind: 'cannot-send', fix: FIX.NONE, explain: 'Cannot send messages in this channel: the channel does not allow it right now.' },
   // The limits of Discord for a server (maximum roles, webhooks, emojis, channels, pins...): the server is full, not Petto.
