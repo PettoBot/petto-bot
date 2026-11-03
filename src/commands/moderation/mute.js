@@ -30,7 +30,7 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName('user')
-        .setDescription('Mute a single member indefinitely, until manually unmuted.')
+        .setDescription('Mute a single member, until unmuted or for the length of time given.')
         .addUserOption((opt) => opt.setName('user').setDescription('The user to mute').setRequired(true))
         .addStringOption((opt) => opt.setName('duration').setDescription('Make it temporary: e.g. 3d, 12h (max 28d)').setRequired(false))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the mute').setRequired(false)),
