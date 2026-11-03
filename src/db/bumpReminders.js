@@ -40,4 +40,11 @@ async function getConfigByChannel(guildId, channelId) {
   return data;
 }
 
-module.exports = { getConfig, ensureConfig, upsertConfig, getDueReminders, getConfigByChannel };
+/** The reminders that are waiting for their time (a channel and a next bump set): the bot arms an exact timer for each when it starts. */
+async function getUpcomingReminders() {
+  const { data, error } = await database.from('bump_reminders').select('guild_id, next_bump_at').not('channel_id', 'is', null).not('next_bump_at', 'is', null).order('next_bump_at', { ascending: true }).limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
+module.exports = { getConfig, ensureConfig, upsertConfig, getDueReminders, getUpcomingReminders, getConfigByChannel };
