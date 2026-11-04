@@ -274,23 +274,48 @@ function estimateGrowth({ guildRows, flowRows, cache, days, today }) {
 }
 
 /**
+ * Spreads `baseline` (`{ messages, reactions, voiceSeconds }`: what was counted before the outage, as one total) over the days `from` to `to`
+ * (both included) as a flat average in whole numbers that add up exactly to the baseline: each day gets the floor of the average and the first
+ * days one more until the remainder is gone. Returns `day -> { messages, reactions, voiceSeconds }` for the days that get something; empty when
+ * every metric is 0 (or the range is not valid).
+ */
+function spreadBaseline(baseline, from, to) {
+  const out = new Map();
+  if (!DAY_PATTERN.test(from ?? '') || !DAY_PATTERN.test(to ?? '') || to < from) return out;
+  const length = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1;
+  const totals = Object.fromEntries(METRICS.map((metric) => [metric, Math.max(0, Math.floor(Number(baseline?.[metric]) || 0))]));
+  for (let n = 0; n < length; n += 1) {
+    const share = Object.fromEntries(METRICS.map((metric) => [metric, Math.floor(totals[metric] / length) + (n < totals[metric] % length ? 1 : 0)]));
+    if (METRICS.some((metric) => share[metric] > 0)) out.set(dayShift(from, n), share);
+  }
+  return out;
+}
+
+/**
  * The `history` row. `previous` is the row as saved before, `activity` the rows of `readDailyActivity`, `todayTotals` the numbers of today of
  * `readTotals` (so today's entry is exactly `totals.today`), `live` the servers and members now, and `estimates` the rebuilt days (only used for
  * a day that has no stored entry), `seed` the members of each day from the records of the team (`seedMembers`, which win over `estimates`
  * for the members), `serverSeed` the servers of each day measured by the tracker (`seedServers`, which win over `estimates` for the servers; `estimatedServers`
- * flags the ones it interpolates: `estimated` is about the members only). A day that was stored keeps its servers and members as they were written; today's are the live ones.
+ * flags the ones it interpolates: `estimated` is about the members only), `activityShares` what `spreadBaseline` gives each day (added on top of the counted
+ * activity, and the day gets `estimatedActivity`). A day that was stored keeps its servers and members as they were written (its activity is always the
+ * counted one); today's servers and members are the live ones and today's activity is exactly `todayTotals`.
  */
-function buildHistory({ now = new Date(), previous, activity, todayTotals, live, estimates = new Map(), seed = new Map(), solidFrom = null, serverSeed = new Map() }) {
+function buildHistory({ now = new Date(), previous, activity, todayTotals, live, estimates = new Map(), seed = new Map(), solidFrom = null, serverSeed = new Map(), activityShares = new Map() }) {
   const today = botDay(now);
   const windowStart = dayShift(today, -(HISTORY_DAYS - 1));
   const stored = storedDays(previous);
   const perDay = new Map(activity.map((entry) => [entry.day, entry]));
-  const present = new Set([today, ...stored.keys(), ...perDay.keys(), ...estimates.keys(), ...seed.keys(), ...serverSeed.keys()]);
+  const present = new Set([today, ...stored.keys(), ...perDay.keys(), ...estimates.keys(), ...seed.keys(), ...serverSeed.keys(), ...activityShares.keys()]);
   const first = [...present].filter((day) => day >= windowStart && day <= today).sort()[0];
   const days = [];
   for (let day = first; day <= today; day = dayShift(day, 1)) {
     const numbers = day === today ? todayTotals : (perDay.get(day) ?? {});
     const entry = { day, servers: null, members: null, messages: numbers.messages ?? 0, reactions: numbers.reactions ?? 0, voiceSeconds: numbers.voiceSeconds ?? 0 };
+    const extra = day === today ? null : activityShares.get(day);
+    if (extra) { // the activity counted before the outage, spread: the numbers of the day are the real ones plus its part
+      for (const metric of METRICS) entry[metric] += extra[metric];
+      entry.estimatedActivity = true;
+    }
     const keep = stored.get(day);
     if (day === today) {
       entry.servers = live.servers; entry.members = live.members;
@@ -319,7 +344,7 @@ function buildHistory({ now = new Date(), previous, activity, todayTotals, live,
  * Reads the previous row, rebuilds the days it lacks (the first time, or after holes) and saves the new `history` row. Nothing is written when the
  * bot has no servers loaded (it has not finished starting). Returns the row that was saved, or null.
  */
-async function refreshHistory({ now = new Date(), totalsToday, servers, members, cache }) {
+async function refreshHistory({ now = new Date(), totalsToday, servers, members, cache, baseline = require('../config').globalStatsBaseline }) {
   if (!servers) return null;
   const today = botDay(now);
   const previous = await readHistory();
@@ -333,7 +358,10 @@ async function refreshHistory({ now = new Date(), totalsToday, servers, members,
   const estimates = flowDays.length ? estimateGrowth({ ...(await readGrowthSources(flowDays[0])), cache, days: flowDays, today }) : new Map();
   const activity = await readDailyActivity();
   const solidFrom = [...(Array.isArray(membersSeed?.recorded) ? membersSeed.recorded : [])].map((item) => item?.day).filter((day) => DAY_PATTERN.test(day ?? '')).sort()[0] ?? null;
-  const data = buildHistory({ now, previous, activity, todayTotals: totalsToday, live: { servers, members }, estimates, seed, solidFrom, serverSeed });
+  const data = buildHistory({ now, previous, activity, todayTotals: totalsToday, live: { servers, members }, estimates, seed, solidFrom, serverSeed,
+    // The activity counted before the outage is spread over the days of the records on every run, so a row that already exists gets it too.
+    activityShares: spreadBaseline(baseline, membersSeed?.activityBaseline?.from, membersSeed?.activityBaseline?.to),
+  });
   await saveRow(HISTORY_ID, data);
   return data;
 }
@@ -396,4 +424,4 @@ async function isUserVisible(userId) {
   return rows.length === 0;
 }
 
-module.exports = { withBaseline, seedMembers, setMembersSeed, seedServers, setServersSeed, HISTORY_DAYS, BACKFILL_DAYS, dayShift, storedDays, daysToRebuild, estimateGrowth, buildHistory, refreshHistory, readHistory, readDailyActivity, readGrowthSources, SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };
+module.exports = { withBaseline, spreadBaseline, seedMembers, setMembersSeed, seedServers, setServersSeed, HISTORY_DAYS, BACKFILL_DAYS, dayShift, storedDays, daysToRebuild, estimateGrowth, buildHistory, refreshHistory, readHistory, readDailyActivity, readGrowthSources, SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };
