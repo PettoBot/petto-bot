@@ -62,7 +62,7 @@ function matchVanity(rule, member, lang = currentLanguage()) {
 
 /** Server Tag rules. Without data from Discord nothing matches, not even the negative conditions. */
 function matchGuildTag(rule, primary) {
-  if (!primary) return false;
+  if (!primary || rule.tagUnavailable) return false; // no data, or the server lost its Server Tag: nobody matches
   const guildId = String(primary.identityGuildId ?? '').trim();
   const tag = String(primary.tag ?? '').trim();
   const value = String(rule.value ?? '');

@@ -7,6 +7,7 @@ const { announceDeployReport, cleanupGuildCommands } = require('../handlers/depl
 const config = require('../config');
 const disabledCommandsDb = require('../db/disabledCommands');
 const { startOmniplexStatsJob } = require('../jobs/omniplexStatsJob');
+const { startServerTagCheckJob } = require('../jobs/serverTagCheckJob');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { startGuildLanguageRefresh } = require('../i18n');
@@ -59,6 +60,7 @@ module.exports = {
       .catch((err) => logger.warn(`The disabled-command rules could not be tidied: ${err?.message ?? err}`));
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
     startOmniplexStatsJob(client);
+    startServerTagCheckJob(client);
 
     // Keep the existing warmup available, but never issue one invite request per guild at once.
     // At very large scale it can be disabled with INVITE_CACHE_WARM_ON_READY=false; joins still
