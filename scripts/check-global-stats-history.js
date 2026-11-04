@@ -233,20 +233,23 @@ const run = (client, now) => job.refreshGlobalStats(client, now);
   await run(live57800(), at('2026-11-04T15:00:00Z'));
   row = store.get('history');
   const members = (day) => byDay(row, day).members;
-  const toToday = (day, k) => Math.round(40000 + (17800 * k) / 50); // the line from the bottom (2026-09-15) to today's 57,800, k days after it
+  const toToday = (day, k) => Math.round(40000 + (15700 * k) / 47); // the line from the bottom (2026-09-15) to the exact count of 2026-11-01 (55,700), k days after the bottom
   assert.equal(row.days[0].day, '2026-04-03', 'the history starts on the first anchor of the records: nothing before');
   assert.equal(row.days.length, 216);
   assert.deepEqual(byDay(row, '2026-11-04'), { day: '2026-11-04', servers: 2, members: 57800, messages: 300, reactions: 30, voiceSeconds: 3000 }, 'today is the live total of the bot, not a seed, and not an estimate');
-  assert.ok(row.days.slice(0, -1).every((entry) => entry.estimated === true), 'every day that is not a snapshot of the bot is an estimate, the records themselves too');
+  assert.ok(row.days.filter((entry) => entry.day < '2026-11-01').every((entry) => entry.estimated === true), 'every day before the exact counts of the team that is not a snapshot of the bot is an estimate, the records themselves too');
+  assert.ok(row.days.filter((entry) => entry.day >= '2026-11-01').every((entry) => entry.estimated === undefined), 'from the first exact count the team kept (2026-11-01) to today the days are real counts: not estimated');
+  assert.equal(members('2026-11-01'), 55700, 'an exact count of the team');
+  assert.equal(members('2026-11-03'), 56430, 'another exact count of the team');
+  assert.equal(members('2026-11-02'), Math.round((55700 + 56430) / 2), 'the line between two exact counts');
   // The baseline on its anchors, and the straight lines between them.
   for (const [day, total] of [['2026-04-03', 20000], ['2026-04-07', 20000], ['2026-07-04', 20000], ['2026-08-04', 20000], ['2026-08-05', 33000], ['2026-08-14', 33000], ['2026-08-18', 33000], ['2026-08-20', 33000], ['2026-08-21', 63000], ['2026-08-26', 63000], ['2026-09-15', 40000]]) assert.equal(members(day), total, `${day}: baseline`);
   assert.equal(members('2026-08-05') - members('2026-08-04'), 13000, 'the jump of the server of 13,000 members');
   assert.equal(members('2026-08-21') - members('2026-08-20'), 30000, 'the jump of the server of 30,000 members');
   assert.equal(members('2026-09-05'), Math.round(63000 - (23000 * 10) / 20), 'down in a straight line from 63,000 (2026-08-26) to 40,000 (2026-09-15)');
-  assert.equal(members('2026-10-14'), toToday('2026-10-14', 29), 'growth from the bottom to today');
+  assert.equal(members('2026-10-14'), toToday('2026-10-14', 29), 'growth from the bottom to the first exact count of the team');
   assert.equal(members('2026-10-18'), toToday('2026-10-18', 33), 'and the baseline resumes after a spike, with no noise');
-  assert.equal(members('2026-11-03'), toToday('2026-11-03', 49), 'the end is anchored at the live total of today');
-  assert.ok(members('2026-11-03') < 57800 && members('2026-11-03') > 57000);
+  assert.equal(members('2026-11-03'), 56430);
   // Spikes: the total holds on the recorded day and the 2 days after (3 in all); then the baseline resumes.
   assert.equal(realSeed.spikeDays, 3);
   for (const [day, total] of [['2026-04-04', 170000], ['2026-07-05', 340000], ['2026-08-15', 270000], ['2026-09-24', 80000], ['2026-10-15', 100000]]) {

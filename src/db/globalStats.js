@@ -183,7 +183,8 @@ function daysToRebuild(stored, today, seedFrom = null) {
  */
 function seedMembers({ seed = membersSeed, today, live }) {
   const valid = (list, key) => (Array.isArray(list) ? list : []).filter((item) => item && DAY_PATTERN.test(item.day) && item.day < today && Number.isFinite(item[key]) && item[key] >= 0).sort((a, b) => (a.day < b.day ? -1 : 1));
-  const anchors = valid(seed?.baseline, 'members');
+  // `recorded` are exact counts the team kept for recent days: the straight line passes through them like through the anchors of `baseline`.
+  const anchors = [...valid(seed?.baseline, 'members'), ...valid(seed?.recorded, 'members')].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
   if (!anchors.length || !Number.isFinite(live) || live <= 0) return new Map();
   const nodes = [...anchors, { day: today, members: live }];
   const out = new Map();
@@ -249,7 +250,7 @@ function estimateGrowth({ guildRows, flowRows, cache, days, today }) {
  * a day that has no stored entry), `seed` the members of each day from the records of the team (`seedMembers`, which win over `estimates`
  * for the members). A day that was stored keeps its servers and members as they were written; today's are the live ones.
  */
-function buildHistory({ now = new Date(), previous, activity, todayTotals, live, estimates = new Map(), seed = new Map() }) {
+function buildHistory({ now = new Date(), previous, activity, todayTotals, live, estimates = new Map(), seed = new Map(), solidFrom = null }) {
   const today = botDay(now);
   const windowStart = dayShift(today, -(HISTORY_DAYS - 1));
   const stored = storedDays(previous);
@@ -270,7 +271,8 @@ function buildHistory({ now = new Date(), previous, activity, todayTotals, live,
       // The records of the team decide the members of the days they cover; the servers can only come from the rebuilt ones (else null).
       entry.servers = estimates.get(day)?.servers ?? null;
       entry.members = seed.has(day) ? seed.get(day) : estimates.get(day).members;
-      entry.estimated = true;
+      // From the first exact count the team kept (`recorded`) to today the days are real counts, not estimates: the line is drawn solid.
+      if (!(seed.has(day) && solidFrom && day >= solidFrom)) entry.estimated = true;
     }
     days.push(entry);
   }
@@ -292,7 +294,8 @@ async function refreshHistory({ now = new Date(), totalsToday, servers, members,
   const flowDays = missing.filter((day) => day >= dayShift(today, -BACKFILL_DAYS)); // the flow of members only rebuilds the last 90 days
   const estimates = flowDays.length ? estimateGrowth({ ...(await readGrowthSources(flowDays[0])), cache, days: flowDays, today }) : new Map();
   const activity = await readDailyActivity();
-  const data = buildHistory({ now, previous, activity, todayTotals: totalsToday, live: { servers, members }, estimates, seed });
+  const solidFrom = [...(Array.isArray(membersSeed?.recorded) ? membersSeed.recorded : [])].map((item) => item?.day).filter((day) => DAY_PATTERN.test(day ?? '')).sort()[0] ?? null;
+  const data = buildHistory({ now, previous, activity, todayTotals: totalsToday, live: { servers, members }, estimates, seed, solidFrom });
   await saveRow(HISTORY_ID, data);
   return data;
 }
