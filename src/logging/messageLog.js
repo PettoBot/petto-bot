@@ -104,7 +104,9 @@ async function handleMessageDelete(message, client) {
 }
 
 async function handleMessageUpdate(oldMessage, newMessage, client) {
-  oldMessage = await hydrateMessage(oldMessage);
+  // An edit of a message that was not cached has no "before": asking Discord for it would give the message as it is now, so it was a request for nothing (hundreds of
+  // `GET /channels/:id/messages/:id` for each listener, which hit the rate limit of that route and held every other request of the bot).
+  if (!oldMessage || oldMessage.partial) return;
   newMessage = await hydrateMessage(newMessage);
   if (!oldMessage.author || oldMessage.author.bot || !oldMessage.guild) return;
   const contentChanged = oldMessage.content !== newMessage.content;

@@ -1,9 +1,16 @@
 const database = require('./database');
 const { getPrimaryPool } = require('./postgres');
+const { botDay } = require('../utils/botTime');
 
 const SERVER_RANK_SIZE = 10;
 const USER_RANK_SIZE = 10;
 const METRICS = ['messages', 'reactions', 'voiceSeconds'];
+const HISTORY_ID = 'history';
+const HISTORY_DAYS = 400; // days kept in the `history` row
+const BACKFILL_DAYS = 90; // how far back the servers and members of the days before the first snapshot are rebuilt
+let membersSeed = require('../data/membersHistorySeed.json'); // the team's own records of the members before the bot counted them
+let serversSeed = require('../data/serversHistorySeed.json'); // the daily count of servers of the public tracker discord.watch
+const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The messages, reactions and voice time of every server, all time, today (GMT-5) and in the last 7 days. */
 async function readTotals() {
@@ -25,6 +32,15 @@ async function readTotals() {
   const r = rows[0];
   const period = (key) => ({ messages: Number(r[`messages_${key}`]), reactions: Number(r[`reactions_${key}`]), voiceSeconds: Number(r[`voice_${key}`]) });
   return { all: period('all'), today: period('today'), week: period('week'), guilds: r.guilds };
+}
+
+/** The all-time totals plus the baseline of what was counted before the outage that lost part of the counters (see `globalStatsBaseline` in config.js). */
+function withBaseline(all, baseline = require('../config').globalStatsBaseline) {
+  return {
+    messages: all.messages + (baseline?.messages ?? 0),
+    reactions: all.reactions + (baseline?.reactions ?? 0),
+    voiceSeconds: all.voiceSeconds + (baseline?.voiceSeconds ?? 0),
+  };
 }
 
 /** The servers that chose to be ranked, with their numbers all time and in the last 7 days. */
@@ -72,9 +88,268 @@ function buildRates(today, now = new Date()) {
   return { messages: rate(today.messages), reactions: rate(today.reactions), voiceSeconds: rate(today.voiceSeconds) };
 }
 
-async function saveSnapshot(data) {
-  const { error } = await database.from('global_stats').upsert({ id: 'main', data, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+async function saveRow(id, data) {
+  const { error } = await database.from('global_stats').upsert({ id, data, updated_at: new Date().toISOString() }, { onConflict: 'id' });
   if (error) throw error;
+}
+
+async function saveSnapshot(data) {
+  await saveRow('main', data);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// The daily history (row `history`): one entry for each day in GMT-5, oldest first, the last one being today (in progress).
+//   { days: [{ day, servers, members, messages, reactions, voiceSeconds, estimated? }], updatedAt }
+// Messages, reactions and voice time are added up from `activity_stats` (all servers, like `totals`). Servers and members are stored by the
+// bot itself, in this row: no table keeps them for each day, so each run sets today's from the live numbers and the earlier days stay as they
+// were written. The days before the first stored one are rebuilt once from `guilds`, `guild_departures` and `member_flow` and marked `estimated`.
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/** `day` (YYYY-MM-DD) moved by `count` days. */
+function dayShift(day, count) {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + count * 86_400_000).toISOString().slice(0, 10);
+}
+
+const countOrNull = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : null);
+
+/** The row `history` as it was saved, or null when there is none yet. */
+async function readHistory() {
+  const { rows } = await getPrimaryPool().query(`select data from global_stats where id = '${HISTORY_ID}'`);
+  return rows[0]?.data ?? null;
+}
+
+/** The messages, reactions and voice time of every server for each of the last days (the same table and filter as `readTotals`). */
+async function readDailyActivity() {
+  const { rows } = await getPrimaryPool().query(`
+    with d as (select (now() at time zone 'America/Bogota')::date as today)
+    select a.day::text as day, sum(a.messages)::bigint as messages, sum(a.reactions)::bigint as reactions, sum(a.voice_seconds)::bigint as voice_seconds
+    from activity_stats a, d
+    where a.day > d.today - ${HISTORY_DAYS}
+    group by a.day
+    order by a.day
+  `);
+  return rows.map((r) => ({ day: r.day, messages: Number(r.messages), reactions: Number(r.reactions), voiceSeconds: Number(r.voice_seconds) }));
+}
+
+/** What the database knows about how the servers and members grew: when each server was first seen, when it left, and the net joins of each day. */
+async function readGrowthSources(sinceDay) {
+  const pool = getPrimaryPool();
+  const [guilds, flow] = await Promise.all([
+    pool.query(`
+      select g.guild_id,
+        (g.created_at at time zone 'America/Bogota')::date::text as created_day,
+        (d.left_at at time zone 'America/Bogota')::date::text as left_day,
+        s.member_count
+      from guilds g
+      left join guild_departures d on d.guild_id = g.guild_id
+      left join discord_guild_snapshots s on s.guild_id = g.guild_id
+    `),
+    pool.query('select guild_id, day::text as day, (joins - leaves)::int as net from member_flow where day > $1::date and joins <> leaves', [sinceDay]),
+  ]);
+  return { guildRows: guilds.rows, flowRows: flow.rows };
+}
+
+/** Maps a stored row to `day -> entry`, dropping anything that is not a day. */
+function storedDays(row) {
+  const days = new Map();
+  for (const entry of Array.isArray(row?.days) ? row.days : []) {
+    if (entry && typeof entry.day === 'string' && DAY_PATTERN.test(entry.day)) days.set(entry.day, entry);
+  }
+  return days;
+}
+
+/**
+ * The days (before `today`) whose servers and members have to be rebuilt. Nothing stored yet: every day back to `seedFrom` (the first day of the
+ * records of the team, when there are) or `BACKFILL_DAYS` back, whichever is older, never more than the 400 days of the row. Something stored: only
+ * the holes between the stored days (the bot was off, or the load guard paused the job), at most `BACKFILL_DAYS` back. Days before the first stored
+ * one are never asked again.
+ */
+function daysToRebuild(stored, today, seedFrom = null) {
+  const limit = dayShift(today, -BACKFILL_DAYS);
+  const windowStart = dayShift(today, -(HISTORY_DAYS - 1));
+  let from;
+  if (stored.size) { const first = [...stored.keys()].sort()[0]; from = first < limit ? limit : first; }
+  else { from = seedFrom && seedFrom < limit ? seedFrom : limit; if (from < windowStart) from = windowStart; }
+  const days = [];
+  for (let day = from; day < today; day = dayShift(day, 1)) if (!stored.has(day)) days.push(day);
+  return days;
+}
+
+/**
+ * The members of each day from the records of the team (`membersSeed`, see `data/membersHistorySeed.json`). `baseline` are dated anchors: a straight
+ * line for each day between two of them (two anchors on consecutive days make a jump), and from the last one a straight line to today's live total.
+ * `spikes` are totals that replace the baseline on their recorded day and the next ones up to `spikeDays` (the bot was down, so they were not counted
+ * day by day). Nothing is built before the first anchor. Returns `day -> members`
+ * from the first anchor to yesterday (never today: today is always the live value), or an empty map when there is nothing to build from.
+ */
+function seedMembers({ seed = membersSeed, today, live }) {
+  const valid = (list, key) => (Array.isArray(list) ? list : []).filter((item) => item && DAY_PATTERN.test(item.day) && item.day < today && Number.isFinite(item[key]) && item[key] >= 0).sort((a, b) => (a.day < b.day ? -1 : 1));
+  // `recorded` are exact counts the team kept for recent days: the straight line passes through them like through the anchors of `baseline`.
+  const anchors = [...valid(seed?.baseline, 'members'), ...valid(seed?.recorded, 'members')].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+  if (!anchors.length || !Number.isFinite(live) || live <= 0) return new Map();
+  const nodes = [...anchors, { day: today, members: live }];
+  const out = new Map();
+  const known = new Set(); // the days of the spikes: dates and totals the team recorded, so they are not estimates
+  for (let n = 0; n < nodes.length - 1; n += 1) {
+    const [from, to] = [nodes[n], nodes[n + 1]];
+    const length = (Date.parse(`${to.day}T00:00:00Z`) - Date.parse(`${from.day}T00:00:00Z`)) / 86_400_000;
+    for (let k = 0; k < length; k += 1) out.set(dayShift(from.day, k), Math.round(from.members + ((to.members - from.members) * k) / length));
+  }
+  const length = Number.isInteger(seed?.spikeDays) && seed.spikeDays >= 1 ? seed.spikeDays : 1;
+  for (const spike of valid(seed?.spikes, 'members')) {
+    for (let k = 0; k < length; k += 1) {
+      const day = dayShift(spike.day, k);
+      if (day >= anchors[0].day && day < today) { out.set(day, spike.members); known.add(day); }
+    }
+  }
+  out.known = known;
+  return out;
+}
+
+/**
+ * The servers of each day from the public tracker discord.watch (`serversSeed`, see `data/serversHistorySeed.json`): `values[i]` is the count of the day
+ * `start` plus `i` steps. A day with a number is that number (measured by a third party, so not an estimate); a day with `null` is a straight line
+ * between the nearest known days on both sides (`interpolated`). Nothing before `start` or after the last known day. Returns
+ * `day -> { servers, interpolated }` for the days before `today` (today is always the live count), or an empty map.
+ */
+function seedServers({ seed = serversSeed, today }) {
+  const out = new Map();
+  const values = Array.isArray(seed?.values) ? seed.values : [];
+  const days = Number(seed?.step) / 86_400;
+  if (!DAY_PATTERN.test(seed?.start ?? '') || !Number.isInteger(days) || days < 1) return out;
+  const known = [];
+  values.forEach((value, index) => { if (typeof value === 'number' && Number.isFinite(value) && value >= 0) known.push(index); });
+  for (let n = 0; n < known.length; n += 1) {
+    const index = known[n];
+    const day = dayShift(seed.start, index * days);
+    if (day < today) out.set(day, { servers: values[index], interpolated: false });
+    const next = known[n + 1];
+    for (let gap = index + 1; next !== undefined && gap < next; gap += 1) {
+      const gapDay = dayShift(seed.start, gap * days);
+      if (gapDay < today) out.set(gapDay, { servers: Math.round(values[index] + ((values[next] - values[index]) * (gap - index)) / (next - index)), interpolated: true });
+    }
+  }
+  return out;
+}
+
+/**
+ * Servers and members at the end of each of `days`, rebuilt from what is stored. Servers: the ones Petto is in, whose row was created by then, plus
+ * the ones it left that are not yet deleted (until the day they left). Members: for each of those servers, today's count (from the bot's cache, or
+ * the last snapshot of a server it left) minus the joins less the leaves of the days after. Returns `day -> { servers, members }`; empty when no
+ * server is known. It is an estimate: servers deleted after they left are unknown, and `member_flow` only counts since each server's stats started.
+ */
+function estimateGrowth({ guildRows, flowRows, cache, days, today }) {
+  const estimates = new Map();
+  if (!days.length) return estimates;
+  const guilds = [];
+  for (const row of guildRows) {
+    const live = cache.get(row.guild_id);
+    if (live) guilds.push({ id: row.guild_id, created: row.created_day, left: null, members: Number(live.memberCount) || 0 });
+    else if (row.left_day) guilds.push({ id: row.guild_id, created: row.created_day, left: row.left_day, members: Number(row.member_count) || 0 });
+  }
+  if (!guilds.length) return estimates;
+  const flows = new Map();
+  for (const row of flowRows) {
+    if (!flows.has(row.guild_id)) flows.set(row.guild_id, new Map());
+    flows.get(row.guild_id).set(row.day, Number(row.net) || 0);
+  }
+  const first = days[0];
+  const wanted = new Set(days);
+  const totals = new Map(days.map((day) => [day, { servers: 0, members: 0 }]));
+  for (const guild of guilds) {
+    const net = flows.get(guild.id) ?? new Map();
+    let after = net.get(today) ?? 0; // the net of the days after the one being looked at
+    for (let day = dayShift(today, -1); day >= first; day = dayShift(day, -1)) {
+      if (wanted.has(day) && guild.created <= day && (!guild.left || guild.left > day)) {
+        const entry = totals.get(day);
+        entry.servers += 1;
+        entry.members += Math.max(0, guild.members - after);
+      }
+      after += net.get(day) ?? 0;
+    }
+  }
+  const earliest = guilds.map((guild) => guild.created).sort()[0];
+  for (const day of days) if (day >= earliest) estimates.set(day, totals.get(day));
+  return estimates;
+}
+
+/**
+ * The `history` row. `previous` is the row as saved before, `activity` the rows of `readDailyActivity`, `todayTotals` the numbers of today of
+ * `readTotals` (so today's entry is exactly `totals.today`), `live` the servers and members now, and `estimates` the rebuilt days (only used for
+ * a day that has no stored entry), `seed` the members of each day from the records of the team (`seedMembers`, which win over `estimates`
+ * for the members), `serverSeed` the servers of each day measured by the tracker (`seedServers`, which win over `estimates` for the servers; `estimatedServers`
+ * flags the ones it interpolates: `estimated` is about the members only). A day that was stored keeps its servers and members as they were written; today's are the live ones.
+ */
+function buildHistory({ now = new Date(), previous, activity, todayTotals, live, estimates = new Map(), seed = new Map(), solidFrom = null, serverSeed = new Map() }) {
+  const today = botDay(now);
+  const windowStart = dayShift(today, -(HISTORY_DAYS - 1));
+  const stored = storedDays(previous);
+  const perDay = new Map(activity.map((entry) => [entry.day, entry]));
+  const present = new Set([today, ...stored.keys(), ...perDay.keys(), ...estimates.keys(), ...seed.keys(), ...serverSeed.keys()]);
+  const first = [...present].filter((day) => day >= windowStart && day <= today).sort()[0];
+  const days = [];
+  for (let day = first; day <= today; day = dayShift(day, 1)) {
+    const numbers = day === today ? todayTotals : (perDay.get(day) ?? {});
+    const entry = { day, servers: null, members: null, messages: numbers.messages ?? 0, reactions: numbers.reactions ?? 0, voiceSeconds: numbers.voiceSeconds ?? 0 };
+    const keep = stored.get(day);
+    if (day === today) {
+      entry.servers = live.servers; entry.members = live.members;
+    } else if (keep) {
+      entry.servers = countOrNull(keep.servers); entry.members = countOrNull(keep.members);
+      if (keep.estimated === true) entry.estimated = true;
+      if (keep.estimatedServers === true) entry.estimatedServers = true;
+    } else if (seed.has(day) || estimates.has(day) || serverSeed.has(day)) {
+      // The records of the team decide the members of the days they cover. The servers are the ones the public tracker measured (the ones it has no
+      // number for are a straight line between its neighbours, `estimatedServers`), else the rebuilt ones, else null.
+      const measured = serverSeed.get(day);
+      entry.servers = measured ? measured.servers : (estimates.get(day)?.servers ?? null);
+      if (measured?.interpolated) entry.estimatedServers = true;
+      entry.members = seed.has(day) ? seed.get(day) : (estimates.get(day)?.members ?? null);
+      // `estimated` is about the members only (a day with no members has nothing to flag).
+      // From the first exact count the team kept (`recorded`) to today the days are real counts, not estimates: the line is drawn solid.
+      // The days of a spike (a date and a total the team recorded) are known too: only the stretches between them are estimates.
+      if (entry.members !== null && !(seed.has(day) && ((solidFrom && day >= solidFrom) || seed.known?.has(day)))) entry.estimated = true;
+    }
+    days.push(entry);
+  }
+  return { days: days.slice(-HISTORY_DAYS), updatedAt: now.toISOString() };
+}
+
+/**
+ * Reads the previous row, rebuilds the days it lacks (the first time, or after holes) and saves the new `history` row. Nothing is written when the
+ * bot has no servers loaded (it has not finished starting). Returns the row that was saved, or null.
+ */
+async function refreshHistory({ now = new Date(), totalsToday, servers, members, cache }) {
+  if (!servers) return null;
+  const today = botDay(now);
+  const previous = await readHistory();
+  const stored = storedDays(previous);
+  // The records of the team only fill the days before the first snapshot the bot stored itself: with one stored, they are not used.
+  const seed = stored.size || !membersSeed ? new Map() : seedMembers({ seed: membersSeed, today, live: members });
+  // The servers measured by the public tracker fill the same days, with the same condition.
+  const serverSeed = stored.size || !serversSeed ? new Map() : seedServers({ seed: serversSeed, today });
+  const missing = daysToRebuild(stored, today, [...seed.keys(), ...serverSeed.keys()].sort()[0] ?? null);
+  const flowDays = missing.filter((day) => day >= dayShift(today, -BACKFILL_DAYS)); // the flow of members only rebuilds the last 90 days
+  const estimates = flowDays.length ? estimateGrowth({ ...(await readGrowthSources(flowDays[0])), cache, days: flowDays, today }) : new Map();
+  const activity = await readDailyActivity();
+  const solidFrom = [...(Array.isArray(membersSeed?.recorded) ? membersSeed.recorded : [])].map((item) => item?.day).filter((day) => DAY_PATTERN.test(day ?? '')).sort()[0] ?? null;
+  const data = buildHistory({ now, previous, activity, todayTotals: totalsToday, live: { servers, members }, estimates, seed, solidFrom, serverSeed });
+  await saveRow(HISTORY_ID, data);
+  return data;
+}
+
+/** Replaces the daily count of servers of the tracker (the file `data/serversHistorySeed.json`) with `seed`, or with nothing (for the checks); returns the previous one. */
+function setServersSeed(seed) {
+  const previous = serversSeed;
+  serversSeed = seed;
+  return previous;
+}
+
+/** Replaces the records of the team (the file `data/membersHistorySeed.json`) with `seed`, or with nothing (for the checks); returns the previous ones. */
+function setMembersSeed(seed) {
+  const previous = membersSeed;
+  membersSeed = seed;
+  return previous;
 }
 
 /** The members with the most messages and the most voice time over every server, leaving out who hid themselves. */
@@ -121,4 +396,4 @@ async function isUserVisible(userId) {
   return rows.length === 0;
 }
 
-module.exports = { SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };
+module.exports = { withBaseline, seedMembers, setMembersSeed, seedServers, setServersSeed, HISTORY_DAYS, BACKFILL_DAYS, dayShift, storedDays, daysToRebuild, estimateGrowth, buildHistory, refreshHistory, readHistory, readDailyActivity, readGrowthSources, SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };

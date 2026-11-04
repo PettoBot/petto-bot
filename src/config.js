@@ -148,6 +148,14 @@ module.exports = {
   cmdQueueWaitSeconds: envNumber('PETTO_CMD_QUEUE_WAIT_SECONDS', 10, 1, 120),
   // The load guard (utils/loadGuard.js): when the bot is under pressure it sheds what is not essential. Thresholds of the event loop lag (p99, ms),
   // of the longest wait of a request in our queue (ms) and of the queue depth; the level goes back down slowly, after `calmSeconds` of calm.
+  // The all-time totals of the public stats page start from what the bot had counted before the outage of Discord that lost part of the counters (the owner has the
+  // figures kept apart): messages, reactions and hours of voice that are added to what the database holds now. Only the totals `all` get them; today, the week, the
+  // history and the rankings are real counts. Set a variable to 0 to remove one.
+  globalStatsBaseline: {
+    messages: envInt('PETTO_STATS_BASELINE_MESSAGES', 1_000_000, 0, 1_000_000_000_000),
+    reactions: envInt('PETTO_STATS_BASELINE_REACTIONS', 48_000, 0, 1_000_000_000_000),
+    voiceSeconds: envInt('PETTO_STATS_BASELINE_VOICE_HOURS', 100_000, 0, 1_000_000_000) * 3600,
+  },
   guardEnabled: envBool('PETTO_GUARD_ENABLED', true),
   guardLoopDegradedMs: envInt('PETTO_GUARD_LOOP_DEGRADED_MS', 800, 50, 60_000),
   guardLoopCriticalMs: envInt('PETTO_GUARD_LOOP_CRITICAL_MS', 2_000, 100, 120_000),

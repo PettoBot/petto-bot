@@ -58,6 +58,19 @@ const reaction = (id) => ({
   await handler.execute(reaction('m3'), { bot: true });
   assert.equal(fetches + lookups.filter((entry) => entry[1] === 'm3').length, 0, 'a bot reacting costs nothing');
 
-  console.log('Checked the reactions and the deleted messages: nothing is asked of Discord for what the event brings, and the custom command asks its database by id first.');
+  
+// 3. An edited message that was not cached is not asked for: there is no "before" to show, and each ask was a request for nothing.
+{
+  const updateHandler = messageLog.slice(messageLog.indexOf('async function handleMessageUpdate'), messageLog.indexOf('async function handleMessageBulkDelete'));
+  assert.ok(!/hydrateMessage\(oldMessage\)/.test(updateHandler.replace(/\/\/.*$/gm, '')), 'the edit log does not ask for the old message');
+  assert.ok(/oldMessage\.partial\) return/.test(updateHandler), 'the edit log leaves an edit without a known before');
+  const snipeUpdate = require('../src/events/messageUpdateSnipe');
+  let asked = 0;
+  const partial = () => ({ partial: true, guild: { id: '1' }, fetch: async () => { asked += 1; } });
+  await snipeUpdate.execute(partial(), partial());
+  assert.equal(asked, 0, 'the snipe of edits does not ask Discord for a message it never had');
+}
+
+console.log('Checked the reactions and the deleted messages: nothing is asked of Discord for what the event brings, and the custom command asks its database by id first.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -9,7 +9,7 @@ function stub(relative, exports) {
 }
 const saved = [];
 const queries = [];
-stub('src/config.js', {});
+stub('src/config.js', { globalStatsBaseline: { messages: 1_000_000, reactions: 48_000, voiceSeconds: 100_000 * 3600 } });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/db/database.js', { from: (table) => ({ upsert: async (row, options) => { saved.push({ table, row, options }); return { error: null }; } }) });
 stub('src/db/postgres.js', {
@@ -17,6 +17,7 @@ stub('src/db/postgres.js', {
     query: async (sql) => {
       queries.push(sql);
       if (sql.includes('global_stats_hidden_users')) return { rows: [{ user_id: 'u1', messages: '500', voice_seconds: '3600' }, { user_id: 'u2', messages: '900', voice_seconds: '60' }, { user_id: 'ghost', messages: '9999', voice_seconds: '9999' }] };
+      if (sql.includes("where id = 'history'") || sql.includes('group by a.day') || sql.includes('from member_flow') || sql.includes('guild_departures')) return { rows: [] }; // the history has its own check
       if (sql.includes('count(distinct guild_id)')) return { rows: [{ messages_all: '1000', reactions_all: '90', voice_all: '7200', messages_today: '100', reactions_today: '9', voice_today: '720', messages_week: '500', reactions_week: '40', voice_week: '3600', guilds: 12 }] };
       return { rows: [{ guild_id: 'a', messages_all: '800', reactions_all: '5', voice_all: '600', messages_week: '80', reactions_week: '1', voice_week: '60' }, { guild_id: 'gone', messages_all: '900', reactions_all: '5', voice_all: '600', messages_week: '90', reactions_week: '1', voice_week: '60' }] };
     },
@@ -53,9 +54,15 @@ assert.equal(justAfterMidnight.messages, 1, 'the first minutes of the day do not
   const people = { u1: { globalName: 'Una', username: 'u1', displayAvatarURL: () => 'https://cdn.example/u1.png' }, u2: { globalName: null, username: 'dos', displayAvatarURL: () => 'https://cdn.example/u2.png' } };
   require('../src/jobs/globalStatsJob').resetUsersCache();
   await refreshGlobalStats({ guilds: { cache: new Map([['a', guild], ['b', guild]]) }, users: { cache: new Map(Object.entries(people)), fetch: async () => { throw new Error('unknown user'); } } });
-  assert.equal(saved.length, 1); assert.equal(saved[0].table, 'global_stats'); assert.equal(saved[0].row.id, 'main'); assert.deepEqual(saved[0].options, { onConflict: 'id' });
+  assert.equal(saved.length, 2, 'the row main and the row history'); assert.equal(saved[1].row.id, 'history');
+  assert.equal(saved[0].table, 'global_stats'); assert.equal(saved[0].row.id, 'main'); assert.deepEqual(saved[0].options, { onConflict: 'id' });
   const data = saved[0].row.data;
-  assert.deepEqual(data.totals.all, { messages: 1000, reactions: 90, voiceSeconds: 7200 }); assert.deepEqual(data.totals.week, { messages: 500, reactions: 40, voiceSeconds: 3600 }); assert.equal(data.totals.guilds, 12);
+  // The all-time totals start from the baseline of before the outage (config.globalStatsBaseline): 1,000,000 messages, 48,000 reactions and 100,000 hours of voice.
+  assert.deepEqual(data.totals.all, { messages: 1000 + 1_000_000, reactions: 90 + 48_000, voiceSeconds: 7200 + 360_000_000 }, 'the total of all time starts from the baseline');
+  assert.deepEqual(data.totals.today, saved[0].row.data.totals.today);
+  assert.deepEqual(require('../src/db/globalStats').withBaseline({ messages: 5, reactions: 6, voiceSeconds: 7 }, { messages: 0, reactions: 0, voiceSeconds: 0 }), { messages: 5, reactions: 6, voiceSeconds: 7 }, 'a baseline of zero changes nothing');
+  assert.deepEqual(require('../src/db/globalStats').withBaseline({ messages: 487_000, reactions: 50_000, voiceSeconds: 11_000 * 3600 }), { messages: 1_487_000, reactions: 98_000, voiceSeconds: 111_000 * 3600 }, 'the figures of the owner: 1,487,000 messages, 98,000 reactions and 111,000 hours of voice');
+   assert.deepEqual(data.totals.week, { messages: 500, reactions: 40, voiceSeconds: 3600 }); assert.equal(data.totals.guilds, 12);
   assert.equal(data.servers, 2); assert.equal(data.members, 20, 'the members of the servers, for the link preview of the website');
   assert.deepEqual(data.ranking.all.messages, [{ id: 'a', name: 'Alpha', icon: 'https://cdn.example/a.png', members: 10, value: 800 }], 'only a server the bot still has is named, with its members');
   assert.ok(queries.some((sql) => sql.includes('not g.global_stats_hidden')), 'every server is read for the ranking except the ones that hid themselves');

@@ -1,0 +1,73 @@
+{
+  "note": "The team's own records of the members of Petto before the bot counted its members (2026, from the owner's spreadsheet). `baseline` are the members that stayed: dated anchors, a straight line for each day between two anchors (a jump is two anchors on consecutive days), and from the last anchor a straight line to today's live total; it has no noise added. `spikes` are the largest totals of single events: big communities that added the bot and removed it again (one of 246,000 members removed it the same day after a raid). A spike holds its total on the recorded day and the following days up to `spikeDays` (the bot was down, so they were not counted day by day), and then the baseline resumes. Assumed, because the owner gave no exact date or length: the date of the bottom of the baseline (2026-09-15, `assumed`) and the length of every spike (3 days, `spikeDays`, the owner said 3 days at most). Nothing is shown before the first anchor. Every day built from these records is marked `estimated` and they are only used for the days before the first snapshot the bot stored itself. `recorded` are exact counts the owner kept for the last days (55,700 on 2026-11-01 and 56,430 after it; the date 2026-11-03 for the second is assumed): from the first of them to today the days are drawn as real, not estimated.",
+  "spikeDays": 3,
+  "baseline": [
+    {
+      "day": "2026-04-03",
+      "members": 20000
+    },
+    {
+      "day": "2026-08-04",
+      "members": 20000
+    },
+    {
+      "day": "2026-08-05",
+      "members": 33000
+    },
+    {
+      "day": "2026-08-20",
+      "members": 33000
+    },
+    {
+      "day": "2026-08-21",
+      "members": 63000
+    },
+    {
+      "day": "2026-08-26",
+      "members": 63000
+    },
+    {
+      "day": "2026-09-15",
+      "members": 40000,
+      "assumed": true
+    }
+  ],
+  "spikes": [
+    {
+      "day": "2026-04-04",
+      "members": 170000,
+      "assumed": true
+    },
+    {
+      "day": "2026-07-05",
+      "members": 340000,
+      "assumed": true
+    },
+    {
+      "day": "2026-08-15",
+      "members": 270000,
+      "assumed": true
+    },
+    {
+      "day": "2026-09-24",
+      "members": 80000,
+      "assumed": true
+    },
+    {
+      "day": "2026-10-15",
+      "members": 100000,
+      "assumed": true
+    }
+  ],
+  "recorded": [
+    {
+      "day": "2026-11-01",
+      "members": 55700
+    },
+    {
+      "day": "2026-11-03",
+      "members": 56430,
+      "assumed": true
+    }
+  ]
+}
