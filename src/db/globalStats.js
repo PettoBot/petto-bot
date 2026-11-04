@@ -32,6 +32,15 @@ async function readTotals() {
   return { all: period('all'), today: period('today'), week: period('week'), guilds: r.guilds };
 }
 
+/** The all-time totals plus the baseline of what was counted before the outage that lost part of the counters (see `globalStatsBaseline` in config.js). */
+function withBaseline(all, baseline = require('../config').globalStatsBaseline) {
+  return {
+    messages: all.messages + (baseline?.messages ?? 0),
+    reactions: all.reactions + (baseline?.reactions ?? 0),
+    voiceSeconds: all.voiceSeconds + (baseline?.voiceSeconds ?? 0),
+  };
+}
+
 /** The servers that chose to be ranked, with their numbers all time and in the last 7 days. */
 async function readRankedServers() {
   const { rows } = await getPrimaryPool().query(`
@@ -291,4 +300,4 @@ async function isUserVisible(userId) {
   return rows.length === 0;
 }
 
-module.exports = { HISTORY_DAYS, BACKFILL_DAYS, dayShift, storedDays, daysToRebuild, estimateGrowth, buildHistory, refreshHistory, readHistory, readDailyActivity, readGrowthSources, SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };
+module.exports = { withBaseline, HISTORY_DAYS, BACKFILL_DAYS, dayShift, storedDays, daysToRebuild, estimateGrowth, buildHistory, refreshHistory, readHistory, readDailyActivity, readGrowthSources, SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };

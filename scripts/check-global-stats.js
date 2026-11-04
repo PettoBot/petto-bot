@@ -9,7 +9,7 @@ function stub(relative, exports) {
 }
 const saved = [];
 const queries = [];
-stub('src/config.js', {});
+stub('src/config.js', { globalStatsBaseline: { messages: 1_000_000, reactions: 48_000, voiceSeconds: 100_000 * 3600 } });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/db/database.js', { from: (table) => ({ upsert: async (row, options) => { saved.push({ table, row, options }); return { error: null }; } }) });
 stub('src/db/postgres.js', {
@@ -57,7 +57,12 @@ assert.equal(justAfterMidnight.messages, 1, 'the first minutes of the day do not
   assert.equal(saved.length, 2, 'the row main and the row history'); assert.equal(saved[1].row.id, 'history');
   assert.equal(saved[0].table, 'global_stats'); assert.equal(saved[0].row.id, 'main'); assert.deepEqual(saved[0].options, { onConflict: 'id' });
   const data = saved[0].row.data;
-  assert.deepEqual(data.totals.all, { messages: 1000, reactions: 90, voiceSeconds: 7200 }); assert.deepEqual(data.totals.week, { messages: 500, reactions: 40, voiceSeconds: 3600 }); assert.equal(data.totals.guilds, 12);
+  // The all-time totals start from the baseline of before the outage (config.globalStatsBaseline): 1,000,000 messages, 48,000 reactions and 100,000 hours of voice.
+  assert.deepEqual(data.totals.all, { messages: 1000 + 1_000_000, reactions: 90 + 48_000, voiceSeconds: 7200 + 360_000_000 }, 'the total of all time starts from the baseline');
+  assert.deepEqual(data.totals.today, saved[0].row.data.totals.today);
+  assert.deepEqual(require('../src/db/globalStats').withBaseline({ messages: 5, reactions: 6, voiceSeconds: 7 }, { messages: 0, reactions: 0, voiceSeconds: 0 }), { messages: 5, reactions: 6, voiceSeconds: 7 }, 'a baseline of zero changes nothing');
+  assert.deepEqual(require('../src/db/globalStats').withBaseline({ messages: 487_000, reactions: 50_000, voiceSeconds: 11_000 * 3600 }), { messages: 1_487_000, reactions: 98_000, voiceSeconds: 111_000 * 3600 }, 'the figures of the owner: 1,487,000 messages, 98,000 reactions and 111,000 hours of voice');
+   assert.deepEqual(data.totals.week, { messages: 500, reactions: 40, voiceSeconds: 3600 }); assert.equal(data.totals.guilds, 12);
   assert.equal(data.servers, 2); assert.equal(data.members, 20, 'the members of the servers, for the link preview of the website');
   assert.deepEqual(data.ranking.all.messages, [{ id: 'a', name: 'Alpha', icon: 'https://cdn.example/a.png', members: 10, value: 800 }], 'only a server the bot still has is named, with its members');
   assert.ok(queries.some((sql) => sql.includes('not g.global_stats_hidden')), 'every server is read for the ranking except the ones that hid themselves');

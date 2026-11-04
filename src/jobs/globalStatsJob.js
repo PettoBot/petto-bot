@@ -12,7 +12,9 @@ let historyAt = -Infinity;
 let usersCache = [];
 
 async function refreshGlobalStats(client, now = new Date()) {
-  const [totals, ranked] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers()]);
+  const [counted, ranked] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers()]);
+  // Real counts for today, the week and the history; the all-time totals start from the baseline of before the outage (config.globalStatsBaseline).
+  const totals = { ...counted, all: globalStatsDb.withBaseline(counted.all) };
   if (Date.now() - usersAt >= USERS_EVERY_MS) { usersCache = await globalStatsDb.readRankedUsers(); usersAt = Date.now(); }
   const rankedUsers = usersCache;
   const describe = (id) => {
