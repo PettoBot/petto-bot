@@ -1062,7 +1062,7 @@ Files: `utils/restGate.js` (the two lanes to Discord), `utils/sharedRestLimit.js
 | `PETTO_CMD_CONCURRENCY` / `PETTO_CMD_QUEUE` / `PETTO_CMD_QUEUE_WAIT_SECONDS` / `PETTO_CMD_STAFF_RESERVE` | 8 / 50 / 10 / 2 | Commands running at once, waiting, longest wait, places kept for staff |
 | `PETTO_CMD_LIMITS` | on in the bot | `off` turns the limits off |
 | `PETTO_GUARD_ENABLED` | true | The circuit breaker |
-| `PETTO_GUARD_LOOP_DEGRADED_MS` / `_CRITICAL_MS` | 400 / 2000 | Event loop p99 |
+| `PETTO_GUARD_LOOP_DEGRADED_MS` / `_CRITICAL_MS` | 800 / 2000 | Event loop p99 |
 | `PETTO_GUARD_REST_WAIT_DEGRADED_MS` / `_CRITICAL_MS` | 5000 / 20000 | Longest wait of a background request |
 | `PETTO_GUARD_REST_QUEUE_DEGRADED` / `_CRITICAL` | 60 / 250 | Requests waiting |
 | `PETTO_GUARD_CALM_SECONDS` | 90 | Calm needed to go down one level |

@@ -56,6 +56,8 @@ logger.localWarn = (...args) => { warnings.push(args.join(' ')); };
   perf.recordRateLimit({ family: 'PATCH /channels/:id', waitMs: 580_000, scope: 'user', source: 'discord' });
   perf.recordResponse({ family: 'POST /channels/:id/messages', status: 403, dateHeader: new Date(Date.now() + 3_000).toUTCString() });
   perf.recordResponse({ family: 'POST /channels/:id/messages', status: 429 });
+  const gc = perf.loopStats().gc;
+  assert.ok(gc && typeof gc.totalMs === 'number' && typeof gc.longestMajorMs === 'number', 'the pauses of the garbage collector are measured');
   perf.recordInvalidWarning(100);
   assert.ok(warnings.some((line) => /invalid requests: 100/.test(line)), 'the count of Discord is kept in the console');
   assert.ok(!warnings.some((line) => line.startsWith('CHANNEL')), 'slow commands, slow requests and counts of invalid requests never go to a channel of Discord');
