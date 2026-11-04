@@ -48,14 +48,14 @@ assert.equal(justAfterMidnight.messages, 1, 'the first minutes of the day do not
 
 (async () => {
   const { refreshGlobalStats } = require('../src/jobs/globalStatsJob');
-  const guild = { name: 'Alpha', iconURL: () => 'https://cdn.example/a.png' };
+  const guild = { name: 'Alpha', memberCount: 10, iconURL: () => 'https://cdn.example/a.png' };
   const people = { u1: { globalName: 'Una', username: 'u1', displayAvatarURL: () => 'https://cdn.example/u1.png' }, u2: { globalName: null, username: 'dos', displayAvatarURL: () => 'https://cdn.example/u2.png' } };
   require('../src/jobs/globalStatsJob').resetUsersCache();
   await refreshGlobalStats({ guilds: { cache: new Map([['a', guild], ['b', guild]]) }, users: { cache: new Map(Object.entries(people)), fetch: async () => { throw new Error('unknown user'); } } });
   assert.equal(saved.length, 1); assert.equal(saved[0].table, 'global_stats'); assert.equal(saved[0].row.id, 'main'); assert.deepEqual(saved[0].options, { onConflict: 'id' });
   const data = saved[0].row.data;
   assert.deepEqual(data.totals.all, { messages: 1000, reactions: 90, voiceSeconds: 7200 }); assert.deepEqual(data.totals.week, { messages: 500, reactions: 40, voiceSeconds: 3600 }); assert.equal(data.totals.guilds, 12);
-  assert.equal(data.servers, 2);
+  assert.equal(data.servers, 2); assert.equal(data.members, 20, 'the members of the servers, for the link preview of the website');
   assert.deepEqual(data.ranking.all.messages, [{ id: 'a', name: 'Alpha', icon: 'https://cdn.example/a.png', value: 800 }], 'only a server the bot still has is named');
   assert.ok(queries.some((sql) => sql.includes('not g.global_stats_hidden')), 'every server is read for the ranking except the ones that hid themselves');
   assert.ok(data.rates.messages >= 0);

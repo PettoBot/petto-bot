@@ -30,6 +30,8 @@ async function refreshGlobalStats(client) {
     ranking: globalStatsDb.buildRanking(ranked, describe),
     users: globalStatsDb.buildUserRanking(rankedUsers, (id) => people.get(id) ?? null),
     servers: client.guilds.cache.size,
+    // The members of every server the bot is in, for the link preview of the website ("servers and members"). Counted from the cache, so it costs nothing.
+    members: [...client.guilds.cache.values()].reduce((total, guild) => total + (Number(guild.memberCount) || 0), 0),
   });
 }
 
