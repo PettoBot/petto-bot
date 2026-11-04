@@ -15,7 +15,7 @@ async function refreshGlobalStats(client) {
   const rankedUsers = usersCache;
   const describe = (id) => {
     const guild = client.guilds.cache.get(id);
-    return guild ? { name: guild.name, icon: guild.iconURL({ extension: 'png', size: 64 }) } : null;
+    return guild ? { name: guild.name, icon: guild.iconURL({ extension: 'png', size: 64 }), members: guild.memberCount ?? null } : null;
   };
   // Only the people who would show are looked up, and the ones the bot has seen come from its cache.
   const top = new Set(['messages', 'voiceSeconds'].flatMap((metric) => [...rankedUsers].sort((a, b) => b[metric] - a[metric]).slice(0, globalStatsDb.USER_RANK_SIZE + 5).map((user) => user.id)));

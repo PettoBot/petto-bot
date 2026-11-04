@@ -1,7 +1,7 @@
 const database = require('./database');
 const { getPrimaryPool } = require('./postgres');
 
-const SERVER_RANK_SIZE = 5;
+const SERVER_RANK_SIZE = 10;
 const USER_RANK_SIZE = 10;
 const METRICS = ['messages', 'reactions', 'voiceSeconds'];
 
@@ -59,7 +59,7 @@ function buildRanking(servers, describe) {
         .map((server) => ({ server, info: describe(server.id) }))
         .filter((entry) => entry.info)
         .slice(0, SERVER_RANK_SIZE)
-        .map(({ server, info }) => ({ id: server.id, name: info.name, icon: info.icon ?? null, value: server[period][metric] }));
+        .map(({ server, info }) => ({ id: server.id, name: info.name, icon: info.icon ?? null, members: info.members ?? null, value: server[period][metric] }));
     }
   }
   return ranking;

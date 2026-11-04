@@ -26,18 +26,19 @@ const { buildRanking, buildUserRanking, buildRates, SERVER_RANK_SIZE, USER_RANK_
 
 const server = (id, all, week) => ({ id, all: { messages: all, reactions: all / 2, voiceSeconds: all * 10 }, week: { messages: week, reactions: 0, voiceSeconds: week * 10 } });
 const servers = Array.from({ length: 14 }, (_, n) => server(`g${n}`, (n + 1) * 100, n % 3 === 0 ? 0 : n * 10));
-const known = new Map(servers.map((entry, n) => [entry.id, { name: `Server ${n}`, icon: n % 2 ? 'https://cdn.example/i.png' : null }]));
+const known = new Map(servers.map((entry, n) => [entry.id, { name: `Server ${n}`, icon: n % 2 ? 'https://cdn.example/i.png' : null, members: 1000 + n }]));
 known.delete('g13');
 
 const ranking = buildRanking(servers, (id) => known.get(id) ?? null);
-assert.equal(SERVER_RANK_SIZE, 5); assert.equal(USER_RANK_SIZE, 10);
-assert.equal(ranking.all.messages.length, 5, 'the server ranking holds the top 5 only');
+assert.equal(SERVER_RANK_SIZE, 10); assert.equal(USER_RANK_SIZE, 10);
+assert.equal(ranking.all.messages.length, 10, 'the server ranking holds the top 10 only');
 assert.equal(ranking.all.messages[0].id, 'g12', 'a server the bot no longer has is left out, and the biggest one leads');
 assert.deepEqual(ranking.all.messages.map((entry) => entry.value), [...ranking.all.messages.map((entry) => entry.value)].sort((a, b) => b - a), 'sorted from most to least');
 assert.ok(ranking.week.messages.every((entry) => entry.value > 0), 'a server with no activity in the week is not in the weekly ranking');
 assert.equal(ranking.all.voiceSeconds[0].value, 13000, 'voice has its own ranking');
 assert.deepEqual(Object.keys(ranking.week), ['messages', 'reactions', 'voiceSeconds']);
 assert.equal(ranking.all.messages[0].icon, null);
+assert.equal(ranking.all.messages[0].members, 1012, 'each server of the ranking carries its members');
 assert.equal(ranking.all.messages[1].name, 'Server 11');
 
 const noon = new Date(Date.UTC(2026, 9, 3, 12, 0, 0));
@@ -56,7 +57,7 @@ assert.equal(justAfterMidnight.messages, 1, 'the first minutes of the day do not
   const data = saved[0].row.data;
   assert.deepEqual(data.totals.all, { messages: 1000, reactions: 90, voiceSeconds: 7200 }); assert.deepEqual(data.totals.week, { messages: 500, reactions: 40, voiceSeconds: 3600 }); assert.equal(data.totals.guilds, 12);
   assert.equal(data.servers, 2); assert.equal(data.members, 20, 'the members of the servers, for the link preview of the website');
-  assert.deepEqual(data.ranking.all.messages, [{ id: 'a', name: 'Alpha', icon: 'https://cdn.example/a.png', value: 800 }], 'only a server the bot still has is named');
+  assert.deepEqual(data.ranking.all.messages, [{ id: 'a', name: 'Alpha', icon: 'https://cdn.example/a.png', members: 10, value: 800 }], 'only a server the bot still has is named, with its members');
   assert.ok(queries.some((sql) => sql.includes('not g.global_stats_hidden')), 'every server is read for the ranking except the ones that hid themselves');
   assert.ok(data.rates.messages >= 0);
   assert.deepEqual(data.users.messages.map((u) => [u.id, u.name, u.value]), [['u2', 'dos', 900], ['u1', 'Una', 500]], 'members are ranked with their name, and one that cannot be found is left out');
