@@ -189,10 +189,11 @@ const clock = (start = 1_000_000) => { let at = start; return { now: () => at, t
     // The alert of the default path: only going to CRITICAL is a priority error (it pings the team); degraded and coming down are ordinary warnings.
     {
       const logger = require('../src/utils/logger');
-      const original = { error: logger.error, warn: logger.warn };
+      const original = { error: logger.error, warn: logger.warn, localWarn: logger.localWarn };
       const seen = [];
       logger.error = (text) => seen.push(['error', text]);
       logger.warn = (text) => seen.push(['warn', text]);
+      logger.localWarn = (text) => seen.push(['local', text]);
       loadGuard.setAlertSink(null);
       try {
         const at = Date.now();
@@ -200,8 +201,8 @@ const clock = (start = 1_000_000) => { let at = start; return { now: () => at, t
         loadGuard.announce({ from: 'degraded', to: 'critical', reason: 'test', since: at });
         loadGuard.announce({ from: 'critical', to: 'degraded', reason: 'test', since: at });
         loadGuard.announce({ from: 'degraded', to: 'normal', reason: 'test', since: at });
-      } finally { logger.error = original.error; logger.warn = original.warn; }
-      assert.deepEqual(seen.map((entry) => entry[0]), ['warn', 'error', 'warn', 'warn'], 'degraded does not ping the team, critical does');
+      } finally { logger.error = original.error; logger.warn = original.warn; logger.localWarn = original.localWarn; }
+      assert.deepEqual(seen.map((entry) => entry[0]), ['local', 'error', 'local', 'local'], 'normal and degraded stay in the console, only critical reaches the team');
     }
     loadGuard.reset();
   }

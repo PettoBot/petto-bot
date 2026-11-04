@@ -10,7 +10,7 @@
 //   - every interval job (runs, time, queries and requests per run).
 // Nothing here changes what a command does: the code only looks, and every hook is wrapped so that a mistake in it never reaches a member.
 const { AsyncLocalStorage } = require('node:async_hooks');
-const { monitorEventLoopDelay, performance } = require('node:perf_hooks');
+const { PerformanceObserver, constants: perfConstants, monitorEventLoopDelay, performance } = require('node:perf_hooks');
 const logger = require('./logger');
 
 const SLOW_COMMAND_MS = 2_000;
@@ -378,8 +378,35 @@ function takeSample() {
   if (snapshot.p99 > 1_000) warnThrottled('loop-lag', `The event loop was blocked: p99 ${Math.round(snapshot.p99)} ms, max ${Math.round(snapshot.max)} ms in the last 10 seconds.`);
 }
 
+// The pauses of the garbage collector: a full collection stops the event loop, and the bigger the heap the longer it is. Kept for the last hour.
+const gcPauses = []; // { at, ms, major }
+let gcObserver = null;
+function startGcObserver() {
+  if (gcObserver) return;
+  try {
+    gcObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        const kind = entry.detail?.kind ?? entry.kind;
+        gcPauses.push({ at: Date.now(), ms: entry.duration, major: kind === perfConstants.NODE_PERFORMANCE_GC_MAJOR });
+      }
+      const cut = Date.now() - HOUR_MS;
+      while (gcPauses.length && gcPauses[0].at < cut) gcPauses.shift();
+      if (gcPauses.length > 2000) gcPauses.splice(0, gcPauses.length - 2000);
+    });
+    gcObserver.observe({ entryTypes: ['gc'] });
+  } catch { gcObserver = null; }
+}
+
+/** The time the garbage collector held the process in the last hour: all of it, the major collections and the longest pause. */
+function gcStats() {
+  const major = gcPauses.filter((pause) => pause.major);
+  const total = gcPauses.reduce((sum, pause) => sum + pause.ms, 0);
+  return { collections: gcPauses.length, majors: major.length, totalMs: total, longestMs: gcPauses.reduce((max, pause) => Math.max(max, pause.ms), 0), longestMajorMs: major.reduce((max, pause) => Math.max(max, pause.ms), 0) };
+}
+
 function startSampler() {
   if (sampler) return;
+  startGcObserver();
   try {
     loopMonitor = monitorEventLoopDelay({ resolution: 20 });
     loopMonitor.enable();
@@ -391,6 +418,8 @@ function startSampler() {
 }
 
 function stopSampler() {
+  try { gcObserver?.disconnect(); } catch { /* nothing to stop */ }
+  gcObserver = null;
   if (sampler) clearInterval(sampler);
   sampler = null;
   try { loopMonitor?.disable(); } catch { /* nothing to stop */ }
@@ -406,7 +435,7 @@ function loopStats() {
   const hour = samples.filter((sample) => sample.at >= now - HOUR_MS);
   const live = loopMonitor ? { p50: loopMonitor.percentile(50) / 1e6, p99: loopMonitor.percentile(99) / 1e6, max: loopMonitor.max / 1e6 } : null;
   const summary = (list) => ({ samples: list.length, p50: median(list, 'p50'), p99: worst(list).p99, max: worst(list).max, cpu: mean(list.filter((sample) => sample.cpu != null), 'cpu'), elu: mean(list, 'elu') });
-  return { live, minute: summary(minute), hour: summary(hour), memory: process.memoryUsage(), uptimeSeconds: Math.round((Date.now() - startedAt) / 1000), series: samples.slice(-6) };
+  return { live, minute: summary(minute), hour: summary(hour), memory: process.memoryUsage(), gc: gcStats(), uptimeSeconds: Math.round((Date.now() - startedAt) / 1000), series: samples.slice(-6) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------

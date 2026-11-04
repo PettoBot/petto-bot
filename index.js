@@ -2,7 +2,7 @@
 // The line below is the whole fix: without it a bot on Node 18 starts, but every random function of Petto Code fails.
 if (!globalThis.crypto) globalThis.crypto = require('node:crypto').webcrypto;
 
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Options, Partials } = require('discord.js');
 const config = require('./src/config');
 const { loadCommands } = require('./src/handlers/commandHandler');
 const { loadEvents } = require('./src/handlers/eventHandler');
@@ -97,6 +97,10 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
+  // The memory of the bot: only 100 messages are kept for each channel (the default is 200) and the ones older than an hour are swept every 10 minutes (only the
+  // deleted-message log and `!snipe` read them, and they ask for recent ones). The members, the users and the presences stay: the counters, the identity and the commands read them.
+  makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 100 }),
+  sweepers: { ...Options.DefaultSweeperSettings, messages: { interval: 600, lifetime: 3600 } },
   // The limit of requests per second is the gate of utils/sharedRestLimit.js (two lanes: the answers to people first, the background work paced and bounded). discord.js
   // keeps its own limit only as a net, higher than the gate, so it never holds an answer behind the background work.
   // A request that Discord would hold for more than 15 seconds (a channel renamed more than twice in ten minutes) fails at once instead of sitting in the queue for minutes.
