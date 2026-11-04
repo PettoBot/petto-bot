@@ -2487,7 +2487,9 @@ create table if not exists global_stats_hidden_users (
 );
 alter table global_stats_hidden_users enable row level security;
 
--- One row, `main`, rewritten every minute by the bot with what the public stats page shows.
+-- `main`, rewritten every minute by the bot with what the public stats page shows, and `history`, rewritten at most every 10 minutes with one
+-- entry for each of the last 120 days (GMT-5): { days: [{ day, servers, members, messages, reactions, voiceSeconds, estimated? }], updatedAt }.
+-- Nothing else stores the servers and members of a past day, so the bot keeps them inside the `history` row itself.
 create table if not exists global_stats (
   id         text primary key,
   data       jsonb not null default '{}'::jsonb,
