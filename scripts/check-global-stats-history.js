@@ -237,7 +237,9 @@ const run = (client, now) => job.refreshGlobalStats(client, now);
   assert.equal(row.days[0].day, '2026-04-03', 'the history starts on the first anchor of the records: nothing before');
   assert.equal(row.days.length, 216);
   assert.deepEqual(byDay(row, '2026-11-04'), { day: '2026-11-04', servers: 2, members: 57800, messages: 300, reactions: 30, voiceSeconds: 3000 }, 'today is the live total of the bot, not a seed, and not an estimate');
-  assert.ok(row.days.filter((entry) => entry.day < '2026-11-01').every((entry) => entry.estimated === true), 'every day before the exact counts of the team that is not a snapshot of the bot is an estimate, the records themselves too');
+  const spikeDays = new Set(['2026-04-04', '2026-04-05', '2026-04-06', '2026-07-05', '2026-07-06', '2026-07-07', '2026-08-15', '2026-08-16', '2026-08-17', '2026-09-24', '2026-09-25', '2026-09-26', '2026-10-15', '2026-10-16', '2026-10-17']);
+  assert.ok(row.days.filter((entry) => entry.day < '2026-11-01' && !spikeDays.has(entry.day)).every((entry) => entry.estimated === true), 'the stretches between the recorded dates are estimates');
+  assert.ok(row.days.filter((entry) => spikeDays.has(entry.day)).every((entry) => entry.estimated === undefined && entry.members > 0), 'the days of a spike are known dates and totals of the team: not estimates');
   assert.ok(row.days.filter((entry) => entry.day >= '2026-11-01').every((entry) => entry.estimated === undefined), 'from the first exact count the team kept (2026-11-01) to today the days are real counts: not estimated');
   assert.equal(members('2026-11-01'), 55700, 'an exact count of the team');
   assert.equal(members('2026-11-03'), 56430, 'another exact count of the team');
@@ -256,7 +258,7 @@ const run = (client, now) => job.refreshGlobalStats(client, now);
     for (const k of [0, 1, 2]) {
       const held = history.dayShift(day, k);
       assert.equal(members(held), total, `${held} holds the spike of ${day}`);
-      assert.equal(byDay(row, held).estimated, true, `${held} is marked as an estimate: it comes from a record, not from a count`);
+      assert.equal(byDay(row, held).estimated, undefined, `${held} is not an estimate: the team recorded its date and its total`);
     }
   }
   assert.deepEqual(['2026-07-04', '2026-07-08'].map(members), [20000, 20000], 'the baseline is there the day before a spike and the day after its 3 days');

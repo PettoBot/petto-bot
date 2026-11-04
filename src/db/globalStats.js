@@ -188,6 +188,7 @@ function seedMembers({ seed = membersSeed, today, live }) {
   if (!anchors.length || !Number.isFinite(live) || live <= 0) return new Map();
   const nodes = [...anchors, { day: today, members: live }];
   const out = new Map();
+  const known = new Set(); // the days of the spikes: dates and totals the team recorded, so they are not estimates
   for (let n = 0; n < nodes.length - 1; n += 1) {
     const [from, to] = [nodes[n], nodes[n + 1]];
     const length = (Date.parse(`${to.day}T00:00:00Z`) - Date.parse(`${from.day}T00:00:00Z`)) / 86_400_000;
@@ -197,9 +198,10 @@ function seedMembers({ seed = membersSeed, today, live }) {
   for (const spike of valid(seed?.spikes, 'members')) {
     for (let k = 0; k < length; k += 1) {
       const day = dayShift(spike.day, k);
-      if (day >= anchors[0].day && day < today) out.set(day, spike.members);
+      if (day >= anchors[0].day && day < today) { out.set(day, spike.members); known.add(day); }
     }
   }
+  out.known = known;
   return out;
 }
 
@@ -272,7 +274,8 @@ function buildHistory({ now = new Date(), previous, activity, todayTotals, live,
       entry.servers = estimates.get(day)?.servers ?? null;
       entry.members = seed.has(day) ? seed.get(day) : estimates.get(day).members;
       // From the first exact count the team kept (`recorded`) to today the days are real counts, not estimates: the line is drawn solid.
-      if (!(seed.has(day) && solidFrom && day >= solidFrom)) entry.estimated = true;
+      // The days of a spike (a date and a total the team recorded) are known too: only the stretches between them are estimates.
+      if (!(seed.has(day) && ((solidFrom && day >= solidFrom) || seed.known?.has(day)))) entry.estimated = true;
     }
     days.push(entry);
   }
