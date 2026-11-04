@@ -178,8 +178,9 @@ async function handleUserUpdate(oldUser, newUser, client) {
   }, RECENT_UPDATE_TTL_MS);
 
   for (const guild of client.guilds.cache.values()) {
-    const inGuild = guild.members.cache.has(newUser.id) || (await guild.members.fetch(newUser.id).then(() => true).catch(() => false));
-    if (!inGuild) continue;
+    // Only the servers where the member is already known. Asking Discord about every server (up to one request for each of them for a single new avatar, nearly all of
+    // them answered 404) filled the queue of requests of the bot and slowed everything else down.
+    if (!guild.members.cache.has(newUser.id)) continue;
     // A user is not in one server: each server reads it in its own language.
     const lang = await guildLanguage(guild.id);
 

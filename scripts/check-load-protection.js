@@ -185,6 +185,24 @@ const clock = (start = 1_000_000) => { let at = start; return { now: () => at, t
     assert.deepEqual(alerts, ['normal>degraded', 'degraded>critical'], 'the alert goes once for each change of level');
     loadGuard.force('normal');
     assert.equal(loadGuard.allowsJob('feedsJob'), true, 'everything resumes when the level goes down');
+
+    // The alert of the default path: only going to CRITICAL is a priority error (it pings the team); degraded and coming down are ordinary warnings.
+    {
+      const logger = require('../src/utils/logger');
+      const original = { error: logger.error, warn: logger.warn };
+      const seen = [];
+      logger.error = (text) => seen.push(['error', text]);
+      logger.warn = (text) => seen.push(['warn', text]);
+      loadGuard.setAlertSink(null);
+      try {
+        const at = Date.now();
+        loadGuard.announce({ from: 'normal', to: 'degraded', reason: 'test', since: at });
+        loadGuard.announce({ from: 'degraded', to: 'critical', reason: 'test', since: at });
+        loadGuard.announce({ from: 'critical', to: 'degraded', reason: 'test', since: at });
+        loadGuard.announce({ from: 'degraded', to: 'normal', reason: 'test', since: at });
+      } finally { logger.error = original.error; logger.warn = original.warn; }
+      assert.deepEqual(seen.map((entry) => entry[0]), ['warn', 'error', 'warn', 'warn'], 'degraded does not ping the team, critical does');
+    }
     loadGuard.reset();
   }
 

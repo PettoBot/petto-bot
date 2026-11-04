@@ -2284,6 +2284,42 @@ alter table bot_votes enable row level security;
 
 
 -- ---------------------------------------------------------------------------
+-- status_checks: one row for each check of a service (the bot, the website and dashboard, the database), every 2 minutes, from each
+-- place that checks it (source: 'bot' is this process, 'web' is the website). The public status page turns them into a daily history.
+-- slot is the start of the 2 minute window the check belongs to, so two checkers (or a repeated one) land on the same row. Kept about
+-- 100 days (the website prunes it). Only added, never changed.
+-- ---------------------------------------------------------------------------
+create table if not exists status_checks (
+  slot        timestamptz not null,
+  service     text not null,
+  source      text not null,
+  ok          boolean not null,
+  latency_ms  integer,
+  detail      text,
+  primary key (slot, service, source)
+);
+create index if not exists status_checks_service_slot_idx on status_checks (service, slot desc);
+alter table status_checks enable row level security;
+
+-- status_days: the state of each service on each UTC day, worked out from status_checks by the website (one small row per day and service,
+-- so the public page never reads the checks themselves). state: up, warn, down or nodata.
+create table if not exists status_days (
+  day           date not null,
+  service       text not null,
+  state         text not null,
+  checks        integer not null default 0,
+  failed        integer not null default 0,
+  unconfirmed   integer not null default 0,
+  down_minutes  integer not null default 0,
+  gap_minutes   integer not null default 0,
+  avg_ms        integer,
+  max_ms        integer,
+  updated_at    timestamptz not null default now(),
+  primary key (day, service)
+);
+alter table status_days enable row level security;
+
+-- ---------------------------------------------------------------------------
 -- bot_host: one singleton row with process-level stats (uptime, memory),
 -- overwritten on every heartbeat alongside bot_status.
 -- ---------------------------------------------------------------------------
