@@ -524,7 +524,7 @@ Every one checks the moderator's permission, Petto's permission and the role hie
 - `!channel topic|nsfw|files` (`!topic`, `!nsfw`, `!naughty`, `!revokefiles`, `!picperms @member`), and `!hide`/`!unhide` take an optional role or member. `!lock` is the channel lock (the `lockdown` command no longer takes that alias; it answers to `!raidmode` and `!raidstate`).
 - `!voice drag <users> [channel]` (`!drag`); each voice action asks for its own permission.
 
-**Temporary sanctions and auto-expiry:** `/ban temp` and `/mute temp` store an `expires_at`. `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry" — this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
+**Temporary sanctions and auto-expiry:** A mute or a ban with a duration (`/mod mute duration:3d`, `/mod ban duration:7d`, `!mute @member 3d`, `!ban temp`, `!tempmute`) stores an `expires_at`; `temp` is not a slash subcommand (`/ban temp`, `/mod tempmute`, `/mod tempban` and `/modtools mute temp` are prefix-only). `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry" — this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
 
 ### `!backup` / Petto Vault — requires Manage Server
 

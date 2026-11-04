@@ -35,6 +35,8 @@ module.exports = {
   aliases: ['b'],
   prefixSubcommandAliases: { recent: 'list', kill: 'cancel' },
   prefixDefaultSubcommand: 'user',
+  // A ban becomes temporary by giving a duration (`/ban user duration:3d`, `!ban @member 3d`): `temp` is not in the `/` menu, and `!ban temp` still works.
+  prefixOnlySubcommands: ['temp'],
   data: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Ban members from the server.')

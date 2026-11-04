@@ -689,7 +689,6 @@
  "mml": "modtools mute list",
  "mmr": "modtools mute remove",
  "mmru": "modtools mute remove-users",
- "mmt": "modtools mute temp",
  "mmu": "modtools mute user",
  "mmus": "modtools mute users",
  "mna": "me names",
