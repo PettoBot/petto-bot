@@ -13,7 +13,7 @@ async function lookOnce(client) {
   let checked = 0;
   for (const guild of client.guilds.cache.values()) {
     if (serverTagsAvailable(guild)) continue;
-    if (await recheckServerTag(guild, 'periodic look')) { checked += 1; await sleep(GAP_MS); }
+    if (await recheckServerTag(guild, 'periodic-look')) { checked += 1; await sleep(GAP_MS); }
   }
   if (checked) logger.info(`Server Tag look: ${checked} server(s) without the improvement checked.`); // i18n-ignore: a log line for the operator
 }

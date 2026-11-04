@@ -9,6 +9,6 @@ module.exports = {
   async execute(oldGuild, newGuild) {
     if (!oldGuild || !newGuild) return;
     if (serverTagsAvailable(oldGuild) === serverTagsAvailable(newGuild)) return;
-    await recheckServerTag(newGuild, 'its improvements changed');
+    await recheckServerTag(newGuild, 'improvements-changed');
   },
 };
