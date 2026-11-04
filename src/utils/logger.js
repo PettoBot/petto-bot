@@ -35,12 +35,16 @@ function contextLabel(context) {
 }
 
 function log(level, ...args) {
+  // `local`: the host console only. Not kept for the log channels, not sent to any of them (measurements that are for `!perf`, not for a channel).
+  const local = level.startsWith('local-');
+  if (local) level = level.slice(6);
   const stamp = new Date().toISOString();
   const method = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
   const { context: explicitContext, logArgs } = splitContext(args);
   const context = { ...(contextStorage.getStore() ?? {}), ...(explicitContext ?? {}) };
   const label = contextLabel(context);
   method(`[${stamp}] [${LEVELS[level]}]`, ...(label ? [label, ...logArgs] : logArgs));
+  if (local) return;
   if (earlyOpen && (level !== 'info' || EARLY_KEEP.test(logArgs.map((part) => (part instanceof Error ? part.message : String(part))).join(' ')))) {
     earlyLines.push({ level, logArgs, stamp, context });
     if (earlyLines.length > EARLY_LIMIT) earlyLines.shift();
@@ -54,6 +58,8 @@ module.exports = {
   info: (...args) => log('info', ...args),
   warn: (...args) => log('warn', ...args),
   error: (...args) => log('error', ...args),
+  /** Like `warn`, but only in the console of the host: nothing is sent to a log channel (each message sent is a request to Discord too). */
+  localWarn: (...args) => log('local-warn', ...args),
   setDiscordSink: (sink) => { discordSinks = typeof sink === 'function' ? [sink] : []; },
   // `replayEarly` is for the general log of the team: it is told what was kept from before it existed (the other sinks, of errors, are
   // attached at the very start and got those lines live).

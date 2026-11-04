@@ -11,7 +11,9 @@ const logger = require('../src/utils/logger');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const warnings = [];
 const realWarn = logger.warn;
-logger.warn = (...args) => { warnings.push(args.join(' ')); };
+logger.warn = (...args) => { warnings.push(`CHANNEL ${args.join(' ')}`); };
+const realLocalWarn = logger.localWarn;
+logger.localWarn = (...args) => { warnings.push(args.join(' ')); };
 
 (async () => {
   // Windows and route families.
@@ -55,6 +57,12 @@ logger.warn = (...args) => { warnings.push(args.join(' ')); };
   perf.recordResponse({ family: 'POST /channels/:id/messages', status: 403, dateHeader: new Date(Date.now() + 3_000).toUTCString() });
   perf.recordResponse({ family: 'POST /channels/:id/messages', status: 429 });
   perf.recordInvalidWarning(100);
+  assert.ok(warnings.some((line) => /invalid requests: 100/.test(line)), 'the count of Discord is kept in the console');
+  assert.ok(!warnings.some((line) => line.startsWith('CHANNEL')), 'slow commands, slow requests and counts of invalid requests never go to a channel of Discord');
+  perf.recordInvalidWarning(2500);
+  assert.equal(warnings.filter((line) => line.startsWith('CHANNEL') && /block/.test(line)).length, 1, 'near the block of the address the team is told');
+  perf.recordInvalidWarning(2600);
+  assert.equal(warnings.filter((line) => line.startsWith('CHANNEL')).length, 1, 'and only once every 30 minutes');
   const rest = perf.restStats();
   assert.equal(rest.rateLimits.length, 1);
   assert.equal(rest.invalid.totals[403], 1);
@@ -158,6 +166,7 @@ logger.warn = (...args) => { warnings.push(args.join(' ')); };
   loadGuard.reset();
 
   logger.warn = realWarn;
+  logger.localWarn = realLocalWarn;
   console.log('perf checks passed');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });
