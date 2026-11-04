@@ -149,7 +149,7 @@ module.exports = {
   // The load guard (utils/loadGuard.js): when the bot is under pressure it sheds what is not essential. Thresholds of the event loop lag (p99, ms),
   // of the longest wait of a request in our queue (ms) and of the queue depth; the level goes back down slowly, after `calmSeconds` of calm.
   guardEnabled: envBool('PETTO_GUARD_ENABLED', true),
-  guardLoopDegradedMs: envInt('PETTO_GUARD_LOOP_DEGRADED_MS', 400, 50, 60_000),
+  guardLoopDegradedMs: envInt('PETTO_GUARD_LOOP_DEGRADED_MS', 800, 50, 60_000),
   guardLoopCriticalMs: envInt('PETTO_GUARD_LOOP_CRITICAL_MS', 2_000, 100, 120_000),
   guardRestWaitDegradedMs: envInt('PETTO_GUARD_REST_WAIT_DEGRADED_MS', 5_000, 500, 600_000),
   guardRestWaitCriticalMs: envInt('PETTO_GUARD_REST_WAIT_CRITICAL_MS', 20_000, 1_000, 600_000),

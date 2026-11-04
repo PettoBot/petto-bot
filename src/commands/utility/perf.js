@@ -31,6 +31,20 @@ async function probeRest(client) {
 
 const probeLines = (results) => results.map((row) => `${pad(row.label, 16)} total ${ms(row.total)} · our queue ${ms(row.gate)} · network ${ms(row.net)}${row.retries ? ` · ${row.retries} retries` : ''}${row.error ? ` · ERROR ${row.error}` : ''}`);
 
+/** What the memory of discord.js holds: the number of items in each cache (the members and the presences are the big ones in a bot of this size). */
+function cacheLine(client) {
+  try {
+    let members = 0; let presences = 0; let channels = 0; let messages = 0; let roles = 0;
+    for (const guild of client.guilds.cache.values()) {
+      members += guild.members.cache.size;
+      presences += guild.presences?.cache?.size ?? 0;
+      roles += guild.roles.cache.size;
+      for (const channel of guild.channels.cache.values()) { channels += 1; messages += channel.messages?.cache?.size ?? 0; }
+    }
+    return `servers ${client.guilds.cache.size} · members ${members} · users ${client.users.cache.size} · presences ${presences} · channels ${channels} · roles ${roles} · messages ${messages}`;
+  } catch { return 'n/a'; }
+}
+
 function summary(client, probe) {
   const snapshot = perf.snapshot();
   const guard = loadGuard.stats();
@@ -47,6 +61,8 @@ function summary(client, probe) {
     `**Clock** host vs Discord ${rest.clockSkewMs == null ? 'n/a' : `${rest.clockSkewMs} ms (${rest.clockSamples} samples, accurate to about 1 s)`}`,
     `**Event loop** p99 ${ms(loop.minute.p99)} (1 min) · ${ms(loop.hour.p99)} (1 h) · max ${ms(loop.hour.max)} · p50 ${ms(loop.minute.p50)} · busy ${Math.round(loop.minute.elu * 100)}% · cpu ${Math.round(loop.minute.cpu)}%`,
     `**Memory** rss ${mb(loop.memory.rss)} of ${config.memoryLimitMb} MB · heap ${mb(loop.memory.heapUsed)} · up ${duration(loop.uptimeSeconds * 1000)}`,
+    `**Heap** used ${mb(loop.memory.heapUsed)} of ${mb(loop.memory.heapTotal)} · external ${mb(loop.memory.external)} · buffers ${mb(loop.memory.arrayBuffers)} · garbage collector (1 h) ${loop.gc.collections} runs, ${loop.gc.majors} full, ${ms(loop.gc.totalMs)} stopped in all, longest ${ms(loop.gc.longestMs)} (full ${ms(loop.gc.longestMajorMs)})`,
+    `**Caches** ${cacheLine(client)}`,
     `**Commands running** ${limiter.running}/${limiter.max} (${limiter.waiting} waiting, ${limiter.reserve} kept for staff) · dropped (1 h) ${JSON.stringify(limiter.lastHour)}`,
     `**Shed (1 h)** ${Object.keys(guard.shedLastHour).length ? Object.entries(guard.shedLastHour).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, count]) => `${key} ${count}`).join(', ') : 'nothing'}`,
     `**Watchdog** ${wd.running ? 'on' : 'off'}${wd.thread ? ' (thread on)' : ''} · restarts in the last hour ${wd.restartsLastHour}/${config.watchdogMaxRestartsPerHour}${wd.holding ? ' · HOLDING (no restarts left)' : ''}${wd.lastDecision?.reason ? ` · last decision ${wd.lastDecision.action}: ${wd.lastDecision.reason}` : ''}`,

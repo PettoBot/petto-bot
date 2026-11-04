@@ -144,13 +144,13 @@ function ensureBreaker() {
 
 /**
  * One alert for each change of level. Only CRITICAL is a priority error (it pings the team: the bot is about to restart or already sheds almost everything); going to DEGRADED
- * is a warning in the ordinary log, because the bot protects itself and keeps working, and coming back down is a warning too.
+ * stays in the console and in `!perf` (the bot protects itself and keeps working), and so does coming back down.
  */
 function announce({ from, to, reason, since }) {
   const text = `[load guard] The bot went from ${from} to ${to}: ${reason}. Since ${new Date(since).toISOString()}.`;
   if (alertSink) { try { alertSink({ from, to, reason, since, text }); } catch { /* the alert is best effort */ } return; }
   if (to === 'critical' && RANK[to] > RANK[from]) logger.error(text);
-  else logger.warn(text);
+  else logger.localWarn(text); // normal <-> degraded is the bot protecting itself: the console and `!perf` have it, no channel (each message is one more request)
 }
 
 /** Starts looking every 5 seconds. `reader` replaces the real metrics (for the checks). */
