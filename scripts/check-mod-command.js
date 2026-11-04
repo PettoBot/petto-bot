@@ -568,7 +568,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.ok(registeredMod.options.length <= 25, `/mod has ${registeredMod.options.length} subcommands (at most 25)`);
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
-  assert.ok(deployed.some((each) => each.name === 'mod' && each.options.length === 25), 'deploy-commands.js sends /mod to Discord');
+  assert.ok(deployed.some((each) => each.name === 'mod' && each.options.length === 23), 'deploy-commands.js sends /mod to Discord (without tempmute and tempban: they are prefix-only)');
   // `/ban`, `/kick` and `/warn` are still registered with their own permissions (each has subcommands that /mod does not wrap, and /mod is at 25).
   for (const name of ['ban', 'kick', 'warn', 'channel']) assert.ok(chat.some((each) => each.name === name), `/${name} is still registered`);
   // `/unban`, `/purge` and `/timeout` are replaced by `/mod unban`, `/mod purge` and `/mod tempmute` (same options, same permission): not registered, the prefix is unchanged.

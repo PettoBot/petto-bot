@@ -79,8 +79,11 @@ module.exports = {
     }
 
     // The command message itself must not count towards the scan.
-    await interaction.rawMessage?.delete().catch(() => {});
-    await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+    // Both requests go out together: deleting the command message does not have to wait for the acknowledgement (or the other way round).
+    await Promise.all([
+      interaction.rawMessage?.delete().catch(() => {}),
+      interaction.deferReply({ flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }),
+    ]);
 
     const scanned = [];
     let before = beforeId ?? undefined;

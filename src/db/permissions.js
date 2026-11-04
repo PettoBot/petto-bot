@@ -1,6 +1,19 @@
 const database = require('./database');
+const { createExpiringCache } = require('../utils/expiringCache');
 
-async function listGroups(guildId) {
+// Read for every command (the level of the command, the roles chosen for it), so they stay in memory for a short time and every write below forgets
+// them. Without this a command made two or three queries before it did anything; a change made from the dashboard is seen within 15 seconds.
+const READ_TTL_MS = 15_000;
+const groupsCache = createExpiringCache(READ_TTL_MS);
+const levelsCache = createExpiringCache(READ_TTL_MS);
+const forget = (guildId) => { if (guildId != null) { groupsCache.delete(String(guildId)); levelsCache.delete(String(guildId)); } };
+const forgetAll = () => { groupsCache.clear(); levelsCache.clear(); };
+
+function listGroups(guildId) {
+  return groupsCache.get(String(guildId), () => loadGroups(guildId));
+}
+
+async function loadGroups(guildId) {
   const { data: groups, error } = await database.from('permission_groups').select('*').eq('guild_id', guildId).order('id');
   if (error) throw error;
   if (!groups.length) return [];
@@ -15,6 +28,9 @@ async function listGroups(guildId) {
 }
 
 async function getOrCreateBaseGroup(guildId) {
+  const cachedGroups = await listGroups(guildId).catch(() => null);
+  const cachedBase = cachedGroups?.find((group) => group.is_base);
+  if (cachedBase) { const { members: _members, ...row } = cachedBase; return row; }
   const { data: existing, error } = await database.from('permission_groups').select('*').eq('guild_id', guildId).eq('is_base', true).maybeSingle();
   if (error) throw error;
   if (existing) return existing;
@@ -25,24 +41,27 @@ async function getOrCreateBaseGroup(guildId) {
     .select('*')
     .single();
   if (insErr) throw insErr;
+  forget(guildId);
   return created;
 }
 
+/** The level a command asks for: every level of the server is read in one query and kept for a moment (a command asks for two or three names). */
 async function getCommandLevel(guildId, commandName) {
-  const { data, error } = await database
-    .from('command_permission_levels')
-    .select('required_level')
-    .eq('guild_id', guildId)
-    .eq('command_name', commandName)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.required_level ?? 0;
+  const levels = await levelsCache.get(String(guildId), async () => {
+    const rows = await listCommandLevelsFresh(guildId);
+    return new Map(rows.map((row) => [row.command_name, row.required_level]));
+  });
+  return levels.get(commandName) ?? 0;
 }
 
-async function listCommandLevels(guildId) {
+async function listCommandLevelsFresh(guildId) {
   const { data, error } = await database.from('command_permission_levels').select('*').eq('guild_id', guildId);
   if (error) throw error;
   return data;
+}
+
+async function listCommandLevels(guildId) {
+  return listCommandLevelsFresh(guildId);
 }
 
 async function setCommandLevel(guildId, commandName, requiredLevel) {
@@ -52,6 +71,7 @@ async function setCommandLevel(guildId, commandName, requiredLevel) {
     .select('*')
     .single();
   if (error) throw error;
+  forget(guildId);
   return data;
 }
 
@@ -62,6 +82,7 @@ async function createGroup(guildId, name, level = 0) {
     .select('*')
     .single();
   if (error) throw error;
+  forget(guildId);
   return data;
 }
 
@@ -74,6 +95,7 @@ async function deleteGroup(guildId, groupId) {
     .eq('is_base', false)
     .select('id');
   if (error) throw error;
+  forget(guildId);
   return data.length > 0;
 }
 
@@ -86,6 +108,7 @@ async function updateGroupLevel(guildId, groupId, level) {
     .select('*')
     .single();
   if (error) throw error;
+  forget(guildId);
   return data;
 }
 
@@ -96,6 +119,7 @@ async function addGroupMember(groupId, subjectType, subjectId) {
     .select('*')
     .single();
   if (error) throw error;
+  forgetAll(); // a member row names its group, not its server
   return data;
 }
 
@@ -108,6 +132,7 @@ async function removeGroupMember(groupId, subjectType, subjectId) {
     .eq('subject_id', subjectId)
     .select('id');
   if (error) throw error;
+  forgetAll();
   return data.length > 0;
 }
 
@@ -165,4 +190,5 @@ module.exports = {
   recordAudit,
   getEffectiveLevel,
   hasCommandPermission,
+  forget,
 };

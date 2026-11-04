@@ -1,8 +1,9 @@
 // Comandos de informação.
 module.exports = {
   'info.ping.pinging': 'Medindo o ping...',
-  'info.ping.guild': '**Ping do servidor:** `{ms}`',
-  'info.ping.api': '**Ping da API:** `{ms}`',
+  'info.ping.guild': '**Envio de uma mensagem (REST, com a fila):** `{ms}`',
+  'info.ping.api': '**Batimento do gateway:** `{ms}`',
+  'info.ping.probe': '**Rede até o Discord (teste REST):** `{ms}`',
   'info.ping.unknown': 'N/D',
   'info.ping.links': '[Página de status]({statusUrl}) · [Servidor de suporte]({supportUrl})',
   'info.ping.footer': '-# Shard {shard}/{shardCount} • Servidores: {guilds}',

@@ -524,7 +524,7 @@ Every one checks the moderator's permission, Petto's permission and the role hie
 - `!channel topic|nsfw|files` (`!topic`, `!nsfw`, `!naughty`, `!revokefiles`, `!picperms @member`), and `!hide`/`!unhide` take an optional role or member. `!lock` is the channel lock (the `lockdown` command no longer takes that alias; it answers to `!raidmode` and `!raidstate`).
 - `!voice drag <users> [channel]` (`!drag`); each voice action asks for its own permission.
 
-**Temporary sanctions and auto-expiry:** `/ban temp` and `/mute temp` store an `expires_at`. `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry" — this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
+**Temporary sanctions and auto-expiry:** A mute or a ban with a duration (`/mod mute duration:3d`, `/mod ban duration:7d`, `!mute @member 3d`, `!ban temp`, `!tempmute`) stores an `expires_at`; `temp` is not a slash subcommand (`/ban temp`, `/mod tempmute`, `/mod tempban` and `/modtools mute temp` are prefix-only). `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry": this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
 
 ### `!backup` / Petto Vault — requires Manage Server
 
@@ -1045,3 +1045,29 @@ Prefix only (`!forum`, alias `!forums`; `!forumconfig` shows the module card). O
 **Temporary mutes and bans without the `temp` word** (`utils/duration.js` `splitLeadingDuration`, `utils/optionOverrides.js`, `commands/moderation/mute.js` and `ban.js`): `mute user` and `ban user` have an optional `duration` option (before `reason`, and after `delete_message_days` in the ban). The prefix reader fills it with the first word after the member when it looks like a time (it already does so for any non-last optional string called `duration`), a slash command has it as an option, and the handler also looks at the first word of the reason. A real duration is a word with a unit (`3d`, `1h30m`); the handler hands the work to the temporary command with the duration and the reason it worked out (`withOptionValues`). A plain number, or any word that is not a time, goes back to the reason. A hard ban never takes it. Checked by `scripts/check-timed-sanctions.js` and the prefix cases of `scripts/check-mod-command.js`.
 
 **The direct message of a join** (`events/guildMemberAddDmJoin.js`): sent `JOIN_DM_DELAY_MS` after the join (5000 by default, 0 to 60000), tried again at 30 seconds, 2 minutes and 10 minutes when Discord refuses it with 50278 (no server in common yet) while the member is still in the server and the message is still on (at most 500 members waiting for a retry at once); closed DMs (50007) are not tried again. Neither refusal is logged as an error (`sendMemberEvent` returns `{ failed: code }` for a DM). Checked by `scripts/check-join-dm.js`.
+
+**The bump reminder timing** (`utils/bumpHandler.js`, `jobs/bumpReminderJob.js`, `db/bumpReminders.js`): the reminder is sent by an exact timer for each server (`armReminder`, set when a bump is seen and by `armUpcomingReminders` when the bot starts), which reads the row again when it fires (`sendReminderIfDue`, one send at a time for each server). The job that looks at the table every 60 seconds (and once at the start) is the safety net. Checked by `scripts/check-bump-timing.js`.
+
+
+## Load protection
+
+Files: `utils/restGate.js` (the two lanes to Discord), `utils/sharedRestLimit.js` (the gate on `client.rest`, measurements), `utils/rateLimits.js` (prefix buckets and the cap of commands running), `utils/loadGuard.js` (the levels and what each sheds), `utils/watchdog.js`, `utils/processGuards.js`, `utils/perf.js` (measurements), `commands/utility/perf.js` (`!perf`). Checks: `scripts/check-load-protection.js`, `scripts/check-perf.js`; `scripts/bench-rest-limit.js` times the old and the new queue with a fake network.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PETTO_REST_RPS` | 8 | Background requests a second to Discord (the host closes an app over 300 in 30 seconds) |
+| `PETTO_REST_MAX_QUEUE` / `PETTO_REST_MAX_WAIT_SECONDS` / `PETTO_REST_MAX_IN_FLIGHT` | 400 / 30 / 40 | Bounds of the background lane: waiting, longest wait before it fails, out at once |
+| `PETTO_CMD_USER_BURST` / `PETTO_CMD_USER_REFILL_SECONDS` | 5 / 2 | Prefix commands for each person |
+| `PETTO_CMD_GUILD_BURST` / `PETTO_CMD_GUILD_REFILL_PER_SECOND` | 20 / 2 | Prefix commands for each server |
+| `PETTO_CMD_CONCURRENCY` / `PETTO_CMD_QUEUE` / `PETTO_CMD_QUEUE_WAIT_SECONDS` / `PETTO_CMD_STAFF_RESERVE` | 8 / 50 / 10 / 2 | Commands running at once, waiting, longest wait, places kept for staff |
+| `PETTO_CMD_LIMITS` | on in the bot | `off` turns the limits off |
+| `PETTO_GUARD_ENABLED` | true | The circuit breaker |
+| `PETTO_GUARD_LOOP_DEGRADED_MS` / `_CRITICAL_MS` | 400 / 2000 | Event loop p99 |
+| `PETTO_GUARD_REST_WAIT_DEGRADED_MS` / `_CRITICAL_MS` | 5000 / 20000 | Longest wait of a background request |
+| `PETTO_GUARD_REST_QUEUE_DEGRADED` / `_CRITICAL` | 60 / 250 | Requests waiting |
+| `PETTO_GUARD_CALM_SECONDS` | 90 | Calm needed to go down one level |
+| `BOT_MEMORY_LIMIT_MB` | 1024 | Memory limit of the host |
+| `PETTO_WATCHDOG_ENABLED` / `_CRITICAL_MINUTES` / `_BLOCKED_SECONDS` / `_RSS_PERCENT` / `_MAX_RESTARTS_PER_HOUR` | true / 3 / 60 / 90 / 3 | When the bot exits by itself, and never more than that many times an hour |
+
+Levels: normal runs everything; degraded pauses the jobs and listeners of `loadGuard` (`feedsJob`, `guildSnapshotJob`, `counterJob`, `bumpReminderJob`, the logs of low value...) and halves the prefix buckets; critical keeps interactions, staff commands, moderation, tickets, verification, `expireSanctions`, `lockdownJob`, `joinGateJob` and `antiScamJob`. A temporary variant (`/mod tempmute`, `/ban temp`...) is not a slash command: see "Temporary sanctions".
+**The Server Tag that is lost** (`utils/identity/service.js` `serverTagsAvailable` and `withServerTagState`, `utils/identity/serverTagWatch.js`, `events/guildUpdateServerTag.js`, `jobs/serverTagCheckJob.js`): a server has the `GUILD_TAGS` feature while it has the improvement that allows a Server Tag. Without it, its own-tag rules (`is_guild_id` with its id) are marked `tagUnavailable`, `matchGuildTag` returns false for them and the engine takes away the roles it gave through them. A `guildUpdate` that adds or removes the feature runs `syncGuild(guild, { source: 'guildtag' })` for the servers that have such a rule, and the job does the same once 90 seconds after the start and every 6 hours for the servers that lack the feature. Checked by `scripts/check-server-tag-lost.js`.

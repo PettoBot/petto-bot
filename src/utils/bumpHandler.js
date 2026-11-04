@@ -1,4 +1,4 @@
-const { upsertConfig, getConfigByChannel, getDueReminders } = require('../db/bumpReminders');
+const { upsertConfig, getConfig, getConfigByChannel, getDueReminders, getUpcomingReminders } = require('../db/bumpReminders');
 const { sendAs } = require('./senderIdentity');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
@@ -44,6 +44,7 @@ async function handleBumpMessage(message) {
   const bumper = message.interaction?.user ?? null;
   const nextBumpAt = new Date(Date.now() + BUMP_COOLDOWN_MS);
   await upsertConfig(message.guild.id, { next_bump_at: nextBumpAt.toISOString(), last_bumper_id: bumper?.id ?? null });
+  armReminder(message.client, message.guild.id, nextBumpAt.getTime()); // the reminder goes out at the minute it is due, not at the next look of the job
 
   const customThanks = await templatePayload(message.guild.id, config.thankyou_embed_template, {
     guild: message.guild, channel: message.channel, user: bumper ?? undefined, bump: { nextUnix: Math.floor(nextBumpAt.getTime() / 1000) },
@@ -68,40 +69,81 @@ async function handleBumpMessage(message) {
   }
 }
 
-/** Polled by the bump reminder job — sends the reminder for every guild whose cooldown has elapsed. */
+// The reminder goes out at the moment the cooldown ends: every server with a bump waiting has one exact timer (armed when the bump is seen, and for all of them when the bot starts).
+// The job that looks at the table every minute is only the safety net (a restart in the middle, a timer that was lost), so a reminder is never a minute late.
+const timers = new Map(); // guild id -> the timer of its next reminder
+const sending = new Set(); // guild ids whose reminder is being sent right now: a timer and the job never send the same one twice
+const EARLY_MS = 1500; // a timer can fire a hair early: a reminder this close to its time is due
+
+/** Arms (or re-arms) the exact timer of a server's reminder. The timer reads the row again when it fires, so what changed in between (a new bump, a reset, the channel unset) wins. */
+function armReminder(client, guildId, atMs) {
+  clearTimeout(timers.get(guildId));
+  const delay = Math.max(0, Number(atMs) - Date.now());
+  if (!Number.isFinite(delay) || delay > BUMP_COOLDOWN_MS + 60_000) { timers.delete(guildId); return; } // far away or invalid: the job covers it
+  const timer = setTimeout(() => {
+    timers.delete(guildId);
+    sendReminderIfDue(client, guildId).catch((err) => logger.error(`Bump reminder failed for guild ${guildId}:`, err));
+  }, delay);
+  timer.unref?.();
+  timers.set(guildId, timer);
+}
+
+/** Arms the timer of every reminder that is waiting. Called when the bot starts. */
+async function armUpcomingReminders(client) {
+  const rows = await getUpcomingReminders();
+  for (const row of rows) armReminder(client, row.guild_id, Date.parse(row.next_bump_at));
+  return rows.length;
+}
+
+/** Sends the reminder of a server if it is due now (looking at the row as it is, not as a list read earlier). */
+async function sendReminderIfDue(client, guildId) {
+  if (sending.has(guildId)) return;
+  sending.add(guildId);
+  try {
+    const reminder = await getConfig(guildId);
+    if (!reminder?.channel_id || !reminder.next_bump_at || Date.parse(reminder.next_bump_at) > Date.now() + EARLY_MS) return;
+    await deliverReminder(client, reminder);
+  } finally {
+    sending.delete(guildId);
+  }
+}
+
+/** The safety net, run by the bump reminder job: sends the reminder of every server whose cooldown has elapsed. */
 async function checkBumpReminders(client) {
   const due = await getDueReminders();
+  await forEachWithConcurrency(due, (reminder) => sendReminderIfDue(client, reminder.guild_id).catch((err) => logger.error(`Bump reminder check failed for guild ${reminder.guild_id}:`, err)), config.jobConcurrency);
+}
 
-  await forEachWithConcurrency(due, async (reminder) => {
-    try {
-      const guild = await client.guilds.fetch(reminder.guild_id).catch(() => null);
-      const channel = guild ? await guild.channels.fetch(reminder.channel_id).catch(() => null) : null;
-      if (!guild || !channel) return;
+/** The reminder itself: the text or the saved design, the ping, the unlock of the channel, and the bump marked as done. */
+async function deliverReminder(client, reminder) {
+  try {
+    const guild = await client.guilds.fetch(reminder.guild_id).catch(() => null);
+    const channel = guild ? await guild.channels.fetch(reminder.channel_id).catch(() => null) : null;
+    if (!guild || !channel) return;
 
-      const bumper = reminder.last_bumper_id ? await client.users.fetch(reminder.last_bumper_id).catch(() => null) : null;
-      // A job runs outside of any server's language: each server's is looked up.
-      const lang = await guildLanguage(guild.id);
-      const { text: cleanedText, emojis: reactReplies } = extractReactReplies(localizeBumpDefault('reminder', reminder.message, lang));
-      const text = await applyBumpVars(cleanedText, { guild, channel, bumper, nextBumpAt: null });
+    const bumper = reminder.last_bumper_id ? await client.users.fetch(reminder.last_bumper_id).catch(() => null) : null;
+    // A job runs outside of any server's language: each server's is looked up.
+    const lang = await guildLanguage(guild.id);
+    const { text: cleanedText, emojis: reactReplies } = extractReactReplies(localizeBumpDefault('reminder', reminder.message, lang));
+    const text = await applyBumpVars(cleanedText, { guild, channel, bumper, nextBumpAt: null });
 
-      const customReminder = await templatePayload(guild.id, reminder.reminder_embed_template, { guild, channel, user: bumper ?? undefined, bump: {} });
-      if (customReminder) {
-        await sendAs(channel, 'bump', { ...customReminder, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } }).catch((err) => logger.error('Bump reminder send failed:', err));
-      } else if (text) {
-        const sent = await sendAs(channel, 'bump', { content: text, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
-          .catch((err) => { logger.error('Bump reminder send failed:', err); return null; });
-        if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
-      }
-
-      if (reminder.autolock) {
-        await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null }).catch(() => {});
-      }
-
-      await upsertConfig(reminder.guild_id, { next_bump_at: null });
-    } catch (err) {
-      logger.error(`Bump reminder check failed for guild ${reminder.guild_id}:`, err);
+    const customReminder = await templatePayload(guild.id, reminder.reminder_embed_template, { guild, channel, user: bumper ?? undefined, bump: {} });
+    if (customReminder) {
+      await sendAs(channel, 'bump', { ...customReminder, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } }).catch((err) => logger.error('Bump reminder send failed:', err));
+    } else if (text) {
+      const sent = await sendAs(channel, 'bump', { content: text, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
+        .catch((err) => { logger.error('Bump reminder send failed:', err); return null; });
+      if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
     }
-  }, config.jobConcurrency);
+
+    if (reminder.autolock) {
+      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null }).catch(() => {});
+    }
+
+    await upsertConfig(reminder.guild_id, { next_bump_at: null });
+  } catch (err) {
+    logger.error(`Bump reminder check failed for guild ${reminder.guild_id}:`, err);
+  }
 }
 
 /** Deletes non-bot chatter in a bump channel that has autoclean on — keeps it a pure bump-command channel. */
@@ -112,4 +154,4 @@ async function handleBumpAutoclean(message) {
   await message.delete().catch(() => {});
 }
 
-module.exports = { handleBumpMessage, checkBumpReminders, handleBumpAutoclean };
+module.exports = { handleBumpMessage, checkBumpReminders, handleBumpAutoclean, armReminder, armUpcomingReminders, sendReminderIfDue };

@@ -406,10 +406,10 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
     assert.ok(textLength(card) <= 4000, `the ${lang} ping card fits`);
   }
   const ping = (lang) => JSON.stringify(json(buildPingCard({ guildMs: 254, apiMs: 117.8, shard: 1, shardCount: 2, guilds: 15535, lang })));
-  assert.match(ping('es'), /\*\*Ping del servidor:\*\* `254ms`/);
+  assert.match(ping('es'), /\*\*Envío de un mensaje \(REST, con la cola\):\*\* `254ms`/);
   assert.match(ping('es'), /Servidor de soporte/);
   assert.match(ping('es'), /Shard 1\/2 • Servidores: 15,535(?! • Miembros)/);
-  assert.match(ping('pt-BR'), /\*\*Ping da API:\*\* `118ms`/);
+  assert.match(ping('pt-BR'), /\*\*Batimento do gateway:\*\* `118ms`/);
   assert.match(ping('pt-BR'), /Shard 1\/2 • Servidores: 15\.535(?! • Membros)/);
   assert.match(ping('pt-BR'), /https:\/\/petto\.sbs\/status/, 'links are not translated');
 

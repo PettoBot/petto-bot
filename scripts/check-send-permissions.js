@@ -25,13 +25,15 @@ global.fetch = async () => { throw new Error('no network in the checks'); };
 
 // ---------------------------------------------------------------- the rules of the server, in memory (the tests change them)
 const rules = { restricted: {}, levels: {}, groups: [], disabled: new Set() };
+const forgetPermissions = () => require(path.join(root, 'src/db/permissions')).forget(GUILD);
 // The database answers from `rules` for the tables of the permission levels (the real functions of src/db/permissions.js run on top of it), and nothing for the rest.
 function chain(table) {
   const state = { single: false, filters: {} };
   const answer = () => {
     if (table === 'command_permission_levels') {
       const level = rules.levels[state.filters.command_name];
-      return state.single ? { data: level === undefined ? null : { required_level: level }, error: null } : { data: [], error: null };
+      // One query for every level of the server (the real function keeps them for a moment, the tests forget them when they change the rules).
+      return state.single ? { data: level === undefined ? null : { required_level: level }, error: null } : { data: Object.entries(rules.levels).map(([command_name, required_level]) => ({ guild_id: GUILD, command_name, required_level })), error: null };
     }
     if (table === 'permission_groups') return { data: rules.groups.map(({ members, ...group }) => ({ guild_id: GUILD, ...group })), error: null };
     if (table === 'permission_group_members') return { data: rules.groups.flatMap((group) => group.members.map((member) => ({ group_id: group.id, ...member }))), error: null };
@@ -343,7 +345,7 @@ async function main() {
 
   // ---------------------------------------------------------- 4. the rules of the server only add limits
   // A permission level that the plain member reaches, a `!moderation` role for send, and a restriction to a role they have: none opens `send`.
-  rules.levels = { send: 10, message: 10 };
+  rules.levels = { send: 10, message: 10 }; forgetPermissions();
   rules.groups = [{ id: 1, name: 'everyone', level: 100, is_base: true, members: [] }, { id: 2, name: 'fans', level: 100, is_base: false, members: [{ subject_type: 'user', subject_id: ids.plain }, { subject_type: 'role', subject_id: GUILD }] }];
   rules.restricted = { send: [GUILD], message: [GUILD] };
   const realRole = moderationPermissions.hasConfiguredRole;
@@ -357,11 +359,11 @@ async function main() {
   }
   moderationPermissions.hasConfiguredRole = realRole;
   // A level that the member does not reach, or a restriction to a role they lack, closes `send` for staff too (not for administrators).
-  rules.groups = []; rules.levels = { send: 50 }; rules.restricted = {};
+  rules.groups = []; rules.levels = { send: 50 }; rules.restricted = {}; forgetPermissions();
   assert.deepEqual(posted(await ROUTES['!send']({ as: ids.staff })), [], 'a permission level the staff member does not reach closes !send');
   assert.deepEqual(posted(await ROUTES['/message send']({ as: ids.staff })), [], 'and /message send');
   assert.equal(marked(await ROUTES['!send']({ as: ids.admin })).length, 1, 'administrators always pass a level');
-  rules.levels = {}; rules.restricted = { send: [ROLES.mods] };
+  rules.levels = {}; rules.restricted = { send: [ROLES.mods] }; forgetPermissions();
   assert.deepEqual(posted(await ROUTES['!message send']({ as: ids.staff })), [], '!restrictcommand send @Mods closes !message send for staff without that role');
   assert.deepEqual(posted(await ROUTES['/message send']({ as: ids.staff })), [], 'and /message send');
   rules.restricted = { message: [ROLES.mods] };

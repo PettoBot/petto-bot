@@ -31,6 +31,12 @@ function envList(name) {
   return [...new Set((process.env[name] || '').split(',').map((id) => id.trim()).filter((id) => /^\d{15,25}$/.test(id)))];
 }
 
+function envNumber(name, fallback, minimum, maximum) {
+  const value = Number(process.env[name]);
+  if (process.env[name] == null || process.env[name] === '' || !Number.isFinite(value)) return fallback;
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
 function envInt(name, fallback, minimum, maximum) {
   const value = Number(process.env[name]);
   if (!Number.isFinite(value)) return fallback;
@@ -124,6 +130,40 @@ module.exports = {
   // Requests per second the bot may make to Discord, all of them (commands, logs, webhooks, panels). Discloud shuts an app down when it
   // passes 300 requests in 30 seconds (10 a second), so the default keeps a margin: 8 a second is at most 240 in 30 seconds.
   restRequestsPerSecond: envInt('PETTO_REST_RPS', 8, 1, 45),
+  // The queue in front of Discord (utils/restGate.js): how many background requests may wait, how long one may wait before it fails instead of sitting
+  // in the line, and how many may be in flight at once. The answers to commands never wait for the background lane.
+  restMaxQueue: envInt('PETTO_REST_MAX_QUEUE', 400, 10, 10_000),
+  restMaxWaitSeconds: envInt('PETTO_REST_MAX_WAIT_SECONDS', 30, 2, 600),
+  restMaxInFlight: envInt('PETTO_REST_MAX_IN_FLIGHT', 40, 4, 500),
+  // Rate limits of the prefix commands (utils/rateLimits.js). A member burst: this many commands at once, then one more every `refill` seconds.
+  // Staff (Manage Messages, Moderate Members, Ban Members, Administrator) get three times the limits and a reserved share of the commands running at once;
+  // the owner and PETTO_DEVELOPER_IDS are never limited.
+  cmdUserBurst: envInt('PETTO_CMD_USER_BURST', 5, 1, 100),
+  cmdUserRefillSeconds: envNumber('PETTO_CMD_USER_REFILL_SECONDS', 2, 0.1, 600),
+  cmdGuildBurst: envInt('PETTO_CMD_GUILD_BURST', 20, 1, 1_000),
+  cmdGuildRefillPerSecond: envNumber('PETTO_CMD_GUILD_REFILL_PER_SECOND', 2, 0.05, 100),
+  cmdConcurrency: envInt('PETTO_CMD_CONCURRENCY', 8, 1, 200),
+  cmdQueue: envInt('PETTO_CMD_QUEUE', 50, 0, 1_000),
+  cmdStaffReserve: envInt('PETTO_CMD_STAFF_RESERVE', 2, 0, 50),
+  cmdQueueWaitSeconds: envNumber('PETTO_CMD_QUEUE_WAIT_SECONDS', 10, 1, 120),
+  // The load guard (utils/loadGuard.js): when the bot is under pressure it sheds what is not essential. Thresholds of the event loop lag (p99, ms),
+  // of the longest wait of a request in our queue (ms) and of the queue depth; the level goes back down slowly, after `calmSeconds` of calm.
+  guardEnabled: envBool('PETTO_GUARD_ENABLED', true),
+  guardLoopDegradedMs: envInt('PETTO_GUARD_LOOP_DEGRADED_MS', 400, 50, 60_000),
+  guardLoopCriticalMs: envInt('PETTO_GUARD_LOOP_CRITICAL_MS', 2_000, 100, 120_000),
+  guardRestWaitDegradedMs: envInt('PETTO_GUARD_REST_WAIT_DEGRADED_MS', 5_000, 500, 600_000),
+  guardRestWaitCriticalMs: envInt('PETTO_GUARD_REST_WAIT_CRITICAL_MS', 20_000, 1_000, 600_000),
+  guardRestQueueDegraded: envInt('PETTO_GUARD_REST_QUEUE_DEGRADED', 60, 5, 10_000),
+  guardRestQueueCritical: envInt('PETTO_GUARD_REST_QUEUE_CRITICAL', 250, 10, 10_000),
+  guardCalmSeconds: envInt('PETTO_GUARD_CALM_SECONDS', 90, 5, 3_600),
+  // The watchdog: the last resort. Memory limit of the host in MB (BOT_MEMORY_LIMIT_MB); the process exits cleanly (the host starts it again) when it
+  // is critical for `criticalMinutes`, the loop is blocked for `blockedSeconds`, or rss passes `rssPercent` of the limit after the caches were dropped.
+  memoryLimitMb: envInt('BOT_MEMORY_LIMIT_MB', 1024, 128, 65_536),
+  watchdogEnabled: envBool('PETTO_WATCHDOG_ENABLED', true),
+  watchdogCriticalMinutes: envNumber('PETTO_WATCHDOG_CRITICAL_MINUTES', 3, 0.5, 120),
+  watchdogBlockedSeconds: envInt('PETTO_WATCHDOG_BLOCKED_SECONDS', 60, 5, 3_600),
+  watchdogRssPercent: envInt('PETTO_WATCHDOG_RSS_PERCENT', 90, 50, 99),
+  watchdogMaxRestartsPerHour: envInt('PETTO_WATCHDOG_MAX_RESTARTS_PER_HOUR', 3, 1, 20),
   // Sticky messages go back to the bottom of the channel this many milliseconds after the last message (a burst keeps pushing it back, but never
   // past STICKY_MAX_WAIT_MS after the first message of the burst, so a long conversation still gets its sticky). Less is faster, more is fewer requests.
   stickyQuietMs: envInt('STICKY_QUIET_MS', 350, 0, 10_000),

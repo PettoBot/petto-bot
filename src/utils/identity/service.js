@@ -1,6 +1,7 @@
 // Runs the Vanity and Server Tag rules for members: builds what is known about a member from Discord, loads the rules of the
 // server and hands both to the engine. Every change to one member goes through a lock of its own, so events that arrive
 // together (an update and a presence change) are handled one after the other.
+const { GuildFeature } = require('discord.js');
 const { evaluate } = require('./engine');
 const db = require('../../db/identity');
 const { emitAction, emitNotification } = require('./emit');
@@ -99,13 +100,36 @@ async function loadRules(guildId, source) {
   return { vanity, guildtag };
 }
 
+/**
+ * Whether the server can have a Server Tag right now: Discord gives it the GUILD_TAGS feature while it has the improvement (the boosts) that allows it, and takes it
+ * away when it loses it. When the features are not known the answer is yes: nothing is taken away on a guess.
+ */
+function serverTagsAvailable(guild) {
+  return !Array.isArray(guild?.features) || guild.features.includes(GuildFeature.GuildTags);
+}
+
+/** A rule that asks whether the member shows THIS server's tag (`is_guild_id` with the id of the server). */
+function ownTagRule(rule, guildId) {
+  return rule?.condition === 'is_guild_id' && String(rule.value ?? '').trim() === String(guildId);
+}
+
+/**
+ * A server that lost its Server Tag has nobody showing it any more, but no event comes for each member (Discord can keep what each member chose), so the roles given for
+ * showing the tag would stay for good. While the server cannot have the tag, its own-tag rules are marked: they match nobody, and the engine takes those roles away (only
+ * the ones it gave itself, as always) and gives them back when the improvement returns.
+ */
+function withServerTagState(rules, guild) {
+  if (!rules?.guildtag?.length || serverTagsAvailable(guild)) return rules;
+  return { ...rules, guildtag: rules.guildtag.map((rule) => (ownTagRule(rule, guild.id) ? { ...rule, tagUnavailable: true } : rule)) };
+}
+
 /** Evaluates one member for the chosen source (both by default). Errors are logged, never thrown, so an event handler cannot break on it. */
 async function evaluateMember(member, { source = null, rules = null, primary, presenceComplete = false } = {}) {
   if (!member || member.user?.bot) return [];
   const guildId = member.guild.id;
   try {
     return await withMemberLock(guildId, member.id, async () => {
-      const loaded = rules ?? await loadRules(guildId, source);
+      const loaded = withServerTagState(rules ?? await loadRules(guildId, source), member.guild);
       const active = (loaded.vanity?.length ?? 0) + (loaded.guildtag?.length ?? 0);
       if (!active && !(await db.hasActiveRules(guildId))) return [];
       // A change of a user reaches every server they share with Petto, so each server's language is looked up here.
@@ -125,4 +149,4 @@ async function evaluateMember(member, { source = null, rules = null, primary, pr
   }
 }
 
-module.exports = { forgetSettings, settingsOf, evaluateMember, memberIdentity, primaryGuildOf, customStatusOf, loadRules, withMemberLock, roleClient };
+module.exports = { serverTagsAvailable, ownTagRule, withServerTagState, forgetSettings, settingsOf, evaluateMember, memberIdentity, primaryGuildOf, customStatusOf, loadRules, withMemberLock, roleClient };

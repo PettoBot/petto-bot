@@ -22,6 +22,8 @@ const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout har
 module.exports = {
   aliases: ['m'],
   prefixDefaultSubcommand: 'user',
+  // A mute becomes temporary by giving a duration (`/mod mute duration:3d`, `!mute @member 3d`): `temp` is not in the `/` menu, and `!mute temp` still works.
+  prefixOnlySubcommands: ['temp'],
   data: new SlashCommandBuilder()
     .setName('mute')
     .setDescription('Stop a member from talking, with an optional length and reason.')

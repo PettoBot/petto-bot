@@ -62,6 +62,9 @@ const SUBCOMMAND_WORDS = Object.fromEntries(Object.entries(WORDS).flatMap(([name
 module.exports = {
   // Also registered as a slash command; the prefix works too.
   registerSlash: true,
+  // `/mod tempmute` and `/mod tempban` are not in the `/` menu: a mute or a ban becomes temporary by giving the `duration` of `/mod mute` and `/mod ban`.
+  // The words keep working with the prefix (`!mod tempmute @x 3d`, `!tempmute`, `!tban`).
+  prefixOnlySubcommands: ['tempmute', 'tempban'],
   // `!mod` alone lists the subcommands instead of saying something is wrong.
   listSubcommandsWhenEmpty: true,
   prefixSubcommandAliases: SUBCOMMAND_WORDS,

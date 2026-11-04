@@ -1,6 +1,8 @@
 // i18n-ignore-file: the PostgreSQL query builder; its errors are internal and never reach a member.
 const { Pool } = require('pg');
+const { performance } = require('node:perf_hooks');
 const config = require('../config');
+const perf = require('../utils/perf');
 
 const RPC_SIGNATURES = {
   add_level_xp: { args: ['p_guild_id', 'p_user_id', 'p_xp_gain', 'p_message_inc', 'p_vc_inc'] },
@@ -52,14 +54,48 @@ function createPool(connectionString, sslEnabled) {
     }
   }
 
-  return new Pool({
+  const pool = new Pool({
     connectionString: normalizedConnectionString,
     ssl: sslEnabled ? { rejectUnauthorized: false } : false,
     max: config.databasePoolMax,
+    // A few connections stay open (a burst of queries from a command does not pay for new connections, which a remote database makes slow), idle ones
+    // are kept for five minutes instead of thirty seconds, and the sockets are kept alive so a firewall does not close them silently.
+    min: Math.min(2, config.databasePoolMax),
     connectionTimeoutMillis: config.databaseConnectTimeoutMs,
-    idleTimeoutMillis: 30_000,
+    idleTimeoutMillis: 300_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
     allowExitOnIdle: true,
   });
+  return instrumentPool(pool);
+}
+
+/**
+ * Measures every query of the pool (utils/perf.js) and keeps the background work from using every connection: queries that do not belong to a person waiting
+ * for an answer (jobs, most listeners, the web server) use at most `max - 3` connections at once, so a command always finds one free.
+ */
+function instrumentPool(pool, { backgroundLimit = Math.max(1, config.databasePoolMax - 3) } = {}) {
+  const original = pool.query.bind(pool);
+  let running = 0;
+  const waiting = [];
+  const release = () => { running -= 1; const next = waiting.shift(); if (next) { running += 1; next(); } };
+  pool.query = function measuredQuery(...args) {
+    if (typeof args[args.length - 1] === 'function') return original(...args); // the callback form is left alone
+    const started = performance.now();
+    const context = perf.current();
+    const background = !(context && context.interactive);
+    const run = () => original(...args).then(
+      (result) => { perf.recordDb(performance.now() - started, 0, true); return result; },
+      (error) => { perf.recordDb(performance.now() - started, 0, false); throw error; },
+    );
+    if (!background) return run();
+    return new Promise((resolve, reject) => {
+      const go = () => run().then(resolve, reject).finally(release);
+      if (running < backgroundLimit) { running += 1; go(); } else waiting.push(go);
+    });
+  };
+  perf.setPoolReader(() => ({ total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount, max: config.databasePoolMax, backgroundWaiting: waiting.length, backgroundRunning: running }));
+  return pool;
 }
 
 let primaryPool;
@@ -137,18 +173,27 @@ const COLUMN_TYPES_TTL_MS = 10 * 60_000;
 const columnTypeCache = new WeakMap();
 
 async function jsonColumnsOf(pool, schema, table) {
-  let tables = columnTypeCache.get(pool);
-  if (!tables) columnTypeCache.set(pool, (tables = new Map()));
-  const key = `${schema}.${table}`;
-  const hit = tables.get(key);
-  if (hit && hit.expiresAt > Date.now()) return hit.columns;
-  const result = await pool.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND data_type IN ('json', 'jsonb')",
-    [schema, table],
-  );
-  const columns = new Set(result.rows.map((row) => row.column_name));
-  tables.set(key, { columns, expiresAt: Date.now() + COLUMN_TYPES_TTL_MS });
-  return columns;
+  // Every json column of every table in ONE query, kept for ten minutes and shared by the writes that ask at the same time (before, each table asked on its
+  // own the first time it was written, and again every ten minutes, in front of the write that was waiting). After the first load it is refreshed in the background.
+  let state = columnTypeCache.get(pool);
+  if (!state) { state = { tables: null, expiresAt: 0, loading: null }; columnTypeCache.set(pool, state); }
+  if (!state.loading && state.expiresAt <= Date.now()) {
+    state.loading = pool.query(
+      "SELECT table_schema, table_name, column_name FROM information_schema.columns WHERE data_type IN ('json', 'jsonb') AND table_schema NOT IN ('pg_catalog', 'information_schema')",
+    ).then((result) => {
+      const tables = new Map();
+      for (const row of result.rows) {
+        const key = `${row.table_schema}.${row.table_name}`;
+        if (!tables.has(key)) tables.set(key, new Set());
+        tables.get(key).add(row.column_name);
+      }
+      state.tables = tables;
+      state.expiresAt = Date.now() + COLUMN_TYPES_TTL_MS;
+    }).finally(() => { state.loading = null; });
+    state.loading.catch(() => {}); // a refresh that fails is tried again by the next write
+  }
+  if (!state.tables) await state.loading;
+  return state.tables?.get(`${schema}.${table}`) ?? new Set();
 }
 
 function withJsonArrays(row, jsonColumns) {

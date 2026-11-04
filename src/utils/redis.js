@@ -86,6 +86,7 @@ function available() { return enabled() && ready && !tooSlow && Date.now() >= do
 async function run(action, fallback) {
   if (!available()) return fallback;
   let timer;
+  const startedAt = Date.now();
   try {
     const result = await Promise.race([
       action(client),
@@ -101,6 +102,7 @@ async function run(action, fallback) {
     return fallback;
   } finally {
     clearTimeout(timer);
+    try { require('./perf').recordRedis(Date.now() - startedAt); } catch { /* measuring never breaks a call */ }
   }
 }
 
