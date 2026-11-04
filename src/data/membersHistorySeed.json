@@ -69,5 +69,10 @@
       "members": 56430,
       "assumed": true
     }
-  ]
+  ],
+  "activityBaseline": {
+    "from": "2026-04-03",
+    "to": "2026-08-14",
+    "note": "The messages, reactions and voice time the bot counted before the outage of Discord are in `globalStatsBaseline` (config.js) as one total. For the daily history they are spread as a flat average over these days (from the first day of the records to the day before the outage), on top of what activity_stats really counted on each of them. It is approximate: the real day by day numbers were lost. The days of the outage week and every later day are shown exactly as counted."
+  }
 }

@@ -18,7 +18,8 @@ let guildRows = [];
 let flowRows = [];
 let failHistoryRead = false;
 const totalsToday = { messages: 300, reactions: 30, voice: 3000 };
-stub('src/config.js', {});
+const config = {}; // `globalStatsBaseline` is set by the scenarios that need it
+stub('src/config.js', config);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/db/database.js', {
   from: (table) => ({
@@ -406,6 +407,103 @@ const run = (client, now) => job.refreshGlobalStats(client, now);
     ['2026-11-04', 2, 800, undefined, undefined], // today is live
   ]);
   history.setServersSeed(null); history.setMembersSeed(null);
+
+  // The activity counted before the outage (config.globalStatsBaseline) is spread over the days of the records, on top of what was counted.
+  const baseline = { messages: 1_000_000, reactions: 48_000, voiceSeconds: 100_000 * 3600 };
+  assert.deepEqual([realSeed.activityBaseline.from, realSeed.activityBaseline.to], ['2026-04-03', '2026-08-14']);
+  assert.equal(typeof realSeed.activityBaseline.note, 'string');
+  const shares = history.spreadBaseline(baseline, '2026-04-03', '2026-08-14');
+  assert.equal(shares.size, 134, '134 days from 2026-04-03 to 2026-08-14');
+  for (const metric of ['messages', 'reactions', 'voiceSeconds']) assert.equal([...shares.values()].reduce((total, share) => total + share[metric], 0), baseline[metric], `the ${metric} of the days add up exactly to the baseline`);
+  assert.deepEqual(shares.get('2026-04-03'), { messages: 7463, reactions: 359, voiceSeconds: 2686568 }, 'the first days carry the remainder (92, 28 and 22 days)');
+  assert.deepEqual(shares.get('2026-08-14'), { messages: 7462, reactions: 358, voiceSeconds: 2686567 }, 'the last day is the floor of the average');
+  assert.equal(shares.get('2026-07-03').messages, 7463); assert.equal(shares.get('2026-07-04').messages, 7462, 'the 92 first days have one more message (2026-04-03 + 91 days is 2026-07-03)');
+  const small = history.spreadBaseline({ messages: 5, reactions: 0, voiceSeconds: 0 }, '2026-04-03', '2026-08-14');
+  assert.deepEqual([...small.keys()], ['2026-04-03', '2026-04-04', '2026-04-05', '2026-04-06', '2026-04-07'], 'a small baseline goes to the first days, one each');
+  assert.equal(history.spreadBaseline({ messages: 0, reactions: 0, voiceSeconds: 0 }, '2026-04-03', '2026-08-14').size, 0, 'a baseline of zero adds nothing');
+  assert.equal(history.spreadBaseline(undefined, '2026-04-03', '2026-08-14').size, 0);
+  assert.equal(history.spreadBaseline(baseline, '2026-08-14', '2026-04-03').size, 0, 'a range upside down is nothing');
+
+  history.setMembersSeed(realSeed);
+  config.globalStatsBaseline = baseline;
+  const counted = [
+    { day: '2026-04-02', messages: '55', reactions: '5', voice_seconds: '50' }, // before the records
+    { day: '2026-04-03', messages: '100', reactions: '10', voice_seconds: '1000' },
+    { day: '2026-08-14', messages: '5', reactions: '1', voice_seconds: '60' },
+    { day: '2026-08-15', messages: '777', reactions: '7', voice_seconds: '70' }, // the outage week: as counted
+    { day: '2026-11-03', messages: '5000', reactions: '400', voice_seconds: '9000' },
+  ];
+  reset();
+  activityRows = counted;
+  guildRows = [{ guild_id: 'a', created_day: '2026-08-01', left_day: null, member_count: 1 }];
+  await run(makeClient([['a', guild(57800)]]), at('2026-11-04T15:00:00Z'));
+  row = store.get('history');
+  assert.deepEqual([row.days[0].day, row.days[1].day], ['2026-04-02', '2026-04-03']);
+  assert.deepEqual([byDay(row, '2026-04-03').messages, byDay(row, '2026-04-03').reactions, byDay(row, '2026-04-03').voiceSeconds], [100 + 7463, 10 + 359, 1000 + 2686568], 'what was counted plus its part of the baseline');
+  assert.deepEqual([byDay(row, '2026-08-14').messages, byDay(row, '2026-08-14').voiceSeconds], [5 + 7462, 60 + 2686567], 'the last day of the range');
+  assert.equal(byDay(row, '2026-04-03').estimatedActivity, true);
+  assert.deepEqual(row.days.filter((entry) => entry.estimatedActivity).map((entry) => entry.day), [...shares.keys()], 'the flag is on the 134 days of the range and nowhere else');
+  assert.deepEqual(byDay(row, '2026-04-02'), { day: '2026-04-02', servers: null, members: null, messages: 55, reactions: 5, voiceSeconds: 50 }, 'the day before the range is untouched');
+  assert.deepEqual([byDay(row, '2026-08-15').messages, byDay(row, '2026-08-15').estimatedActivity], [777, undefined], 'the outage week is as counted, with no marker');
+  assert.deepEqual(['2026-08-16', '2026-08-25', '2026-09-30'].map((day) => [byDay(row, day).messages, byDay(row, day).estimatedActivity]), [[0, undefined], [0, undefined], [0, undefined]], 'later days are not filled');
+  assert.deepEqual([byDay(row, '2026-11-03').messages, byDay(row, '2026-11-03').estimatedActivity], [5000, undefined], 'a later day is as counted');
+  assert.deepEqual(byDay(row, '2026-11-04'), { day: '2026-11-04', servers: 1, members: 57800, messages: 300, reactions: 30, voiceSeconds: 3000 }, 'today is unaffected');
+  assert.equal(byDay(row, '2026-08-15').estimated, undefined, 'a day of a spike keeps its own flags');
+  assert.equal(byDay(row, '2026-04-08').estimated, true, 'estimated (members) is independent: a day can have both');
+  assert.equal(byDay(row, '2026-04-08').estimatedServers, undefined); assert.equal(byDay(row, '2026-04-08').estimatedActivity, true);
+  assert.equal(row.days.filter((entry) => entry.estimatedActivity === false).length, 0, 'never written as false');
+  // The sum of the history is what was counted plus the baseline.
+  const realSum = (metric, key) => counted.filter((entry) => entry.day < '2026-11-04').reduce((total, entry) => total + Number(entry[key]), 0);
+  const historySum = (metric) => row.days.filter((entry) => entry.day < '2026-11-04').reduce((total, entry) => total + entry[metric], 0);
+  assert.equal(historySum('messages') - realSum('messages', 'messages'), baseline.messages, 'sum(history.messages) - what was counted == baseline');
+  assert.equal(historySum('reactions') - realSum('reactions', 'reactions'), baseline.reactions);
+  assert.equal(historySum('voiceSeconds') - realSum('voiceSeconds', 'voice_seconds'), baseline.voiceSeconds);
+
+  // A row that already exists (written before this) gets it without being deleted: the activity of every day is read on every run.
+  reset();
+  activityRows = counted;
+  guildRows = [{ guild_id: 'a', created_day: '2026-08-01', left_day: null, member_count: 1 }];
+  const special = new Map([
+    ['2026-04-03', { servers: null, members: 20000, estimated: true }],
+    ['2026-04-04', { servers: null, members: 170000 }],
+    ['2026-11-01', { servers: 150, members: 55700 }],
+    ['2026-11-02', { servers: 160, members: 56000 }],
+    ['2026-11-03', { servers: 170, members: 56430 }],
+  ]);
+  store.set('history', { days: Array.from({ length: 215 }, (_, n) => { // every day from 2026-04-03 to 2026-11-03, as an older run left them (stale activity)
+    const day = history.dayShift('2026-04-03', n);
+    return { day, servers: null, members: 1000, ...(special.get(day) ?? {}), messages: 1, reactions: 1, voiceSeconds: 1 };
+  }), updatedAt: '2026-11-03T10:00:00.000Z' });
+  await run(makeClient([['a', guild(57800)]]), at('2026-11-04T15:00:00Z'));
+  row = store.get('history');
+  assert.equal(growthQueries(), 0, 'nothing is rebuilt: the row is kept');
+  assert.deepEqual(byDay(row, '2026-04-03'), { day: '2026-04-03', servers: null, members: 20000, messages: 7563, reactions: 369, voiceSeconds: 2687568, estimated: true, estimatedActivity: true }, 'the stored members and flags stay, the activity is the counted one plus the baseline');
+  assert.deepEqual(byDay(row, '2026-04-04'), { day: '2026-04-04', servers: null, members: 170000, messages: 7463, reactions: 359, voiceSeconds: 2686568, estimatedActivity: true });
+  assert.deepEqual(byDay(row, '2026-11-01'), { day: '2026-11-01', servers: 150, members: 55700, messages: 0, reactions: 0, voiceSeconds: 0 }, 'a stored day outside the range: servers and members frozen, activity as counted');
+  assert.equal(row.days.filter((entry) => entry.estimatedActivity).length, 134);
+  assert.equal(historySum('messages') - realSum('messages', 'messages'), baseline.messages, 'the sum still adds up');
+  assert.equal(byDay(row, '2026-08-10').members, 1000, 'the days that were in the row keep what was stored');
+
+  // A baseline of zero adds nothing and flags nothing; one metric of zero adds nothing for that metric.
+  for (const zero of [{ messages: 0, reactions: 0, voiceSeconds: 0 }, undefined]) {
+    reset();
+    config.globalStatsBaseline = zero;
+    activityRows = counted;
+    guildRows = [{ guild_id: 'a', created_day: '2026-08-01', left_day: null, member_count: 1 }];
+    await run(makeClient([['a', guild(57800)]]), at('2026-11-04T15:00:00Z'));
+    row = store.get('history');
+    assert.equal(row.days.filter((entry) => 'estimatedActivity' in entry).length, 0, 'no flag when there is no baseline');
+    assert.deepEqual([byDay(row, '2026-04-03').messages, byDay(row, '2026-04-03').reactions, byDay(row, '2026-04-03').voiceSeconds], [100, 10, 1000]);
+  }
+  reset();
+  config.globalStatsBaseline = { messages: 0, reactions: 48_000, voiceSeconds: 0 };
+  activityRows = counted;
+  guildRows = [{ guild_id: 'a', created_day: '2026-08-01', left_day: null, member_count: 1 }];
+  await run(makeClient([['a', guild(57800)]]), at('2026-11-04T15:00:00Z'));
+  row = store.get('history');
+  assert.deepEqual([byDay(row, '2026-04-03').messages, byDay(row, '2026-04-03').reactions, byDay(row, '2026-04-03').voiceSeconds, byDay(row, '2026-04-03').estimatedActivity], [100, 369, 1000, true], 'only the metric that has a baseline gets it');
+  delete config.globalStatsBaseline;
+  history.setMembersSeed(null);
 
   // The load guard pauses the tick of the job, and with it the history (the same way as it pauses main).
   reset();
