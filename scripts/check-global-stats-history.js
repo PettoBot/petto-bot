@@ -66,6 +66,7 @@ function reset() {
 const run = (client, now) => job.refreshGlobalStats(client, now);
 
 (async () => {
+  const realServers = history.setServersSeed(null); // the servers of the tracker have their own part below
   const realSeed = history.setMembersSeed(null); // the first scenarios rebuild from the flow of members only; the records of the team have their own part below
   const live = { servers: 2, members: 150 };
   const totals = { messages: 300, reactions: 30, voiceSeconds: 3000 };
@@ -320,6 +321,91 @@ const run = (client, now) => job.refreshGlobalStats(client, now);
   assert.equal(history.seedMembers({ seed: { baseline: [], spikes: [{ day: '2026-10-03', members: 5 }] }, today: '2026-11-04', live: 100 }).size, 0, 'no baseline, nothing built');
   assert.equal(history.seedMembers({ today: '2026-11-04', live: 0 }).size, 0, 'no live total, nothing built');
   history.setMembersSeed(null);
+
+  // The servers of the public tracker discord.watch (src/data/serversHistorySeed.json): the days before the first snapshot of the bot.
+  assert.equal(realServers.source, 'discord.watch'); assert.equal(realServers.start, '2026-07-28'); assert.equal(realServers.step, 86400); assert.equal(realServers.values.length, 100);
+  assert.deepEqual(realServers.values.slice(0, 3), [13, 16, 16]); assert.equal(realServers.values.at(-1), 178);
+  assert.equal(typeof realServers.note, 'string'); assert.ok(realServers.url.startsWith('https://discord.watch/'));
+  history.setServersSeed(realServers);
+  history.setMembersSeed(realSeed);
+  reset();
+  guildRows = [ // the rebuild from the rows of the servers would say 2: the tracker wins
+    { guild_id: 'a', created_day: '2026-08-01', left_day: null, member_count: 1 },
+    { guild_id: 'b', created_day: '2026-08-01', left_day: null, member_count: 1 },
+  ];
+  const live182 = () => makeClient(Array.from({ length: 182 }, (_, n) => [`g${n}`, guild(317)]));
+  await run(live182(), at('2026-11-04T15:00:00Z'));
+  row = store.get('history');
+  const servers = (day) => byDay(row, day).servers;
+  const gap = (day) => { // the straight line between the nearest known days, worked out from the file on its own
+    const index = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse('2026-07-28T00:00:00Z')) / 86_400_000);
+    let before = index; while (realServers.values[before] === null) before -= 1;
+    let after = index; while (realServers.values[after] === null) after += 1;
+    return Math.round(realServers.values[before] + ((realServers.values[after] - realServers.values[before]) * (index - before)) / (after - before));
+  };
+  for (const [day, total] of [['2026-07-28', 13], ['2026-08-17', 23], ['2026-08-19', 56], ['2026-10-21', 130], ['2026-11-03', 176]]) {
+    assert.equal(servers(day), total, `${day}: the number of the tracker`);
+    assert.equal(byDay(row, day).estimatedServers, undefined, `${day}: measured, not flagged`);
+  }
+  assert.ok(servers('2026-08-18') > 23 && servers('2026-08-18') < 56 && servers('2026-08-18') === gap('2026-08-18'), '2026-08-18 is between 23 and 56');
+  assert.equal(byDay(row, '2026-08-18').estimatedServers, true, 'and flagged');
+  const gaps = realServers.values.map((value, index) => (value === null ? history.dayShift('2026-07-28', index) : null)).filter(Boolean).filter((day) => day < '2026-11-04');
+  assert.ok(gaps.includes('2026-09-07') && gaps.includes('2026-09-16') && gaps.includes('2026-10-02') && gaps.includes('2026-10-19'), 'the gaps of the file');
+  for (const day of gaps) {
+    assert.equal(servers(day), gap(day), `${day}: a straight line between its neighbours`);
+    assert.equal(byDay(row, day).estimatedServers, true, `${day} is flagged`);
+  }
+  assert.ok(servers('2026-10-02') >= servers('2026-09-30') && servers('2026-10-19') <= servers('2026-10-21'), 'and goes up with the neighbours');
+  assert.equal(row.days.filter((entry) => entry.estimatedServers !== undefined && entry.estimatedServers !== true).length, 0, 'estimatedServers is true or not there, never false');
+  assert.equal(row.days.filter((entry) => entry.estimatedServers).length, gaps.length, 'only the interpolated days');
+  // Before the first day of the tracker there are no servers (even where the rows of the servers could say something), and today is the live count.
+  assert.deepEqual(['2026-04-03', '2026-07-27'].map(servers), [null, null], 'no servers before 2026-07-28');
+  assert.equal(byDay(row, '2026-08-01').servers, 16, 'the tracker wins over the rebuild from the rows of the servers');
+  assert.deepEqual(byDay(row, '2026-11-04'), { day: '2026-11-04', servers: 182, members: 182 * 317, messages: 300, reactions: 30, voiceSeconds: 3000 }, 'today is the live count (182 here, 178 in the tracker), with no flags');
+  // `estimated` is still about the members: the same as without the servers.
+  assert.equal(byDay(row, '2026-07-27').estimated, true, 'members of a baseline day: estimated');
+  assert.equal(byDay(row, '2026-07-27').estimatedServers, undefined);
+  assert.equal(byDay(row, '2026-08-18').estimated, true, 'a day with interpolated servers and members from the baseline has both flags');
+  assert.equal(byDay(row, '2026-08-17').estimated, undefined, 'a day of a spike keeps being known for the members, whatever the servers');
+  assert.equal(byDay(row, '2026-08-17').members, 270000);
+  // The next run: nothing moves but today.
+  const kept = JSON.parse(JSON.stringify(row.days.slice(0, -1)));
+  await run(makeClient(Array.from({ length: 183 }, (_, n) => [`g${n}`, guild(317)])), at('2026-11-04T15:10:00Z'));
+  row = store.get('history');
+  assert.deepEqual(row.days.slice(0, -1), kept.map((entry) => ({ ...entry, messages: entry.messages, reactions: entry.reactions, voiceSeconds: entry.voiceSeconds })), 'the days written stay as they were, flags included');
+  assert.equal(row.days.at(-1).servers, 183);
+  // With a stored snapshot the tracker is not used: stored days stay, and a hole is rebuilt the old way.
+  reset();
+  guildRows = [{ guild_id: 'a', created_day: '2026-08-01', left_day: null, member_count: 1 }, { guild_id: 'b', created_day: '2026-08-01', left_day: null, member_count: 1 }];
+  store.set('history', { days: [
+    { day: '2026-10-30', servers: 7, members: 70, messages: 1, reactions: 1, voiceSeconds: 1, estimatedServers: true },
+    { day: '2026-11-02', servers: 9, members: 90, messages: 1, reactions: 1, voiceSeconds: 1 },
+  ], updatedAt: '2026-11-02T10:00:00.000Z' });
+  await run(makeClient([['a', guild(10)], ['b', guild(20)]]), at('2026-11-04T15:00:00Z'));
+  row = store.get('history');
+  assert.equal(row.days[0].day, '2026-10-30', 'nothing before the first stored day');
+  assert.deepEqual([servers('2026-10-30'), byDay(row, '2026-10-30').estimatedServers, servers('2026-11-02'), byDay(row, '2026-11-02').estimatedServers], [7, true, 9, undefined], 'stored days are never replaced, their flags are kept');
+  assert.deepEqual([servers('2026-10-31'), byDay(row, '2026-10-31').estimatedServers, byDay(row, '2026-10-31').estimated], [2, undefined, true], 'a hole is the old rebuild, not the tracker');
+  // The rules of the pure functions.
+  const odd = { start: '2026-10-01', step: 172800, values: [null, 10, null, null, 40, null] };
+  const oddRows = history.seedServers({ seed: odd, today: '2026-10-20' });
+  assert.deepEqual([...oddRows.keys()], ['2026-10-03', '2026-10-05', '2026-10-07', '2026-10-09'], 'a step of 2 days; nothing before the first number or after the last');
+  assert.deepEqual([...oddRows.values()], [{ servers: 10, interpolated: false }, { servers: 20, interpolated: true }, { servers: 30, interpolated: true }, { servers: 40, interpolated: false }]);
+  assert.deepEqual([...history.seedServers({ seed: odd, today: '2026-10-06' }).keys()], ['2026-10-03', '2026-10-05'], 'never today or later');
+  assert.equal(history.seedServers({ seed: { start: '2026-10-01', step: 3600, values: [1] }, today: '2026-11-01' }).size, 0, 'a step that is not whole days is not used');
+  assert.equal(history.seedServers({ seed: null, today: '2026-11-01' }).size, 0);
+  const pure = history.buildHistory({
+    now: at('2026-11-04T15:00:00Z'), previous: { days: [{ day: '2026-11-01', servers: 5, members: 500 }] }, activity: [], todayTotals: { messages: 1, reactions: 1, voiceSeconds: 1 }, live: { servers: 2, members: 800 },
+    estimates: new Map([['2026-11-02', { servers: 3, members: 300 }], ['2026-11-03', { servers: 4, members: 400 }]]),
+    serverSeed: new Map([['2026-11-01', { servers: 111, interpolated: false }], ['2026-11-02', { servers: 222, interpolated: true }], ['2026-11-04', { servers: 444, interpolated: true }]]),
+  });
+  assert.deepEqual(pure.days.map(({ day, servers: total, members: people, estimated, estimatedServers }) => [day, total, people, estimated, estimatedServers]), [
+    ['2026-11-01', 5, 500, undefined, undefined], // stored beats everything
+    ['2026-11-02', 222, 300, true, true], // the tracker decides the servers, the rebuild the members
+    ['2026-11-03', 4, 400, true, undefined], // no tracker: the rebuilt servers
+    ['2026-11-04', 2, 800, undefined, undefined], // today is live
+  ]);
+  history.setServersSeed(null); history.setMembersSeed(null);
 
   // The load guard pauses the tick of the job, and with it the history (the same way as it pauses main).
   reset();
