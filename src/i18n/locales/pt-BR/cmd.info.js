@@ -101,7 +101,7 @@ module.exports = {
   'cmd.info.stats.channels.desc': 'Os canais com mais mensagens e tempo de voz, e os que ficaram em silêncio.',
   'cmd.info.stats.members.desc': 'Os membros com mais mensagens e tempo de voz.',
   'cmd.info.stats.heatmap.desc': 'Os horários mais ativos da semana.',
-  'cmd.info.stats.growth.desc': 'Membros que entraram e saíram, e quanto tempo os que saíram ficaram.',
+  'cmd.info.stats.growth.desc': 'Membros que entraram e saíram dia a dia, e quanto tempo os que saíram ficaram.',
   'cmd.info.stats.compare.desc': 'Este período ao lado do anterior, com a variação em porcentagem.',
   'cmd.info.stats.member.desc': 'O que um membro fez: mensagens, voz, sequência e lugar no servidor.',
   'cmd.info.stats.member.opt.member.desc': 'O membro (por padrão, você)',
