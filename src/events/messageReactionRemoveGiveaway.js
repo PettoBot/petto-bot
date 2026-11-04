@@ -8,7 +8,7 @@ module.exports = {
     if (user.bot || !reaction.message.guild) return;
 
     try {
-      if (reaction.partial) await reaction.fetch().catch(() => null);
+      // No request to Discord here: the id of the message and the emoji (all this needs) come with the event, and completing the reaction cost one request for every reaction of every server.
       const giveaway = await giveawaysDb.getGiveawayByMessageId(reaction.message.guild.id, reaction.message.id);
       if (!giveaway || giveaway.ended || giveaway.entry_mode !== 'reaction') return;
       if (reaction.emoji.toString() !== giveaway.reaction) return;

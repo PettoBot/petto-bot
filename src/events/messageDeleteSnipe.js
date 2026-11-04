@@ -5,7 +5,7 @@ module.exports = {
   name: Events.MessageDelete,
   async execute(message) {
     if (!message?.guild) return;
-    if (message.partial) await message.fetch().catch(() => {});
+    // A message that was deleted cannot be fetched: asking Discord for it only fills the queue of requests with a 404.
     rememberDeleted(message);
   },
 };

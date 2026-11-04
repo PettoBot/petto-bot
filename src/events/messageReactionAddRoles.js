@@ -10,7 +10,7 @@ module.exports = {
     if (user.bot || !reaction.message.guild) return;
 
     try {
-      if (reaction.partial) await reaction.fetch().catch(() => null);
+      // No request to Discord here: the id of the message and the emoji (all this needs) come with the event, and completing the reaction cost one request for every reaction of every server.
       const row = await rrDb.getReactionRole(reaction.message.id, reaction.emoji.toString());
       if (!row || (row.interaction_type && row.interaction_type !== 'reaction')) return;
 

@@ -76,7 +76,7 @@ function mediaDescription(message, lang = currentLanguage()) {
 }
 
 async function handleMessageDelete(message, client) {
-  message = await hydrateMessage(message);
+  // A message that was deleted cannot be fetched (a 404 for every deleted message that was not cached): what the event has is used.
   if (!message.guild) return;
   const isBot = message.author?.bot;
   if (isBot && !message.attachments?.size && !message.embeds?.length && !message.stickers?.size) return;

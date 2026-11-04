@@ -5,11 +5,10 @@ module.exports = {
   name: Events.MessageReactionRemove,
   async execute(reaction, user) {
     if (!reaction?.message?.guild) return;
-    if (user?.partial) await user.fetch().catch(() => {});
+    // Nothing is fetched from Discord: a reaction that is already gone cannot always be fetched, and up to three requests for every reaction removed in every server filled the queue of
+    // requests of the bot. What the event gives is used (the message, the emoji and the member are known by id and name; the text of an uncached message is left out), and one with no emoji
+    // name is dropped.
     if (!user || user.bot) return;
-    // A reaction that is already gone cannot always be fetched: what Discord gave is used, and one with no emoji name is dropped.
-    if (reaction.partial) await reaction.fetch().catch(() => {});
-    if (reaction.message.partial) await reaction.message.fetch().catch(() => {});
     rememberReactionRemoved(reaction, user);
   },
 };

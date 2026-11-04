@@ -10,7 +10,7 @@ module.exports = {
     if (!statsRules.allowed(reaction.message.guild.id, user.id)) return;
 
     try {
-      if (reaction.partial) await reaction.fetch().catch(() => null);
+      // No request to Discord here: the id of the message and the emoji (all this needs) come with the event, and completing the reaction cost one request for every reaction of every server.
       queueActivity(reaction.message.guild.id, reaction.message.channelId, { reactions: 1 });
     } catch (err) {
       logger.error('Activity stats reaction increment failed:', err);
