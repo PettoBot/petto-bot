@@ -130,7 +130,7 @@ module.exports = {
   'cmd.info.stats.members.opt.days.desc': 'How many days to include, from 1 to 180 (default 7)',
   'cmd.info.stats.heatmap.desc': 'The busiest hours of the week.',
   'cmd.info.stats.heatmap.opt.days.desc': 'How many days to include, from 1 to 180 (default 7)',
-  'cmd.info.stats.growth.desc': 'Members who joined and left, and how long the ones who left had stayed.',
+  'cmd.info.stats.growth.desc': 'Members who joined and left day by day, and how long the ones who left had stayed.',
   'cmd.info.stats.growth.opt.days.desc': 'How many days to include, from 1 to 180 (default 7)',
   'cmd.info.stats.compare.desc': 'This period next to the one before it, with the change in percent.',
   'cmd.info.stats.compare.opt.days.desc': 'How many days to include, from 1 to 180 (default 7)',

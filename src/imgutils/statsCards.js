@@ -4,6 +4,7 @@ const { createCanvas } = require('@napi-rs/canvas');
 const { registerCardFonts } = require('./cardFonts');
 const { kit } = require('./summaryCard');
 const { loadImageFromLink } = require('../utils/safeImage');
+const { growthChart, tickLabel } = require('../utils/growthChart');
 const { t, tn, currentLanguage } = require('../i18n');
 
 const { W, H, BG, PANEL, BORDER, TEXT, MUTED, GRID, ACCENT, COLORS, WEEKDAYS, FONT, compact, duration, panel, text, niceMax, formatDay } = kit;
@@ -44,8 +45,8 @@ function panelTitle(ctx, value, x, y, maxW, size = 18) {
   text(ctx, label, x, y, { font: FONT(700, font) });
 }
 
-/** The labels under a chart: about `target` of them, evenly, and the last one only when it does not touch the one before it (a label is about 60 px wide). */
-function axisLabels(ctx, labels, position, y, target) {
+/** The labels under a chart: about `target` of them, evenly (the first and the last aligned to the edges, unless `edges` is off and each one is centered under its place), and the last one only when it does not touch the one before it (a label is about 60 px wide). */
+function axisLabels(ctx, labels, position, y, target, { edges = true } = {}) {
   const every = Math.max(1, Math.ceil(labels.length / target));
   const last = labels.length - 1;
   let previous = -1;
@@ -53,7 +54,7 @@ function axisLabels(ctx, labels, position, y, target) {
     const regular = i % every === 0;
     if (!regular && !(i === last && previous >= 0 && position(i) - position(previous) >= 64)) return;
     previous = i;
-    text(ctx, label, position(i), y, { font: FONT(400, 10.5), color: MUTED, align: i === 0 ? 'left' : i === last ? 'right' : 'center' });
+    text(ctx, label, position(i), y, { font: FONT(400, 10.5), color: MUTED, align: !edges ? 'center' : i === 0 ? 'left' : i === last ? 'right' : 'center' });
   });
 }
 
@@ -88,24 +89,28 @@ function tile(ctx, { x, y, w, label, value, color, change, inverse, lang, highli
   if (change !== undefined) deltaChip(ctx, change, x + w - 14, y + 16, lang, { inverse, align: 'right' });
 }
 
+/** Dashed horizontal lines across a plot with their labels on the left: `ticks` are { y, label } (a `strong` one is a solid line, the zero of a change). */
+function gridLines(ctx, { left, plotW, ticks }) {
+  ctx.lineWidth = 1;
+  for (const tick of ticks) {
+    ctx.strokeStyle = tick.strong ? '#4a413c' : GRID;
+    ctx.setLineDash(tick.strong ? [] : [4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(left, tick.y);
+    ctx.lineTo(left + plotW, tick.y);
+    ctx.stroke();
+    text(ctx, tick.label, left - 8, tick.y, { font: FONT(400, 10.5), color: MUTED, align: 'right', baseline: 'middle' });
+  }
+  ctx.setLineDash([]);
+}
+
 /** Lines over a grid: `series` are { values, color, dashed, fill }, drawn in order (draw the quiet one first). */
 function lineChart(ctx, { x, y, w, h, series, labels, format = compact }) {
   const left = x + 46;
   const plotW = w - 46 - 8;
   const plotH = h - 30;
   const max = niceMax(Math.max(0, ...series.flatMap((line) => line.values)));
-  ctx.strokeStyle = GRID;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 6]);
-  for (let i = 0; i <= 4; i += 1) {
-    const gy = y + plotH - (plotH * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(left, gy);
-    ctx.lineTo(left + plotW, gy);
-    ctx.stroke();
-    text(ctx, format((max * i) / 4), left - 8, gy, { font: FONT(400, 10.5), color: MUTED, align: 'right', baseline: 'middle' });
-  }
-  ctx.setLineDash([]);
+  gridLines(ctx, { left, plotW, ticks: [0, 1, 2, 3, 4].map((i) => ({ y: y + plotH - (plotH * i) / 4, label: format((max * i) / 4) })) });
   const count = Math.max(series[0]?.values.length ?? 0, 2);
   const px = (i) => left + (plotW * i) / (count - 1);
   const py = (value) => y + plotH - (value / max) * plotH;
@@ -276,6 +281,155 @@ function buildTopCard({ guildName, days, kind, messages, voice, note = null, lan
   return canvas.toBuffer('image/png');
 }
 
+const NUMBER_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
+/** A whole number with the separators of the language (12,345), and a plus sign when it is a change and above zero. */
+const formatCount = (value, lang, signed = false) => `${signed && value > 0 ? '+' : ''}${new Intl.NumberFormat(NUMBER_LOCALES[lang] ?? 'en-US', { maximumFractionDigits: 0 }).format(Math.round(value))}`;
+const direction = (value) => (value > 0 ? GREEN : value < 0 ? RED : MUTED);
+
+/** A small pill with a signed number: green when it is up, red when it is down, grey at zero. */
+function changeChip(ctx, label, value, right, y) {
+  ctx.font = FONT(700, 14);
+  const w = ctx.measureText(label).width + 22;
+  const color = direction(value);
+  ctx.beginPath();
+  ctx.roundRect(right - w, y, w, 26, 13);
+  ctx.fillStyle = `${color}2e`;
+  ctx.fill();
+  text(ctx, label, right - w / 2, y + 14, { font: FONT(700, 14), color, align: 'center', baseline: 'middle' });
+}
+
+/**
+ * The members of the growth card: the line of the members at the end of each day on an axis zoomed to its range (every day a point, green when the
+ * day went up and red when it went down), and under it what made each day, the joins up and the leaves down around a zero line, with the day of
+ * most of each marked. The two share the days along the bottom. See utils/growthChart.js for the numbers.
+ */
+function growthPanel(ctx, { stats, lang }) {
+  const chart = growthChart(stats);
+  const count = chart.days.length;
+  panel(ctx, 40, 230, 760, 430);
+  panelTitle(ctx, t(lang, chart.kind === 'members' ? 'info.statsCard.growth.members' : 'info.statsCard.growth.net'), 64, 268, 560);
+  changeChip(ctx, formatCount(chart.line.delta, lang, true), chart.line.delta, 776, 249);
+
+  const left = 112;
+  const plotW = 776 - left;
+  const slot = plotW / count;
+  const cx = (i) => left + slot * (i + 0.5);
+  const signed = chart.kind === 'net';
+
+  // The line.
+  const top = 300;
+  const plotH = 150;
+  const { scale } = chart.line;
+  const py = (value) => top + plotH - ((value - scale.min) / (scale.max - scale.min)) * plotH;
+  gridLines(ctx, { left, plotW, ticks: scale.ticks.map((value) => ({ y: py(value), label: tickLabel(value, scale.step, signed), strong: signed && value === 0 })) });
+  const xs = [left, ...chart.line.values.map((_, i) => cx(i))];
+  const ys = [chart.line.start, ...chart.line.values].map(py);
+  const gradient = ctx.createLinearGradient(0, top, 0, top + plotH);
+  gradient.addColorStop(0, `${COLORS.joins}30`);
+  gradient.addColorStop(1, `${COLORS.joins}00`);
+  ctx.beginPath();
+  ctx.moveTo(xs[0], top + plotH);
+  xs.forEach((x, i) => ctx.lineTo(x, ys[i]));
+  ctx.lineTo(xs[xs.length - 1], top + plotH);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.lineWidth = count > 45 ? 2 : 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (let i = 1; i < xs.length; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(xs[i - 1], ys[i - 1]);
+    ctx.lineTo(xs[i], ys[i]);
+    ctx.strokeStyle = direction(ys[i - 1] - ys[i]); // the y of the canvas grows downward
+    ctx.stroke();
+  }
+  if (count <= 45) {
+    const radius = count > 31 ? 2 : 3;
+    for (let i = 1; i < xs.length; i += 1) {
+      ctx.beginPath();
+      ctx.arc(xs[i], ys[i], radius, 0, Math.PI * 2);
+      ctx.fillStyle = direction(ys[i - 1] - ys[i]);
+      ctx.fill();
+    }
+  }
+  // The value where the period starts and where it is now: a ring and a number each.
+  const edge = (i, align) => {
+    const x = xs[i];
+    const y = ys[i];
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = PANEL;
+    ctx.fill();
+    ctx.strokeStyle = TEXT;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // The number goes on the side the line is not: above when the next point down the line is lower, below when it is higher.
+    const next = ys[align === 'left' ? 1 : ys.length - 2];
+    const place = next >= y ? (y - top > 22 ? 'above' : 'below') : (top + plotH - y > 26 ? 'below' : 'above');
+    text(ctx, formatCount(i === 0 ? chart.line.start : chart.line.end, lang, signed), x + (align === 'left' ? -4 : 4), place === 'above' ? y - 12 : y + 21, { font: FONT(700, 13), align });
+  };
+  edge(0, 'left');
+  edge(xs.length - 1, 'right');
+
+  // The joins and the leaves of each day.
+  const zero = 560;
+  const half = 60;
+  const unit = (half - 12) / chart.bars.top;
+  legendDot(ctx, left, 478, GREEN, t(lang, 'info.statsCard.growth.legend.joined'));
+  legendDot(ctx, left + 96, 478, RED, t(lang, 'info.statsCard.growth.legend.left'));
+  const marks = [
+    chart.bars.worst && { color: RED, label: t(lang, 'info.statsCard.growth.mostLeaves', { day: formatDay(chart.bars.worst.day, lang), count: chart.bars.worst.value }) },
+    chart.bars.best && { color: GREEN, label: t(lang, 'info.statsCard.growth.mostJoins', { day: formatDay(chart.bars.best.day, lang), count: chart.bars.best.value }) },
+  ].filter(Boolean);
+  let right = 776;
+  for (const mark of marks) {
+    ctx.font = FONT(400, 11.5);
+    const w = ctx.measureText(mark.label).width;
+    legendDot(ctx, right - w - 14, 478, mark.color, mark.label, true);
+    right -= w + 14 + 22;
+  }
+  gridLines(ctx, { left, plotW, ticks: [
+    { y: zero - chart.bars.top * unit, label: String(chart.bars.top) },
+    { y: zero, label: '0', strong: true },
+    { y: zero + chart.bars.top * unit, label: `-${chart.bars.top}` },
+  ] });
+  const barW = Math.max(1.5, Math.min(22, slot * 0.62));
+  const numbers = count <= 14; // the figure of every day only when the bars are wide enough to carry it
+  for (let i = 0; i < count; i += 1) {
+    const joined = chart.bars.joins[i];
+    const gone = chart.bars.leaves[i];
+    const x = cx(i) - barW / 2;
+    const radius = Math.min(4, barW / 2);
+    const bestDay = chart.bars.best?.index === i;
+    const worstDay = chart.bars.worst?.index === i;
+    if (joined > 0) {
+      ctx.beginPath();
+      ctx.roundRect(x, zero - joined * unit, barW, joined * unit, [radius, radius, 0, 0]);
+      ctx.fillStyle = bestDay ? GREEN : `${GREEN}b0`;
+      ctx.fill();
+    }
+    if (gone > 0) {
+      ctx.beginPath();
+      ctx.roundRect(x, zero, barW, gone * unit, [0, 0, radius, radius]);
+      ctx.fillStyle = worstDay ? RED : `${RED}b0`;
+      ctx.fill();
+    }
+    if (joined > 0 && (numbers || bestDay)) text(ctx, `+${joined}`, cx(i), zero - joined * unit - 5, { font: FONT(700, 11), color: bestDay ? GREEN : MUTED, align: 'center' });
+    if (gone > 0 && (numbers || worstDay)) text(ctx, `-${gone}`, cx(i), zero + gone * unit + 13, { font: FONT(700, 11), color: worstDay ? RED : MUTED, align: 'center' });
+  }
+  axisLabels(ctx, chart.days.map((day) => formatDay(day, lang)), cx, 644, count <= 14 ? 14 : 12, { edges: false });
+}
+
+/** A small dot and a label after it (the label is muted, or bright with `strong`). */
+function legendDot(ctx, x, y, color, label, strong = false) {
+  ctx.beginPath();
+  ctx.arc(x + 4, y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  text(ctx, label, x + 14, y, { font: FONT(strong ? 700 : 400, 11.5), color: strong ? TEXT : MUTED, baseline: 'middle' });
+}
+
 /** How the server grows: the members (or the net change) over the days, joins against leaves, and how long the ones who left had stayed. */
 function buildGrowthCard({ guildName, days, stats, lang = currentLanguage() }) {
   const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.growth'), versus(days, lang), COLORS.joins);
@@ -289,14 +443,7 @@ function buildGrowthCard({ guildName, days, stats, lang = currentLanguage() }) {
   const tileW = (W - 80 - 14 * 3) / 4;
   tiles.forEach((entry, i) => tile(ctx, { x: 40 + i * (tileW + 14), y: 108, w: tileW, label: entry.label, value: entry.value, color: entry.color, change: entry.change, inverse: entry.inverse, lang }));
 
-  const labels = stats.current.days.map((day) => formatDay(day, lang));
-  panel(ctx, 40, 230, 760, 430);
-  const line = stats.growth.memberLine;
-  panelTitle(ctx, t(lang, line ? 'info.statsCard.growth.members' : 'info.statsCard.growth.net'), 64, 268, 700);
-  const net = stats.current.series.net;
-  let running = 0;
-  const cumulative = net.map((value) => (running += value));
-  lineChart(ctx, { x: 54, y: 290, w: 732, h: 350, labels, series: [{ values: line ?? cumulative.map((value) => Math.max(0, value - Math.min(0, ...cumulative))), color: COLORS.joins, fill: true }] });
+  growthPanel(ctx, { stats, lang });
 
   panel(ctx, 824, 230, 416, 430);
   panelTitle(ctx, t(lang, 'info.statsCard.growth.stay'), 848, 268, 368, 16);
