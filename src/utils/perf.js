@@ -17,6 +17,9 @@ const SLOW_COMMAND_MS = 2_000;
 const SLOW_REST_MS = 2_000;
 const BLOCKING_LISTENER_MS = 150;
 const WARN_EVERY_MS = 60_000;
+// Discord blocks the address at 10,000 invalid requests (401, 403, 429) in 10 minutes; the team is told (once every 30 minutes) from a fifth of that.
+const INVALID_ALERT_AT = 2_000;
+const INVALID_ALERT_EVERY_MS = 30 * 60_000;
 const RING_SIZE = 600;
 const WINDOW_SIZE = 200;
 const HOUR_MS = 60 * 60_000;
@@ -74,14 +77,18 @@ function createMinuteCounter(minutes = 70) {
   };
 }
 
-/** One warning at most every `WARN_EVERY_MS` for each key, so a measurement never becomes the flood it reports. */
+/**
+ * One warning at most every `WARN_EVERY_MS` for each key, so a measurement never becomes the flood it reports. A measurement goes to the console of the host and
+ * to `!perf`, never to a channel of Discord: every message sent there is one more request, and on a loaded bot those messages were a good part of the noise they
+ * told about. `toChannel` is only for the few things that need a person (see `INVALID_ALERT_AT`).
+ */
 const lastWarn = new Map();
-function warnThrottled(key, message) {
+function warnThrottled(key, message, { toChannel = false, everyMs = WARN_EVERY_MS } = {}) {
   const now = Date.now();
-  if (now - (lastWarn.get(key) ?? 0) < WARN_EVERY_MS) return;
+  if (now - (lastWarn.get(key) ?? 0) < everyMs) return;
   lastWarn.set(key, now);
-  if (lastWarn.size > 500) for (const [stale, at] of lastWarn) if (now - at > WARN_EVERY_MS) lastWarn.delete(stale);
-  try { logger.warn(message); } catch { /* a log that fails is not worth a failure */ }
+  if (lastWarn.size > 500) for (const [stale, at] of lastWarn) if (now - at > everyMs) lastWarn.delete(stale);
+  try { (toChannel ? logger.warn : logger.localWarn)(message); } catch { /* a log that fails is not worth a failure */ }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -310,7 +317,11 @@ function recordRateLimit({ family, waitMs, global = false, scope = 'route', sour
 function recordInvalidWarning(count) {
   invalidWarnings.count = Number(count) || invalidWarnings.count + 1;
   invalidWarnings.last = Date.now();
+  // Discord says it at every 100: that is a count for `!perf`, not an alert. The team is told only when it gets close to the block.
   warnThrottled('invalid-requests', `Discord warns about invalid requests: ${invalidWarnings.count} in the last 10 minutes (401, 403 and 429 count; at 10,000 Discord blocks the address for a while).`);
+  if (invalidWarnings.count >= INVALID_ALERT_AT) {
+    warnThrottled('invalid-requests-close', `Discord counts ${invalidWarnings.count} invalid requests (401, 403, 429) in the last 10 minutes; at 10,000 it blocks the address. \`!perf limits\` shows which route and which cause.`, { toChannel: true, everyMs: INVALID_ALERT_EVERY_MS });
+  }
 }
 
 const restStarted = () => { restLive.inFlight += 1; };
