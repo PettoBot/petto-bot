@@ -142,11 +142,14 @@ function ensureBreaker() {
   return breaker;
 }
 
-/** One alert for each change of level: a priority error when it goes up, a warning when it comes down. */
+/**
+ * One alert for each change of level. Only CRITICAL is a priority error (it pings the team: the bot is about to restart or already sheds almost everything); going to DEGRADED
+ * is a warning in the ordinary log, because the bot protects itself and keeps working, and coming back down is a warning too.
+ */
 function announce({ from, to, reason, since }) {
   const text = `[load guard] The bot went from ${from} to ${to}: ${reason}. Since ${new Date(since).toISOString()}.`;
   if (alertSink) { try { alertSink({ from, to, reason, since, text }); } catch { /* the alert is best effort */ } return; }
-  if (RANK[to] > RANK[from]) logger.error(text);
+  if (to === 'critical' && RANK[to] > RANK[from]) logger.error(text);
   else logger.warn(text);
 }
 
@@ -220,6 +223,7 @@ function dropCaches() { try { return dropCachesHook ? dropCachesHook() : 0; } ca
 function reset() { stop(); breaker = null; shedCounts.clear(); shedRecent.length = 0; metricsReader = null; alertSink = null; }
 
 module.exports = {
+  announce,
   LEVELS, createBreaker, essentialEvent,
   start, stop, tick, level, isDegraded, allowsJob, allowsEvent, allowsOptional, stickyFactor, policy, stats, force, setAlertSink, setDropCaches, dropCaches, readMetrics, reset,
 };

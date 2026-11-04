@@ -42,6 +42,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- **Going to the degraded level no longer pings the team.** The load guard sent a priority error (a ping) for every change of level that goes up, so the first step, `normal` to `degraded`, where the bot protects itself and keeps working, woke the team for nothing. Now only going to `critical` is a priority error; `degraded` and coming back down are warnings in the ordinary log.
+
 - **A new avatar or username of anyone no longer sends up to one request to Discord for each server.** The log of avatar and username changes asked Discord for the member in every server where it was not in the cache (one `GET /guilds/:id/members/:id` for each of the bot's servers, nearly all answered 404) for a single change, and users change them all the time: it filled the queue of requests and slowed commands down. Now only the servers where the member is already known are logged and no server is asked about; the log is the same where the member is known.
 
 - **The bump reminder goes out at the minute the cooldown ends, not up to a minute later.** The job that sends it only looked at the table once a minute, so a reminder could be almost a minute late whatever the ping. Now every server with a bump waiting has an exact timer (armed when the bump is seen and, for all of them, when the bot starts); the timer reads the row again when it fires (a newer bump, a reset or an unset channel win) and a timer and the job never send the same reminder twice. The job stays as the safety net: it also runs once when the bot starts, so what was due while the bot was off goes out at once.
