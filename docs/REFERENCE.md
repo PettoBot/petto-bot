@@ -1047,3 +1047,26 @@ Prefix only (`!forum`, alias `!forums`; `!forumconfig` shows the module card). O
 **The direct message of a join** (`events/guildMemberAddDmJoin.js`): sent `JOIN_DM_DELAY_MS` after the join (5000 by default, 0 to 60000), tried again at 30 seconds, 2 minutes and 10 minutes when Discord refuses it with 50278 (no server in common yet) while the member is still in the server and the message is still on (at most 500 members waiting for a retry at once); closed DMs (50007) are not tried again. Neither refusal is logged as an error (`sendMemberEvent` returns `{ failed: code }` for a DM). Checked by `scripts/check-join-dm.js`.
 
 **The bump reminder timing** (`utils/bumpHandler.js`, `jobs/bumpReminderJob.js`, `db/bumpReminders.js`): the reminder is sent by an exact timer for each server (`armReminder`, set when a bump is seen and by `armUpcomingReminders` when the bot starts), which reads the row again when it fires (`sendReminderIfDue`, one send at a time for each server). The job that looks at the table every 60 seconds (and once at the start) is the safety net. Checked by `scripts/check-bump-timing.js`.
+
+
+## Load protection
+
+Files: `utils/restGate.js` (the two lanes to Discord), `utils/sharedRestLimit.js` (the gate on `client.rest`, measurements), `utils/rateLimits.js` (prefix buckets and the cap of commands running), `utils/loadGuard.js` (the levels and what each sheds), `utils/watchdog.js`, `utils/processGuards.js`, `utils/perf.js` (measurements), `commands/utility/perf.js` (`!perf`). Checks: `scripts/check-load-protection.js`, `scripts/check-perf.js`; `scripts/bench-rest-limit.js` times the old and the new queue with a fake network.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PETTO_REST_RPS` | 8 | Background requests a second to Discord (the host closes an app over 300 in 30 seconds) |
+| `PETTO_REST_MAX_QUEUE` / `PETTO_REST_MAX_WAIT_SECONDS` / `PETTO_REST_MAX_IN_FLIGHT` | 400 / 30 / 40 | Bounds of the background lane: waiting, longest wait before it fails, out at once |
+| `PETTO_CMD_USER_BURST` / `PETTO_CMD_USER_REFILL_SECONDS` | 5 / 2 | Prefix commands for each person |
+| `PETTO_CMD_GUILD_BURST` / `PETTO_CMD_GUILD_REFILL_PER_SECOND` | 20 / 2 | Prefix commands for each server |
+| `PETTO_CMD_CONCURRENCY` / `PETTO_CMD_QUEUE` / `PETTO_CMD_QUEUE_WAIT_SECONDS` / `PETTO_CMD_STAFF_RESERVE` | 8 / 50 / 10 / 2 | Commands running at once, waiting, longest wait, places kept for staff |
+| `PETTO_CMD_LIMITS` | on in the bot | `off` turns the limits off |
+| `PETTO_GUARD_ENABLED` | true | The circuit breaker |
+| `PETTO_GUARD_LOOP_DEGRADED_MS` / `_CRITICAL_MS` | 400 / 2000 | Event loop p99 |
+| `PETTO_GUARD_REST_WAIT_DEGRADED_MS` / `_CRITICAL_MS` | 5000 / 20000 | Longest wait of a background request |
+| `PETTO_GUARD_REST_QUEUE_DEGRADED` / `_CRITICAL` | 60 / 250 | Requests waiting |
+| `PETTO_GUARD_CALM_SECONDS` | 90 | Calm needed to go down one level |
+| `BOT_MEMORY_LIMIT_MB` | 1024 | Memory limit of the host |
+| `PETTO_WATCHDOG_ENABLED` / `_CRITICAL_MINUTES` / `_BLOCKED_SECONDS` / `_RSS_PERCENT` / `_MAX_RESTARTS_PER_HOUR` | true / 3 / 60 / 90 / 3 | When the bot exits by itself, and never more than that many times an hour |
+
+Levels: normal runs everything; degraded pauses the jobs and listeners of `loadGuard` (`feedsJob`, `guildSnapshotJob`, `counterJob`, `bumpReminderJob`, the logs of low value...) and halves the prefix buckets; critical keeps interactions, staff commands, moderation, tickets, verification, `expireSanctions`, `lockdownJob`, `joinGateJob` and `antiScamJob`. A temporary variant (`/mod tempmute`, `/ban temp`...) is not a slash command: see "Temporary sanctions".

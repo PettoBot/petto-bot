@@ -10,8 +10,8 @@ const text = (card) => JSON.stringify(json(card));
 
 let card = json(buildPingCard({ guildMs: 254, apiMs: 117.8125, shard: 1, shardCount: 1, guilds: 15535 }));
 assert.equal(card.type, 17, 'a Components V2 container');
-assert.match(text(card), /\*\*Guild Ping:\*\* `254ms`/);
-assert.match(text(card), /\*\*API Ping:\*\* `118ms`/, 'the API ping is rounded');
+assert.match(text(card), /\*\*Message send \(REST, queue included\):\*\* `254ms`/);
+assert.match(text(card), /\*\*Gateway heartbeat:\*\* `118ms`/, 'the API ping is rounded');
 assert.match(text(card), /Status Page/);
 assert.match(text(card), /Support Server/);
 assert.match(text(card), /Shard 1\/1 • Guilds: 15,535/, 'the number of servers has thousands separators');
@@ -22,6 +22,7 @@ assert.equal(json(buildPingCard({ guildMs: 400, apiMs: 100, shard: 1, shardCount
 assert.equal(json(buildPingCard({ guildMs: 90, apiMs: 60, shard: 1, shardCount: 1, guilds: 1 })).accent_color, 0xa5ea7a, 'fast is green');
 assert.equal(json(buildPingCard({ guildMs: 90, apiMs: 900, shard: 1, shardCount: 1, guilds: 1 })).accent_color, 0xff6b6b, 'a slow API makes it red');
 const unknown = json(buildPingCard({ guildMs: 100, apiMs: NaN, shard: 2, shardCount: 4, guilds: 3 }));
-assert.match(text(unknown), /API Ping:\*\* `N\/A`/, 'no websocket data yet');
+assert.match(text(unknown), /Gateway heartbeat:\*\* `N\/A`/, 'no websocket data yet');
 assert.match(text(unknown), /Shard 2\/4/);
+assert.match(text(buildPingCard({ guildMs: 5000, apiMs: 30, probeMs: 410.4, shard: 1, shardCount: 1, guilds: 2 })), /Network to Discord \(REST probe\):\*\* `410ms`/, 'the probe tells the network apart from the queue');
 console.log('ping card ok');

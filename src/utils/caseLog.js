@@ -29,7 +29,8 @@ async function logSanction(client, guild, { modCase, target, moderator, reason, 
 
   // The server's own design for the entry, when it has one.
   const custom = await sanctionLogEmbed({ modCase, guild, target, moderator, reason, duration, source, lang });
-  await sendLog(client, guild.id, 'sanctions', custom ?? embed);
+  // The entry of the log never holds the answer for more than a few seconds in the queue of requests (it is logged by the engine when it fails).
+  await require('./perf').withDeadline(5_000, () => sendLog(client, guild.id, 'sanctions', custom ?? embed));
 }
 
 module.exports = { logSanction };

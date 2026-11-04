@@ -4,6 +4,8 @@ const path = require('path');
 const logger = require('../utils/logger');
 const { peekGuildLanguage, languageFromLocale, runWithLanguage } = require('../i18n');
 const guildBlacklist = require('../utils/guildBlacklist');
+const perf = require('../utils/perf');
+const loadGuard = require('../utils/loadGuard');
 
 // The interactions of a blacklisted server that were already answered "not available": every listener of interactionCreate asks, only the first one answers.
 const blockedAnswered = new WeakSet();
@@ -52,8 +54,15 @@ function eventLanguage(eventName, guildId, args) {
 }
 
 /** The listener that is registered on the client for one event module: the blacklist check first, then the language of the server, then the handler. */
-function makeInvoker(event, file, client) {
+function makeInvoker(event, file, client, { countsEvent = true } = {}) {
+  const name = String(file).replace(/\.js$/, '');
+  const entry = perf.listenerEntry(event.name, name);
+  // What a person waits for goes first in the queue of requests to Discord (utils/restGate.js): the answers to commands, buttons and menus.
+  const interactive = event.name === 'interactionCreate' || name === 'messageCreateCommands';
   return (...args) => {
+    if (countsEvent) perf.countEvent(event.name);
+    // Under pressure (utils/loadGuard.js) the listeners that are not essential do not run: degraded drops the logs of low value, critical everything but the essential.
+    if (!loadGuard.allowsEvent(name)) return;
     // A blacklisted server: no listener runs for it (nothing is written, sent or read), except the ones marked `blacklistExempt` (the one that leaves, and
     // guildDelete). It is read from memory, so this costs nothing and never waits for the database.
     if (guildBlacklist.blocksEvent(event, args)) {
@@ -63,11 +72,14 @@ function makeInvoker(event, file, client) {
     const context = eventContext(event.name, args);
     // Each event runs inside the language of its server, so what it sends follows `!language` (see src/i18n).
     const lang = eventLanguage(event.name, context.guildId, args);
-    logger.runWithContext(context, () => Promise.resolve()
-      .then(() => runWithLanguage(lang, () => event.execute(...args, client)))
+    // Each call of a listener is measured (the time it blocks the loop and the time it takes) and carries its context: the queries and requests it makes are counted for it.
+    const perfContext = perf.newContext({ kind: 'event', name: `${event.name}/${name}`, interactive });
+    logger.runWithContext(context, () => perf.runWith(perfContext, () => Promise.resolve()
+      .then(() => perf.measureListener(entry, () => runWithLanguage(lang, () => event.execute(...args, client))))
+      .then((value) => { perf.finishContext(perfContext); return value; }, (error) => { perf.finishContext(perfContext, error); throw error; })
       .catch((err) => (isPermissionError(err)
         ? logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`)
-        : logger.error(`[event:${event.name}] Handler failed (${file}):`, err))));
+        : logger.error(`[event:${event.name}] Handler failed (${file}):`, err)))));
   };
 }
 
@@ -82,6 +94,7 @@ function loadEvents(client) {
     return;
   }
 
+  const counted = new Set();
   const files = fs.readdirSync(EVENTS_DIR).filter((file) => file.endsWith('.js'));
   let count = 0;
 
@@ -95,7 +108,9 @@ function loadEvents(client) {
       continue;
     }
 
-    const invoke = makeInvoker(event, file, client);
+    // The events by type are counted once, by the first listener of each type (the volume of events is what `!perf` shows).
+    const invoke = makeInvoker(event, file, client, { countsEvent: !counted.has(event.name) });
+    counted.add(event.name);
 
     if (event.once) client.once(event.name, invoke);
     else client.on(event.name, invoke);

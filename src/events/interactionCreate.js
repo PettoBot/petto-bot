@@ -74,6 +74,8 @@ const { PREFIX: FEED_SENSE_PREFIX, handleButton: handleFeedSense } = require('..
 const { t, formatDecimal, languageOf } = require('../i18n');
 
 const { reportInteractionError } = require('../utils/interactionErrors');
+const perf = require('../utils/perf');
+const { commandLimiter, isStaffMember } = require('../utils/rateLimits');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
@@ -572,7 +574,29 @@ module.exports = {
 
     const lang = await languageOf(interaction);
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
-    const remaining = await getRemainingCooldownShared(command.data.name, interaction.user.id, cooldownMs);
+    const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
+    // The group of an umbrella that wraps a whole command (`/protect antiscam set`): its rules are the ones of that command.
+    const group = interaction.options?.getSubcommandGroup?.(false) ?? null;
+    perf.setCommand(`/${[interaction.commandName, group, subcommand].filter(Boolean).join(' ')}`);
+    const inGuild = Boolean(interaction.guildId && interaction.member);
+    // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /action (`hug`) or the whole command
+    // (`act`) can be restricted or turned off.
+    const ruleNames = commandRules.ruleNames(command, { subcommand, group });
+    // Everything that only reads (the cooldown, the levels, the roles, the rules) is asked at the same time: the person waits for the slowest read
+    // and not for the sum of all of them, and the answers are looked at in the same order as always.
+    const cooldownCheck = getRemainingCooldownShared(command.data.name, interaction.user.id, cooldownMs);
+    // A subcommand of an umbrella (`/server info`) also asks for the level set for the command it wraps (`serverinfo`).
+    const levelChecks = inGuild
+      ? Promise.allSettled(commandRules.permissionNames(command, { subcommand, group }).map((name) => permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)))
+      : null;
+    const restrictedCheck = inGuild ? commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null) : null;
+    const disabledCheck = interaction.guildId && interaction.channelId ? commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb) : null;
+    // A member with a role chosen for this moderation command passes its permission check, the same as with the prefix (Discord only
+    // shows the command to them when the server allows it in Integrations).
+    const roleCheck = command.category === 'moderation' && inGuild ? moderationPermissions.hasConfiguredRole(interaction.guildId, command.data.name, interaction.member).catch(() => false) : null;
+    for (const pending of [levelChecks, restrictedCheck, disabledCheck, roleCheck]) pending?.catch?.(() => {}); // never an unhandled rejection when an answer is not needed
+
+    const remaining = await cooldownCheck;
     if (remaining > 0) {
       // Spanish and Portuguese name the prefix form when the command has one (only slash-only commands and menus do not).
       const prefixForm = !command.slashOnly && (command.data.toJSON().type ?? 1) === 1;
@@ -583,31 +607,24 @@ module.exports = {
       return;
     }
 
-    const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
-    // The group of an umbrella that wraps a whole command (`/protect antiscam set`): its rules are the ones of that command.
-    const group = interaction.options?.getSubcommandGroup?.(false) ?? null;
-    if (interaction.guildId && interaction.member) {
-      try {
-        // A subcommand of an umbrella (`/server info`) also asks for the level set for the command it wraps (`serverinfo`).
-        for (const name of commandRules.permissionNames(command, { subcommand, group })) {
-          if (!await permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)) {
-            await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
-            return;
-          }
+    if (levelChecks) {
+      // Custom permission levels are opt-in on top of Discord's own permissions, if the check itself fails (DB hiccup) let the command through
+      // rather than break it for everyone.
+      for (const outcome of await levelChecks) {
+        if (outcome.status === 'rejected') {
+          logger.error('Error checking custom command permission level:', outcome.reason);
+          break;
         }
-      } catch (err) {
-        // Custom permission levels are opt-in on top of Discord's own permissions, if the check
-        // itself fails (DB hiccup) let the command through rather than break it for everyone.
-        logger.error('Error checking custom command permission level:', err);
+        if (!outcome.value) {
+          await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
+          return;
+        }
       }
     }
 
-    // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /action (`hug`) or the whole command
-    // (`act`) can be restricted or turned off.
-    const ruleNames = commandRules.ruleNames(command, { subcommand, group });
     // !restrictcommand: only the roles chosen for this command (administrators always can).
-    if (interaction.guildId && interaction.member) {
-      const restricted = await commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null);
+    if (restrictedCheck) {
+      const restricted = await restrictedCheck;
       if (restricted) {
         await interaction.reply({ content: t(lang, 'core.restricted', { command: restricted.name, roles: restricted.roles.map((id) => `<@&${id}>`).join(', ') }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
         return;
@@ -615,8 +632,8 @@ module.exports = {
     }
 
     // The same rules as !disablecommand: a command switched off for the server or this channel does not run as a slash command either.
-    if (interaction.guildId && interaction.channelId) {
-      const found = await commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb);
+    if (disabledCheck) {
+      const found = await disabledCheck;
       if (found) {
         const disabled = found.row;
         // `/action love hug` when the rule is for the action, `/action` when it is for the whole command.
@@ -633,10 +650,14 @@ module.exports = {
     logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand }, client);
 
     interaction.pettoLang = lang;
-    // A member with a role chosen for this moderation command passes its permission check, the same as with the prefix (Discord only
-    // shows the command to them when the server allows it in Integrations).
-    if (command.category === 'moderation' && interaction.guildId && interaction.member) {
-      interaction.pettoModerationRoleAllowed = await moderationPermissions.hasConfiguredRole(interaction.guildId, command.data.name, interaction.member).catch(() => false);
+    if (roleCheck) interaction.pettoModerationRoleAllowed = await roleCheck;
+    // Slash commands keep their own limits (the cooldown) and share the cap of commands running at once with the prefix; the answer must come inside the
+    // 3 seconds Discord gives, so a command that cannot get a place in 2 seconds is told so instead of failing.
+    const limiter = commandLimiter();
+    const slot = await limiter.acquire({ userId: interaction.user.id, staff: isStaffMember(interaction.member), maxWaitMs: 2_000 });
+    if (!slot.ok) {
+      await interaction.reply({ content: t(lang, 'core.slash.busy'), flags: MessageFlags.Ephemeral }).catch(() => {});
+      return;
     }
     try {
       await command.execute(interaction, client);
@@ -654,6 +675,8 @@ module.exports = {
       // If Discord refuses the error card itself for what it is made of (a deferred answer in Components V2 does not take `content`), a short text is sent once.
       const send = (payload) => (interaction.deferred || interaction.replied ? interaction.editReply(payload) : interaction.reply(payload));
       await sendWithPlainFallback(send, errorReply, { lang, context: `/${interaction.commandName}` }).catch(() => {});
+    } finally {
+      slot.release();
     }
   },
 };

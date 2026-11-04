@@ -57,6 +57,13 @@ const { createErrorRouter } = require('./src/utils/errorRouting');
 const { createGuildDiagnosticSink } = require('./src/utils/guildOpsAlerts');
 const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
+const perf = require('./src/utils/perf');
+const loadGuard = require('./src/utils/loadGuard');
+const watchdog = require('./src/utils/watchdog');
+const processGuards = require('./src/utils/processGuards');
+
+// Every interval job of Petto is measured from here on (runs, time, queries and requests of each tick, utils/perf.js) and paused by the load guard when the bot is under pressure.
+perf.trackIntervals();
 
 // Answers fall back to a normal message when quoting is not possible (no Read Message History, or the message is gone).
 require('./src/utils/safeReply').installSafeReply(require('discord.js').Message);
@@ -89,8 +96,10 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
-  // One limit for every request the bot makes, so a burst (a restart, a sync, a busy minute) waits in line instead of passing the host's cap.
-  rest: { globalRequestsPerSecond: config.restRequestsPerSecond },
+  // The limit of requests per second is the gate of utils/sharedRestLimit.js (two lanes: the answers to people first, the background work paced and bounded). discord.js
+  // keeps its own limit only as a net, higher than the gate, so it never holds an answer behind the background work.
+  // A request that Discord would hold for more than 15 seconds (a channel renamed more than twice in ten minutes) fails at once instead of sitting in the queue for minutes.
+  rest: { globalRequestsPerSecond: Math.min(50, config.restRequestsPerSecond * 4), rejectOnRateLimit: (data) => Number(data?.timeToReset) > 15_000 },
   // Case cards/logs render `@user` mentions as text/reference, not as pings 
   // this is the default for every message the bot sends unless a specific
   // send call opts back in with its own `allowedMentions` (timers and `!send` do, so what their text mentions pings).
@@ -124,12 +133,20 @@ logger.setDiscordSink(createErrorRouter({
 }));
 logger.addDiscordSink(createGuildDiagnosticSink(client));
 
-process.on('unhandledRejection', (err) => (require('./src/utils/permissionErrors').isPermissionError(err)
-  ? logger.warn(`Missing permission (unhandled): ${err.message} (code ${err.code})`)
-  : logger.error('Unhandled promise rejection:', err)));
+// The process stays up for a failed request (Discord, the network, the database, a timeout) and stops cleanly for anything else (utils/processGuards.js).
+processGuards.installProcessGuards({ exit: (reason) => shutdown(reason, 1), canExit: () => watchdog.stats().restartsLastHour < config.watchdogMaxRestartsPerHour });
+processGuards.installGatewayGuards(client, { exit: (reason) => shutdown(reason, 1) });
+// When memory is the problem the caches that can be filled again are emptied before anything is restarted.
+loadGuard.setDropCaches(() => {
+  let dropped = 0;
+  try { dropped += client.sweepers.sweepMessages(() => true); } catch { /* the sweepers may be off */ }
+  try { dropped += client.sweepers.sweepPresences(() => true); } catch { /* the sweepers may be off */ }
+  try { global.gc?.(); } catch { /* not exposed */ }
+  return dropped;
+});
 
 let shuttingDown = false;
-async function shutdown(signal) {
+async function shutdown(signal, code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info(`Received ${signal}; flushing buffered activity before shutdown.`);
@@ -151,7 +168,7 @@ async function shutdown(signal) {
     Promise.resolve(require('./src/db/postgres').closePools()).catch(() => {}),
     new Promise((resolve) => setTimeout(resolve, 2_000)),
   ]);
-  process.exit(0);
+  process.exit(code);
 }
 
 process.once('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
@@ -212,6 +229,10 @@ async function main() {
   startDataMoveJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
+  // The measurements (the loop, the CPU, the memory), the circuit breaker and the watchdog start last, once everything else is running.
+  perf.startSampler();
+  loadGuard.start();
+  watchdog.start({ exit: (reason) => shutdown(reason, 1) }).catch((err) => logger.warn('The watchdog could not start:', err.message));
 }
 
 main().catch(async (err) => {

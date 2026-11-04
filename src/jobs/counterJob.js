@@ -12,6 +12,7 @@ const countersDb = require('../db/counters');
 const database = require('../db/database');
 const logger = require('../utils/logger');
 const config = require('../config');
+const perf = require('../utils/perf');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 const { renderName, planRename, recentRenames, targetOf, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
 const { countGuild, extrasFor } = require('../utils/counterValues');
@@ -239,7 +240,8 @@ async function applyRename(guild, row, channel, name, language) {
   state.renameTimes.set(channel.id, times);
   const topic = targetOf(row) === 'topic';
   try {
-    const edit = topic ? channel.setTopic(name, t(language, 'counters.renameReason')) : channel.setName(name, t(language, 'counters.renameReason'));
+    // With a deadline: a rename that waits in the queue of requests leaves it when the time is up, so it is not sent later on top of the budget of the channel.
+    const edit = perf.withDeadline(RENAME_TIMEOUT_MS, () => (topic ? channel.setTopic(name, t(language, 'counters.renameReason')) : channel.setName(name, t(language, 'counters.renameReason'))));
     const renamed = await withTimeout(edit, RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
     state.lastWanted.set(channel.id, name);
     state.lastStored.set(channel.id, (topic ? renamed?.topic : renamed?.name) ?? name);
@@ -251,7 +253,8 @@ async function applyRename(guild, row, channel, name, language) {
     if (code === 10003) { await setProblem(guild, row, 'missing_channel', { disable: true }); return 'problem'; }
     if (code === 50013 || code === 50001) { await setProblem(guild, row, 'missing_permission'); return 'problem'; }
     // A rate limit or a request still waiting in discord.js: nothing is asked again for this channel until the window is over.
-    if (err?.timedOut || err?.status === 429 || code === 429) state.blockedUntil.set(channel.id, state.now() + RENAME_WINDOW_MS);
+    // (A rename that Discord would hold for more than 15 seconds fails at once with a RateLimitError, see index.js; a deadline ends as a TimeoutError or an AbortError.)
+    if (err?.timedOut || err?.status === 429 || code === 429 || ['RateLimitError', 'TimeoutError', 'AbortError', 'RestGateError'].includes(err?.name)) state.blockedUntil.set(channel.id, state.now() + (Number(err?.timeToReset) > 0 ? Math.min(RENAME_WINDOW_MS, Number(err.timeToReset)) : RENAME_WINDOW_MS));
     await saveRow(row, { rename_times: times });
     // i18n-ignore: log
     warnOnce(`rename:${channel.id}`, { guildId: guild.id, channelId: channel.id, action: 'counter-rename' }, `Could not update counter channel: ${err.message}`);

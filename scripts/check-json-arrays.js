@@ -18,7 +18,7 @@ const { createPostgresClient } = require('../src/db/postgres');
   let typeQueries = 0;
   const pool = {
     query: async (text, values) => {
-      if (/information_schema\.columns/.test(text)) { typeQueries += 1; return { rows: values[1] === 'polls' ? [{ column_name: 'options' }] : [] }; }
+      if (/information_schema\.columns/.test(text)) { typeQueries += 1; return { rows: [{ table_schema: 'public', table_name: 'polls', column_name: 'options' }] }; }
       sent.push({ text, values });
       return { rows: [{ id: 1 }] };
     },
@@ -32,7 +32,7 @@ const { createPostgresClient } = require('../src/db/postgres');
   assert.ok(sent[1].values.includes('["x"]'), 'updates too');
   await db.from('polls').insert([{ guild_id: 'g', options: ['p'] }, { guild_id: 'h', options: ['q'] }]);
   assert.deepEqual(sent[2].values.filter((value) => typeof value === 'string' && value.startsWith('[')), ['["p"]', '["q"]'], 'every row of a bulk insert');
-  assert.equal(typeQueries, 1, 'the column types are read once per table');
+  assert.equal(typeQueries, 1, 'the json columns of every table are read once, in one query');
 
   await db.from('other_table').insert({ channel_ids: ['1', '2'], settings: { a: 1 } });
   const other = sent[sent.length - 1].values;

@@ -1,4 +1,6 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, Routes } = require('discord.js');
+const { performance } = require('node:perf_hooks');
+const perf = require('../../utils/perf');
 const { textCard } = require('../../utils/caseCard');
 const { SUPPORT_URL } = require('../../utils/links');
 const { t, formatNumber, languageOf } = require('../../i18n');
@@ -15,11 +17,12 @@ function colorFor(guildMs, apiMs) {
 }
 
 /** The card of the ping: both latencies, the links and the number of servers (never the number of members, that is private). Pure, so it can be checked without Discord. */
-function buildPingCard({ guildMs, apiMs, shard, shardCount, guilds, lang = 'en' }) {
+function buildPingCard({ guildMs, apiMs, probeMs = null, shard, shardCount, guilds, lang = 'en' }) {
   const api = Number.isFinite(apiMs) ? `${Math.round(apiMs)}ms` : t(lang, 'info.ping.unknown');
   return textCard([
     t(lang, 'info.ping.guild', { ms: `${Math.max(0, Math.round(guildMs))}ms` }),
     t(lang, 'info.ping.api', { ms: api }),
+    ...(Number.isFinite(probeMs) ? [t(lang, 'info.ping.probe', { ms: `${Math.round(probeMs)}ms` })] : []),
     t(lang, 'info.ping.links', { statusUrl: STATUS_URL, supportUrl: SUPPORT_URL }),
     t(lang, 'info.ping.footer', { shard, shardCount, guilds: formatNumber(lang, guilds) }),
   ].join('\n'), colorFor(guildMs, apiMs));
@@ -36,15 +39,19 @@ module.exports = {
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
-    const startedAt = Date.now();
+    // The time of sending ONE message, measured with one clock on this host (never a time of Discord against the clock of the host: a host whose clock is off
+    // would show a number that is not the speed of anything). It includes any wait in the queue of requests; the probe below is the network alone.
+    const startedAt = performance.now();
     await interaction.reply({ components: [textCard(t(lang, 'info.ping.pinging'))], flags: MessageFlags.IsComponentsV2 });
-    const sent = await interaction.fetchReply().catch(() => null);
-    const guildMs = Math.max(0, (sent?.createdTimestamp ?? Date.now()) - startedAt);
+    const guildMs = Math.max(0, performance.now() - startedAt);
     const { client } = interaction;
+    // `GET /gateway` needs no token and no database: how long Discord takes to answer from here.
+    const probeStarted = performance.now();
+    const probeMs = await Promise.resolve().then(() => perf.runWith(perf.newContext({ kind: 'probe', name: 'ping-probe', interactive: true }), () => client.rest.get(Routes.gateway()))).then(() => performance.now() - probeStarted, () => null);
     const shardCount = client.shard?.count ?? 1;
     const shard = (client.shard?.ids?.[0] ?? 0) + 1;
     await interaction.editReply({
-      components: [buildPingCard({ guildMs, apiMs: client.ws.ping, shard, shardCount, guilds: client.guilds.cache.size, lang })],
+      components: [buildPingCard({ guildMs, apiMs: client.ws.ping, probeMs, shard, shardCount, guilds: client.guilds.cache.size, lang })],
       flags: MessageFlags.IsComponentsV2,
     });
   },

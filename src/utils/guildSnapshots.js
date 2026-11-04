@@ -5,6 +5,8 @@ const logger = require('./logger');
 const { forEachWithConcurrency } = require('./concurrency');
 const snapshotsDb = require('../db/guildSnapshots');
 const redis = require('./redis');
+const perf = require('./perf');
+const loadGuard = require('./loadGuard');
 
 const FETCH_ME_MS = 4_000; // the bot's own member is asked from Discord for at most this long
 const ME_CHECK_MS = 3_600_000; // a server where the bot cannot post somewhere has the roles of the bot checked against Discord at most this often
@@ -130,13 +132,23 @@ async function loadBotMember(guild, { force = false } = {}) {
   try {
     const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer in ${FETCH_ME_MS / 1000} seconds`)), FETCH_ME_MS); }); // i18n-ignore: a line of the log
     timer.unref?.();
-    return (await Promise.race([guild.members.fetchMe(force ? { force: true } : undefined), timeout])) ?? guild.members.me ?? null;
+    // The request leaves the queue when the time is up (a deadline), instead of staying in it after this gave up.
+    return (await Promise.race([perf.withDeadline(FETCH_ME_MS, () => guild.members.fetchMe(force ? { force: true } : undefined)), timeout])) ?? guild.members.me ?? null;
   } catch (error) {
     logger.warn(`[snapshots] could not load the bot's member of ${guild.id}: ${error.message}`); // i18n-ignore: a line of the log
     return guild.members?.me ?? cached;
   } finally {
     clearTimeout(timer);
   }
+}
+
+let meNextAt = 0;
+/** The checks of the bot's own roles against Discord go out one a second: the first pass over every server (and the same pass an hour later) is not a burst of requests. */
+async function paceMeCheck() {
+  const now = Date.now();
+  const wait = Math.max(0, meNextAt - now);
+  meNextAt = Math.max(now, meNextAt) + 1_000;
+  if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
 }
 
 const memberCheckedAt = new Map(); // guild id -> when the roles of the bot were last read from Discord because a channel was closed to it
@@ -187,8 +199,10 @@ async function saveGuildSnapshot(guild, { refreshMe = false } = {}) {
   await loadBotMember(guild, { force: refreshMe });
   let notes = [];
   let row = buildSnapshot(guild, { notes });
-  if (!refreshMe && notes.length && guild.members?.me && Date.now() - (memberCheckedAt.get(id) ?? 0) > ME_CHECK_MS) {
+  // None of these checks is made while the bot is under pressure, and they go out one a second (see `paceMeCheck`), not all the servers at once.
+  if (!refreshMe && notes.length && guild.members?.me && loadGuard.level() === 'normal' && Date.now() - (memberCheckedAt.get(id) ?? 0) > ME_CHECK_MS) {
     memberCheckedAt.set(id, Date.now());
+    await paceMeCheck();
     await loadBotMember(guild, { force: true });
     notes = [];
     row = buildSnapshot(guild, { notes });

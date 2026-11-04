@@ -161,6 +161,8 @@ const guildOfTarget = (target) => target?.guild ?? null;
  * `guild`: the server it is on behalf of (a member's own server when not given; null for Petto). `kind`: why it is sent (KINDS).
  * Returns what `send` returns; with no target it returns null. A failure of the decoration only means the message goes as it was.
  */
+const DM_DEADLINE_MS = 6_000;
+
 async function sendDm(target, payload, options = {}) {
   if (!target || typeof target.send !== 'function') return null;
   let body;
@@ -172,7 +174,9 @@ async function sendDm(target, payload, options = {}) {
     logger.warn({ action: 'dm-origin' }, `The origin of a direct message could not be added: ${error.message}`);
     try { body = typeof payload === 'string' ? { content: payload } : clean({ ...payload }); } catch { body = payload; } // as it was written, whatever it is
   }
-  return target.send(body);
+  // A direct message waits at most a few seconds in the queue of requests to Discord (utils/perf.js `withDeadline`): a slow one never holds an answer, and the
+  // caller still logs its failure once.
+  return require('./perf').withDeadline(DM_DEADLINE_MS, () => target.send(body));
 }
 
 /** The net: `User#send` and `GuildMember#send` go through the same step. A message already decorated by `sendDm` is left alone. */

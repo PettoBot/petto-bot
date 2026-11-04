@@ -14,6 +14,7 @@ module.exports = {
   'core.slash.cooldown': 'Please wait {seconds}s before using /{command} again.',
   'core.slash.cooldownSlashOnly': 'Please wait {seconds}s before using /{command} again.',
   'core.slash.missingLevel': "You don't have the required permission level to use this command.",
+  'core.slash.busy': 'Petto is very busy right now. Try again in a few seconds.',
   'core.reactionRoleError': 'Something went wrong while updating that role.',
   'core.pagerError': 'Something went wrong while changing the page.',
   'core.missingArgument': "Missing required argument: `{name}`. Check the command's usage.",

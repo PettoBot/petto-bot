@@ -148,7 +148,7 @@ const SELF_GATED = {
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
-const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
+const TEAM = new Set(['slots', 'botstatus', 'perf', 'guildsend', 'leaveguild', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
 
 
 // ---------------------------------------------------------------- a fake Discord for the probes: it records what changes the server

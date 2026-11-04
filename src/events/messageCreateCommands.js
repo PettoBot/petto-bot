@@ -20,6 +20,8 @@ const { controlAction } = require('../utils/autoModControl');
 const { applyWordRoute } = require('../utils/commandRestrictions');
 const commandRules = require('../utils/commandRules');
 const logger = require('../utils/logger');
+const perf = require('../utils/perf');
+const { commandLimiter, isStaffMember } = require('../utils/rateLimits');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
@@ -283,7 +285,8 @@ module.exports = {
   prefixMatches,
   parsePrefixCommand,
   async execute(message) {
-    if (message.author.bot || !message.guild) return;
+    // The cheapest checks first, before anything is read or looked up: bots, webhooks and system messages never start a command.
+    if (message.author.bot || message.webhookId || message.system || !message.guild) return;
 
     // An @mention of the bot always works, so a server can never get locked out if it forgets its prefixes. Then the prefixes of the
     // server (any of the list, the longest first) and the personal one of the author (boosters, Premium, partners, the team).
@@ -296,6 +299,16 @@ module.exports = {
       // A reply to one of the answers of `ask` written by the member who asked it is their next question (no command word): it goes on as `!ask <text>`.
       parsed = await askFollowUp(message, mainPrefix);
       if (!parsed) return;
+    }
+
+    // The limits of the commands (utils/rateLimits.js): a bucket for each person and each server, checked here, before any lookup. A command that is dropped
+    // says so once (a small reaction, at most once for a person every 30 seconds), never once for each message. The team is never limited; staff get more.
+    const limiter = commandLimiter();
+    const staff = isStaffMember(message.member);
+    const verdict = limiter.check({ userId: message.author.id, guildId: message.guild.id, staff });
+    if (!verdict.ok) {
+      if (limiter.shouldNotify(message.author.id)) message.react('\u23F3').catch(() => {});
+      return;
     }
 
     const prefix = parsed.typedPrefix;
@@ -421,13 +434,26 @@ module.exports = {
       return;
     }
 
-    let moderationRoleOverride = false;
-    if (command.category === 'moderation') {
-      moderationRoleOverride = await moderationPermissions.hasConfiguredRole(message.guild.id, canonicalName, message.member).catch((err) => {
+    perf.setCommand(`${prefix}${canonicalName}`);
+    // What only reads (the configured role, the levels and the restrictions) is asked at the same time: the member waits for the slowest read and
+    // not for the sum of all of them; the answers are looked at in the same order as always.
+    const roleCheck = command.category === 'moderation'
+      ? moderationPermissions.hasConfiguredRole(message.guild.id, canonicalName, message.member).catch((err) => {
         logger.error('Error checking configured moderation role:', err);
         return false;
-      });
-    }
+      })
+      : null;
+    const levelChecks = hiddenAutomodControl ? null : Promise.allSettled(commandRules.permissionNames(command, { subcommand: commandRules.subcommandOfText(command, argText), group: commandRules.groupOfText(command, argText), via: viaUmbrella })
+      .map((name) => permissionsDb.hasCommandPermission(message.guild.id, name, message.member)));
+    // !restrictcommand: only the roles chosen for this command (administrators always can).
+    const restrictedCheck = hiddenAutomodControl ? null : commandRules.restrictedForNames(message.guild.id, ruleNames, message.member).catch((err) => {
+      logger.error('Error checking restricted command:', err);
+      return null;
+    });
+    levelChecks?.catch?.(() => {});
+    restrictedCheck?.catch?.(() => {});
+
+    const moderationRoleOverride = roleCheck ? await roleCheck : false;
 
     const permissionData = effectiveCommandData(command, argText);
     if (!hiddenAutomodControl && !moderationRoleOverride && !checkDefaultPermission(permissionData, message.member)) {
@@ -435,27 +461,21 @@ module.exports = {
       return;
     }
 
-    try {
-      // The level set for the command, and for the old command a subcommand of an umbrella wraps (`!server info` asks for `serverinfo` too).
-      let allowed = true;
-      if (!hiddenAutomodControl && !moderationRoleOverride) {
-        for (const name of commandRules.permissionNames(command, { subcommand: commandRules.subcommandOfText(command, argText), group: commandRules.groupOfText(command, argText), via: viaUmbrella })) {
-          if (!await permissionsDb.hasCommandPermission(message.guild.id, name, message.member)) { allowed = false; break; }
+    // The level set for the command, and for the old command a subcommand of an umbrella wraps (`!server info` asks for `serverinfo` too).
+    if (levelChecks && !moderationRoleOverride) {
+      for (const outcome of await levelChecks) {
+        if (outcome.status === 'rejected') {
+          logger.error('Error checking custom command permission level:', outcome.reason);
+          break;
+        }
+        if (!outcome.value) {
+          await message.reply(warningPayload(message, t(lang, 'core.missingLevel', { prefix, command: canonicalName }))).catch(() => {});
+          return;
         }
       }
-      if (!allowed) {
-        await message.reply(warningPayload(message, t(lang, 'core.missingLevel', { prefix, command: canonicalName }))).catch(() => {});
-        return;
-      }
-    } catch (err) {
-      logger.error('Error checking custom command permission level:', err);
     }
 
-    // !restrictcommand: only the roles chosen for this command (administrators always can).
-    const restricted = hiddenAutomodControl ? null : await commandRules.restrictedForNames(message.guild.id, ruleNames, message.member).catch((err) => {
-      logger.error('Error checking restricted command:', err);
-      return null;
-    });
+    const restricted = restrictedCheck ? await restrictedCheck : null;
     if (restricted) {
       await message.reply(warningPayload(message, t(lang, 'core.restricted', { command: restricted.name, roles: restricted.roles.map((id) => `<@&${id}>`).join(', ') }))).catch(() => {});
       return;
@@ -494,6 +514,12 @@ module.exports = {
     // The `commands` log category: the name of the command only, and only when a channel is set for it.
     if (!hiddenAutomodControl) logCommandUse({ guild: message.guild, user: message.author, channel: message.channel, name: canonicalName, prefix, subcommand: interaction.options.getSubcommand(false) }, message.client);
 
+    // At most a few commands run at once in the whole bot (the line is short and bounded; staff and the team have a share kept for them).
+    const slot = await limiter.acquire({ userId: message.author.id, staff });
+    if (!slot.ok) {
+      if (limiter.shouldNotify(message.author.id)) message.react('\u23F3').catch(() => {});
+      return;
+    }
     try {
       await command.execute(interaction, message.client);
     } catch (err) {
@@ -507,6 +533,8 @@ module.exports = {
         : warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err, lang) : isPayloadError(err) ? t(lang, 'core.replyTooLong') : t(lang, 'core.error'));
       if (interaction.deferred || interaction.replied) await interaction.editReply(errorReply).catch(() => {});
       else await interaction.reply(errorReply).catch(() => {});
+    } finally {
+      slot.release();
     }
   },
 };

@@ -13,6 +13,7 @@ module.exports = {
   'core.slash.cooldown': 'Espere {seconds}s antes de usar !{command} de novo.',
   'core.slash.cooldownSlashOnly': 'Espere {seconds}s antes de usar /{command} de novo.',
   'core.slash.missingLevel': 'Você não tem o nível de permissão necessário para usar este comando.',
+  'core.slash.busy': 'O Petto está muito ocupado agora. Tente de novo em alguns segundos.',
   'core.reactionRoleError': 'Algo deu errado ao atualizar esse cargo.',
   'core.pagerError': 'Algo deu errado ao mudar de página.',
   'core.missingArgument': 'Está faltando um argumento obrigatório: `{name}`. Confira como se usa o comando.',

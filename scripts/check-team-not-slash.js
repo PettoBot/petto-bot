@@ -26,7 +26,7 @@ const SUBCOMMAND = 1;
 const GROUP = 2;
 
 /** Every command that only the team (or only the owner) may use: none of them is a command, group or leaf of any registered slash command. */
-const TEAM_ONLY_COMMANDS = ['premiumadmin', 'guilddebug', 'blacklist', 'leaveguild', 'guildsend', 'botstatus', 'slots', 'team', 'teamhelp'];
+const TEAM_ONLY_COMMANDS = ['premiumadmin', 'guilddebug', 'blacklist', 'leaveguild', 'guildsend', 'botstatus', 'perf', 'slots', 'team', 'teamhelp'];
 
 /** Every team-only action inside a command that members DO see (a path from the end of the leaf: it is also looked for inside the umbrellas, `bot premium grant`). */
 const TEAM_ONLY_LEAVES = [
