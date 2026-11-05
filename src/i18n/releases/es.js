@@ -1,5 +1,48 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
+  'v0.7.10': {
+    label: 'v0.7.10 · Cupcake: disparadores de rol, boost de votos y dominios permitidos',
+    summary: 'Cupcake: reglas que actúan cuando un miembro recibe un rol, +10% de XP para quienes votan por Petto, dominios permitidos en el filtro de enlaces, comandos de barra con nombres más claros y un bot que se protege bajo carga.',
+    sections: [
+      {
+        title: 'Disparadores de rol',
+        items: [
+          '`/protect roletrigger add` hace que Petto advierta, silencie, encarcele, expulse, banee o quite un rol a un miembro que recibe un rol que tú eliges, o que termina la incorporación de Discord teniéndolo. Sirve para atrapar roles de "cuarentena" o "sin verificar" que reparte otro bot. El panel web también tiene una página para ellos.',
+          'Una parada de seguridad evita que una raid se desmadre: `/protect roletrigger limit` fija cuántas acciones por minuto permite un servidor, y el valor por defecto crece con el tamaño del servidor. Los miembros que pasan el límite esperan en una fila y se revisan otra vez antes de su turno, y el staff recibe una lista de a quién no miró Petto.',
+          'Petto ahora carga los miembros de los servidores con reglas, así que ya no se pierde un rol dado a un miembro que aún no había visto.',
+        ],
+      },
+      {
+        title: 'Votos, niveles y tarjetas',
+        items: [
+          'Un voto por Petto en top.gg u omniplex.gg te da +10% de XP durante 12 horas, en todos los servidores. Las dos listas comparten un solo temporizador, así que votar dos veces nunca da más. El rango muestra una línea de texto sobre la tarjeta con el bonus que te queda o dónde votar, `!votes show` muestra lo que te queda, y un servidor puede desactivarlo con `/levels settings rules setting:vote_boost value:off`.',
+          'La barra de progreso de `/levels rank` es una imagen plana y pequeña con temas de Halloween y Navidad, y el ranking tiene una imagen de podio para los tres primeros. `/game ship` tiene una tarjeta nueva con tema de amor.',
+        ],
+      },
+      {
+        title: 'Comandos y servidores',
+        items: [
+          'Una duración justo después del miembro vuelve temporal un mute o un ban: `!mute @member 3d spam`, `!ban @member 7d spam`.',
+          'El filtro "Todos los enlaces" de AutoMod tiene una lista de dominios permitidos: `/automod links allow domain:youtube.com` deja pasar ese sitio y sus subdominios.',
+          'Los comandos de barra tienen nombres más claros (`/levels`, `/action`, `/automation`, `/prefix`...), cada comando público con prefijo tiene su entrada de barra, `/modtools` y `/social` son nuevos y `/quests` es público. Las herramientas que solo pueden usar el dueño o el equipo ya no aparecen en el menú `/`.',
+          '`/role join`, `/role sticky` y los comandos masivos de roles (`/role all`, `/role humans`...) se ejecutan como un trabajo que puedes previsualizar, pausar y cancelar, y la página de Roles del panel web es mucho mejor.',
+          'La página pública de estadísticas muestra un historial diario de servidores y miembros, y `!stats growth` muestra cada día con las entradas y salidas como barras.',
+          'El bot se protege bajo carga: los comandos tienen límites, las peticiones a Discord tienen dos carriles para que las respuestas nunca esperen al trabajo de fondo, y el equipo tiene un `!perf` privado para ver dónde se va el tiempo.',
+        ],
+      },
+      {
+        title: 'Correcciones',
+        items: [
+          'Los mensajes fijos vuelven al final en medio segundo en vez de tras una espera larga.',
+          'Una reacción, un mensaje borrado o editado y un avatar o nombre de usuario nuevo ya no envían peticiones innecesarias a Discord, que lo ralentizaban todo.',
+          'El recordatorio de bump sale en el minuto en que termina la espera, y un servidor que pierde su Server Tag ya no conserva los roles que daba por mostrarla.',
+          'El mensaje directo de una entrada se envía unos segundos después de entrar y se reintenta si Discord lo rechaza.',
+          'Los avisos de YouTube esperan una imagen que cargue y usan la más grande, y un rol dado de forma permanente ya no lo quita uno temporal anterior.',
+          'Se acabó el "Petto left a server: undefined" tras un reinicio, y la memoria es más estable.',
+        ],
+      },
+    ],
+  },
   'v0.7.9-3': {
     label: 'v0.7.9~3 · Donut: comandos de barra, /ai ask (BETA), DMs reportables',
     summary: 'Un parche de Donut: los comandos con prefijo pasan a comandos de barra como `/mod`, `/server` y `/game`, una IA que responde preguntas (BETA), DMs que dicen de dónde vienen y se pueden reportar, y una ayuda más clara.',

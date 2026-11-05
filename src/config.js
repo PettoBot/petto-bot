@@ -186,6 +186,10 @@ module.exports = {
   voteChannelId: /^\d{15,25}$/.test(process.env.VOTE_CHANNEL_ID || '') ? process.env.VOTE_CHANNEL_ID : null,
   // The role a voter gets when they vote, and keeps. It lives in the server of the vote channel.
   voteRoleId: /^\d{15,25}$/.test(process.env.VOTE_ROLE_ID || '') ? process.env.VOTE_ROLE_ID : null,
+  // Votes for the bot on omniplex.gg: the secret of the webhook (sent as the HMAC key of `X-Webhook-Signature`), and the page where a member votes.
+  // Without OMNIPLEX_VOTE_URL the vote link is https://omniplex.gg/bots/<bot id>, a path that has not been checked.
+  omniplexWebhookSecret: String(process.env.OMNIPLEX_WEBHOOK_SECRET || '').trim() || null,
+  omniplexVoteUrl: /^https:\/\/[^\s]+$/.test(String(process.env.OMNIPLEX_VOTE_URL || '').trim()) ? String(process.env.OMNIPLEX_VOTE_URL).trim() : null,
   inviteCacheWarmConcurrency: envInt('INVITE_CACHE_WARM_CONCURRENCY', 2, 1, 16),
   jobConcurrency: envInt('PETTO_JOB_CONCURRENCY', 4, 1, 16),
   // Optional explicit official support guild. When empty, the private join-log

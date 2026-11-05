@@ -3,6 +3,7 @@ const { getConfig } = require('../../db/levelConfig');
 const levelUsersDb = require('../../db/levelUsers');
 const { buildLevelData } = require('../../utils/levelData');
 const { buildRankReply } = require('../../utils/rankView');
+const { boostFor } = require('../../utils/voteBoost');
 const { textCard } = require('../../utils/caseCard');
 const { getVoiceConfig } = require('../../utils/levelSource');
 const { t, languageOf } = require('../../i18n');
@@ -40,11 +41,12 @@ module.exports = {
     await interaction.deferReply();
 
     const member = await interaction.guild.members.fetch(target.id).catch(() => null);
-    const [rank, total] = await Promise.all([
+    const [rank, total, voteBoost] = await Promise.all([
       voice ? levelUsersDb.getVoiceRank(interaction.guild.id, xp) : levelUsersDb.getRank(interaction.guild.id, xp),
       voice ? levelUsersDb.countVoiceRanked(interaction.guild.id) : levelUsersDb.countRanked(interaction.guild.id),
+      boostFor(config, target.id),
     ]);
-    const data = buildLevelData({ config: sourceConfig, userData, source, rank, total });
+    const data = buildLevelData({ config: sourceConfig, userData, source, rank, total, voteBoost, voteBoostEnabled: config.vote_boost_enabled !== false });
     const shown = member ?? target;
 
     const reply = await buildRankReply({
@@ -55,6 +57,8 @@ module.exports = {
       avatarUrl: shown.displayAvatarURL({ size: 256, extension: 'png' }),
       cardName: config.rank_card ?? null,
       source,
+      botId: interaction.client.user.id,
+      own: target.id === interaction.user.id,
       lang,
     });
     await interaction.editReply(reply);

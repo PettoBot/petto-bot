@@ -14,6 +14,7 @@ const { build: buildEmbedTemplate } = require('./embedBuilder');
 const { listEvents } = require('../db/xpEvents');
 const { addPeriodXp } = require('../db/levelPeriods');
 const { eventMultiplier, dailyBonus, utcDay } = require('./levelRules');
+const { boostFor, boostFactor } = require('./voteBoost');
 const logger = require('./logger');
 const { t, currentLanguage } = require('../i18n');
 const { sendDm } = require('./dmOrigin');
@@ -35,12 +36,21 @@ const touchedDay = new Map();
  * activity of a day adds the daily and streak bonus. Neither can stop the award, a failure just leaves the plain XP.
  */
 async function applyXpRules({ guild, member, config, xpGain, source }) {
-  let gain = xpGain;
+  let eventFactor = 1;
   try {
-    gain = Math.round(gain * eventMultiplier(await listEvents(guild.id), source));
+    eventFactor = eventMultiplier(await listEvents(guild.id), source);
   } catch (err) {
     logger.warn(`XP events could not be read for ${guild.id}: ${err.message}`);
   }
+  // The vote boost (+10% for a member who voted in the last 12 hours) multiplies on top of everything above, outside the server's
+  // multiplier cap, and only when the server has it on. It is answered from memory, so a message costs no query. XP is rounded once.
+  let voteFactor = 1;
+  try {
+    voteFactor = boostFactor(await boostFor(config, member.id));
+  } catch (err) {
+    logger.warn(`The vote boost could not be read for ${member.id}: ${err.message}`);
+  }
+  const gain = Math.round(xpGain * eventFactor * voteFactor);
   let bonus = 0;
   let streak = 0;
   try {
@@ -201,6 +211,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
   const xp = voice ? userData?.voice_xp ?? 0 : userData?.xp ?? 0;
   const rank = voice ? await levelUsersDb.getVoiceRank(guild.id, xp) : await levelUsersDb.getRank(guild.id, xp);
   const total = voice ? await levelUsersDb.countVoiceRanked(guild.id) : await levelUsersDb.countRanked(guild.id);
+  const voteBoost = await boostFor(config, member.id);
 
   const ctx = {
     member,
@@ -208,7 +219,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     channel,
     message: message ?? undefined,
     user: member.user,
-    levelData: { ...buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank, total }), level },
+    levelData: { ...buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank, total, voteBoost }), level },
     levelReward: earnedRole ? { id: earnedRole.id, name: earnedRole.name } : null,
   };
 

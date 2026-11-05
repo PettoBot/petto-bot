@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const roleTriggersDb = require('../../db/roleTriggers');
 const { ensureGuild } = require('../../db/guilds');
-const { ACTIONS, TRIGGERS, validateRule, MIN_LIMIT, MAX_LIMIT, validLimit, limitFor } = require('../../utils/roleTriggers');
+const { ACTIONS, TRIGGERS, validateRule, MIN_LIMIT, MAX_LIMIT, validLimit, queueCap, limitFor } = require('../../utils/roleTriggers');
 const { formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -64,7 +64,8 @@ module.exports = {
       const amount = interaction.options.getInteger('amount');
       if (amount === null) {
         const chosen = await roleTriggersDb.getLimit(guild.id).catch(() => null);
-        return show(t(lang, validLimit(chosen) ? 'automation.roletrigger.limit.showCustom' : 'automation.roletrigger.limit.showDefault', { limit: await limitFor(guild), minutes: 10 }));
+        const current = await limitFor(guild);
+        return show(t(lang, validLimit(chosen) ? 'automation.roletrigger.limit.showCustom' : 'automation.roletrigger.limit.showDefault', { limit: current, queue: queueCap(current), minutes: 10 }));
       }
       if (!validLimit(amount)) return show(t(lang, 'automation.roletrigger.limit.range', { min: MIN_LIMIT, max: MAX_LIMIT }), 0xfe6465);
       await ensureGuild(guild.id);

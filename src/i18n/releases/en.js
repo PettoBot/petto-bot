@@ -1,5 +1,48 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.10': {
+    label: 'v0.7.10 · Cupcake: role triggers, vote boost, allowed domains & clearer slash commands',
+    summary: 'Cupcake: rules that act when a member is given a role, +10% XP for members who vote for Petto, allowed domains in the links filter, slash commands with clearer names, and a bot that protects itself under load.',
+    sections: [
+      {
+        title: 'Role triggers',
+        items: [
+          '`/protect roletrigger add` makes Petto warn, mute, jail, kick, ban or take a role away from a member who is given a role you choose, or who finishes Discord\'s onboarding while holding it. It is a way to catch "quarantine" or "unverified" roles that another bot hands out. The dashboard has a page for them too.',
+          'A safety stop keeps a raid from running wild: `/protect roletrigger limit` sets how many actions a minute a server allows, and the default grows with the size of the server. The members over the limit wait in a line and are checked again before their turn, and the staff gets a list of whom Petto did not look at.',
+          'Petto now loads the members of servers that have rules, so a role given to a member it had not seen yet is no longer missed.',
+        ],
+      },
+      {
+        title: 'Votes, levels and cards',
+        items: [
+          'A vote for Petto on top.gg or omniplex.gg gives you +10% XP for 12 hours, in every server. Both lists share one timer, so voting twice never gives more. The rank shows a line of text above the card with the boost you have left, or where to vote, `!votes show` shows what is left, and a server can turn it off with `/levels settings rules setting:vote_boost value:off`.',
+          'The `/levels rank` progress bar is a small flat picture with themes for Halloween and Christmas, and the leaderboard has a podium picture for the top three. `/game ship` has a new love-themed card.',
+        ],
+      },
+      {
+        title: 'Commands and servers',
+        items: [
+          'A duration right after the member makes a mute or a ban temporary: `!mute @member 3d spam`, `!ban @member 7d spam`.',
+          'The "All links" filter of AutoMod has a list of allowed domains: `/automod links allow domain:youtube.com` lets that site and its subdomains through.',
+          'Slash commands have clearer names (`/levels`, `/action`, `/automation`, `/prefix`...), every public prefix command has a slash entry, `/modtools` and `/social` are new, and `/quests` is public. The tools only the owner or the team can use are no longer in the `/` menu.',
+          '`/role join`, `/role sticky` and the mass role commands (`/role all`, `/role humans`...) run as a job that you can preview, pause and cancel, and the Roles page of the dashboard is much better.',
+          'The public stats page shows a daily history of servers and members, and `!stats growth` shows every day with the joins and leaves as bars.',
+          'The bot protects itself under load: commands have limits, requests to Discord have two lanes so answers never wait for background work, and the team has a private `!perf` to see where the time goes.',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          'Sticky messages come back to the bottom in about half a second instead of after a long wait.',
+          'A reaction, a deleted or an edited message, and a new avatar or username no longer send needless requests to Discord, which slowed everything down.',
+          'The bump reminder goes out at the minute the cooldown ends, and a server that loses its Server Tag no longer keeps the roles it gave for showing it.',
+          'The direct message of a join is sent a few seconds after the join and tried again if Discord refuses it.',
+          'YouTube notices wait for a picture that loads and use the largest one, and a role given for good is no longer taken away by an older temporary one.',
+          'No more "Petto left a server: undefined" after a restart, and a steadier memory.',
+        ],
+      },
+    ],
+  },
   'v0.7.9-3': {
     label: 'v0.7.9~3 · Donut: slash umbrellas, /ai ask (BETA), reportable DMs',
     summary: 'A patch of Donut: prefix commands move into slash commands such as `/mod`, `/server` and `/game`, an AI that answers questions (BETA), DMs that say where they come from and can be reported, and a clearer help.',

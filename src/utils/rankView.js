@@ -3,7 +3,10 @@ const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const { renderRankCard, CARD_FILE_NAME } = require('./cardService');
 const { buildThinBar } = require('./levelProgressBar');
 const { renderRankBar } = require('./rankBar');
-const { t, formatNumber, currentLanguage } = require('../i18n');
+const { t, formatNumber, formatList, currentLanguage } = require('../i18n');
+const { voteLists } = require('./voteLists');
+const { VOTE_BOOST_PERCENT, VOTE_BOOST_HOURS } = require('./voteBoost');
+const config = require('../config');
 
 /** `1h 20m` for a number of minutes. */
 function formatMinutes(minutes) {
@@ -51,19 +54,40 @@ function buildRankEmbed({ data, name, avatarUrl, withCard = false, barName = nul
 }
 
 /**
- * The message for /levels rank. `style` is `card`, `embed` or `both`. A card that cannot be drawn leaves the embed, so a rank is
- * always answered.
+ * The line of plain text above the card or the embed about the vote boost, or '' when there is nothing to say:
+ * - the member has an active boost: how much and when it ends (a relative Discord time), no link;
+ * - the server has the boost on and the member has none: where to vote. Each link is a masked link with the address between < and >
+ *   (`[top.gg](<https://...>)`), so the line shows a short label and Discord does not unfurl a preview box under the message;
+ * - the server turned the boost off: nothing.
+ * `own` is false when the rank is somebody else's. `botId` makes the vote links (the id of the bot).
  */
-async function buildRankReply({ style, ctx, data, name, avatarUrl, cardName, source, color = null, lang = currentLanguage() }) {
+function buildBoostLine({ data, botId = null, own = true, lang = currentLanguage() }) {
+  if (data.voteBoost && Number(data.voteBoost.endsAt) > Date.now()) {
+    return t(lang, own ? 'leveling.rankView.boostActive' : 'leveling.rankView.boostActiveOther', { percent: data.voteBoost.percent, time: `<t:${Math.floor(Number(data.voteBoost.endsAt) / 1000)}:R>` });
+  }
+  if (!data.voteBoostAvailable) return '';
+  const id = botId ?? config.clientId;
+  const links = id ? voteLists(id).filter((list) => list.url).map((list) => `[${list.name}](<${list.url}>)`) : [];
+  if (!links.length) return '';
+  return t(lang, 'leveling.rankView.voteNow', { percent: VOTE_BOOST_PERCENT, hours: VOTE_BOOST_HOURS, links: formatList(lang, links, { word: 'or' }) });
+}
+
+/**
+ * The message for /levels rank. `style` is `card`, `embed` or `both`. A card that cannot be drawn leaves the embed, so a rank is
+ * always answered. `content` is the line about the vote boost, shown above the card or the embed (left out when there is none).
+ */
+async function buildRankReply({ style, ctx, data, name, avatarUrl, cardName, source, color = null, botId = null, own = true, lang = currentLanguage() }) {
   let file = null;
   if (style !== 'embed') file = await renderRankCard(ctx, cardName, source);
   const useCard = Boolean(file);
-  if (style === 'card' && useCard) return { files: [new AttachmentBuilder(file.buffer, { name: file.name })] };
-  if (useCard) return { embeds: [buildRankEmbed({ data, name, avatarUrl, withCard: true, lang })], files: [new AttachmentBuilder(file.buffer, { name: file.name })] };
+  const line = buildBoostLine({ data, botId, own, lang });
+  const text = line ? { content: line } : {};
+  if (style === 'card' && useCard) return { ...text, files: [new AttachmentBuilder(file.buffer, { name: file.name })] };
+  if (useCard) return { ...text, embeds: [buildRankEmbed({ data, name, avatarUrl, withCard: true, lang })], files: [new AttachmentBuilder(file.buffer, { name: file.name })] };
   // The embed with the drawn bar; when the bar cannot be drawn the embed is sent with the thin text bar instead.
   const bar = await renderRankBar({ percent: data.progress, color, voice: data.source === 'voice' }).catch(() => null);
   const embed = buildRankEmbed({ data, name, avatarUrl, barName: bar?.name ?? null, lang });
-  return bar ? { embeds: [embed], files: [new AttachmentBuilder(bar.buffer, { name: bar.name })] } : { embeds: [embed] };
+  return bar ? { ...text, embeds: [embed], files: [new AttachmentBuilder(bar.buffer, { name: bar.name })] } : { ...text, embeds: [embed] };
 }
 
-module.exports = { formatMinutes, buildRankEmbed, buildRankReply };
+module.exports = { formatMinutes, buildRankEmbed, buildBoostLine, buildRankReply };
