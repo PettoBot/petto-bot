@@ -1,6 +1,6 @@
 // Checks the vote boost: how long a vote lasts (the latest expiry of both lists, never a sum), the cache in front of the database,
 // the +10% on messages and voice XP (once, before the daily limit, on top of the multipliers, off when the server turned it off),
-// the omniplex webhook (signature, what is ignored, a vote sent twice), and the texts in the three languages.
+// the omniplex webhook (signature, what is ignored, a vote sent twice), the line of the rank outside of the card, and the texts in the three languages.
 // The database and Discord are replaced.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -424,26 +424,63 @@ const MINUTE = 60_000;
   }
 
   const { buildLevelData } = require('../src/utils/levelData');
-  const { buildRankEmbed } = require('../src/utils/rankView');
+  const { buildRankEmbed, buildBoostLine, buildRankReply } = require('../src/utils/rankView');
   const config = { curve_a: 1, curve_b: 50, curve_c: 100, difficulty: 2.5, rounding: 50 };
   const noBoost = buildLevelData({ config, userData: { xp: 300, level: 1 }, rank: 2, total: 9 });
   assert.equal(noBoost.voteBoost, null, 'no boost in the data by default');
-  const withBoost = buildLevelData({ config, userData: { xp: 300, level: 1 }, rank: 2, total: 9, voteBoost: { percent: 10, endsAt } });
+  assert.equal(noBoost.voteBoostAvailable, false, 'and nothing to vote for unless the server says the boost is on');
+  const withBoost = buildLevelData({ config, userData: { xp: 300, level: 1 }, rank: 2, total: 9, voteBoost: { percent: 10, endsAt }, voteBoostEnabled: true });
   assert.deepEqual(withBoost.voteBoost, { percent: 10, endsAt });
-  assert.equal(buildLevelData({ config, userData: { xp: 300, level: 1 }, voteBoost: { percent: 10, endsAt: Date.now() - 5 } }).voteBoost, null, 'an ended boost is dropped');
-  const fieldNames = (data, lang) => buildRankEmbed({ data, name: 'Liam', avatarUrl: null, lang }).toJSON().fields;
-  const names = { en: 'Vote boost', es: 'Bonus por voto', 'pt-BR': 'Bônus de voto' };
-  for (const lang of ['en', 'es', 'pt-BR']) {
-    const fields = fieldNames(withBoost, lang);
-    const field = fields.find((entry) => entry.name === names[lang]);
-    assert.ok(field, `the embed has the vote boost field in ${lang}`);
-    assert.match(field.value, /^\+10%/);
-    assert.match(field.value, new RegExp(`<t:${Math.floor(endsAt / 1000)}:R>`), 'with the time it ends');
-    assert.equal(fieldNames(noBoost, lang).some((entry) => entry.name === names[lang]), false, `no field without a boost (${lang})`);
-    assert.equal(fieldNames(noBoost, lang).length, fields.length - 1, 'the rest of the embed is the same');
-  }
+  assert.equal(withBoost.voteBoostAvailable, false, 'a member with a boost has nothing to vote for');
+  const voteNow = buildLevelData({ config, userData: { xp: 300, level: 1 }, rank: 2, total: 9, voteBoostEnabled: true });
+  assert.deepEqual([voteNow.voteBoost, voteNow.voteBoostAvailable], [null, true], 'boost on and no active boost: the member can vote');
+  const endedBoost = buildLevelData({ config, userData: { xp: 300, level: 1 }, voteBoost: { percent: 10, endsAt: Date.now() - 5 }, voteBoostEnabled: true });
+  assert.equal(endedBoost.voteBoost, null, 'an ended boost is dropped');
+  assert.equal(endedBoost.voteBoostAvailable, true, 'and the member can vote again');
 
-  // The rank card: the default card has the badge, and it only shows with a boost.
+  // The rank embed has no vote boost field any more: the notice is a line of text above it.
+  const fieldsOf = (data, lang) => buildRankEmbed({ data, name: 'Liam', avatarUrl: null, lang }).toJSON().fields;
+  const oldNames = ['Vote boost', 'Bonus por voto', 'Bônus de voto'];
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    for (const data of [withBoost, noBoost, voteNow]) {
+      assert.equal(fieldsOf(data, lang).some((entry) => oldNames.includes(entry.name) || /\+10%/.test(entry.value)), false, `no vote boost field in the embed (${lang})`);
+    }
+    assert.equal(fieldsOf(withBoost, lang).length, fieldsOf(noBoost, lang).length, 'the embed is the same with or without a boost');
+  }
+  const catalogs = require('../src/i18n').CATALOGS;
+  assert.equal(Object.keys(catalogs.en).includes('leveling.rankView.voteBoost'), false, 'the old field keys are gone');
+
+  // The line above the rank: the active boost with its time, the vote links between < and >, or nothing when the server has it off.
+  const topggLink = 'https://top.gg/bot/55/vote';
+  const omniplexLink = 'https://omniplex.gg/bots/55';
+  const endStamp = `<t:${Math.floor(endsAt / 1000)}:R>`;
+  const activeLine = { en: `⭐ +10% XP from your vote, ends ${endStamp}`, es: `⭐ +10% de XP por tu voto, termina ${endStamp}`, 'pt-BR': `⭐ +10% de XP pelo seu voto, termina ${endStamp}` };
+  const voteLine = {
+    en: `**Vote boost:** vote now for +10% XP for 12 hours: <${topggLink}> or <${omniplexLink}>`,
+    es: `**Bonus por voto:** vota ahora y recibe +10% de XP durante 12 horas: <${topggLink}> o <${omniplexLink}>`,
+    'pt-BR': `**Bônus de voto:** vote agora e receba +10% de XP por 12 horas: <${topggLink}> ou <${omniplexLink}>`,
+  };
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    assert.equal(buildBoostLine({ data: withBoost, botId: '55', lang }), activeLine[lang], `the active boost line (${lang})`);
+    assert.ok(!/https?:/.test(buildBoostLine({ data: withBoost, botId: '55', lang })), 'with no link');
+    assert.equal(buildBoostLine({ data: voteNow, botId: '55', lang }), voteLine[lang], `the vote line (${lang})`);
+    assert.equal(buildBoostLine({ data: noBoost, botId: '55', lang }), '', `nothing when the server has the boost off (${lang})`);
+  }
+  assert.match(buildBoostLine({ data: withBoost, botId: '55', own: false, lang: 'en' }), /from their vote, ends <t:\d+:R>/, 'the boost of somebody else');
+  assert.equal(buildBoostLine({ data: { ...withBoost, voteBoost: { percent: 10, endsAt: Date.now() - 1 } }, botId: '55' }), '', 'a boost that ended is not announced');
+  // Every link is wrapped so that Discord does not turn it into a preview box.
+  const linkText = buildBoostLine({ data: voteNow, botId: '55', lang: 'en' });
+  assert.equal([...linkText.matchAll(/<https?:\/\/[^\s<>]+>/g)].length, 2, 'two links, both wrapped');
+  assert.equal(linkText.replace(/<https?:\/\/[^\s<>]+>/g, '').includes('http'), false, 'and none outside the brackets');
+
+  // The message: the same line comes with the embed, over the picture of the bar.
+  const reply = await buildRankReply({ style: 'embed', ctx: {}, data: voteNow, name: 'Liam', avatarUrl: null, cardName: null, source: 'messages', botId: '55', lang: 'en' });
+  assert.equal(reply.content, voteLine.en, 'the line is the content of the message');
+  assert.equal(reply.embeds.length, 1);
+  const off = await buildRankReply({ style: 'embed', ctx: {}, data: noBoost, name: 'Liam', avatarUrl: null, cardName: null, source: 'messages', botId: '55', lang: 'en' });
+  assert.equal(off.content, undefined, 'a server with the boost off gets no extra line');
+
+  // The rank card: the default card has no badge, with or without a boost.
   stub('src/db/imageCards.js', { getCard: async () => null });
   stub('src/db/cardAssets.js', { getAsset: async () => null });
   stub('src/db/premium.js', { getGuildPremium: async () => ({ active: false }) });
@@ -451,23 +488,20 @@ const MINUTE = 60_000;
   const { defaultRankCard, renderRankCard } = require('../src/utils/cardService');
   const { normalizeBasic, buildBasicLayers } = require('../src/utils/cardPresets');
   const basic = normalizeBasic(defaultRankCard('messages').basic, 'rank');
-  assert.equal(basic.showBoost, true, 'the default card shows the badge');
-  const badge = buildBasicLayers(defaultRankCard('messages').basic, 1024, 320, 'rank').find((layer) => layer.id === 'boost');
-  assert.equal(badge?.text, '{level_vote_boost}', 'a text layer of the variable, empty (and so not drawn) without a boost');
-  assert.ok(badge.pill, 'in a small pill');
-  assert.equal(normalizeBasic({ preset: 'rank' }, 'rank').showBoost, false, 'a card of a server has no badge unless it asks');
-  assert.equal(buildBasicLayers({ preset: 'rank' }, 1024, 320, 'rank').some((layer) => layer.id === 'boost'), false, 'so the cards of the servers are untouched');
+  assert.equal('showBoost' in basic, false, 'the card has no boost setting');
+  assert.equal('showBoost' in defaultRankCard('messages').basic, false, 'and the default card does not ask for one');
+  for (const layers of [buildBasicLayers(defaultRankCard('messages').basic, 1024, 320, 'rank'), buildBasicLayers(defaultRankCard('voice').basic, 1024, 320, 'rank'), buildBasicLayers({ preset: 'rank' }, 1024, 320, 'rank')]) {
+    assert.equal(layers.some((layer) => layer.id === 'boost' || /level_vote_boost/.test(layer.text ?? '')), false, 'no badge layer in the card');
+  }
   const user = { id: '1', username: 'liam', displayName: 'liam', displayAvatarURL: () => null, createdAt: new Date() };
   const fakeGuild = { id: '9', name: 'Petto', memberCount: 5, premiumTier: 0, premiumSubscriptionCount: 0, iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
   const fakeMember = { id: '1', user, displayName: 'liam', displayAvatarURL: () => null, joinedTimestamp: 1, roles: { cache: new Collection(), highest: { name: 'Member' } }, premiumSince: null };
   const levelData = { level: 12, xp: 23450, xpNeeded: 2350, xpCurrent: 1420, xpToNext: 930, progress: 60, rank: 3, total: 120, source: 'text' };
   const plain = await renderRankCard({ guild: fakeGuild, member: fakeMember, user, levelData: { ...levelData, voteBoost: null } }, null, 'messages');
-  const badged = await renderRankCard({ guild: fakeGuild, member: fakeMember, user, levelData: { ...levelData, voteBoost: { percent: 10, endsAt } } }, null, 'messages');
+  const withBoostCard = await renderRankCard({ guild: fakeGuild, member: fakeMember, user, levelData: { ...levelData, voteBoost: { percent: 10, endsAt } } }, null, 'messages');
   assert.deepEqual([...plain.buffer.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'the card without a boost is a PNG');
-  assert.deepEqual([...badged.buffer.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'and so is the one with it');
-  assert.notDeepEqual(plain.buffer, badged.buffer, 'the badge changes the picture');
-  const plainAgain = await renderRankCard({ guild: fakeGuild, member: fakeMember, user, levelData: { ...levelData, voteBoost: null } }, null, 'messages');
-  assert.deepEqual(plain.buffer, plainAgain.buffer, 'and a member without a boost keeps the same card');
+  assert.deepEqual([...withBoostCard.buffer.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'and so is the one with it');
+  assert.deepEqual(plain.buffer, withBoostCard.buffer, 'the boost does not change the picture: the notice is outside of it');
 
   // The server switch in /levels settings rules.
   const level = require('../src/commands/leveling/level');
@@ -508,7 +542,7 @@ const MINUTE = 60_000;
   // The leveling rules summary says whether the switch is on, in the three languages.
   assert.equal(warnings.filter((line) => /vote boost/i.test(line)).length, 0, 'nothing warned about the boost');
   const { CATALOGS } = require('../src/i18n');
-  for (const key of ['leveling.rules.voteBoostOn', 'leveling.rules.voteBoostOff', 'leveling.rankView.voteBoost', 'votes.boost.active', 'votes.boost.inactive', 'votes.boost.note', 'votes.thanks.boost', 'embeds.value.voteBoost', 'embeds.var.leveling.levelVoteBoost']) {
+  for (const key of ['leveling.rules.voteBoostOn', 'leveling.rules.voteBoostOff', 'leveling.rankView.boostActive', 'leveling.rankView.boostActiveOther', 'leveling.rankView.voteNow', 'votes.boost.active', 'votes.boost.inactive', 'votes.boost.note', 'votes.thanks.boost', 'embeds.value.voteBoost', 'embeds.var.leveling.levelVoteBoost']) {
     assert.ok(CATALOGS.en[key] && CATALOGS.es[key] && CATALOGS['pt-BR'][key], `${key} exists in the three languages`);
     assert.notEqual(CATALOGS.es[key], CATALOGS.en[key], `${key} is translated to Spanish`);
     assert.notEqual(CATALOGS['pt-BR'][key], CATALOGS.en[key], `${key} is translated to Portuguese`);

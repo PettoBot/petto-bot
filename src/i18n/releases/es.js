@@ -15,7 +15,7 @@ module.exports = {
       {
         title: 'Votos, niveles y tarjetas',
         items: [
-          'Un voto por Petto en top.gg u omniplex.gg te da +10% de XP durante 12 horas, en todos los servidores. Las dos listas comparten un solo temporizador, así que votar dos veces nunca da más. Se ve como una insignia en la tarjeta de rango, `!votes show` muestra lo que te queda, y un servidor puede desactivarlo con `/levels settings rules setting:vote_boost value:off`.',
+          'Un voto por Petto en top.gg u omniplex.gg te da +10% de XP durante 12 horas, en todos los servidores. Las dos listas comparten un solo temporizador, así que votar dos veces nunca da más. El rango muestra una línea de texto sobre la tarjeta con el bonus que te queda o dónde votar, `!votes show` muestra lo que te queda, y un servidor puede desactivarlo con `/levels settings rules setting:vote_boost value:off`.',
           'La barra de progreso de `/levels rank` es una imagen plana y pequeña con temas de Halloween y Navidad, y el ranking tiene una imagen de podio para los tres primeros. `/game ship` tiene una tarjeta nueva con tema de amor.',
         ],
       },

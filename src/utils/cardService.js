@@ -126,7 +126,7 @@ function defaultRankCard(source, lang = currentLanguage()) {
   return {
     kind: 'rank',
     mode: 'basic',
-    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra'), showBoost: true },
+    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra') },
     background: { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
   };
 }

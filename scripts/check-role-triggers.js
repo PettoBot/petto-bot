@@ -256,9 +256,19 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(lib._state.breaker.queued('g1'), 3, 'the other three wait in line');
   assert.equal(lib._state.breaker.paused('g1'), false, 'and the rules are not paused');
   assert.equal(state.sendLogs.length, 1, 'the staff is told once');
-  assert.match(state.sendLogs[0].embed.description, /5/);
-  assert.match(state.sendLogs[0].embed.description, /50 more members/, 'the warning says how many can wait');
-  assert.match(state.sendLogs[0].embed.description, /roletrigger remove/, 'and how to stop it');
+  const queued = state.sendLogs[0].embed;
+  assert.equal(queued.title, 'Role triggers: over the limit');
+  assert.match(queued.description, /More than 5 actions in a minute/);
+  assert.ok(queued.description.length < 160, 'the description is one short line');
+  assert.deepEqual(queued.fields.map((field) => [field.name, field.value, Boolean(field.inline)]), [
+    ['Limit', '5 a minute', true],
+    ['Waiting', 'Up to 50 members', true],
+    ['If the line fills up', 'Rules pause 10 minutes', true],
+    ['To stop it', 'Remove the rule (`/protect roletrigger remove`) or take the role away', false],
+    ['Raid?', 'Raise the limit with `/protect roletrigger limit`', false],
+  ], 'the warning says the limit, how many can wait, what happens if the line fills up, how to stop it and how to raise the limit');
+  assert.equal(queued.color, 0xffa94d);
+  assert.ok(queued.fields.every((field) => field.value.length < 80), 'every value is a short line');
   // No room yet: the line waits and nobody is acted on.
   await lib.drainOne(guild.client, guild);
   assert.equal(guild.calls.kicks.length, 5, 'the minute has no room yet');
@@ -299,11 +309,38 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(guild.calls.kicks.length, 2, 'two a minute');
   assert.equal(lib._state.breaker.paused('g1'), true, 'a full line (20 waiting) pauses the rules');
   assert.equal(state.sendLogs.length, 2, 'one message for the line and one for the pause');
-  assert.match(state.sendLogs[1].embed.description, /paused for 10 minutes/);
+  const paused = state.sendLogs[1].embed;
+  assert.equal(paused.title, 'Role triggers paused');
+  assert.match(paused.description, /paused for 10 minutes/);
+  assert.equal(paused.color, 0xff6b6b);
+  assert.deepEqual(paused.fields.map((field) => [field.name, field.value, Boolean(field.inline)]), [
+    ['Limit', '2 a minute', true],
+    ['Next', 'Petto lists whom it did not look at', true],
+    ['Raid?', 'Raise the limit with `/protect roletrigger limit`', false],
+    ['Mistake?', 'Take the role away and check `/protect roletrigger list`', false],
+  ]);
   await lib.summarizeSkipped({}, guild);
   assert.equal(state.sendLogs.length, 3, 'and who was left alone is listed');
-  assert.match(state.sendLogs[2].embed.description, /<@f2>/);
-  assert.match(state.sendLogs[2].embed.description, /<@f24>/);
+  const skipped = state.sendLogs[2].embed;
+  assert.equal(skipped.title, 'Members not looked at');
+  assert.match(skipped.description, /^\d+ member\(s\) were given a role while the rules were over their limit\.$/);
+  assert.equal(skipped.fields.length, 1);
+  assert.match(skipped.fields[0].value, /<@f2>/);
+  assert.match(skipped.fields[0].value, /<@f24>/);
+  assert.equal(skipped.footer.text, 'Check them by hand.');
+  assert.doesNotMatch(skipped.description, /<@/, 'the mentions are in the field, not in the description');
+  // A long list of members who were not looked at still fits in the one field, with whole mentions and the count of the rest.
+  reset(); guild = guildFor();
+  time = 1_000_000; lib._state.clock.now = () => time;
+  state.rules = [rule('A', 'kick')];
+  state.limit = 2;
+  for (let i = 0; i < 120; i += 1) await lib.handleMemberUpdate(live(guild, `1234567890123456${String(i).padStart(3, '0')}`, ['g1']), live(guild, `1234567890123456${String(i).padStart(3, '0')}`, ['g1', 'A']));
+  await lib.summarizeSkipped({}, guild);
+  const longList = state.sendLogs.at(-1).embed;
+  assert.equal(longList.title, 'Members not looked at');
+  assert.ok(longList.fields[0].value.length <= 1024, 'the mentions fit in a field');
+  assert.match(longList.fields[0].value, />( \(\+\d+\))?$/, 'the last mention is whole');
+  assert.match(longList.fields[0].value, /\(\+\d+\)$/, 'and the rest is counted');
   state.limit = null;
   lib._state.clock.now = () => Date.now();
 
@@ -327,8 +364,9 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   for (let i = 0; i < 12; i += 1) await lib.handleMemberUpdate(live(guild, `n${i}`, ['g1']), live(guild, `n${i}`, ['g1', 'A']));
   assert.equal(guild.calls.kicks.length, 8, 'a server that chose 8 gets 8 actions a minute');
   assert.equal(state.sendLogs.length, 1);
-  assert.match(state.sendLogs[0].embed.description, /8/);
-  assert.match(state.sendLogs[0].embed.description, /roletrigger limit/, 'the warning says how to raise it');
+  assert.match(state.sendLogs[0].embed.description, /More than 8 actions/);
+  assert.equal(state.sendLogs[0].embed.fields[0].value, '8 a minute');
+  assert.match(state.sendLogs[0].embed.fields.find((field) => field.name === 'Raid?').value, /roletrigger limit/, 'the warning says how to raise it');
   assert.equal(lib._state.breaker.queued('g1'), 4, 'the other four wait in line');
   reset(); guild = guildFor({ memberCount: 6000 });
   state.limit = null;
@@ -427,6 +465,22 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
     assert.deepEqual({ cases: state.cases.length, warns: state.warns.length, jails: state.jails.length }, before, 'no action was applied');
   }
 
+  // The three alert embeds read well in the three languages: every title, field and value exists, is translated and fits Discord's limits.
+  {
+    const keys = Object.keys(require('../src/i18n/locales/en/automation.js')).filter((key) => key.startsWith('automation.roletrigger.alert.'));
+    assert.equal(keys.length, 22, 'the texts of the three alerts');
+    assert.equal(Object.keys(require('../src/i18n/locales/en/automation.js')).some((key) => /^automation\.roletrigger\.(queued|breaker|skipped)$/.test(key)), false, 'the old long paragraphs are gone');
+    for (const lang of ['es', 'pt-BR']) {
+      const catalog = require(`../src/i18n/locales/${lang}/automation.js`);
+      const english = require('../src/i18n/locales/en/automation.js');
+      for (const key of keys) {
+        assert.ok(catalog[key], `${key} in ${lang}`);
+        assert.ok(catalog[key].length <= (/(\.title|\.description|\.footer)$/.test(key) ? 200 : 120), `${key} stays short in ${lang}`);
+        if (!/\.(limitValue)$/.test(key)) assert.notEqual(catalog[key], english[key], `${key} is translated in ${lang}`);
+        assert.deepEqual(catalog[key].match(/\{\w+\}/g)?.sort(), english[key].match(/\{\w+\}/g)?.sort(), `${key} keeps its placeholders in ${lang}`);
+      }
+    }
+  }
   // The note for the admin exists in the three languages.
   for (const lang of ['en', 'es', 'pt-BR']) {
     const text = require(`../src/i18n/locales/${lang}/automation.js`)['automation.roletrigger.coverage'];

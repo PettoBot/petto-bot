@@ -46,7 +46,7 @@ module.exports = {
       voice ? levelUsersDb.countVoiceRanked(interaction.guild.id) : levelUsersDb.countRanked(interaction.guild.id),
       boostFor(config, target.id),
     ]);
-    const data = buildLevelData({ config: sourceConfig, userData, source, rank, total, voteBoost });
+    const data = buildLevelData({ config: sourceConfig, userData, source, rank, total, voteBoost, voteBoostEnabled: config.vote_boost_enabled !== false });
     const shown = member ?? target;
 
     const reply = await buildRankReply({
@@ -57,6 +57,8 @@ module.exports = {
       avatarUrl: shown.displayAvatarURL({ size: 256, extension: 'png' }),
       cardName: config.rank_card ?? null,
       source,
+      botId: interaction.client.user.id,
+      own: target.id === interaction.user.id,
       lang,
     });
     await interaction.editReply(reply);

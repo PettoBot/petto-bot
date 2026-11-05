@@ -208,7 +208,19 @@ const sendAutomodLog = (client, guild, embed) => require('../logging/engine').se
 /** Tells the staff once, in the log of the server, that the rules stopped (and, when the pause ends, whom they did not look at). */
 async function warnBreaker(client, guild, limit) {
   const lang = await guildLanguage(guild.id);
-  const embed = { description: t(lang, 'automation.roletrigger.breaker', { limit, minutes: BREAKER_PAUSE_MS / 60_000 }), color: 0xff6b6b, timestamp: new Date().toISOString() };
+  const minutes = BREAKER_PAUSE_MS / 60_000;
+  const embed = {
+    title: t(lang, 'automation.roletrigger.alert.breaker.title'),
+    description: t(lang, 'automation.roletrigger.alert.breaker.description', { minutes }),
+    color: 0xff6b6b,
+    fields: [
+      { name: t(lang, 'automation.roletrigger.alert.limit'), value: t(lang, 'automation.roletrigger.alert.limitValue', { limit }), inline: true },
+      { name: t(lang, 'automation.roletrigger.alert.breaker.next'), value: t(lang, 'automation.roletrigger.alert.breaker.nextValue'), inline: true },
+      { name: t(lang, 'automation.roletrigger.alert.raid'), value: t(lang, 'automation.roletrigger.alert.raidValue') },
+      { name: t(lang, 'automation.roletrigger.alert.breaker.mistake'), value: t(lang, 'automation.roletrigger.alert.breaker.mistakeValue') },
+    ],
+    timestamp: new Date().toISOString(),
+  };
   await sendAutomodLog(client, guild, embed);
   const timer = setTimeout(() => summarizeSkipped(client, guild).catch((err) => logger.warn(`Role triggers: could not tell what the pause skipped in guild ${guild.id}: ${err.message}`)), BREAKER_PAUSE_MS + 1000); // i18n-ignore: log
   timer.unref?.();
@@ -217,7 +229,19 @@ async function warnBreaker(client, guild, limit) {
 /** Tells the staff once that the limit was passed and that the rest of the members wait in line. */
 async function warnQueue(client, guild, limit) {
   const lang = await guildLanguage(guild.id);
-  const embed = { description: t(lang, 'automation.roletrigger.queued', { limit, queue: queueCap(limit), minutes: BREAKER_PAUSE_MS / 60_000 }), color: 0xffa94d, timestamp: new Date().toISOString() };
+  const embed = {
+    title: t(lang, 'automation.roletrigger.alert.queued.title'),
+    description: t(lang, 'automation.roletrigger.alert.queued.description', { limit }),
+    color: 0xffa94d,
+    fields: [
+      { name: t(lang, 'automation.roletrigger.alert.limit'), value: t(lang, 'automation.roletrigger.alert.limitValue', { limit }), inline: true },
+      { name: t(lang, 'automation.roletrigger.alert.queued.waiting'), value: t(lang, 'automation.roletrigger.alert.queued.waitingValue', { queue: queueCap(limit) }), inline: true },
+      { name: t(lang, 'automation.roletrigger.alert.queued.full'), value: t(lang, 'automation.roletrigger.alert.queued.fullValue', { minutes: BREAKER_PAUSE_MS / 60_000 }), inline: true },
+      { name: t(lang, 'automation.roletrigger.alert.queued.stop'), value: t(lang, 'automation.roletrigger.alert.queued.stopValue') },
+      { name: t(lang, 'automation.roletrigger.alert.raid'), value: t(lang, 'automation.roletrigger.alert.raidValue') },
+    ],
+    timestamp: new Date().toISOString(),
+  };
   await sendAutomodLog(client, guild, embed);
 }
 
@@ -226,8 +250,24 @@ async function summarizeSkipped(client, guild) {
   const { ids, count } = breaker.takeSkipped(guild.id);
   if (!count) return;
   const lang = await guildLanguage(guild.id);
-  const list = ids.map((id) => `<@${id}>`).join(' ') + (count > ids.length ? ` (+${count - ids.length})` : '');
-  const embed = { description: t(lang, 'automation.roletrigger.skipped', { count, list }), color: 0xffa94d, timestamp: new Date().toISOString() };
+  // The mentions go in one field (1024 characters at most): as many whole mentions as fit, then how many more there are.
+  let list = '';
+  let shown = 0;
+  for (const id of ids) {
+    const next = `${list}${shown ? ' ' : ''}<@${id}>`;
+    if (next.length > 940) break;
+    list = next;
+    shown += 1;
+  }
+  if (count > shown) list += ` (+${count - shown})`;
+  const embed = {
+    title: t(lang, 'automation.roletrigger.alert.skipped.title'),
+    description: t(lang, 'automation.roletrigger.alert.skipped.description', { count }),
+    color: 0xffa94d,
+    fields: [{ name: t(lang, 'automation.roletrigger.alert.skipped.members'), value: list }],
+    footer: { text: t(lang, 'automation.roletrigger.alert.skipped.footer') },
+    timestamp: new Date().toISOString(),
+  };
   await sendAutomodLog(client, guild, embed);
 }
 

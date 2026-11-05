@@ -36,7 +36,7 @@ const uploadLimiter = rateLimit({
 const SAMPLE_LEVEL_DATA = {
   source: 'text', level: 12, xp: 23450, xpNeeded: 2350, xpCurrent: 1420, xpToNext: 930, progress: 60, rank: 3, total: 120,
   streak: 4, bestStreak: 9, messages: 3210, voiceMinutes: 540,
-  // The vote boost of the sample member: always 5 hours and 20 minutes left, so the preview shows the badge and the variable.
+  // The vote boost of the sample member: always 5 hours and 20 minutes left, so the preview shows the variable.
   get voteBoost() { return { percent: 10, endsAt: Date.now() + (5 * 60 + 20) * 60_000 }; },
 };
 const MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);

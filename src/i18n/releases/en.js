@@ -15,7 +15,7 @@ module.exports = {
       {
         title: 'Votes, levels and cards',
         items: [
-          'A vote for Petto on top.gg or omniplex.gg gives you +10% XP for 12 hours, in every server. Both lists share one timer, so voting twice never gives more. It shows as a badge on the rank card, `!votes show` shows what is left, and a server can turn it off with `/levels settings rules setting:vote_boost value:off`.',
+          'A vote for Petto on top.gg or omniplex.gg gives you +10% XP for 12 hours, in every server. Both lists share one timer, so voting twice never gives more. The rank shows a line of text above the card with the boost you have left, or where to vote, `!votes show` shows what is left, and a server can turn it off with `/levels settings rules setting:vote_boost value:off`.',
           'The `/levels rank` progress bar is a small flat picture with themes for Halloween and Christmas, and the leaderboard has a podium picture for the top three. `/game ship` has a new love-themed card.',
         ],
       },

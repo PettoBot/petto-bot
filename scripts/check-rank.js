@@ -3,6 +3,11 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
+process.env.DISCORD_TOKEN ||= 'check-only';
+process.env.DISCORD_CLIENT_ID ||= '1';
+process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
+delete process.env.OMNIPLEX_VOTE_URL;
+
 function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
@@ -105,5 +110,33 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'p
   assert.equal(reply.embeds[0].toJSON().image.url, 'attachment://rank-bar.png');
   reply = await buildRankReply({ ...base, style: 'embed', lang: 'es' });
   assert.equal(reply.embeds[0].toJSON().fields[0].name, 'Nivel', 'the language reaches the embed');
+
+  // The line about the vote boost is the text of the message, above the card or the embed, in every style.
+  cardBuffer = Buffer.from('png');
+  const endsAt = Date.now() + 11 * 3600_000;
+  const active = { ...data, voteBoost: { percent: 10, endsAt }, voteBoostAvailable: false };
+  const canVote = { ...data, voteBoost: null, voteBoostAvailable: true };
+  const serverOff = { ...data, voteBoost: null, voteBoostAvailable: false };
+  const activeLine = `⭐ +10% XP from your vote, ends <t:${Math.floor(endsAt / 1000)}:R>`;
+  const voteLine = '**Vote boost:** vote now for +10% XP for 12 hours: <https://top.gg/bot/77/vote> or <https://omniplex.gg/bots/77>';
+  for (const style of ['card', 'both', 'embed']) {
+    reply = await buildRankReply({ ...base, style, data: active, botId: '77' });
+    assert.equal(reply.content, activeLine, `the active boost line comes with the style ${style}`);
+    reply = await buildRankReply({ ...base, style, data: canVote, botId: '77' });
+    assert.equal(reply.content, voteLine, `and so does the vote line (${style})`);
+    assert.equal(reply.content.match(/<https:\/\/[^\s<>]+>/g).length, 2, 'with both links between < and >');
+    reply = await buildRankReply({ ...base, style, data: serverOff, botId: '77' });
+    assert.equal('content' in reply, false, `no line when the server has the boost off (${style})`);
+  }
+  reply = await buildRankReply({ ...base, style: 'card', data: canVote, botId: '77' });
+  assert.deepEqual(Object.keys(reply).sort(), ['content', 'files'], 'a card alone is the text and the picture');
+  assert.equal(reply.embeds, undefined);
+  cardBuffer = null;
+  reply = await buildRankReply({ ...base, style: 'card', data: active, botId: '77' });
+  assert.equal(reply.content, activeLine, 'a card that cannot be drawn keeps the line over the embed');
+  reply = await buildRankReply({ ...base, style: 'embed', data: canVote, botId: '77', lang: 'es' });
+  assert.match(reply.content, /^\*\*Bonus por voto:\*\* vota ahora/);
+  reply = await buildRankReply({ ...base, style: 'embed', data: canVote, botId: '77', lang: 'pt-BR' });
+  assert.match(reply.content, /^\*\*Bônus de voto:\*\* vote agora/);
   console.log('Checked the rank numbers, the embed and the card, embed or both styles.');
 })().catch((error) => { console.error(error); process.exit(1); });
