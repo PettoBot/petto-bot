@@ -17,7 +17,7 @@ const { withOrigin } = require('./dmOrigin');
 
 // What `{case.action}` says for each sanction and `{case.source}` for who applied it, in the server's language.
 const ACTION_TYPES = ['ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
-const SOURCE_TYPES = ['moderator', 'automod', 'honeypot', 'escalation', 'expiry', 'antinuke'];
+const SOURCE_TYPES = ['moderator', 'automod', 'honeypot', 'escalation', 'expiry', 'antinuke', 'roletrigger'];
 
 /** `{case.action}` of a sanction type, like `temporarily muted`. */
 function actionText(type, lang = currentLanguage()) {

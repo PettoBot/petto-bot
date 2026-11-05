@@ -5,7 +5,7 @@
 //
 // PERMISSIONS: Discord checks `default_member_permissions` for a whole command, never for one subcommand, so `/protect` itself is open (null:
 // everybody sees it, and a server can limit it in Settings > Integrations) and each subcommand asks, when it runs, for what the command it
-// wraps asks: Administrator for `honeypot`, Manage Server for `verify` and `security`. With the prefix the old command does the same check, with its own rules. What the wrapped command checks by itself
+// wraps asks: Administrator for `honeypot` and `roletrigger`, Manage Server for `verify` and `security`. With the prefix the old command does the same check, with its own rules. What the wrapped command checks by itself
 // (the permission of the bot, who may change what) still runs after, untouched.
 const { defineUmbrella } = require('../../utils/umbrella');
 
@@ -14,10 +14,11 @@ const SUBCOMMANDS = [
   { group: 'honeypot', wraps: 'honeypot' },
   { group: 'verify', wraps: 'verify' },
   { group: 'security', wraps: 'security' },
+  { group: 'roletrigger', wraps: 'roletrigger' },
 ];
 
 module.exports = defineUmbrella({
   name: 'protect',
-  description: 'Server protection: honeypot bait channels, the join verification gate and security scans.',
+  description: 'Server protection: honeypot, join verification, security scans and role triggers.',
   subcommands: SUBCOMMANDS,
 });

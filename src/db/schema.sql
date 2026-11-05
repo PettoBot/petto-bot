@@ -211,7 +211,7 @@ create table if not exists mod_actions (
   unique (guild_id, case_number)
 );
 
--- Who or what applied the case: a moderator, automod, the honeypot, warn escalation, automatic expiry or anti-nuke.
+-- Who or what applied the case: a moderator, automod, the honeypot, warn escalation, automatic expiry, anti-nuke or a role trigger.
 alter table mod_actions add column if not exists source text not null default 'moderator';
 -- Links to the proof of a case (screenshots, message links), added by the staff.
 alter table mod_actions add column if not exists evidence text[] not null default '{}';
@@ -961,6 +961,23 @@ alter table warn_escalation_rules drop constraint if exists warn_escalation_rule
 alter table warn_escalation_rules add constraint warn_escalation_rules_action_check check (action in ('mute', 'tempmute', 'kick', 'ban', 'jail'));
 
 alter table warn_escalation_rules enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- role_triggers: "a member who is given this role (or holds it when they finish Discord's onboarding) gets this action".
+-- At most 25 per server (checked by the command). `on_event`: role_added, onboarding or either.
+-- ---------------------------------------------------------------------------
+create table if not exists role_triggers (
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  role_id     text not null,
+  action      text not null check (action in ('warn', 'mute', 'jail', 'kick', 'ban', 'remove_role')),
+  duration_ms bigint,
+  reason      text,
+  on_event    text not null default 'role_added' check (on_event in ('role_added', 'onboarding', 'either')),
+  created_at  timestamptz not null default now(),
+  primary key (guild_id, role_id)
+);
+
+alter table role_triggers enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- report_config: destination channel for member-submitted reports (both the
