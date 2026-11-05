@@ -158,6 +158,7 @@ const GROUPS = [
       '{level_voice_minutes}',
       '{level_type}',
       '{level_bar}',
+      '{level_vote_boost}',
       '{level_previous}',
       '{level_role}',
       '{level_role_name}',

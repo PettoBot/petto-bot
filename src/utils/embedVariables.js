@@ -10,6 +10,7 @@ const { decorationUrl, nameplateUrl, serverTag, serverTagBadge } = require('./pr
 const { QUEST_EXTRA_KEYS } = require('./questTime');
 const { buildProgressBar } = require('./levelProgressBar');
 const { t, tn, currentLanguage, formatNumber, formatDuration } = require('../i18n');
+const { formatTimeLeft } = require('./voteBoost');
 
 // The words Petto itself puts in a variable ("Yes", "Never", a date) follow the language of the server (`ctx.lang`, or the
 // language of the command or event that is running). What the server wrote and the names of things are never translated.
@@ -30,6 +31,12 @@ function ordinal(n, lang = 'en') {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/** `+10% XP · 3h 20m left` for a member with an active vote boost, empty for one without (so a card can hide it with `showIf`). */
+function voteBoostText(boost, lang) {
+  if (!boost || !(Number(boost.endsAt) > Date.now())) return '';
+  return t(lang, 'embeds.value.voteBoost', { percent: Number(boost.percent), time: formatTimeLeft(boost) });
 }
 
 const BOOST_THRESHOLDS = [0, 2, 7, 14];
@@ -219,6 +226,7 @@ async function resolve(text, ctx = {}) {
     '{level_voice_minutes}': ctx.levelData?.voiceMinutes != null ? count(ctx.levelData.voiceMinutes) : '',
     '{level_type}': ctx.levelData?.source ?? '',
     '{level_bar}': ctx.levelData?.progress != null ? buildProgressBar(ctx.levelData.progress) : '',
+    '{level_vote_boost}': voteBoostText(ctx.levelData?.voteBoost, lang),
     '{level_role}': ctx.levelReward?.id ? `<@&${ctx.levelReward.id}>` : '',
     '{level_role_name}': ctx.levelReward?.name ?? '',
     '{level_top_percent}': topPercent(ctx.levelData, dateLocale),

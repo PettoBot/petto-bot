@@ -65,7 +65,7 @@ function run(rawBody, header) {
   assert.equal(sent.length, 1, 'the voter is thanked');
   const card = JSON.stringify(sent[0].components[0].toJSON());
   assert.match(card, /<@293504726505357312>/, 'the voter is mentioned');
-  assert.match(card, /chu voted!/);
+  assert.match(card, /chu voted on top\.gg!/);
   assert.doesNotMatch(card, /fa\.chu/, 'the display name is shown, not the username');
   assert.match(card, /Thank you!.*2.*time|already voted/);
   assert.match(card, /top\.gg\/bot\/1\/vote/);

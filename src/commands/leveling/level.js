@@ -15,6 +15,7 @@ const imageCardsDb = require('../../db/imageCards');
 const xpEventsDb = require('../../db/xpEvents');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { t, tn, formatNumber, languageOf } = require('../../i18n');
+const { VOTE_BOOST_PERCENT } = require('../../utils/voteBoost');
 
 const ACTION_CHOICES = [
   { name: 'add', value: 'add' },
@@ -112,6 +113,7 @@ module.exports = {
           { name: 'restore_roles (give the reward roles back to a member who returns)', value: 'restore_roles' },
           { name: 'multiplier_mode (how several role multipliers join: highest, stack or sum)', value: 'multiplier_mode' },
           { name: 'multiplier_cap (the most a combined multiplier can reach)', value: 'multiplier_cap' },
+          { name: 'vote_boost (+10% XP for members who voted for Petto, on by default)', value: 'vote_boost' },
         ))
         .addStringOption((o) => o.setName('value').setDescription('The new value: a number, or on/off').setRequired(false)),
     )
@@ -659,6 +661,7 @@ const RULE_SETTINGS = {
   restore_roles: { column: 'restore_roles', kind: 'flag' },
   multiplier_mode: { column: 'multiplier_mode', kind: 'choice', choices: ['highest', 'stack', 'sum'] },
   multiplier_cap: { column: 'multiplier_cap', kind: 'decimal', min: 1, max: 100 },
+  vote_boost: { column: 'vote_boost_enabled', kind: 'flag' },
 };
 
 /** The value of a rule from what was typed: a whole number in its range, or on/off. Null when it is not valid. */
@@ -723,6 +726,7 @@ function rulesSummary(config, lang) {
     config.streak_bonus_xp > 0 ? tn(lang, 'leveling.rules.streakOn', config.streak_max_days, { xp: config.streak_bonus_xp, count: config.streak_max_days }) : t(lang, 'leveling.rules.streakOff'),
     t(lang, `leveling.rules.leave${config.reset_on_leave ? 'Wipe' : 'Keep'}${keepRoles ? 'Restore' : ''}`),
     t(lang, 'leveling.rules.multipliers', { base: Number(config.xp_multiplier ?? 1), mode: config.multiplier_mode ?? 'highest', cap: Number(config.multiplier_cap ?? 20) }),
+    config.vote_boost_enabled === false ? t(lang, 'leveling.rules.voteBoostOff') : t(lang, 'leveling.rules.voteBoostOn', { percent: VOTE_BOOST_PERCENT }),
   ].join('\n');
 }
 

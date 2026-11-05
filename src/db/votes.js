@@ -19,9 +19,21 @@ async function voteTotals(userId) {
   return { mine: mine.rows[0].total, last: mine.rows[0].last, total: all.rows[0].total, voters: all.rows[0].voters };
 }
 
+/**
+ * The votes a person cast in the last 2 days (a boost lasts 12 hours, so older votes cannot matter), newest first: one query that
+ * the index on (user_id, voted_at) answers. The boost ends at the latest expiry among them (`latestExpiry` in utils/voteBoost.ts).
+ */
+async function recentVotes(userId) {
+  const result = await getPrimaryPool().query(
+    "SELECT voted_at, expires_at FROM bot_votes WHERE user_id = $1 AND voted_at > now() - interval '2 days' ORDER BY voted_at DESC LIMIT 20",
+    [userId],
+  );
+  return result.rows;
+}
+
 async function topVoters(limit = 10) {
   const result = await getPrimaryPool().query('SELECT user_id, SUM(weight)::int AS total FROM bot_votes GROUP BY user_id ORDER BY total DESC, MAX(voted_at) DESC LIMIT $1', [limit]);
   return result.rows;
 }
 
-module.exports = { recordVote, voteTotals, topVoters };
+module.exports = { recordVote, voteTotals, topVoters, recentVotes };
