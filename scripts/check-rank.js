@@ -118,13 +118,13 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'p
   const canVote = { ...data, voteBoost: null, voteBoostAvailable: true };
   const serverOff = { ...data, voteBoost: null, voteBoostAvailable: false };
   const activeLine = `⭐ +10% XP from your vote, ends <t:${Math.floor(endsAt / 1000)}:R>`;
-  const voteLine = '**Vote boost:** vote now for +10% XP for 12 hours: <https://top.gg/bot/77/vote> or <https://omniplex.gg/bots/77>';
+  const voteLine = '**Vote boost:** vote now for +10% XP for 12 hours: [top.gg](<https://top.gg/bot/77/vote>) or [omniplex.gg](<https://omniplex.gg/bots/77>)';
   for (const style of ['card', 'both', 'embed']) {
     reply = await buildRankReply({ ...base, style, data: active, botId: '77' });
     assert.equal(reply.content, activeLine, `the active boost line comes with the style ${style}`);
     reply = await buildRankReply({ ...base, style, data: canVote, botId: '77' });
     assert.equal(reply.content, voteLine, `and so does the vote line (${style})`);
-    assert.equal(reply.content.match(/<https:\/\/[^\s<>]+>/g).length, 2, 'with both links between < and >');
+    assert.equal(reply.content.match(/\[[^\]]+\]\(<https:\/\/[^\s<>]+>\)/g).length, 2, 'with both links as masked links');
     reply = await buildRankReply({ ...base, style, data: serverOff, botId: '77' });
     assert.equal('content' in reply, false, `no line when the server has the boost off (${style})`);
   }

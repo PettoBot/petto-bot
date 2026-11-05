@@ -18,6 +18,8 @@ const { sendDm } = require('./dmOrigin');
 const { displayReason } = require('./caseFormat');
 const logger = require('./logger');
 const { t, guildLanguage } = require('../i18n');
+const { buildInfoCard, line } = require('./infoCard');
+const { EMOJI } = require('./emojis');
 const { BREAKER_LIMIT, BREAKER_WINDOW_MS, BREAKER_PAUSE_MS, QUEUE_MINUTES, MIN_LIMIT, MAX_LIMIT, defaultLimit, validLimit, queueCap, createBreaker } = require('./roleTriggerBreaker'); // typed source: roleTriggerBreaker.ts
 
 const ACTIONS = Object.freeze(['warn', 'mute', 'jail', 'kick', 'ban', 'remove_role']);
@@ -203,25 +205,27 @@ async function limitFor(guild) {
   return validLimit(chosen) ? chosen : defaultLimit(guild.memberCount);
 }
 
-const sendAutomodLog = (client, guild, embed) => require('../logging/engine').sendLog(client, guild.id, 'automod', embed).catch((err) => logger.warn(`Role triggers: could not warn the log of guild ${guild.id}: ${err.message}`)); // i18n-ignore: log
+// The alerts are Components V2 cards with no color, like the info cards (see `buildInfoCard`): a heading with the grey warning icon, one line,
+// the facts and what to do. `sendLog` sends them as a V2 message through the log webhook: names and mentions in it never ping.
+const sendAutomodLog = (client, guild, card) => require('../logging/engine').sendLog(client, guild.id, 'automod', null, { v2: [card] }).catch((err) => logger.warn(`Role triggers: could not warn the log of guild ${guild.id}: ${err.message}`)); // i18n-ignore: log
+
+const alertText = (lang, key, vars) => t(lang, `automation.roletrigger.alert.${key}`, vars);
+/** The line of a fact: the label in bold and its value, from `automation.roletrigger.alert.<key>` and `<key>Value`. */
+const fact = (lang, key, vars) => line(alertText(lang, key), alertText(lang, `${key}Value`, vars));
 
 /** Tells the staff once, in the log of the server, that the rules stopped (and, when the pause ends, whom they did not look at). */
 async function warnBreaker(client, guild, limit) {
   const lang = await guildLanguage(guild.id);
   const minutes = BREAKER_PAUSE_MS / 60_000;
-  const embed = {
-    title: t(lang, 'automation.roletrigger.alert.breaker.title'),
-    description: t(lang, 'automation.roletrigger.alert.breaker.description', { minutes }),
-    color: 0xff6b6b,
-    fields: [
-      { name: t(lang, 'automation.roletrigger.alert.limit'), value: t(lang, 'automation.roletrigger.alert.limitValue', { limit }), inline: true },
-      { name: t(lang, 'automation.roletrigger.alert.breaker.next'), value: t(lang, 'automation.roletrigger.alert.breaker.nextValue'), inline: true },
-      { name: t(lang, 'automation.roletrigger.alert.raid'), value: t(lang, 'automation.roletrigger.alert.raidValue') },
-      { name: t(lang, 'automation.roletrigger.alert.breaker.mistake'), value: t(lang, 'automation.roletrigger.alert.breaker.mistakeValue') },
+  const card = buildInfoCard({
+    title: `${EMOJI.WARNING} ${alertText(lang, 'breaker.title')}`,
+    subtitle: [alertText(lang, 'breaker.description', { minutes })],
+    sections: [
+      { lines: [fact(lang, 'limit', { limit }), fact(lang, 'breaker.next')] },
+      { title: alertText(lang, 'todo'), lines: [fact(lang, 'raid'), fact(lang, 'breaker.mistake')] },
     ],
-    timestamp: new Date().toISOString(),
-  };
-  await sendAutomodLog(client, guild, embed);
+  });
+  await sendAutomodLog(client, guild, card);
   const timer = setTimeout(() => summarizeSkipped(client, guild).catch((err) => logger.warn(`Role triggers: could not tell what the pause skipped in guild ${guild.id}: ${err.message}`)), BREAKER_PAUSE_MS + 1000); // i18n-ignore: log
   timer.unref?.();
 }
@@ -229,20 +233,15 @@ async function warnBreaker(client, guild, limit) {
 /** Tells the staff once that the limit was passed and that the rest of the members wait in line. */
 async function warnQueue(client, guild, limit) {
   const lang = await guildLanguage(guild.id);
-  const embed = {
-    title: t(lang, 'automation.roletrigger.alert.queued.title'),
-    description: t(lang, 'automation.roletrigger.alert.queued.description', { limit }),
-    color: 0xffa94d,
-    fields: [
-      { name: t(lang, 'automation.roletrigger.alert.limit'), value: t(lang, 'automation.roletrigger.alert.limitValue', { limit }), inline: true },
-      { name: t(lang, 'automation.roletrigger.alert.queued.waiting'), value: t(lang, 'automation.roletrigger.alert.queued.waitingValue', { queue: queueCap(limit) }), inline: true },
-      { name: t(lang, 'automation.roletrigger.alert.queued.full'), value: t(lang, 'automation.roletrigger.alert.queued.fullValue', { minutes: BREAKER_PAUSE_MS / 60_000 }), inline: true },
-      { name: t(lang, 'automation.roletrigger.alert.queued.stop'), value: t(lang, 'automation.roletrigger.alert.queued.stopValue') },
-      { name: t(lang, 'automation.roletrigger.alert.raid'), value: t(lang, 'automation.roletrigger.alert.raidValue') },
+  const card = buildInfoCard({
+    title: `${EMOJI.WARNING} ${alertText(lang, 'queued.title')}`,
+    subtitle: [alertText(lang, 'queued.description', { limit })],
+    sections: [
+      { lines: [fact(lang, 'limit', { limit }), fact(lang, 'queued.waiting', { queue: queueCap(limit) }), fact(lang, 'queued.full', { minutes: BREAKER_PAUSE_MS / 60_000 })] },
+      { title: alertText(lang, 'todo'), lines: [fact(lang, 'queued.stop'), fact(lang, 'raid')] },
     ],
-    timestamp: new Date().toISOString(),
-  };
-  await sendAutomodLog(client, guild, embed);
+  });
+  await sendAutomodLog(client, guild, card);
 }
 
 /** When the pause is over: who was given a role in the meantime and was not looked at, so the staff can check them by hand. */
@@ -250,7 +249,7 @@ async function summarizeSkipped(client, guild) {
   const { ids, count } = breaker.takeSkipped(guild.id);
   if (!count) return;
   const lang = await guildLanguage(guild.id);
-  // The mentions go in one field (1024 characters at most): as many whole mentions as fit, then how many more there are.
+  // The mentions go in one text block of the card (1000 characters at most): as many whole mentions as fit, then how many more there are.
   let list = '';
   let shown = 0;
   for (const id of ids) {
@@ -260,15 +259,13 @@ async function summarizeSkipped(client, guild) {
     shown += 1;
   }
   if (count > shown) list += ` (+${count - shown})`;
-  const embed = {
-    title: t(lang, 'automation.roletrigger.alert.skipped.title'),
-    description: t(lang, 'automation.roletrigger.alert.skipped.description', { count }),
-    color: 0xffa94d,
-    fields: [{ name: t(lang, 'automation.roletrigger.alert.skipped.members'), value: list }],
-    footer: { text: t(lang, 'automation.roletrigger.alert.skipped.footer') },
-    timestamp: new Date().toISOString(),
-  };
-  await sendAutomodLog(client, guild, embed);
+  const card = buildInfoCard({
+    title: `${EMOJI.WARNING} ${alertText(lang, 'skipped.title')}`,
+    subtitle: [alertText(lang, 'skipped.description', { count })],
+    sections: [{ lines: [list] }],
+    footer: alertText(lang, 'skipped.footer'),
+  });
+  await sendAutomodLog(client, guild, card);
 }
 
 // ---- The event -------------------------------------------------------------------------------------------------------------------

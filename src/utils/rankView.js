@@ -56,8 +56,8 @@ function buildRankEmbed({ data, name, avatarUrl, withCard = false, barName = nul
 /**
  * The line of plain text above the card or the embed about the vote boost, or '' when there is nothing to say:
  * - the member has an active boost: how much and when it ends (a relative Discord time), no link;
- * - the server has the boost on and the member has none: where to vote. The links are written between < and > so Discord does not
- *   unfurl them into a preview box under the message;
+ * - the server has the boost on and the member has none: where to vote. Each link is a masked link with the address between < and >
+ *   (`[top.gg](<https://...>)`), so the line shows a short label and Discord does not unfurl a preview box under the message;
  * - the server turned the boost off: nothing.
  * `own` is false when the rank is somebody else's. `botId` makes the vote links (the id of the bot).
  */
@@ -67,7 +67,7 @@ function buildBoostLine({ data, botId = null, own = true, lang = currentLanguage
   }
   if (!data.voteBoostAvailable) return '';
   const id = botId ?? config.clientId;
-  const links = id ? voteLists(id).filter((list) => list.url).map((list) => `<${list.url}>`) : [];
+  const links = id ? voteLists(id).filter((list) => list.url).map((list) => `[${list.name}](<${list.url}>)`) : [];
   if (!links.length) return '';
   return t(lang, 'leveling.rankView.voteNow', { percent: VOTE_BOOST_PERCENT, hours: VOTE_BOOST_HOURS, links: formatList(lang, links, { word: 'or' }) });
 }

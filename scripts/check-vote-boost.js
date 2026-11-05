@@ -450,15 +450,15 @@ const MINUTE = 60_000;
   const catalogs = require('../src/i18n').CATALOGS;
   assert.equal(Object.keys(catalogs.en).includes('leveling.rankView.voteBoost'), false, 'the old field keys are gone');
 
-  // The line above the rank: the active boost with its time, the vote links between < and >, or nothing when the server has it off.
+  // The line above the rank: the active boost with its time, the vote links as masked links, or nothing when the server has it off.
   const topggLink = 'https://top.gg/bot/55/vote';
   const omniplexLink = 'https://omniplex.gg/bots/55';
   const endStamp = `<t:${Math.floor(endsAt / 1000)}:R>`;
   const activeLine = { en: `⭐ +10% XP from your vote, ends ${endStamp}`, es: `⭐ +10% de XP por tu voto, termina ${endStamp}`, 'pt-BR': `⭐ +10% de XP pelo seu voto, termina ${endStamp}` };
   const voteLine = {
-    en: `**Vote boost:** vote now for +10% XP for 12 hours: <${topggLink}> or <${omniplexLink}>`,
-    es: `**Bonus por voto:** vota ahora y recibe +10% de XP durante 12 horas: <${topggLink}> o <${omniplexLink}>`,
-    'pt-BR': `**Bônus de voto:** vote agora e receba +10% de XP por 12 horas: <${topggLink}> ou <${omniplexLink}>`,
+    en: `**Vote boost:** vote now for +10% XP for 12 hours: [top.gg](<${topggLink}>) or [omniplex.gg](<${omniplexLink}>)`,
+    es: `**Bonus por voto:** vota ahora y recibe +10% de XP durante 12 horas: [top.gg](<${topggLink}>) o [omniplex.gg](<${omniplexLink}>)`,
+    'pt-BR': `**Bônus de voto:** vote agora e receba +10% de XP por 12 horas: [top.gg](<${topggLink}>) ou [omniplex.gg](<${omniplexLink}>)`,
   };
   for (const lang of ['en', 'es', 'pt-BR']) {
     assert.equal(buildBoostLine({ data: withBoost, botId: '55', lang }), activeLine[lang], `the active boost line (${lang})`);
@@ -468,10 +468,11 @@ const MINUTE = 60_000;
   }
   assert.match(buildBoostLine({ data: withBoost, botId: '55', own: false, lang: 'en' }), /from their vote, ends <t:\d+:R>/, 'the boost of somebody else');
   assert.equal(buildBoostLine({ data: { ...withBoost, voteBoost: { percent: 10, endsAt: Date.now() - 1 } }, botId: '55' }), '', 'a boost that ended is not announced');
-  // Every link is wrapped so that Discord does not turn it into a preview box.
+  // Every link is a masked link with its address between < and >: a short label, and no preview box.
   const linkText = buildBoostLine({ data: voteNow, botId: '55', lang: 'en' });
-  assert.equal([...linkText.matchAll(/<https?:\/\/[^\s<>]+>/g)].length, 2, 'two links, both wrapped');
-  assert.equal(linkText.replace(/<https?:\/\/[^\s<>]+>/g, '').includes('http'), false, 'and none outside the brackets');
+  assert.equal([...linkText.matchAll(/\[[^\]]+\]\(<https?:\/\/[^\s<>]+>\)/g)].length, 2, 'two masked links, both with the address wrapped');
+  assert.equal(linkText.replace(/\[[^\]]+\]\(<https?:\/\/[^\s<>]+>\)/g, '').includes('http'), false, 'and no address outside them');
+  assert.ok(linkText.includes('[top.gg](') && linkText.includes('[omniplex.gg]('), 'labelled with the names of the lists');
 
   // The message: the same line comes with the embed, over the picture of the bar.
   const reply = await buildRankReply({ style: 'embed', ctx: {}, data: voteNow, name: 'Liam', avatarUrl: null, cardName: null, source: 'messages', botId: '55', lang: 'en' });

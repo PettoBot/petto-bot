@@ -6,7 +6,8 @@ process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { GuildMemberFlags, GuildMemberFlagsBitField, PermissionFlagsBits, PermissionsBitField } = require('discord.js');
+const { GuildMemberFlags, GuildMemberFlagsBitField, PermissionFlagsBits, PermissionsBitField, Routes } = require('discord.js');
+const { EMOJI } = require('../src/utils/emojis');
 
 function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
@@ -33,10 +34,22 @@ stub('src/utils/jail.js', {
   },
 });
 stub('src/utils/dmOrigin.js', { sendDm: async (target, payload) => { state.dms.push(payload.entry.type); } });
-stub('src/logging/engine.js', { sendLog: async (client, guildId, event, embed) => { state.sendLogs.push({ guildId, event, embed }); } });
+stub('src/logging/engine.js', { sendLog: async (client, guildId, event, embed, options = {}) => { state.sendLogs.push({ guildId, event, embed, v2: options.v2 ?? null }); } });
 
 const lib = require('../src/utils/roleTriggers');
 const { matchRules, safetySkip, createDoneMemory, createBreaker, validateRule, onboardingJustCompleted, addedRoles } = lib;
+
+// An alert as it is sent: one Components V2 container (type 17) in `v2`, no embed, no color. `textsOf` gives its text blocks in order.
+const alertOf = (entry) => {
+  assert.equal(entry.event, 'automod', 'the alerts go to the automod log');
+  assert.equal(entry.embed, null, 'and are not an embed');
+  assert.equal(entry.v2.length, 1, 'one container');
+  const json = entry.v2[0].toJSON();
+  assert.equal(json.type, 17, 'a Components V2 container');
+  assert.equal('accent_color' in json && json.accent_color != null, false, 'with no color');
+  return json;
+};
+const textsOf = (json) => json.components.filter((component) => component.type === 10).map((component) => component.content);
 
 const flags = (...list) => new GuildMemberFlagsBitField(list.reduce((sum, flag) => sum | flag, 0));
 const set = (...ids) => new Set(ids);
@@ -256,19 +269,14 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(lib._state.breaker.queued('g1'), 3, 'the other three wait in line');
   assert.equal(lib._state.breaker.paused('g1'), false, 'and the rules are not paused');
   assert.equal(state.sendLogs.length, 1, 'the staff is told once');
-  const queued = state.sendLogs[0].embed;
-  assert.equal(queued.title, 'Role triggers: over the limit');
-  assert.match(queued.description, /More than 5 actions in a minute/);
-  assert.ok(queued.description.length < 160, 'the description is one short line');
-  assert.deepEqual(queued.fields.map((field) => [field.name, field.value, Boolean(field.inline)]), [
-    ['Limit', '5 a minute', true],
-    ['Waiting', 'Up to 50 members', true],
-    ['If the line fills up', 'Rules pause 10 minutes', true],
-    ['To stop it', 'Remove the rule (`/protect roletrigger remove`) or take the role away', false],
-    ['Raid?', 'Raise the limit with `/protect roletrigger limit`', false],
-  ], 'the warning says the limit, how many can wait, what happens if the line fills up, how to stop it and how to raise the limit');
-  assert.equal(queued.color, 0xffa94d);
-  assert.ok(queued.fields.every((field) => field.value.length < 80), 'every value is a short line');
+  const queued = textsOf(alertOf(state.sendLogs[0]));
+  assert.deepEqual(queued, [
+    `### ${EMOJI.WARNING} Role triggers: over the limit\nMore than 5 actions in a minute. Petto keeps going at that pace and the rest wait in line.`,
+    '**Limit** 5 a minute\n**Waiting** Up to 50 members\n**If the line fills up** Rules pause 10 minutes',
+    '### What to do\n**To stop it** Remove the rule (`/protect roletrigger remove`) or take the role away\n**Raid?** Raise the limit with `/protect roletrigger limit`',
+  ], 'the card says the limit, how many can wait, what happens if the line fills up, how to stop it and how to raise the limit');
+  assert.ok(queued[0].split('\n')[1].length < 160, 'the line under the heading is one short line');
+  assert.deepEqual(alertOf(state.sendLogs[0]).components.map((component) => component.type), [10, 14, 10, 14, 10], 'heading, divider, facts, space, what to do');
   // No room yet: the line waits and nobody is acted on.
   await lib.drainOne(guild.client, guild);
   assert.equal(guild.calls.kicks.length, 5, 'the minute has no room yet');
@@ -309,26 +317,22 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(guild.calls.kicks.length, 2, 'two a minute');
   assert.equal(lib._state.breaker.paused('g1'), true, 'a full line (20 waiting) pauses the rules');
   assert.equal(state.sendLogs.length, 2, 'one message for the line and one for the pause');
-  const paused = state.sendLogs[1].embed;
-  assert.equal(paused.title, 'Role triggers paused');
-  assert.match(paused.description, /paused for 10 minutes/);
-  assert.equal(paused.color, 0xff6b6b);
-  assert.deepEqual(paused.fields.map((field) => [field.name, field.value, Boolean(field.inline)]), [
-    ['Limit', '2 a minute', true],
-    ['Next', 'Petto lists whom it did not look at', true],
-    ['Raid?', 'Raise the limit with `/protect roletrigger limit`', false],
-    ['Mistake?', 'Take the role away and check `/protect roletrigger list`', false],
+  const paused = textsOf(alertOf(state.sendLogs[1]));
+  assert.deepEqual(paused, [
+    `### ${EMOJI.WARNING} Role triggers paused\nThe line of waiting members filled up, so the rules are paused for 10 minutes.`,
+    '**Limit** 2 a minute\n**Next** When the pause ends, Petto lists the members it did not look at',
+    '### What to do\n**Raid?** Raise the limit with `/protect roletrigger limit`\n**Mistake?** Take the role away and check `/protect roletrigger list`',
   ]);
   await lib.summarizeSkipped({}, guild);
   assert.equal(state.sendLogs.length, 3, 'and who was left alone is listed');
-  const skipped = state.sendLogs[2].embed;
-  assert.equal(skipped.title, 'Members not looked at');
-  assert.match(skipped.description, /^\d+ member\(s\) were given a role while the rules were over their limit\.$/);
-  assert.equal(skipped.fields.length, 1);
-  assert.match(skipped.fields[0].value, /<@f2>/);
-  assert.match(skipped.fields[0].value, /<@f24>/);
-  assert.equal(skipped.footer.text, 'Check them by hand.');
-  assert.doesNotMatch(skipped.description, /<@/, 'the mentions are in the field, not in the description');
+  const skippedCard = alertOf(state.sendLogs[2]);
+  const skipped = textsOf(skippedCard);
+  assert.equal(skipped.length, 3, 'heading, mentions, footer');
+  assert.match(skipped[0], /^### .* Members not looked at\n\d+ member\(s\) were given a role while the rules were over their limit\.$/);
+  assert.doesNotMatch(skipped[0], /<@/, 'the mentions are in their own block, not under the heading');
+  assert.match(skipped[1], /<@f2>/);
+  assert.match(skipped[1], /<@f24>/);
+  assert.equal(skipped[2], '-# Check them by hand.');
   // A long list of members who were not looked at still fits in the one field, with whole mentions and the count of the rest.
   reset(); guild = guildFor();
   time = 1_000_000; lib._state.clock.now = () => time;
@@ -336,11 +340,13 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   state.limit = 2;
   for (let i = 0; i < 120; i += 1) await lib.handleMemberUpdate(live(guild, `1234567890123456${String(i).padStart(3, '0')}`, ['g1']), live(guild, `1234567890123456${String(i).padStart(3, '0')}`, ['g1', 'A']));
   await lib.summarizeSkipped({}, guild);
-  const longList = state.sendLogs.at(-1).embed;
-  assert.equal(longList.title, 'Members not looked at');
-  assert.ok(longList.fields[0].value.length <= 1024, 'the mentions fit in a field');
-  assert.match(longList.fields[0].value, />( \(\+\d+\))?$/, 'the last mention is whole');
-  assert.match(longList.fields[0].value, /\(\+\d+\)$/, 'and the rest is counted');
+  const longCard = alertOf(state.sendLogs.at(-1));
+  const longList = textsOf(longCard);
+  assert.match(longList[0], /Members not looked at/);
+  assert.ok(longList[1].length <= 1000, 'the mentions fit in one block');
+  assert.match(longList[1], />( \(\+\d+\))?$/, 'the last mention is whole');
+  assert.match(longList[1], /\(\+\d+\)$/, 'and the rest is counted');
+  assert.ok(longList.join('').length <= 4000 && longCard.components.length <= 40, 'and the card fits the limits of a V2 message');
   state.limit = null;
   lib._state.clock.now = () => Date.now();
 
@@ -364,9 +370,10 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   for (let i = 0; i < 12; i += 1) await lib.handleMemberUpdate(live(guild, `n${i}`, ['g1']), live(guild, `n${i}`, ['g1', 'A']));
   assert.equal(guild.calls.kicks.length, 8, 'a server that chose 8 gets 8 actions a minute');
   assert.equal(state.sendLogs.length, 1);
-  assert.match(state.sendLogs[0].embed.description, /More than 8 actions/);
-  assert.equal(state.sendLogs[0].embed.fields[0].value, '8 a minute');
-  assert.match(state.sendLogs[0].embed.fields.find((field) => field.name === 'Raid?').value, /roletrigger limit/, 'the warning says how to raise it');
+  const custom = textsOf(alertOf(state.sendLogs[0]));
+  assert.match(custom[0], /More than 8 actions/);
+  assert.match(custom[1], /^\*\*Limit\*\* 8 a minute\n/);
+  assert.match(custom[2], /\*\*Raid\?\*\* .*roletrigger limit/, 'the warning says how to raise it');
   assert.equal(lib._state.breaker.queued('g1'), 4, 'the other four wait in line');
   reset(); guild = guildFor({ memberCount: 6000 });
   state.limit = null;
@@ -465,7 +472,7 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
     assert.deepEqual({ cases: state.cases.length, warns: state.warns.length, jails: state.jails.length }, before, 'no action was applied');
   }
 
-  // The three alert embeds read well in the three languages: every title, field and value exists, is translated and fits Discord's limits.
+  // The three alert cards read well in the three languages: every text exists, is translated and is short.
   {
     const keys = Object.keys(require('../src/i18n/locales/en/automation.js')).filter((key) => key.startsWith('automation.roletrigger.alert.'));
     assert.equal(keys.length, 22, 'the texts of the three alerts');
@@ -481,6 +488,93 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
       }
     }
   }
+  // The three alerts as Components V2 cards in the three languages, with the line filled up by 120 members: type 17, no accent color, no colored emoji,
+  // the grey icon of Petto in the heading, silent mentions and inside the limits of a V2 message (4000 characters of text and 40 components in all).
+  {
+    const { setCachedGuildLanguage } = require('../src/i18n');
+    const allowedEmoji = new Set(Object.values(EMOJI));
+    const headings = {
+      en: ['Role triggers: over the limit', 'Role triggers paused', 'Members not looked at', 'What to do', 'Check them by hand.'],
+      es: ['Disparadores por rol: límite superado', 'Disparadores por rol en pausa', 'Miembros sin revisar', 'Qué hacer', 'Revísalos a mano.'],
+      'pt-BR': ['Gatilhos de cargo: limite excedido', 'Gatilhos de cargo pausados', 'Membros não analisados', 'O que fazer', 'Confira-os manualmente.'],
+    };
+    for (const lang of ['en', 'es', 'pt-BR']) {
+      setCachedGuildLanguage('g1', lang);
+      reset(); guild = guildFor();
+      let clock = 1_000_000; lib._state.clock.now = () => clock;
+      state.rules = [rule('A', 'kick')];
+      state.limit = 2;
+      for (let i = 0; i < 120; i += 1) {
+        const id = `1234567890123456${String(i).padStart(3, '0')}`;
+        await lib.handleMemberUpdate(live(guild, id, ['g1']), live(guild, id, ['g1', 'A']));
+      }
+      await lib.summarizeSkipped({}, guild);
+      assert.equal(state.sendLogs.length, 3, `the three alerts (${lang})`);
+      const [over, pause, skippedAlert] = state.sendLogs.map(alertOf);
+      for (const [index, card] of [over, pause, skippedAlert].entries()) {
+        const texts = textsOf(card);
+        const all = texts.join('\n');
+        assert.equal(card.type, 17, `a container (${lang}, alert ${index})`);
+        assert.ok(!('accent_color' in card) || card.accent_color == null, `no accent color (${lang}, alert ${index})`);
+        assert.ok(texts[0].startsWith(`### ${EMOJI.WARNING} `), `the heading starts with the grey warning icon of Petto (${lang}, alert ${index})`);
+        assert.doesNotMatch(all, /\p{Extended_Pictographic}/u, `no colored emoji (${lang}, alert ${index})`);
+        for (const custom of all.match(/<a?:\w+:\d+>/g) ?? []) assert.ok(allowedEmoji.has(custom), `${custom} is an emoji of the registry (${lang})`);
+        assert.ok(all.length <= 4000, `the text fits the 4000 characters of a V2 message (${lang}, alert ${index}): ${all.length}`);
+        assert.ok(card.components.length <= 40, `and its 40 components (${lang}, alert ${index})`);
+        assert.ok(card.components.every((component) => [10, 14].includes(component.type)), `only text and separators (${lang})`);
+        assert.ok(texts.every((text) => text.length >= 1 && text.length <= 4000), `every block has from 1 to 4000 characters (${lang})`);
+      }
+      assert.match(textsOf(over)[0], new RegExp(`^### \\S+ ${headings[lang][0]}\\n`), `the heading of the line over the limit (${lang})`);
+      assert.match(textsOf(pause)[0], new RegExp(`^### \\S+ ${headings[lang][1]}\\n`), `the heading of the pause (${lang})`);
+      assert.match(textsOf(skippedAlert)[0], new RegExp(`^### \\S+ ${headings[lang][2]}\\n`), `the heading of the skipped members (${lang})`);
+      assert.ok(textsOf(over)[2].startsWith(`### ${headings[lang][3]}\n`) && textsOf(pause)[2].startsWith(`### ${headings[lang][3]}\n`), `what to do (${lang})`);
+      assert.equal(textsOf(skippedAlert).at(-1), `-# ${headings[lang][4]}`, `the footer of the skipped members (${lang})`);
+      const mentions = textsOf(skippedAlert)[1];
+      assert.match(mentions, /^<@\d+>( <@\d+>)*( \(\+\d+\))?$/, `only whole mentions and the count of the rest (${lang})`);
+      assert.match(mentions, /\(\+\d+\)$/, `the 120 members do not all fit, so the rest is counted (${lang})`);
+      state.limit = null;
+      lib._state.clock.now = () => Date.now();
+    }
+    setCachedGuildLanguage('g1', 'en');
+  }
+
+  // The real `sendLog` sends such a card through the log webhook as a V2 message that cannot ping: the flag, `with_components` and no allowed mentions.
+  {
+    reset(); guild = guildFor();
+    state.rules = [rule('A', 'kick')];
+    state.limit = 2;
+    for (let i = 0; i < 30; i += 1) await lib.handleMemberUpdate(live(guild, `s${i}`, ['g1']), live(guild, `s${i}`, ['g1', 'A']));
+    const card = state.sendLogs[0].v2[0];
+    state.limit = null;
+    const configPath = require.resolve('../src/db/logConfig.js');
+    const loggerPath = require.resolve('../src/utils/logger.js');
+    const saved = new Map([configPath, loggerPath].map((file) => [file, require.cache[file]]));
+    stub('src/db/logConfig.js', { EVENTS: ['automod'], getLogConfig: async () => ({ entries: [{ event: 'automod', channel_id: 'C1', color: 0xff0000 }], webhooks: [{ channel_id: 'C1', webhook_id: 'W1', webhook_token: 'tok' }], ignored: [] }), deleteWebhookById: async () => {}, removeEntries: async () => {} });
+    stub('src/utils/logger.js', { info() {}, error() {}, warn() {}, debug() {} });
+    const enginePath = require.resolve('../src/logging/engine.js');
+    const stubbedEngine = require.cache[enginePath];
+    delete require.cache[enginePath];
+    try {
+      const { sendLog } = require('../src/logging/engine');
+      const posts = [];
+      const client = { user: { username: 'Petto', displayAvatarURL: () => 'https://cdn.test/p.png' }, guilds: { cache: new Map() }, rest: { post: async (route, options) => { posts.push({ route, options }); } } };
+      await sendLog(client, 'g1', 'automod', null, { v2: [card] });
+      assert.equal(posts.length, 1);
+      const { body, query } = posts[0].options;
+      assert.equal(posts[0].route, Routes.webhook('W1', 'tok'));
+      assert.equal(query.get('with_components'), 'true', 'the webhook is told to read the components');
+      assert.equal(body.flags & 32768, 32768, 'the message is Components V2');
+      assert.equal(body.flags & 4096, 4096, 'and silent');
+      assert.deepEqual(body.allowed_mentions, { parse: [] }, 'the mentions in it never ping');
+      assert.ok(!('embeds' in body) && !('content' in body), 'with no embed and no content');
+      assert.equal(body.components[0].type, 17);
+      assert.ok(!('accent_color' in body.components[0]) || body.components[0].accent_color == null, 'the color the log channel has for embeds is not put on the card');
+    } finally {
+      for (const [file, entry] of saved) { if (entry) require.cache[file] = entry; else delete require.cache[file]; }
+      require.cache[enginePath] = stubbedEngine;
+    }
+  }
+
   // The note for the admin exists in the three languages.
   for (const lang of ['en', 'es', 'pt-BR']) {
     const text = require(`../src/i18n/locales/${lang}/automation.js`)['automation.roletrigger.coverage'];
