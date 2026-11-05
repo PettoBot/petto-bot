@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const roleTriggersDb = require('../../db/roleTriggers');
 const { ensureGuild } = require('../../db/guilds');
-const { ACTIONS, TRIGGERS, validateRule } = require('../../utils/roleTriggers');
+const { ACTIONS, TRIGGERS, validateRule, MIN_LIMIT, MAX_LIMIT, validLimit, limitFor } = require('../../utils/roleTriggers');
 const { formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -31,7 +31,12 @@ module.exports = {
       .setName('remove')
       .setDescription('Remove the rule of a role.')
       .addRoleOption((o) => o.setName('role').setDescription('The role of the rule').setRequired(true)))
-    .addSubcommand((sub) => sub.setName('list').setDescription('List the role triggers of this server.')),
+    .addSubcommand((sub) => sub.setName('list').setDescription('List the role triggers of this server.'))
+    .addSubcommand((sub) => sub
+      .setName('limit')
+      .setDescription('How many actions a minute the rules may do before they pause (the safety stop).')
+      .addIntegerOption((o) => o.setName('amount').setDescription("Actions a minute, 1 to 500 (leave empty to see it)").setMinValue(MIN_LIMIT).setMaxValue(MAX_LIMIT).setRequired(false))
+      .addBooleanOption((o) => o.setName('reset').setDescription('Go back to the default for the size of this server').setRequired(false))),
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
@@ -49,6 +54,22 @@ module.exports = {
       const rules = await roleTriggersDb.listRules(guild.id);
       if (!rules.length) return show(t(lang, 'automation.roletrigger.none'));
       return show([...rules.map((rule) => ruleLine(rule, lang)), ...coverageNote(guild, lang)].join('\n'));
+    }
+
+    if (sub === 'limit') {
+      if (interaction.options.getBoolean('reset')) {
+        await roleTriggersDb.clearLimit(guild.id);
+        return show(t(lang, 'automation.roletrigger.limit.reset', { emoji: EMOJI.APPROVE, limit: await limitFor(guild) }), 0xa5ea7a);
+      }
+      const amount = interaction.options.getInteger('amount');
+      if (amount === null) {
+        const chosen = await roleTriggersDb.getLimit(guild.id).catch(() => null);
+        return show(t(lang, validLimit(chosen) ? 'automation.roletrigger.limit.showCustom' : 'automation.roletrigger.limit.showDefault', { limit: await limitFor(guild), minutes: 10 }));
+      }
+      if (!validLimit(amount)) return show(t(lang, 'automation.roletrigger.limit.range', { min: MIN_LIMIT, max: MAX_LIMIT }), 0xfe6465);
+      await ensureGuild(guild.id);
+      await roleTriggersDb.setLimit(guild.id, amount);
+      return show(t(lang, 'automation.roletrigger.limit.saved', { emoji: EMOJI.APPROVE, limit: amount }), 0xa5ea7a);
     }
 
     if (sub === 'remove') {

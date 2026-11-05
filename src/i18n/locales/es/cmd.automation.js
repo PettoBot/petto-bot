@@ -1055,4 +1055,7 @@ module.exports = {
   'cmd.automation.roletrigger.remove.desc': 'Quita la regla de un rol.',
   'cmd.automation.roletrigger.remove.opt.role.desc': 'El rol de la regla',
   'cmd.automation.roletrigger.list.desc': 'Lista los disparadores de rol de este servidor.',
+  'cmd.automation.roletrigger.limit.desc': 'Cuántas acciones por minuto pueden hacer las reglas antes de pausarse (el freno de seguridad).',
+  'cmd.automation.roletrigger.limit.opt.amount.desc': 'Acciones por minuto, de 1 a 500 (vacío para verlo)',
+  'cmd.automation.roletrigger.limit.opt.reset.desc': 'Volver al valor por defecto según el tamaño de este servidor',
 };

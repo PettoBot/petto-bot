@@ -28,9 +28,21 @@ const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 const COMPLETED = GuildMemberFlags.CompletedOnboarding;
 
 const DONE_TTL_MS = 5 * 60_000; // a role grant is handled once in this time, whatever the events that repeat it
-const BREAKER_LIMIT = 5; // more than this many actions...
+const BREAKER_LIMIT = 5; // more than this many actions (the default of a small server: see `defaultLimit`)...
 const BREAKER_WINDOW_MS = 60_000; // ...in this time in one server...
 const BREAKER_PAUSE_MS = 10 * 60_000; // ...stops the rules of that server for this long
+
+/** The default of how many actions a minute a server may have before its rules pause: a bigger server has more going on, and a raid is when the rules are needed. */
+function defaultLimit(memberCount) {
+  const count = Number(memberCount) || 0;
+  if (count >= 25_000) return 40;
+  if (count >= 5_000) return 20;
+  if (count >= 1_000) return 10;
+  return BREAKER_LIMIT;
+}
+const MIN_LIMIT = 1;
+const MAX_LIMIT = 500;
+const validLimit = (value) => Number.isInteger(value) && value >= MIN_LIMIT && value <= MAX_LIMIT;
 
 // ---- Rules -----------------------------------------------------------------------------------------------------------------------
 
@@ -125,21 +137,33 @@ function createDoneMemory({ ttlMs = DONE_TTL_MS, now = Date.now } = {}) {
 function createBreaker({ limit = BREAKER_LIMIT, windowMs = BREAKER_WINDOW_MS, pauseMs = BREAKER_PAUSE_MS, now = Date.now } = {}) {
   const guilds = new Map();
   return {
-    allow(guildId) {
+    allow(guildId, limitOverride, who = null) {
       const time = now();
-      const state = guilds.get(guildId) ?? { times: [], pausedUntil: 0 };
+      const state = guilds.get(guildId) ?? { times: [], pausedUntil: 0, skipped: [] };
       guilds.set(guildId, state);
-      if (state.pausedUntil > time) return { allowed: false, tripped: false };
+      const max = validLimit(limitOverride) ? limitOverride : limit;
+      if (state.pausedUntil > time) { if (who && state.skipped.length < 50) state.skipped.push(who); state.skippedCount = (state.skippedCount ?? 0) + 1; return { allowed: false, tripped: false }; }
       state.times = state.times.filter((at) => time - at < windowMs);
-      if (state.times.length >= limit) {
+      if (state.times.length >= max) {
         state.pausedUntil = time + pauseMs;
         state.times = [];
+        state.skipped = who ? [who] : [];
+        state.skippedCount = 1;
         return { allowed: false, tripped: true };
       }
       state.times.push(time);
       return { allowed: true, tripped: false };
     },
     paused: (guildId) => (guilds.get(guildId)?.pausedUntil ?? 0) > now(),
+    /** The members that were left alone during the pause (up to 50 ids, and how many in all); forgets them. */
+    takeSkipped(guildId) {
+      const state = guilds.get(guildId);
+      if (!state) return { ids: [], count: 0 };
+      const result = { ids: state.skipped ?? [], count: state.skippedCount ?? 0 };
+      state.skipped = [];
+      state.skippedCount = 0;
+      return result;
+    },
     clear: () => guilds.clear(),
   };
 }
@@ -223,11 +247,31 @@ async function applyRule(member, rule, role) {
   }
 }
 
-/** Tells the staff once, in the log of the server, that the rules stopped. */
-async function warnBreaker(client, guild) {
+/** The limit of a server: the one its admins chose, or the default for its size. */
+async function limitFor(guild) {
+  const chosen = await roleTriggersDb.getLimit(guild.id).catch(() => null);
+  return validLimit(chosen) ? chosen : defaultLimit(guild.memberCount);
+}
+
+const sendAutomodLog = (client, guild, embed) => require('../logging/engine').sendLog(client, guild.id, 'automod', embed).catch((err) => logger.warn(`Role triggers: could not warn the log of guild ${guild.id}: ${err.message}`)); // i18n-ignore: log
+
+/** Tells the staff once, in the log of the server, that the rules stopped (and, when the pause ends, whom they did not look at). */
+async function warnBreaker(client, guild, limit) {
   const lang = await guildLanguage(guild.id);
-  const embed = { description: t(lang, 'automation.roletrigger.breaker', { limit: BREAKER_LIMIT, minutes: BREAKER_PAUSE_MS / 60_000 }), color: 0xff6b6b, timestamp: new Date().toISOString() };
-  await require('../logging/engine').sendLog(client, guild.id, 'automod', embed).catch((err) => logger.warn(`Role triggers: could not warn the log of guild ${guild.id}: ${err.message}`)); // i18n-ignore: log
+  const embed = { description: t(lang, 'automation.roletrigger.breaker', { limit, minutes: BREAKER_PAUSE_MS / 60_000 }), color: 0xff6b6b, timestamp: new Date().toISOString() };
+  await sendAutomodLog(client, guild, embed);
+  const timer = setTimeout(() => summarizeSkipped(client, guild).catch((err) => logger.warn(`Role triggers: could not tell what the pause skipped in guild ${guild.id}: ${err.message}`)), BREAKER_PAUSE_MS + 1000); // i18n-ignore: log
+  timer.unref?.();
+}
+
+/** When the pause is over: who was given a role in the meantime and was not looked at, so the staff can check them by hand. */
+async function summarizeSkipped(client, guild) {
+  const { ids, count } = breaker.takeSkipped(guild.id);
+  if (!count) return;
+  const lang = await guildLanguage(guild.id);
+  const list = ids.map((id) => `<@${id}>`).join(' ') + (count > ids.length ? ` (+${count - ids.length})` : '');
+  const embed = { description: t(lang, 'automation.roletrigger.skipped', { count, minutes: BREAKER_PAUSE_MS / 60_000, list }), color: 0xffa94d, timestamp: new Date().toISOString() };
+  await sendAutomodLog(client, guild, embed);
 }
 
 // ---- The event -------------------------------------------------------------------------------------------------------------------
@@ -253,13 +297,14 @@ async function handleMemberUpdate(oldMember, newMember) {
     return;
   }
 
+  const limit = await limitFor(guild);
   for (const rule of matched) {
     if (done.seen(`${guild.id}:${newMember.id}:${rule.role_id}`)) continue;
-    const gate = breaker.allow(guild.id);
+    const gate = breaker.allow(guild.id, limit, newMember.id);
     if (!gate.allowed) {
       if (gate.tripped) {
-        logger.warn(`Role triggers: more than ${BREAKER_LIMIT} actions in a minute in guild ${guild.id}; its rules are paused.`); // i18n-ignore: log
-        await warnBreaker(newMember.client, guild);
+        logger.warn(`Role triggers: more than ${limit} actions in a minute in guild ${guild.id}; its rules are paused.`); // i18n-ignore: log
+        await warnBreaker(newMember.client, guild, limit);
       }
       return;
     }
@@ -278,6 +323,7 @@ async function handleMemberUpdate(oldMember, newMember) {
 
 module.exports = {
   ACTIONS, TRIGGERS, DURATION_ACTIONS, MAX_RULES, MAX_REASON, BREAKER_LIMIT, BREAKER_WINDOW_MS, BREAKER_PAUSE_MS, DONE_TTL_MS,
+  MIN_LIMIT, MAX_LIMIT, defaultLimit, validLimit, limitFor, summarizeSkipped,
   validateRule, matchRules, onboardingJustCompleted, addedRoles, safetySkip, createDoneMemory, createBreaker, applyRule, handleMemberUpdate,
   _state: { done, breaker },
 };

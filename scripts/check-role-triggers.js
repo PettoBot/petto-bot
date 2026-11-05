@@ -15,7 +15,7 @@ function stub(relative, exports) {
 
 // ---- Replaced: the database, the sanction helpers, the log -------------------------------------------------------------------
 const state = { rules: [], listCalls: 0, cases: [], warns: [], logs: [], dms: [], sendLogs: [], level: 0, jailError: null, jails: [] };
-stub('src/db/roleTriggers.js', { listRules: async () => { state.listCalls += 1; return state.rules; }, upsertRule: async () => ({}), removeRule: async () => true });
+stub('src/db/roleTriggers.js', { listRules: async () => { state.listCalls += 1; return state.rules; }, upsertRule: async () => ({}), removeRule: async () => true, getLimit: async () => state.limit ?? null, setLimit: async (guildId, value) => { state.limit = value; }, clearLimit: async () => { state.limit = null; }, guildIdsWithRules: async () => [] });
 stub('src/db/modActions.js', { createCase: async (row) => { const modCase = { ...row, case_number: state.cases.length + 1 }; state.cases.push(modCase); return modCase; } });
 stub('src/db/warns.js', { addWarn: async (row) => { state.warns.push(row); const modCase = { ...row, type: 'warn', case_number: 90 + state.warns.length }; return { modCase, warnCount: state.warns.length }; } });
 stub('src/db/guilds.js', { ensureGuild: async () => ({ mute_role_id: null }), getGuild: async () => ({}), setGuildLookup() {}, peekGuild: () => null });
@@ -132,10 +132,10 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(ok({ existingRoleIds: [...full.slice(1), 'R'] }).ok, true, 'changing the rule of a role is not a new one');
 
   // ---- The event path ----------------------------------------------------------------------------------------------------------
-  const guildFor = () => {
+  const guildFor = (extra = {}) => {
     const calls = { bans: [], kicks: [], timeouts: [], removed: [], added: [] };
     const guild = {
-      id: 'g1', ownerId: 'owner', name: 'Guild', calls,
+      id: 'g1', ownerId: 'owner', name: 'Guild', calls, ...extra,
       roles: { cache: new Map([['A', { id: 'A', name: 'Suspicious', editable: true }], ['B', { id: 'B', name: 'Other', editable: true }]]) },
       members: { me: { id: 'bot', roles: { highest: { position: 10 } } }, ban: async (id, options) => { calls.bans.push({ id, options }); } },
       client: { user: { id: 'bot', username: 'Petto' } },
@@ -252,6 +252,37 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(guild.calls.kicks.length, 5, 'only five actions run in a minute');
   assert.equal(state.sendLogs.length, 1, 'the staff is told once');
   assert.match(state.sendLogs[0].embed.description, /5/);
+
+  // The limit of the breaker is the default for the size of the server, or the one its admins chose.
+  assert.deepEqual([0, 999, 1000, 4999, 5000, 24_999, 25_000, 200_000].map(lib.defaultLimit), [5, 5, 10, 10, 20, 20, 40, 40]);
+  assert.deepEqual([0, 1, 500, 501, 2.5, '7', null].map(lib.validLimit), [false, true, true, false, false, false, false]);
+  {
+    const b = createBreaker();
+    for (let i = 0; i < 20; i += 1) assert.equal(b.allow('g', 20, `m${i}`).allowed, true, `${i + 1} of 20`);
+    const trip = b.allow('g', 20, 'm20');
+    assert.deepEqual([trip.allowed, trip.tripped], [false, true], 'the 21st stops them');
+    b.allow('g', 20, 'm21');
+    assert.deepEqual(b.takeSkipped('g'), { ids: ['m20', 'm21'], count: 2 }, 'who was not looked at is kept');
+    assert.deepEqual(b.takeSkipped('g'), { ids: [], count: 0 }, 'and forgotten once told');
+  }
+  reset(); guild = guildFor();
+  state.rules = [rule('A', 'kick')];
+  state.limit = 8;
+  for (let i = 0; i < 12; i += 1) await lib.handleMemberUpdate(live(guild, `n${i}`, ['g1']), live(guild, `n${i}`, ['g1', 'A']));
+  assert.equal(guild.calls.kicks.length, 8, 'a server that chose 8 gets 8 actions a minute');
+  assert.equal(state.sendLogs.length, 1);
+  assert.match(state.sendLogs[0].embed.description, /8/);
+  assert.match(state.sendLogs[0].embed.description, /roletrigger limit/, 'the warning says how to raise it');
+  await lib.summarizeSkipped({}, guild);
+  assert.equal(state.sendLogs.length, 2, 'when the pause ends the staff is told who was not looked at');
+  assert.match(state.sendLogs[1].embed.description, /<@n8>/);
+  assert.match(state.sendLogs[1].embed.description, /<@n11>/);
+  reset(); guild = guildFor({ memberCount: 6000 });
+  state.limit = null;
+  state.rules = [rule('A', 'kick')];
+  for (let i = 0; i < 25; i += 1) await lib.handleMemberUpdate(live(guild, `k${i}`, ['g1']), live(guild, `k${i}`, ['g1', 'A']));
+  assert.equal(guild.calls.kicks.length, 20, 'a server of 6,000 members has a default of 20');
+  state.limit = null;
 
   // A role that does not exist any more or a failing action never stops the others.
   reset(); guild = guildFor();
