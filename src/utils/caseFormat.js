@@ -16,6 +16,7 @@ function typeName(type, lang = currentLanguage()) {
 const AUTOMATIC_REASONS = [
   [/^Automatic expiry$/, (lang) => t(lang, 'moderation.reason.expiry')],
   [/^Automatic escalation: reached (\d+) warning\(s\)\.$/, (lang, match) => tn(lang, 'moderation.reason.escalation', Number(match[1]), { count: match[1] })],
+  [/^Role trigger: (.+)$/s, (lang, match) => t(lang, 'moderation.reason.roletrigger', { name: match[1] })],
   [/^Lifted from the dashboard by (.+)$/s, (lang, match) => t(lang, 'moderation.reason.liftedDashboard', { name: match[1] })],
   [/^Appeal accepted$/, (lang) => t(lang, 'moderation.reason.appealAccepted')],
 ];
