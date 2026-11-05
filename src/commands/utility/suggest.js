@@ -4,20 +4,37 @@ const { submit, MAX_CONTENT } = require('../../utils/suggestions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
+const { addSubcommands, runWrapped, loadByName, ruleKeysOf } = require('../../utils/umbrella');
 
 const V2 = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? V2 | MessageFlags.Ephemeral : V2, allowedMentions: { parse: [] } });
 
-module.exports = {
-  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
-  aliases: ['sug'],
-  data: new SlashCommandBuilder()
-    .setName('suggest')
-    .setDescription('Make a suggestion for this server. The server votes on it.')
-    .setDMPermission(false)
-    .addStringOption((o) => o.setName('text').setDescription('Your suggestion (a link to a picture can go inside it)').setMaxLength(MAX_CONTENT).setRequired(true)),
+// What `/suggest` holds besides `send`: the subcommands of `!suggestion` (the setup and the answers of the staff), each running the code of that command.
+const STAFF = ['setup', 'enable', 'disable', 'config', 'set', 'approve', 'deny', 'consider', 'implement', 'reopen', 'delete', 'view', 'votes', 'list', 'block', 'unblock', 'panel'];
+const SUBCOMMANDS = [
+  { name: 'send', wraps: 'suggestion', sub: 'submit' }, // the old `!suggest`: the text of `!suggestion submit`, answered here
+  ...STAFF.map((name) => ({ name, wraps: 'suggestion', sub: name })),
+];
 
-  async execute(interaction) {
+module.exports = {
+  // Also a slash command, with the subcommands of `!suggestion` next to `send`: `/suggest send`, `/suggest approve`, `/suggest setup`.
+  registerSlash: true,
+  aliases: ['sug'],
+  // `!suggest <text>` is `!suggest send <text>`; `!suggest approve 3` is `!suggestion approve 3` (and the rules of both apply). It used to be `/community suggestion ...`.
+  prefixDefaultSubcommand: 'send',
+  prefixSubcommandAliases: { submit: 'send' },
+  prefixWords: Object.fromEntries(STAFF.map((name) => [name, { command: 'suggestion', args: [name] }])),
+  rulesViaWords: true,
+  rulesBySubcommand: true,
+  ruleKeys: { ...ruleKeysOf(SUBCOMMANDS), send: 'suggest' },
+  legacyRuleNames: ['community'], // i18n-ignore: a rule key, never shown
+  subcommands: SUBCOMMANDS,
+  data: addSubcommands(new SlashCommandBuilder().setName('suggest').setDescription('Make a suggestion for this server and manage them. The server votes on it.').setDMPermission(false), SUBCOMMANDS, loadByName),
+
+  async execute(interaction, client) {
+    // Everything but `send` is the old `!suggestion`: it asks for what that command asks for and answers as it does.
+    const sub = interaction.options.getSubcommand(false);
+    if (sub && sub !== 'send' && sub !== 'submit') return runWrapped(interaction, client, 'suggestion');
     const lang = await languageOf(interaction);
     const config = await db.getConfig(interaction.guild.id);
     if (!config.enabled || !config.channel_id) return reply(interaction, `${EMOJI.DENY}  ${t(lang, 'suggestions.error.off')}`, 0xff6b6b, true);

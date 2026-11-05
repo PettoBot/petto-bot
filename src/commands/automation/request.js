@@ -8,6 +8,7 @@ const { resolve } = require('../../utils/embedVariables');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, tn, currentLanguage, languageOf } = require('../../i18n');
+const { addSubcommands, runWrapped, loadByName } = require('../../utils/umbrella');
 
 /** The answer to who makes a request, when the server did not write one. */
 const defaultCreated = (lang = currentLanguage()) => t(lang, 'requests.created.default');
@@ -55,17 +56,29 @@ async function listRequests(interaction, lang) {
   return reply(interaction, textCard([`### ${t(lang, mine ? 'requests.list.titleMine' : 'requests.list.title')}`, ...lines].join('\n')));
 }
 
+// What the command holds besides its own subcommands: the group `config` is the old `!requestconfig`.
+const SUBCOMMANDS = [{ group: 'config', wraps: 'requestconfig', description: 'Set up requests: channel, staff, limits and the reply.' }];
+
 module.exports = {
-  prefixOnly: true,
+  subcommands: SUBCOMMANDS,
+  // Also a slash command: `/request make`, `/request list` and, in the group `config`, the subcommands of `!requestconfig` (`/request config channel`).
+  registerSlash: true,
   aliases: ['req'],
-  data: new SlashCommandBuilder()
+  // `!request config channel #staff` is `!requestconfig channel #staff`, with its own permission and rules. It used to be `/community requestconfig ...`.
+  prefixWords: { config: { command: 'requestconfig', args: [] } },
+  rulesViaWords: true,
+  groupRuleKeys: { config: 'requestconfig' },
+  legacyRuleNames: ['community'], // i18n-ignore: a rule key, never shown
+  data: addSubcommands(new SlashCommandBuilder()
     .setName('request')
-    .setDescription('Ask the staff for something.')
+    .setDescription('Ask the staff for something and set the requests up.')
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('make').setDescription('Ask the staff for something; they will see it in the requests channel.').addStringOption((o) => o.setName('text').setDescription('What you are asking for').setRequired(true).setMaxLength(MAX_TEXT)))
-    .addSubcommand((s) => s.setName('list').setDescription('See the open requests.').addBooleanOption((o) => o.setName('mine').setDescription('Only yours').setRequired(false))),
+    .addSubcommand((s) => s.setName('list').setDescription('See the open requests.').addBooleanOption((o) => o.setName('mine').setDescription('Only yours').setRequired(false))), SUBCOMMANDS, loadByName),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
+    // The group `config` is the old `!requestconfig`: it asks for what that command asks for.
+    if (interaction.options.getSubcommandGroup?.(false) === 'config') return runWrapped(interaction, client, 'requestconfig');
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const lang = await languageOf(interaction);
     return interaction.options.getSubcommand() === 'make' ? createRequest(interaction, lang) : listRequests(interaction, lang);

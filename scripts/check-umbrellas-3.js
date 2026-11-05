@@ -1,5 +1,5 @@
 // Checks the third batch of umbrella commands, the last of the prefix commands that moved to slash: /config, /protect, /greet, /auto, /message,
-// /community, /contrib, /special and /bot (src/commands/*/*.js, utils/umbrella.js), and the commands that already were a command with subcommands and
+// /contrib, /special and /bot (src/commands/*/*.js, utils/umbrella.js), and the commands that already were a command with subcommands and
 // are registered as they are (/level, /automod, /role, /forum, /form...). Discord will take the prefix away one day, so everything public moves now:
 //   - every umbrella only has groups and subcommands; a group is an old command with ALL its subcommands (the same names, options, types, limits and
 //     choices), a subcommand one that has none; nothing is left out of a wrapped command, and nothing is wrapped twice;
@@ -78,6 +78,11 @@ const MODS = '900000000000000001';
 const commandFile = (name) => client.commands.get(name);
 const optionsOf = (command) => command.data.toJSON().options;
 
+// The commands that used to be inside `/community` and are commands of their own now (each holds the subcommands of its old commands).
+const SPLIT = ['suggest', 'suggestion', 'confess', 'confession', 'request', 'requestconfig', 'profile', 'profileconfig', 'poll', 'review'];
+// With the slash command, the new command runs the old one itself, so only the old ones are watched.
+const SPLIT_WRAPPED = ['suggestion', 'confession', 'requestconfig', 'profileconfig'];
+
 // ---------------------------------------------------------------- what was decided (written here, apart from the commands)
 // `groups`: old commands wrapped whole, `flat`: [name, old command] wrapped as one subcommand. Counts: how many subcommands the groups hold.
 const UMBRELLAS = {
@@ -86,7 +91,6 @@ const UMBRELLAS = {
   greet: { category: 'welcome', groups: { welcome: 6, leave: 4, boost: 5, dmonjoin: 4, pingonjoin: 5 }, flat: {} },
   automation: { category: 'automation', groups: { autothread: 3, bumpreminder: 8, reaction: 10, reactionrole: 4, stickymessage: 3, timer: 12 }, flat: {} },
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
-  community: { category: 'automation', groups: { suggestion: 18, confession: 13, request: 2, requestconfig: 10, review: 3, profileconfig: 4 }, flat: { confess: 'confess', profile: 'profile', poll: 'poll' } },
   contributions: { category: 'automation', groups: { partner: 2, partnerconfig: 12, uploads: 2, uploadconfig: 7 }, flat: {} },
   specialchannels: { category: 'utility', groups: { counting: 9, counter: 8, imageonly: 3, linkonly: 4 }, flat: {} },
   bot: { category: 'info', groups: { votes: 2, premium: 1 }, flat: { info: 'botinfo', ping: 'ping', uptime: 'uptime', version: 'version' } },
@@ -275,7 +279,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, community: 53, contributions: 23, specialchannels: 24, bot: 7 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 7 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).
@@ -353,7 +357,7 @@ function tailOf(node) {
   restoreSpies();
 
   // ------------------------------------------------------------ the slash command runs the code of the old command, with its options
-  spyOn([...wrappedNames, 'prefix']);
+  spyOn([...wrappedNames, 'prefix', ...SPLIT_WRAPPED]);
   for (const umbrella of Object.keys(UMBRELLAS)) {
     for (const leaf of leavesOf(umbrella)) {
       const result = await slash(umbrella, leaf.group, leaf.name);
@@ -378,10 +382,19 @@ function tailOf(node) {
   r = (await slash('bot', 'votes', 'show')).ran;
   assert.deepEqual([r.file, r.sub], ['votes', 'show']);
   assert.equal((await slash('config', 'alias', 'list')).ran.interaction.options.getSubcommandGroup(false), null, 'the old command sees no group, as if it was typed as the old command');
+  // What used to be `/community`: `/suggest approve` runs `!suggestion approve`, `/request config channel` runs `!requestconfig channel` (the old command sees its own subcommand and no group).
+  r = (await slash('suggest', null, 'approve', { values: { id: 'si2tr-foytm' } })).ran;
+  assert.deepEqual([r.file, r.sub, r.group, r.commandName, r.values.id], ['suggestion', 'approve', null, 'suggestion', 'si2tr-foytm']);
+  r = (await slash('confess', null, 'reveal', { values: { id: 'abc' } })).ran;
+  assert.deepEqual([r.file, r.sub, r.group, r.commandName], ['confession', 'reveal', null, 'confession']);
+  r = (await slash('request', 'config', 'channel', { values: { channel: ROOM } })).ran;
+  assert.deepEqual([r.file, r.sub, r.group, r.commandName, r.values.channel], ['requestconfig', 'channel', null, 'requestconfig', ROOM]);
+  r = (await slash('profile', 'config', 'view')).ran;
+  assert.deepEqual([r.file, r.sub, r.group], ['profileconfig', 'view', null]);
   restoreSpies();
 
   // ------------------------------------------------------------ the prefix reads what each subcommand takes exactly as the old command does
-  spyOn([...wrappedNames, 'prefix']);
+  spyOn([...wrappedNames, 'prefix', ...SPLIT]);
   const ran = async (content, options) => (await send(content, options)).ran;
   for (const umbrella of Object.keys(UMBRELLAS)) {
     for (const leaf of leavesOf(umbrella)) {
@@ -443,10 +456,33 @@ function tailOf(node) {
   call = await ran('!config dc list');
   assert.deepEqual([call.file, call.sub], ['disablecommand', 'list'], 'an alias of the old command is a word of its group: `!config dc list` is `!disablecommand list`');
   assert.ok((await ran('!config zzz show')) === null, 'a word that is not an alias of the command is not read');
-  call = await ran(`!community suggestion setup <#${ROOM}>`);
-  assert.deepEqual([call.file, call.sub], ['suggestion', 'setup']);
-  call = await ran('!community confess I ate it');
-  assert.deepEqual([call.file, call.values], ['confess', (await ran('!confess I ate it')).values], '`!community confess` reads the text as `!confess` does');
+  // What used to be `/community`: each one is a command of its own now, and the prefix reads what it read before.
+  call = await ran(`!suggest setup <#${ROOM}>`);
+  assert.deepEqual([call.file, call.sub], ['suggestion', 'setup'], '`!suggest setup` is `!suggestion setup`');
+  call = await ran('!suggest approve si2tr-foytm too good');
+  assert.deepEqual([call.file, call.sub, call.values.id], ['suggestion', 'approve', 'si2tr-foytm'], '`!suggest approve` is `!suggestion approve`');
+  call = await ran('!suggest I ate it');
+  assert.deepEqual([call.file, call.sub, call.values.text], ['suggest', 'send', 'I ate it'], '`!suggest <text>` is a suggestion');
+  call = await ran('!sug I ate it');
+  assert.deepEqual([call.file, call.sub, call.values.text], ['suggest', 'send', 'I ate it'], '`!sug <text>` too');
+  call = await ran('!suggest send I ate it');
+  assert.deepEqual([call.file, call.sub, call.values.text], ['suggest', 'send', 'I ate it'], '`!suggest send <text>`');
+  call = await ran('!suggestion submit I ate it');
+  assert.deepEqual([call.file, call.sub], ['suggestion', 'submit'], 'and `!suggestion submit` still runs');
+  call = await ran('!confess secret');
+  assert.deepEqual([call.file, call.sub, call.values.text], ['confess', 'send', 'secret'], '`!confess <text>` is a confession (read as before: the text has a picture option after it)');
+  call = await ran('!confess approve abc');
+  assert.deepEqual([call.file, call.sub], ['confession', 'approve'], '`!confess approve` is `!confession approve`');
+  call = await ran(`!request config channel <#${ROOM}>`);
+  assert.deepEqual([call.file, call.sub], ['requestconfig', 'channel'], '`!request config channel` is `!requestconfig channel`');
+  call = await ran('!request make a thing');
+  assert.deepEqual([call.file, call.sub, call.values.text], ['request', 'make', 'a thing']);
+  call = await ran('!profile config view');
+  assert.deepEqual([call.file, call.sub], ['profileconfig', 'view'], '`!profile config view` is `!profileconfig view`');
+  call = await ran('!profile');
+  assert.deepEqual([call.file, call.sub], ['profile', 'show'], '`!profile` alone is `!profile show`');
+  call = await ran('!poll');
+  assert.equal(call.file, 'poll');
   call = await ran('!message send hello there');
   assert.equal(call.file, 'send', 'the raw reader of !send reads the message');
   call = await ran('!specialchannels counting config');
@@ -470,7 +506,7 @@ function tailOf(node) {
   assert.ok((await send('!protect')).sent[0].includes('add, remove, panel'), 'a group lists the subcommands it holds');
 
   // Everyday words: `petto bot is down` is chat; `!bot` is a command with a symbol prefix.
-  for (const word of ['bot', 'auto', 'message', 'special', 'community', 'config', 'protect', 'greet']) assert.equal(await event.knownNameChecker(client, '1')(word), false, `\`petto ${word} ...\` is chat, not a command`);
+  for (const word of ['bot', 'auto', 'message', 'special', 'config', 'protect', 'greet']) assert.equal(await event.knownNameChecker(client, '1')(word), false, `\`petto ${word} ...\` is chat, not a command`);
   assert.equal(await event.knownNameChecker(client, '1')('contrib'), true);
   assert.equal(await event.knownNameChecker(client, '1')('help'), true, 'the real commands are still known');
   spyOn(['version', 'prefix']);
@@ -483,7 +519,7 @@ function tailOf(node) {
   restoreSpies();
 
   // ------------------------------------------------------------ the old commands and their words are untouched
-  spyOn([...wrappedNames, 'prefix']);
+  spyOn([...wrappedNames, 'prefix', ...SPLIT]);
   for (const [content, file, subName] of [
     ['!prefix show', 'prefix', 'view'], ['!prefix set ?!', 'prefix', 'set'], ['!language es', 'language', null], ['!alias list', 'alias', 'list'], ['!honeypot list', 'honeypot', 'list'], ['!verify status', 'verify', 'status'],
     ['!welcome status', 'welcome', 'status'], ['!leave status', 'leave', 'status'], ['!boost status', 'boost', 'status'], ['!timer list', 'timer', 'list'],
@@ -501,12 +537,15 @@ function tailOf(node) {
   // The six old slash commands that an umbrella subcommand replaced are not registered; the old command is still loaded for the prefix.
   for (const name of ['avatar', 'userinfo', 'serverinfo', 'purge', 'unban', 'timeout']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
   for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'mod', 'staff', 'game', 'me', 'search', 'server', 'user', 'levels', 'modtools', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
-  // What moved into an umbrella is a prefix command now (`!rank`, `!top`, `!suggest`, `!ping`, `!botinfo`, `!poll`, `!level`), with its aliases.
-  for (const name of ['rank', 'top', 'suggest', 'ping', 'botinfo', 'poll', 'level']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
+  // What moved into an umbrella is a prefix command now (`!rank`, `!top`, `!ping`, `!botinfo`, `!level`), with its aliases.
+  for (const name of ['rank', 'top', 'ping', 'botinfo', 'level']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
+  // What was `/community` is a slash command of its own each, and the prefix works as it did.
+  for (const name of ['suggest', 'confess', 'request', 'review', 'profile', 'poll']) assert.ok(client.commands.has(name) && isSlashCommand(commandFile(name)), `/${name} is a slash command, and !${name} still works`);
+  assert.equal(client.commands.has('community'), false, '/community is gone');
   restoreSpies();
 
   // ------------------------------------------------------------ SECURITY: the permission of each wrapped command, slash and prefix
-  spyOn([...wrappedNames, 'prefix']);
+  spyOn([...wrappedNames, 'prefix', ...SPLIT]);
   const wrongFor = (flag) => (flag === 'ManageGuild' ? F.ManageMessages : F.ManageGuild);
   let checked = 0;
   for (const umbrella of Object.keys(UMBRELLAS)) {
@@ -565,7 +604,7 @@ function tailOf(node) {
   assert.deepEqual(commandRules.ruleNames(commandFile('config'), { subcommand: 'list', group: 'commandroles', via: 'config' }), ['restrictcommand', 'config']);
   assert.deepEqual(commandRules.permissionNames(commandFile('protect'), { subcommand: 'add', group: 'honeypot' }), ['protect', 'honeypot']);
   assert.deepEqual(commandRules.ruleNames(commandFile('action'), { subcommand: 'hug', group: 'love' }), ['hug', 'action', 'act'], '/act keeps its own way of naming the rule of an action');
-  spyOn([...wrappedNames, 'prefix']);
+  spyOn([...wrappedNames, 'prefix', ...SPLIT]);
   // A rule for the wrapped command stops that group, and only that one, for the slash command and the prefix.
   rules = [{ command: 'honeypot', channel_id: null }];
   let result = await slash('protect', 'honeypot', 'list');
@@ -658,11 +697,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 65, '65 commands registered with Discord (62 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 70, '70 commands registered with Discord (67 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 67, '67 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [62, 100, 38], '38 slots are free, more than the 20 that are kept');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [67, 100, 33], '33 slots are free, more than the 20 that are kept');
   assert.ok(usage.chat.free >= 20);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
@@ -749,7 +788,7 @@ function tailOf(node) {
     const route = client.commandRoutes.get(alias);
     assert.ok(route && client.commands.has(route.command), `${alias} (was ${target}) is still a route to something that exists (${now ?? 'a route written by hand'})`);
   }
-  spyOn([...wrappedNames, 'prefix']);
+  spyOn([...wrappedNames, 'prefix', ...SPLIT]);
   const shortOf = (target) => Object.entries(SHORT_ALIAS_TABLE).find(([, value]) => value === target)[0];
   call = await ran(`!${shortOf('protect honeypot list')}`);
   assert.deepEqual([call.file, call.sub], ['honeypot', 'list'], 'a short alias runs the subcommand');

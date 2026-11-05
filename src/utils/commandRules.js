@@ -22,7 +22,7 @@ function ruleNames(command, { route = null, subcommand = null, group = null, via
   if (group && command.groupRuleKeys?.[group]) names.push(command.groupRuleKeys[group]);
   names.push(command.data.name, ...(command.legacyRuleNames ?? []));
   // The umbrella a prefix use came through (`!config prefix set` runs `!prefix set`): its own rules apply too.
-  if (via) names.push(via);
+  if (via) names.push(...[via].flat());
   return [...new Set(names)];
 }
 
@@ -46,7 +46,7 @@ function permissionNames(command, { subcommand = null, group = null, via = null 
   const wrapped = command.ruleKeys && subcommand ? (group && (command.ruleKeys[`${group} ${subcommand}`] || command.ruleKeys[group])) || command.ruleKeys[subcommand] : null;
   const others = wrapped ? otherRuleKeys(command, subcommand, group) : [];
   const grouped = group ? command.groupRuleKeys?.[group] : null;
-  return [...new Set([command.data.name, ...(command.legacyRuleNames ?? []), wrapped, ...others, grouped, via].filter(Boolean))];
+  return [...new Set([command.data.name, ...(command.legacyRuleNames ?? []), wrapped, ...others, grouped, ...[via].flat()].filter(Boolean))];
 }
 
 /**

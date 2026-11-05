@@ -268,6 +268,17 @@ async function checkPermission(load, interaction, entry) {
   return { ok: false, roleAllowed };
 }
 
+/**
+ * Runs one subcommand of an old command for a command that holds it as its own (`/request config channel` is `requestconfig channel`): the permission the
+ * old command asks for is checked first (the same one the umbrellas ask), then it runs with its own subcommand, as if it had been typed as the old command.
+ */
+async function runWrapped(interaction, client, wraps, { sub = interaction.options.getSubcommand(), load = loadByName } = {}) {
+  const wrapped = load(wraps);
+  const { ok, roleAllowed } = await checkPermission(load, interaction, { wraps, sub });
+  if (!ok) return undefined;
+  return wrapped.execute(wrapInteraction(interaction, { subcommand: sub, group: null, overrides: { commandName: wrapped.data.name, pettoModerationRoleAllowed: roleAllowed } }), client);
+}
+
 /** The subcommand that was chosen: the entry of the list with this name (inside this group, when it has one). */
 function findLeaf(subcommands, group, name) {
   return subcommands.find((entry) => entry.name === name && (entry.group ?? null) === (group ?? null));
@@ -386,4 +397,4 @@ function defineUmbrella({ name, description, subcommands, load = loadByName, ali
   };
 }
 
-module.exports = { nodeOf, defineUmbrella, loadByName, addSubcommands, expandGroups, prefixWordsOf, findLeaf, runSubcommand, ruleKeysOf, copyOptions, wrapInteraction, prefixOptionsOf, permissionBitsOf, checkPermission, wrappedExecutor };
+module.exports = { nodeOf, defineUmbrella, loadByName, addSubcommands, expandGroups, prefixWordsOf, findLeaf, runSubcommand, ruleKeysOf, copyOptions, wrapInteraction, prefixOptionsOf, permissionBitsOf, checkPermission, wrappedExecutor, runWrapped };

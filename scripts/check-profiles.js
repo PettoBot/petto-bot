@@ -13,6 +13,7 @@ stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO' } });
 stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
+stub('src/utils/moderationPermissions.js', { hasConfiguredRole: async () => false }); // read by the umbrella helper that /profile uses for its group config
 
 let reviewConfig = { reviews_enabled: true, review_channel_id: null };
 let reviews = [];
@@ -76,7 +77,8 @@ const fakeGuild = (channel) => ({ id: 'g1', members: { fetch: async () => ({ joi
   assert.match(profile, /Uploads: \*\*2\*\* \(4 files\) · \*\*0\*\* this week · last <t:\d+:R>/); assert.match(profile, /Requests: \*\*3\*\* made, \*\*1\*\* done · \*\*2\*\* finished for others/); assert.match(profile, /Partnerships: \*\*2\*\* · \*\*1\*\* this week/);
   reviewConfig.reviews_enabled = false; assert.doesNotMatch(await talk(profileCommand, null, { user: fakeUser('b', 'Bob') }), /Rating/, 'the rating is hidden when reviews are off'); reviewConfig.reviews_enabled = true;
   assert.match(await talk(profileCommand, null, { user: fakeUser('nobody', 'Nobody') }), /Rating: no reviews yet/);
-  for (const command of [reviewCommand, profileCommand, profileConfigCommand]) assert.equal(command.prefixOnly, true);
+  for (const command of [reviewCommand, profileCommand]) assert.ok(!command.prefixOnly && command.registerSlash === true, `/${command.data.name} is a slash command too`);
+  assert.equal(profileConfigCommand.prefixOnly, true);
   assert.equal(String(profileConfigCommand.data.default_member_permissions), String(1n << 5n));
   void Collection;
   console.log('Checked the reviews and profiles: stars, who can review, changing a review, the channel and the profile.');

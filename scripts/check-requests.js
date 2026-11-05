@@ -141,6 +141,6 @@ const buttons = (card) => (card.components[1]?.components ?? []).map((item) => i
   config.completion_hours = 24; premiumActive = false; assert.equal(await unclaimLate(client), 1, 'it is free: no Premium is needed');
   assert.equal(rows[0].status, 'open'); assert.equal(rows[0].claimed_by, null); assert.equal(rows[1].status, 'claimed', 'a recent one stays claimed');
   assert.equal(edited.length, 1); assert.match(notices[0], /Request #1 was claimed by <@s1> and not finished in 24 hours/);
-  assert.equal(requestCommand.prefixOnly, true); assert.equal(requestConfigCommand.prefixOnly, true);
+  assert.ok(!requestCommand.prefixOnly && requestCommand.registerSlash === true, '/request is a slash command too'); assert.equal(requestConfigCommand.prefixOnly, true);
   console.log('Checked the requests: the card, who presses what, the limits, the settings and the time limit.');
 })().catch((error) => { console.error(error); process.exit(1); });

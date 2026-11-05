@@ -5,20 +5,44 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 const { sendDm } = require('../../utils/dmOrigin');
+const { addSubcommands, runWrapped, loadByName, ruleKeysOf } = require('../../utils/umbrella');
 
 const V2 = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? V2 | MessageFlags.Ephemeral : V2, allowedMentions: { parse: [] } });
 
-module.exports = {
-  aliases: ['confession-send'],
-  data: new SlashCommandBuilder()
-    .setName('confess')
-    .setDescription('Confess something without anyone knowing it was you.')
-    .setDMPermission(false)
-    .addStringOption((o) => o.setName('text').setDescription('What you want to say (a link to a picture can go inside it)').setMaxLength(MAX_CONTENT).setRequired(true))
-    .addAttachmentOption((o) => o.setName('image').setDescription('A picture to go with it (optional)').setRequired(false)),
+// What `/confess` holds besides `send`: the subcommands of `!confession` (the setup and the moderation of the staff), each running the code of that command.
+const STAFF = ['setup', 'enable', 'disable', 'config', 'set', 'panel', 'approve', 'reject', 'reveal', 'delete', 'list', 'block', 'unblock'];
+const SUBCOMMANDS = [
+  {
+    name: 'send',
+    description: 'Confess something without anyone knowing it was you.',
+    rule: 'confess',
+    options: [
+      { type: 3, name: 'text', description: 'What you want to say (a link to a picture can go inside it)', required: true, max_length: MAX_CONTENT },
+      { type: 11, name: 'image', description: 'A picture to go with it (optional)', required: false },
+    ],
+  },
+  ...STAFF.map((name) => ({ name, wraps: 'confession', sub: name })),
+];
 
-  async execute(interaction) {
+module.exports = {
+  // Also a slash command, with the subcommands of `!confession` next to `send`: `/confess send`, `/confess approve`, `/confess setup`.
+  registerSlash: true,
+  aliases: ['confession-send'],
+  // `!confess <text>` is `!confess send <text>`; `!confess approve 3` is `!confession approve 3` (and the rules of both apply). It used to be `/community confess`.
+  prefixDefaultSubcommand: 'send',
+  prefixWords: Object.fromEntries(STAFF.map((name) => [name, { command: 'confession', args: [name] }])),
+  rulesViaWords: true,
+  rulesBySubcommand: true,
+  ruleKeys: ruleKeysOf(SUBCOMMANDS),
+  legacyRuleNames: ['community'], // i18n-ignore: a rule key, never shown
+  subcommands: SUBCOMMANDS,
+  data: addSubcommands(new SlashCommandBuilder().setName('confess').setDescription('Confess something without anyone knowing it was you, and set confessions up.').setDMPermission(false), SUBCOMMANDS, loadByName),
+
+  async execute(interaction, client) {
+    // Everything but `send` is the old `!confession`: it asks for what that command asks for and answers as it does.
+    const sub = interaction.options.getSubcommand(false);
+    if (sub && sub !== 'send') return runWrapped(interaction, client, 'confession');
     const lang = await languageOf(interaction);
     const config = await db.getConfig(interaction.guild.id);
     if (!config.enabled || !config.channel_id) return reply(interaction, `${EMOJI.DENY}  ${t(lang, 'confessions.error.off')}`, 0xff6b6b, true);

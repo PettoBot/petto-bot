@@ -692,7 +692,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // The commands that are in two places: an umbrella subcommand and the old command, both slash commands (kept on purpose, a decision of the owner for later).
   const slashNames = new Set(data.map((entry) => entry.name));
   const twins = [];
-  for (const command of all) for (const [sub, wrapped] of Object.entries(command.ruleKeys ?? {})) if (slashNames.has(wrapped)) twins.push(`${command.data.name} ${sub} = /${wrapped}`);
+  for (const command of all) for (const [sub, wrapped] of Object.entries(command.ruleKeys ?? {})) if (slashNames.has(wrapped) && wrapped !== command.data.name) twins.push(`${command.data.name} ${sub} = /${wrapped}`);
   assert.deepEqual(twins, UMBRELLA_TWINS, 'the umbrella subcommands that also exist as a slash command of their own (the list is written here so a new one is a decision)');
 
   // ---------------------------------------------------------- 6. the 15 most used commands, end to end: the answer is built, with no error

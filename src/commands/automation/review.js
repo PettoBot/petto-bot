@@ -56,8 +56,10 @@ async function show(interaction, lang) {
 }
 
 module.exports = {
-  prefixOnly: true,
+  // Also a slash command: `/review give`, `/review remove`, `/review show`.
+  registerSlash: true,
   aliases: ['reviews'],
+  legacyRuleNames: ['community'], // i18n-ignore: a rule key, never shown
   data: new SlashCommandBuilder()
     .setName('review')
     .setDescription('Rate a member from 1 to 5 stars.')
