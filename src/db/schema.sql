@@ -979,6 +979,16 @@ create table if not exists role_triggers (
 
 alter table role_triggers enable row level security;
 
+-- The circuit breaker of the role triggers of one server: how many actions may fire in a minute before its rules pause. No row means the default for the size of the
+-- server (utils/roleTriggers.js `defaultLimit`). Set with `/protect roletrigger limit` or from the dashboard.
+create table if not exists role_trigger_settings (
+  guild_id    text primary key references guilds(guild_id) on delete cascade,
+  max_actions integer not null check (max_actions between 1 and 500),
+  updated_at  timestamptz not null default now()
+);
+
+alter table role_trigger_settings enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- report_config: destination channel for member-submitted reports (both the
 -- /report slash command and the "Report Message" context-menu command).

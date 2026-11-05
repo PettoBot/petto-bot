@@ -701,4 +701,7 @@ module.exports = {
   'cmd.config.protect.roletrigger.remove.desc': 'Remove a regra de um cargo.',
   'cmd.config.protect.roletrigger.remove.opt.role.desc': 'O cargo da regra',
   'cmd.config.protect.roletrigger.list.desc': 'Lista os gatilhos de cargo deste servidor.',
+  'cmd.config.protect.roletrigger.limit.desc': 'Quantas ações por minuto as regras podem fazer antes de pausar (a trava de segurança).',
+  'cmd.config.protect.roletrigger.limit.opt.amount.desc': 'Ações por minuto, de 1 a 500 (vazio para ver)',
+  'cmd.config.protect.roletrigger.limit.opt.reset.desc': 'Voltar ao padrão pelo tamanho deste servidor',
 };

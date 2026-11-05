@@ -15,7 +15,7 @@ function stub(relative, exports) {
 
 // ---- Replaced: the database, the sanction helpers, the log -------------------------------------------------------------------
 const state = { rules: [], listCalls: 0, cases: [], warns: [], logs: [], dms: [], sendLogs: [], level: 0, jailError: null, jails: [] };
-stub('src/db/roleTriggers.js', { listRules: async () => { state.listCalls += 1; return state.rules; }, upsertRule: async () => ({}), removeRule: async () => true });
+stub('src/db/roleTriggers.js', { listRules: async () => { state.listCalls += 1; return state.rules; }, upsertRule: async () => ({}), removeRule: async () => true, getLimit: async () => state.limit ?? null, setLimit: async (guildId, value) => { state.limit = value; }, clearLimit: async () => { state.limit = null; }, guildIdsWithRules: async () => [] });
 stub('src/db/modActions.js', { createCase: async (row) => { const modCase = { ...row, case_number: state.cases.length + 1 }; state.cases.push(modCase); return modCase; } });
 stub('src/db/warns.js', { addWarn: async (row) => { state.warns.push(row); const modCase = { ...row, type: 'warn', case_number: 90 + state.warns.length }; return { modCase, warnCount: state.warns.length }; } });
 stub('src/db/guilds.js', { ensureGuild: async () => ({ mute_role_id: null }), getGuild: async () => ({}), setGuildLookup() {}, peekGuild: () => null });
@@ -132,10 +132,10 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(ok({ existingRoleIds: [...full.slice(1), 'R'] }).ok, true, 'changing the rule of a role is not a new one');
 
   // ---- The event path ----------------------------------------------------------------------------------------------------------
-  const guildFor = () => {
+  const guildFor = (extra = {}) => {
     const calls = { bans: [], kicks: [], timeouts: [], removed: [], added: [] };
     const guild = {
-      id: 'g1', ownerId: 'owner', name: 'Guild', calls,
+      id: 'g1', ownerId: 'owner', name: 'Guild', calls, ...extra,
       roles: { cache: new Map([['A', { id: 'A', name: 'Suspicious', editable: true }], ['B', { id: 'B', name: 'Other', editable: true }]]) },
       members: { me: { id: 'bot', roles: { highest: { position: 10 } } }, ban: async (id, options) => { calls.bans.push({ id, options }); } },
       client: { user: { id: 'bot', username: 'Petto' } },
@@ -253,6 +253,37 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(state.sendLogs.length, 1, 'the staff is told once');
   assert.match(state.sendLogs[0].embed.description, /5/);
 
+  // The limit of the breaker is the default for the size of the server, or the one its admins chose.
+  assert.deepEqual([0, 999, 1000, 4999, 5000, 24_999, 25_000, 200_000].map(lib.defaultLimit), [5, 5, 10, 10, 20, 20, 40, 40]);
+  assert.deepEqual([0, 1, 500, 501, 2.5, '7', null].map(lib.validLimit), [false, true, true, false, false, false, false]);
+  {
+    const b = createBreaker();
+    for (let i = 0; i < 20; i += 1) assert.equal(b.allow('g', 20, `m${i}`).allowed, true, `${i + 1} of 20`);
+    const trip = b.allow('g', 20, 'm20');
+    assert.deepEqual([trip.allowed, trip.tripped], [false, true], 'the 21st stops them');
+    b.allow('g', 20, 'm21');
+    assert.deepEqual(b.takeSkipped('g'), { ids: ['m20', 'm21'], count: 2 }, 'who was not looked at is kept');
+    assert.deepEqual(b.takeSkipped('g'), { ids: [], count: 0 }, 'and forgotten once told');
+  }
+  reset(); guild = guildFor();
+  state.rules = [rule('A', 'kick')];
+  state.limit = 8;
+  for (let i = 0; i < 12; i += 1) await lib.handleMemberUpdate(live(guild, `n${i}`, ['g1']), live(guild, `n${i}`, ['g1', 'A']));
+  assert.equal(guild.calls.kicks.length, 8, 'a server that chose 8 gets 8 actions a minute');
+  assert.equal(state.sendLogs.length, 1);
+  assert.match(state.sendLogs[0].embed.description, /8/);
+  assert.match(state.sendLogs[0].embed.description, /roletrigger limit/, 'the warning says how to raise it');
+  await lib.summarizeSkipped({}, guild);
+  assert.equal(state.sendLogs.length, 2, 'when the pause ends the staff is told who was not looked at');
+  assert.match(state.sendLogs[1].embed.description, /<@n8>/);
+  assert.match(state.sendLogs[1].embed.description, /<@n11>/);
+  reset(); guild = guildFor({ memberCount: 6000 });
+  state.limit = null;
+  state.rules = [rule('A', 'kick')];
+  for (let i = 0; i < 25; i += 1) await lib.handleMemberUpdate(live(guild, `k${i}`, ['g1']), live(guild, `k${i}`, ['g1', 'A']));
+  assert.equal(guild.calls.kicks.length, 20, 'a server of 6,000 members has a default of 20');
+  state.limit = null;
+
   // A role that does not exist any more or a failing action never stops the others.
   reset(); guild = guildFor();
   state.rules = [rule('GONE', 'ban'), rule('A', 'kick')];
@@ -269,6 +300,85 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(displayReason('Role trigger: Suspicious', 'en'), 'Role trigger: Suspicious');
   assert.equal(displayReason('Role trigger: Suspicious', 'es'), 'Disparador de rol: Suspicious');
   assert.equal(displayReason('Role trigger: Suspicious - raid', 'pt-BR'), 'Gatilho de cargo: Suspicious - raid');
+
+  // ---- Loading the members of the servers with rules (src/utils/roleTriggerWarm.js) ----------------------------------------------
+  const warm = require('../src/utils/roleTriggerWarm');
+  const d = (over) => warm.warmDecision({ memberCount: 1000, cacheSize: 10, loadLevel: 'normal', ...over });
+  assert.equal(d({}), 'warm', 'a small server with an incomplete cache is loaded');
+  assert.equal(d({ cacheSize: 1000 }), 'complete', 'a full cache needs nothing');
+  assert.equal(d({ cacheSize: 960 }), 'complete', '95 percent counts as complete');
+  assert.equal(d({ cacheSize: 900 }), 'warm', 'clearly below the member count is loaded');
+  assert.equal(d({ memberCount: warm.MAX_GUILD_MEMBERS }), 'warm', 'exactly at the cap is loaded');
+  assert.equal(d({ memberCount: warm.MAX_GUILD_MEMBERS + 1 }), 'too_large', 'above the cap is not loaded');
+  assert.equal(d({ memberCount: 50_000, cacheSize: 50_000 }), 'complete', 'a big server with a full cache is fine');
+  assert.equal(d({ budgetLeft: 500 }), 'too_large', 'the budget of all servers together is a cap too');
+  assert.equal(d({ loadLevel: 'degraded' }), 'load', 'degraded waits');
+  assert.equal(d({ loadLevel: 'critical' }), 'load', 'critical waits');
+  assert.equal(d({ loadLevel: 'critical', cacheSize: 1000 }), 'complete', 'a complete cache is complete at any load');
+  assert.equal(d({ memberCount: undefined }), 'unknown');
+  assert.equal(d({ memberCount: 0 }), 'unknown');
+  assert.equal(warm.mayMissMembers({ memberCount: 1000, cacheSize: 10 }), true, 'not loaded yet: the admin is told');
+  assert.equal(warm.mayMissMembers({ memberCount: 1000, cacheSize: 10, loaded: true }), false, 'loaded: nothing to say');
+  assert.equal(warm.mayMissMembers({ memberCount: 1000, cacheSize: 1000 }), false, 'a full cache: nothing to say');
+  assert.equal(warm.mayMissMembers({ memberCount: 30_000, cacheSize: 100, loaded: true }), true, 'above the cap: always told');
+  assert.equal(warm.mayMissMembers({ memberCount: undefined, cacheSize: 0 }), false, 'no member count: nothing to say');
+
+  // The queue runs one server at a time, with the gap between them, and tries a server skipped for the load again later.
+  {
+    const order = [];
+    const sleeps = [];
+    let active = 0;
+    let maxActive = 0;
+    const timers = [];
+    const queue = warm.createWarmQueue({ gapMs: 20_000, retryMs: 300_000, retryMax: 2, sleep: async (ms) => { sleeps.push(ms); }, timer: (fn, ms) => { timers.push({ fn, ms }); return null; } });
+    const job = (name, result) => async () => { active += 1; maxActive = Math.max(maxActive, active); await new Promise((r) => setImmediate(r)); order.push(name); active -= 1; return result; };
+    assert.equal(queue.push('a', job('a')), true);
+    assert.equal(queue.push('a', job('a2')), false, 'the same server is not queued twice');
+    queue.push('b', job('b'));
+    queue.push('c', job('c', 'retry'));
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(order, ['a', 'b', 'c']);
+    assert.equal(maxActive, 1, 'never two at once');
+    assert.deepEqual(sleeps, [20_000, 20_000], 'a gap between servers, none before the first');
+    assert.deepEqual(timers.map((x) => x.ms), [300_000], 'the one skipped for the load is tried again after 5 minutes');
+    timers[0].fn();
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    assert.equal(order.at(-1), 'c', 'the retry ran');
+    assert.equal(timers.length, 2, 'and may be tried once more');
+    timers[1].fn();
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    assert.equal(timers.length, 2, 'but not forever');
+  }
+
+  // guildMemberAvailable only writes a console line and never applies an action.
+  {
+    const availableListener = require('../src/events/guildMemberAvailableRoleTriggers');
+    assert.equal(availableListener.name, 'guildMemberAvailable');
+    const before = { cases: state.cases.length, warns: state.warns.length, jails: state.jails.length };
+    state.rules = [{ guild_id: 'g1', role_id: 'A', action: 'ban', duration_ms: null, reason: null, on_event: 'role_added' }];
+    const logged = [];
+    const logger = require('../src/utils/logger');
+    const originalLocalWarn = logger.localWarn;
+    logger.localWarn = (...args) => logged.push(args.join(' '));
+    try {
+      const held = { id: 'u1', user: { bot: false }, guild: { id: 'g1' }, roles: { cache: new Map([['A', {}]]) } };
+      await availableListener.execute(held);
+      assert.equal(logged.length, 1, 'a holder of a rule role is logged');
+      await availableListener.execute({ ...held, roles: { cache: new Map([['Z', {}]]) } });
+      await availableListener.execute({ ...held, user: { bot: true } });
+      assert.equal(logged.length, 1, 'no role of a rule, or a bot: no line');
+      state.rules = [];
+      await availableListener.execute(held);
+      assert.equal(logged.length, 1, 'no rules in the server: no line');
+    } finally { logger.localWarn = originalLocalWarn; }
+    assert.deepEqual({ cases: state.cases.length, warns: state.warns.length, jails: state.jails.length }, before, 'no action was applied');
+  }
+
+  // The note for the admin exists in the three languages.
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    const text = require(`../src/i18n/locales/${lang}/automation.js`)['automation.roletrigger.coverage'];
+    assert.ok(text && text.includes('{max}'), `coverage note in ${lang}`);
+  }
 
   // The listener is registered on guildMemberUpdate and the command is Administrator-only.
   assert.equal(require('../src/events/guildMemberUpdateRoleTriggers').name, 'guildMemberUpdate');

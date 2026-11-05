@@ -19,6 +19,8 @@ const {
   sendSetupMessage,
 } = require('../utils/onboarding');
 const { sendDm } = require('../utils/dmOrigin');
+const roleTriggersDb = require('../db/roleTriggers');
+const roleTriggerWarm = require('../utils/roleTriggerWarm');
 
 // The configured operations channel receives the join event; the shared lifecycle
 // helper also mirrors it to the general operations channel.
@@ -80,6 +82,8 @@ module.exports = {
     // one that chose it, or one that was here before).
     const languageChoice = ownDetection(guildConfig, created, detection);
     await runWithLanguage(guildConfig.language, () => welcomeGuild(guild, guildConfig, languageChoice));
+    // A server that comes back with rules already saved: its members are loaded for the role triggers (in the background, never waited for).
+    roleTriggersDb.listRules(guild.id).then((rules) => { if (rules.length) roleTriggerWarm.scheduleGuild(guild); }).catch(() => {});
   },
 };
 

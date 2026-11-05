@@ -82,7 +82,7 @@ const optionsOf = (command) => command.data.toJSON().options;
 // `groups`: old commands wrapped whole, `flat`: [name, old command] wrapped as one subcommand. Counts: how many subcommands the groups hold.
 const UMBRELLAS = {
   config: { category: 'config', groups: { alias: 4, moderationroles: 4, commandroles: 4, disabledcommands: 4, sanctionmessage: 3, backup: 9, statistics: 6 }, flat: { language: 'language', recommended: 'cmdconfig', appeals: 'appeals' } },
-  protect: { category: 'config', groups: { honeypot: 5, verify: 5, security: 2, roletrigger: 3 }, flat: {} },
+  protect: { category: 'config', groups: { honeypot: 5, verify: 5, security: 2, roletrigger: 4 }, flat: {} },
   greet: { category: 'welcome', groups: { welcome: 6, leave: 4, boost: 5, dmonjoin: 4, pingonjoin: 5 }, flat: {} },
   automation: { category: 'automation', groups: { autothread: 3, bumpreminder: 8, reaction: 10, reactionrole: 4, stickymessage: 3, timer: 12 }, flat: {} },
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
@@ -275,7 +275,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 15, greet: 24, automation: 40, message: 33, community: 53, contributions: 23, specialchannels: 24, bot: 7 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, community: 53, contributions: 23, specialchannels: 24, bot: 7 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).

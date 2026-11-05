@@ -1055,4 +1055,7 @@ module.exports = {
   'cmd.automation.roletrigger.remove.desc': 'Remove a regra de um cargo.',
   'cmd.automation.roletrigger.remove.opt.role.desc': 'O cargo da regra',
   'cmd.automation.roletrigger.list.desc': 'Lista os gatilhos de cargo deste servidor.',
+  'cmd.automation.roletrigger.limit.desc': 'Quantas ações por minuto as regras podem fazer antes de pausar (a trava de segurança).',
+  'cmd.automation.roletrigger.limit.opt.amount.desc': 'Ações por minuto, de 1 a 500 (vazio para ver)',
+  'cmd.automation.roletrigger.limit.opt.reset.desc': 'Voltar ao padrão pelo tamanho deste servidor',
 };
