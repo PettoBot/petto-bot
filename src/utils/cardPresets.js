@@ -78,6 +78,8 @@ function normalizeBasic(raw, kind = 'welcome') {
       showName: flag(input.showName, true),
       showSubtitle: flag(input.showSubtitle, true),
       showExtra: flag(input.showExtra, true),
+      // A small badge with the vote boost on the rank layout, drawn only when the member has one. Off unless the card asks (Petto's default card does).
+      showBoost: flag(input.showBoost, false),
       // What Discord shows around the person, on the level-up layout: the decoration of the avatar and the nameplate behind the card.
       // Each one is only drawn when the person has it.
       showDecoration: flag(input.showDecoration, true),
@@ -200,6 +202,11 @@ function buildRankLayers(b, width, height) {
   line('title', b.showTitle, b.title, x, height * 0.5, 30, { align: 'left', color: b.accent, spacing: 3, upper: true, w });
   bar(x + w / 2, height * 0.68, w, 32);
   line('subtitle', b.showSubtitle, b.subtitle, right, height * 0.86, 24, { align: 'right', weight: 400, opacity: 0.9, w });
+  // The vote boost badge sits at the left of the line of the XP, and is empty (so not drawn) for a member without a boost.
+  if (b.showBoost) {
+    const size = 21;
+    layers.push({ ...textLayer('boost', '{level_vote_boost}', x + 14, height * 0.86, size, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false, w: Math.min(w * 0.45, 300), maxLines: 1 }), pill: { color: b.accent, opacity: 0.38, padX: 14, padY: 7, radius: 999 } });
+  }
   return layers;
 }
 

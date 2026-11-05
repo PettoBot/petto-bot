@@ -13,12 +13,12 @@ async function roleGuild(client) {
   return client.guilds.cache.find((guild) => guild.roles.cache.has(config.voteRoleId)) ?? null;
 }
 
-async function grantVoteRole(client, userId) {
+async function grantVoteRole(client, userId, list = 'top.gg') {
   const guild = await roleGuild(client);
   if (!guild) return false;
   const member = await guild.members.fetch(userId).catch(() => null);
   if (!member || member.roles.cache.has(config.voteRoleId)) return Boolean(member);
-  await member.roles.add(config.voteRoleId, t(await guildLanguage(guild.id), 'votes.reason.voted')).catch((err) => logger.warn('Could not give the voter role:', err.message));
+  await member.roles.add(config.voteRoleId, t(await guildLanguage(guild.id), 'votes.reason.voted', { list })).catch((err) => logger.warn('Could not give the voter role:', err.message));
   return true;
 }
 

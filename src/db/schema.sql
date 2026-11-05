@@ -2309,6 +2309,8 @@ create table if not exists bot_votes (
   unique (source, vote_id)
 );
 create index if not exists idx_bot_votes_user on bot_votes(user_id);
+-- The vote boost reads the latest votes of one person on every first message after a pause.
+create index if not exists idx_bot_votes_user_voted on bot_votes (user_id, voted_at desc);
 alter table bot_votes enable row level security;
 
 
@@ -3590,6 +3592,8 @@ alter table level_config add column if not exists voice_notify_milestones jsonb 
 alter table level_config add column if not exists xp_multiplier numeric not null default 1 check (xp_multiplier >= 0 and xp_multiplier <= 20);
 alter table level_config add column if not exists multiplier_mode text not null default 'highest' check (multiplier_mode in ('highest', 'stack', 'sum'));
 alter table level_config add column if not exists multiplier_cap numeric not null default 20 check (multiplier_cap >= 1 and multiplier_cap <= 100);
+-- The vote boost (+10% XP for 12 hours for a member who voted for the bot): servers can turn it off. The dashboard writes this column.
+alter table level_config add column if not exists vote_boost_enabled boolean not null default true;
 alter table level_config add column if not exists no_xp_role_ids text[] not null default '{}';
 alter table level_config add column if not exists only_xp_role_ids text[] not null default '{}';
 alter table level_config add column if not exists ignored_category_ids text[] not null default '{}';

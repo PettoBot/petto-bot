@@ -33,6 +33,10 @@ function buildRankEmbed({ data, name, avatarUrl, withCard = false, barName = nul
     { name: t(lang, voice ? 'leveling.rankView.voiceRank' : 'leveling.rankView.serverRank'), value: rank },
     { name: t(lang, 'leveling.rankView.experience'), value: `${n(data.xpCurrent)}/${n(data.xpNeeded)} XP` },
   ];
+  // A member who voted for the bot sees the boost they have in this server (it is not in the data when the server turned it off).
+  if (data.voteBoost && Number(data.voteBoost.endsAt) > Date.now()) {
+    fields.push({ name: t(lang, 'leveling.rankView.voteBoost'), value: t(lang, 'leveling.rankView.voteBoostValue', { percent: data.voteBoost.percent, time: `<t:${Math.floor(Number(data.voteBoost.endsAt) / 1000)}:R>` }) });
+  }
   // The picture of the bar goes under all the fields, so the voice time comes before the Progress title that sits just above it. Under the
   // title there is a short line (the XP missing for the next level) when a picture or the card shows the bar, and a thin line of plain characters
   // when nothing does.

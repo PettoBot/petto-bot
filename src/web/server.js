@@ -59,7 +59,7 @@ const { sendMethodNow } = require('../utils/questMethod');
 const { canUseQuests } = require('../utils/questAlerts');
 const questsDb = require('../db/quests');
 const { runGiveawayAction } = require('../utils/giveawayApi');
-const { createTopggHandler } = require('../utils/voteWebhook');
+const { createTopggHandler, createOmniplexHandler } = require('../utils/voteWebhook');
 const logger = require('../utils/logger');
 const { t, requestLanguage, peekGuildLanguage, runWithLanguage } = require('../i18n');
 
@@ -106,6 +106,16 @@ const verifyCaptchaRateLimiter = rateLimit({
 });
 
 const topggRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
+
+const omniplexRateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 120,
   standardHeaders: 'draft-7',
@@ -168,7 +178,9 @@ function startServer(client) {
   // The Cloudflare keys are only needed by the servers that use that method; the letters method needs only the link and its secret.
   const verificationEnabled = Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
   const dashboardEnabled = Boolean(config.dashboardApiSecret);
-  const votesEnabled = Boolean(config.topggWebhookSecret);
+  const topggEnabled = Boolean(config.topggWebhookSecret);
+  const omniplexEnabled = Boolean(config.omniplexWebhookSecret);
+  const votesEnabled = topggEnabled || omniplexEnabled;
   // Said once at start when members cannot be given a verification link that opens (also on the dashboard's verification card).
   if (linkProblem()) warnOperator(linkProblem());
   if (!verificationEnabled && !dashboardEnabled && !votesEnabled) {
@@ -1054,9 +1066,14 @@ function startServer(client) {
     app.post('/webhooks/youtube', youtubePushRateLimiter, express.raw({ type: () => true, limit: '200kb' }), (req, res) => { websub.pushHandler(req, res).catch(() => { if (!res.headersSent) res.status(204).end(); }); });
   }
 
-  if (votesEnabled) {
+  if (topggEnabled) {
     // Votes for the bot on top.gg (v1 webhook). The URL to save in top.gg is https://<this host>/webhooks/topgg.
     app.post('/webhooks/topgg', topggRateLimiter, createTopggHandler(client));
+  }
+  if (omniplexEnabled) {
+    // Votes for the bot on omniplex.gg. The URL to save there is https://<this host>/webhooks/omniplex. The raw body is kept by the
+    // JSON parser above; express.raw only reads a body that was not JSON, so the signature is checked over the bytes that were sent.
+    app.post('/webhooks/omniplex', omniplexRateLimiter, express.raw({ type: () => true, limit: '100kb' }), createOmniplexHandler(client));
   }
 
   app.get('/', (req, res) => {
