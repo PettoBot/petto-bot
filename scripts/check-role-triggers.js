@@ -137,7 +137,8 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
     const guild = {
       id: 'g1', ownerId: 'owner', name: 'Guild', calls, ...extra,
       roles: { cache: new Map([['A', { id: 'A', name: 'Suspicious', editable: true }], ['B', { id: 'B', name: 'Other', editable: true }]]) },
-      members: { me: { id: 'bot', roles: { highest: { position: 10 } } }, ban: async (id, options) => { calls.bans.push({ id, options }); } },
+      live: new Map(),
+      members: { me: { id: 'bot', roles: { highest: { position: 10 } } }, ban: async (id, options) => { calls.bans.push({ id, options }); }, fetch: async (id) => guild.live.get(id) ?? null },
       client: { user: { id: 'bot', username: 'Petto' } },
       iconURL: () => null,
     };
@@ -147,13 +148,14 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   const live = (guild, id, roles, flagList = [], extra = {}) => {
     const m = member(roles, flagList, { id, guild, top: 3, ...extra });
     m.client = guild.client;
+    guild.live.set(id, m);
     m.kick = async (reason) => guild.calls.kicks.push({ id, reason });
     m.timeout = async (ms, reason) => guild.calls.timeouts.push({ id, ms, reason });
     m.roles.remove = async (roleId, reason) => guild.calls.removed.push({ id, roleId, reason });
     m.roles.add = async (r) => guild.calls.added.push({ id, roleId: r.id ?? r });
     return m;
   };
-  const reset = () => { Object.assign(state, { rules: [], listCalls: 0, cases: [], warns: [], logs: [], dms: [], sendLogs: [], level: 0, jailError: null, jails: [] }); lib._state.done.clear(); lib._state.breaker.clear(); };
+  const reset = () => { Object.assign(state, { rules: [], listCalls: 0, cases: [], warns: [], logs: [], dms: [], sendLogs: [], level: 0, jailError: null, jails: [] }); lib._state.done.clear(); lib._state.breaker.clear(); for (const timer of lib._state.drains.values()) clearTimeout(timer); lib._state.drains.clear(); lib._state.clock.now = () => Date.now(); };
 
   // Nothing given, nothing finished: no query at all.
   reset();
@@ -245,13 +247,65 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   await attempt('plain');
   assert.equal(guild.calls.bans.length, 1, 'and a plain member still is');
 
-  // Circuit breaker through the event: six members get the role in a minute.
+  // The limit through the event: eight members get the role in a minute. Five run now, the other three wait in line (they are not dropped).
   reset(); guild = guildFor();
+  let time = 1_000_000; lib._state.clock.now = () => time;
   state.rules = [rule('A', 'kick')];
   for (let i = 0; i < 8; i += 1) await lib.handleMemberUpdate(live(guild, `m${i}`, ['g1']), live(guild, `m${i}`, ['g1', 'A']));
   assert.equal(guild.calls.kicks.length, 5, 'only five actions run in a minute');
+  assert.equal(lib._state.breaker.queued('g1'), 3, 'the other three wait in line');
+  assert.equal(lib._state.breaker.paused('g1'), false, 'and the rules are not paused');
   assert.equal(state.sendLogs.length, 1, 'the staff is told once');
   assert.match(state.sendLogs[0].embed.description, /5/);
+  assert.match(state.sendLogs[0].embed.description, /50 more members/, 'the warning says how many can wait');
+  assert.match(state.sendLogs[0].embed.description, /roletrigger remove/, 'and how to stop it');
+  // No room yet: the line waits and nobody is acted on.
+  await lib.drainOne(guild.client, guild);
+  assert.equal(guild.calls.kicks.length, 5, 'the minute has no room yet');
+  // A minute later the line moves at the pace of the limit, one after the other, in the order they came.
+  time += 61_000;
+  await lib.drainOne(guild.client, guild);
+  assert.deepEqual(guild.calls.kicks.map((k) => k.id).slice(5), ['m5'], 'the first in line goes first');
+  time += 1_000;
+  await lib.drainOne(guild.client, guild);
+  await lib.drainOne(guild.client, guild);
+  assert.deepEqual(guild.calls.kicks.map((k) => k.id).slice(5), ['m5', 'm6', 'm7'], 'and the line empties');
+  assert.equal(lib._state.breaker.queued('g1'), 0);
+  assert.equal(state.sendLogs.length, 1, 'nobody was left alone, so there is nothing more to tell');
+
+  // Somebody in line is looked at again: the role taken away, the rule removed or a member who left stop their turn.
+  reset(); guild = guildFor();
+  time = 1_000_000; lib._state.clock.now = () => time;
+  state.rules = [rule('A', 'kick')];
+  for (let i = 0; i < 9; i += 1) await lib.handleMemberUpdate(live(guild, `w${i}`, ['g1']), live(guild, `w${i}`, ['g1', 'A']));
+  assert.equal(lib._state.breaker.queued('g1'), 4);
+  time += 61_000;
+  guild.live.get('w5').roles.cache.delete('A'); // the role was taken away while it waited
+  guild.live.delete('w6'); // left the server
+  guild.live.get('w7').user.bot = false;
+  await lib.drainOne(guild.client, guild); await lib.drainOne(guild.client, guild); await lib.drainOne(guild.client, guild);
+  assert.deepEqual(guild.calls.kicks.map((k) => k.id).slice(5), ['w7'], 'only who still is there with the role is acted on');
+  state.rules = [];
+  time += 61_000;
+  await lib.drainOne(guild.client, guild);
+  assert.equal(guild.calls.kicks.length, 6, 'a rule that was removed stops the line');
+
+  // A line that fills up pauses the rules, and who waited is listed with the rest.
+  reset(); guild = guildFor();
+  time = 1_000_000; lib._state.clock.now = () => time;
+  state.rules = [rule('A', 'kick')];
+  state.limit = 2;
+  for (let i = 0; i < 25; i += 1) await lib.handleMemberUpdate(live(guild, `f${i}`, ['g1']), live(guild, `f${i}`, ['g1', 'A']));
+  assert.equal(guild.calls.kicks.length, 2, 'two a minute');
+  assert.equal(lib._state.breaker.paused('g1'), true, 'a full line (20 waiting) pauses the rules');
+  assert.equal(state.sendLogs.length, 2, 'one message for the line and one for the pause');
+  assert.match(state.sendLogs[1].embed.description, /paused for 10 minutes/);
+  await lib.summarizeSkipped({}, guild);
+  assert.equal(state.sendLogs.length, 3, 'and who was left alone is listed');
+  assert.match(state.sendLogs[2].embed.description, /<@f2>/);
+  assert.match(state.sendLogs[2].embed.description, /<@f24>/);
+  state.limit = null;
+  lib._state.clock.now = () => Date.now();
 
   // The limit of the breaker is the default for the size of the server, or the one its admins chose.
   assert.deepEqual([0, 999, 1000, 4999, 5000, 24_999, 25_000, 200_000].map(lib.defaultLimit), [5, 5, 10, 10, 20, 20, 40, 40]);
@@ -260,10 +314,12 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
     const b = createBreaker();
     for (let i = 0; i < 20; i += 1) assert.equal(b.allow('g', 20, `m${i}`).allowed, true, `${i + 1} of 20`);
     const trip = b.allow('g', 20, 'm20');
-    assert.deepEqual([trip.allowed, trip.tripped], [false, true], 'the 21st stops them');
-    b.allow('g', 20, 'm21');
-    assert.deepEqual(b.takeSkipped('g'), { ids: ['m20', 'm21'], count: 2 }, 'who was not looked at is kept');
-    assert.deepEqual(b.takeSkipped('g'), { ids: [], count: 0 }, 'and forgotten once told');
+    assert.deepEqual([trip.allowed, trip.queued, trip.startedQueue, trip.tripped], [false, true, true, false], 'the 21st waits in line, and the staff is told');
+    assert.deepEqual([b.allow('g', 20, 'm21').queued, b.allow('g', 20, 'm22').startedQueue], [true, false], 'the next ones wait too, with no second warning');
+    assert.equal(b.queued('g'), 3);
+    assert.deepEqual(b.allow('g', 20, 'm23', 'R').queued, true, 'a member who is not in line cannot jump it');
+    assert.equal(b.next('g', 20).job, null, 'the minute has no room for the first in line');
+    assert.ok(b.next('g', 20).waitMs > 0, 'and says how long to wait');
   }
   reset(); guild = guildFor();
   state.rules = [rule('A', 'kick')];
@@ -273,10 +329,7 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(state.sendLogs.length, 1);
   assert.match(state.sendLogs[0].embed.description, /8/);
   assert.match(state.sendLogs[0].embed.description, /roletrigger limit/, 'the warning says how to raise it');
-  await lib.summarizeSkipped({}, guild);
-  assert.equal(state.sendLogs.length, 2, 'when the pause ends the staff is told who was not looked at');
-  assert.match(state.sendLogs[1].embed.description, /<@n8>/);
-  assert.match(state.sendLogs[1].embed.description, /<@n11>/);
+  assert.equal(lib._state.breaker.queued('g1'), 4, 'the other four wait in line');
   reset(); guild = guildFor({ memberCount: 6000 });
   state.limit = null;
   state.rules = [rule('A', 'kick')];
