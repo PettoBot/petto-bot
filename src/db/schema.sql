@@ -658,6 +658,8 @@ alter table automod_config add column if not exists max_message_length integer n
 alter table automod_config add column if not exists max_lines integer not null default 0;
 alter table automod_config add column if not exists exempt_channel_ids text[] not null default '{}';
 alter table automod_config add column if not exists spam_repeat boolean not null default true;
+-- Domains the "All links" filter lets through (normalized by utils/linkDomains.js, at most 50).
+alter table automod_config add column if not exists allowed_link_domains text[] not null default '{}';
 alter table automod_config add column if not exists spam_mentions boolean not null default true;
 alter table automod_config add column if not exists spam_invites boolean not null default true;
 alter table automod_config add column if not exists spam_caps boolean not null default true;

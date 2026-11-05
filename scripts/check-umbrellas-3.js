@@ -106,7 +106,7 @@ const PERMS = {
 };
 // The commands that already have subcommands, registered by themselves (with the number of top-level subcommands and groups they have).
 const DIRECT = {
-  prefix: 5, quests: 16, automod: 15, form: 17, forum: 19, role: 24, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 8, image: 12, feed: 8, identity: 6,
+  prefix: 5, quests: 16, automod: 16, form: 17, forum: 19, role: 24, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 8, image: 12, feed: 8, identity: 6,
   starboard: 10, clownboard: 10, monkeyboard: 10, stats: 8, customcommand: 16, rollouts: 15, quickreply: 4, voicemaster: 17, giveawaypreset: 7, giveawaytemplate: 4,
 };
 const NEW_SLASH = [...Object.keys(UMBRELLAS), ...Object.keys(DIRECT)];

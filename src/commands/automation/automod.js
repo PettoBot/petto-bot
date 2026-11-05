@@ -13,6 +13,7 @@ const native = require('../../utils/nativeAutomod');
 const { TEMPLATES, TEMPLATE_IDS, PACKS } = require('../../utils/automodTemplates');
 const { syncGuildAutoMod, getAutoModStats } = require('../../utils/autoModManager');
 const { isPettoOperator } = require('../../utils/autoModControl');
+const { normalizeDomain, MAX_ALLOWED_DOMAINS } = require('../../utils/linkDomains');
 const logger = require('../../utils/logger');
 const { t, tn, languageOf } = require('../../i18n');
 
@@ -212,6 +213,15 @@ module.exports = {
 
     .addSubcommandGroup((group) =>
       group
+        .setName('links')
+        .setDescription('Manage which domains the "All links" filter lets through.')
+        .addSubcommand((sub) => sub.setName('allow').setDescription('Allow links to a domain (and its subdomains).').addStringOption((opt) => opt.setName('domain').setDescription('Domain, e.g. youtube.com').setRequired(true)))
+        .addSubcommand((sub) => sub.setName('remove').setDescription('Remove a domain from the allow-list.').addStringOption((opt) => opt.setName('domain').setDescription('Domain').setRequired(true)))
+        .addSubcommand((sub) => sub.setName('list').setDescription('List the allowed domains.')),
+    )
+
+    .addSubcommandGroup((group) =>
+      group
         .setName('silent-channel')
         .setDescription('Channels where any message is treated as a violation.')
         .addSubcommand((sub) =>
@@ -241,6 +251,7 @@ module.exports = {
     if (!group && sub === 'control') return officialControl(interaction, lang);
     if (group === 'word-filter') return wordFilter(interaction, sub, lang);
     if (group === 'invites') return invites(interaction, sub, lang);
+    if (group === 'links') return linkDomains(interaction, sub, lang);
     if (group === 'silent-channel') return silentChannel(interaction, sub, lang);
     if (group === 'immune') return immune(interaction, sub, lang);
     if (group === 'antinuke-whitelist') return antinukeWhitelist(interaction, sub, lang);
@@ -450,6 +461,44 @@ async function invites(interaction, sub, lang) {
   await upsertConfig(interaction.guild.id, { allowed_invite_codes: [...codes] });
   const text = t(lang, sub === 'allow' ? 'security.invites.allowed' : 'security.invites.disallowed', { emoji: EMOJI.APPROVE, code });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function linkDomains(interaction, sub, lang) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+
+  const config = await getConfig(interaction.guild.id);
+  const domains = config?.allowed_link_domains ?? [];
+
+  if (sub === 'list') {
+    const text = domains.length ? t(lang, 'security.linkDomains.list', { count: domains.length, domains: domains.map((d) => `\`${d}\``).join(', ') }) : t(lang, 'security.linkDomains.empty');
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const raw = interaction.options.getString('domain', true);
+  const domain = normalizeDomain(raw);
+  if (!domain) {
+    await interaction.editReply({ components: [textCard(t(lang, 'security.linkDomains.invalid', { emoji: EMOJI.DENY, value: raw.slice(0, 80).replace(/`/g, "'") }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  if (sub === 'allow') {
+    if (!domains.includes(domain) && domains.length >= MAX_ALLOWED_DOMAINS) {
+      await interaction.editReply({ components: [textCard(t(lang, 'security.linkDomains.full', { emoji: EMOJI.DENY, max: MAX_ALLOWED_DOMAINS }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+    await upsertConfig(interaction.guild.id, { allowed_link_domains: [...new Set([...domains, domain])] });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.linkDomains.allowed', { emoji: EMOJI.APPROVE, domain }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  if (!domains.includes(domain)) {
+    await interaction.editReply({ components: [textCard(t(lang, 'security.linkDomains.notAllowed', { domain }))], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  await upsertConfig(interaction.guild.id, { allowed_link_domains: domains.filter((d) => d !== domain) });
+  await interaction.editReply({ components: [textCard(t(lang, 'security.linkDomains.removed', { emoji: EMOJI.APPROVE, domain }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function silentChannel(interaction, sub, lang) {
