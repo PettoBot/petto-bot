@@ -12,6 +12,7 @@ module.exports = {
   'votes.show.members.one': '**{count}** miembro',
   'votes.show.members.other': '**{count}** miembros',
   'votes.show.mine': '{user} tiene **{count}**.',
+  'votes.show.mineSplit': '{user} tiene **{count}** ({split}).',
   'votes.show.last': 'Último voto: {time}',
   'votes.boost.active': '{emoji} **Bonus por voto activo:** +{percent}% de XP, termina {time}.',
   'votes.boost.inactive': '**No tienes un bonus por voto ahora.** Vota en una de las listas de abajo y recibe +{percent}% de XP durante {hours} horas en todos los servidores que tengan activado el bonus por voto.',

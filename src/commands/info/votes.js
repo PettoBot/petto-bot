@@ -9,6 +9,14 @@ const { getVoteBoost, VOTE_BOOST_PERCENT, VOTE_BOOST_HOURS } = require('../../ut
 /** The vote links of every list as one line of text: `[top.gg](...) or [omniplex.gg](...)`. */
 const voteLinks = (client, lang) => formatList(lang, voteLists(client.user.id).map((list) => `[${list.name}](${list.url})`), { word: 'or' });
 
+/** The votes of each list as `name count` pairs joined by a dot, in the order of `voteLists`: `top.gg 5 · omniplex.gg 2`. Other sources are left out. */
+const splitText = (client, lists, field, bold) => voteLists(client.user.id)
+  .map((list) => `${bold ? `**${list.name}**` : list.name} ${lists?.[list.source]?.[field] ?? 0}`)
+  .join(' · ');
+
+/** True when the member has votes on at least two of the known lists (only then their own line shows the split). */
+const votedOnSeveral = (client, lists) => voteLists(client.user.id).filter((list) => (lists?.[list.source]?.mine ?? 0) > 0).length > 1;
+
 module.exports = {
   prefixOnly: true,
   prefixDefaultSubcommand: 'show',
@@ -43,7 +51,10 @@ module.exports = {
     return reply([
       t(lang, 'votes.show.title', { emoji: EMOJI.STAR }),
       t(lang, 'votes.show.total', { votes: tn(lang, 'votes.show.votes', totals.total, { count: totals.total }), members: tn(lang, 'votes.show.members', totals.voters, { count: totals.voters }) }),
-      t(lang, 'votes.show.mine', { user: `<@${target.id}>`, count: totals.mine }),
+      totals.lists ? splitText(interaction.client, totals.lists, 'total', true) : '',
+      votedOnSeveral(interaction.client, totals.lists)
+        ? t(lang, 'votes.show.mineSplit', { user: `<@${target.id}>`, count: totals.mine, split: splitText(interaction.client, totals.lists, 'mine', false) })
+        : t(lang, 'votes.show.mine', { user: `<@${target.id}>`, count: totals.mine }),
       totals.last ? t(lang, 'votes.show.last', { time: `<t:${Math.floor(new Date(totals.last).getTime() / 1000)}:R>` }) : '',
       boostText,
       t(lang, 'votes.voteAt', { links: voteLinks(interaction.client, lang) }),

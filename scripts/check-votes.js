@@ -15,10 +15,12 @@ function stub(rel, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 const stored = new Set();
+let totalsNow = { mine: 2, total: 10, voters: 4, last: null };
 stub('src/db/votes.js', {
   recordVote: async (vote) => { const key = `${vote.source}:${vote.voteId}`; if (stored.has(key)) return false; stored.add(key); return true; },
-  voteTotals: async () => ({ mine: 2, total: 10, voters: 4, last: null }),
+  voteTotals: async () => totalsNow,
   topVoters: async () => [],
+  recentVotes: async () => [],
 });
 
 const { verifySignature, parseVote } = require('../src/utils/topgg');
@@ -78,10 +80,70 @@ function run(rawBody, header) {
   const test = Buffer.from(JSON.stringify({ type: 'webhook.test', data: {} }));
   assert.deepEqual(await run(test, sign(test, now)), { code: 200, data: { ok: true, test: true } });
 
+  // !votes show: the votes split by list (top.gg and omniplex.gg), in the card the command already builds
+  const votesCommand = require('../src/commands/info/votes');
+  const { CATALOGS } = require('../src/i18n');
+  const showCard = async (locale, totals) => {
+    totalsNow = { last: null, ...totals };
+    let payload;
+    await votesCommand.execute({
+      guildId: null, locale, client, user: { id: '700000000000000001' },
+      options: { getSubcommand: () => 'show', getUser: () => null },
+      reply: async (data) => { payload = data; },
+    });
+    const container = payload.components[0].toJSON();
+    return { json: JSON.stringify(container), container, payload };
+  };
+  const both = { mine: 7, total: 122, voters: 61, lists: { topgg: { total: 110, mine: 5 }, omniplex: { total: 12, mine: 2 } } };
+  // Votes on both lists: the server line has both, the member line has the split
+  let shown = await showCard('en-US', both);
+  assert.match(shown.json, /\*\*top\.gg\*\* 110 · \*\*omniplex\.gg\*\* 12/, 'the server-wide split');
+  assert.match(shown.json, /\*\*122\*\* votes from \*\*61\*\* members in total\./, 'the combined total stays');
+  assert.match(shown.json, /<@700000000000000001> has \*\*7\*\* \(top\.gg 5 · omniplex\.gg 2\)\./, 'the member split when voting on both lists');
+  // The card keeps its design: no accent color, the star, and the V2 limits
+  assert.equal(shown.container.accent_color, undefined, 'the card has no accent color');
+  assert.equal(shown.payload.flags & 32768, 32768, 'it is a Components V2 message');
+  assert.equal(shown.payload.components.length, 1);
+  assert.ok(shown.container.components.every((part) => (part.content ?? '').length <= 4000), 'every text fits in 4000 characters');
+  assert.ok(shown.container.components.map((part) => part.content ?? '').join('').length <= 4000, 'the whole card fits the 4000 characters of a V2 message');
+  // Votes on one list only (the owner's case): the plain short line, the other list is 0 server-wide
+  shown = await showCard('en-US', { mine: 7, total: 110, voters: 40, lists: { topgg: { total: 110, mine: 7 } } });
+  assert.match(shown.json, /\*\*top\.gg\*\* 110 · \*\*omniplex\.gg\*\* 0/, 'the missing list counts 0');
+  assert.match(shown.json, /<@700000000000000001> has \*\*7\*\*\./, 'a member with one list keeps the short line');
+  assert.doesNotMatch(shown.json, /top\.gg 7|\(top\.gg/, 'no split in the member line');
+  shown = await showCard('en-US', { mine: 3, total: 12, voters: 5, lists: { omniplex: { total: 12, mine: 3 } } });
+  assert.match(shown.json, /\*\*top\.gg\*\* 0 · \*\*omniplex\.gg\*\* 12/);
+  assert.match(shown.json, /has \*\*3\*\*\./);
+  // Nothing at all
+  shown = await showCard('en-US', { mine: 0, total: 0, voters: 0, lists: {} });
+  assert.match(shown.json, /\*\*top\.gg\*\* 0 · \*\*omniplex\.gg\*\* 0/);
+  assert.match(shown.json, /has \*\*0\*\*\./);
+  // A source that is not a known list is ignored in the split but still counts in the total
+  shown = await showCard('en-US', { mine: 9, total: 130, voters: 50, lists: { topgg: { total: 110, mine: 5 }, omniplex: { total: 12, mine: 0 }, other: { total: 8, mine: 4 } } });
+  assert.match(shown.json, /\*\*130\*\* votes from/, 'the total counts the unknown source');
+  assert.match(shown.json, /\*\*top\.gg\*\* 110 · \*\*omniplex\.gg\*\* 12(?!.*other)/, 'the split names only the known lists');
+  assert.doesNotMatch(shown.json, /other/, 'the unknown source is not shown');
+  assert.match(shown.json, /has \*\*9\*\*\./, 'the member total counts it too, with the short line (one known list)');
+  // A database without the split (older data) shows no split line instead of zeros
+  shown = await showCard('en-US', { mine: 2, total: 10, voters: 4 });
+  assert.doesNotMatch(shown.json, /omniplex\.gg\*\* \d/, 'no split without data');
+  // The three languages
+  shown = await showCard('es-419', both);
+  assert.match(shown.json, /\*\*top\.gg\*\* 110 · \*\*omniplex\.gg\*\* 12/);
+  assert.match(shown.json, /tiene \*\*7\*\* \(top\.gg 5 · omniplex\.gg 2\)\./, 'Spanish');
+  shown = await showCard('pt-BR', both);
+  assert.match(shown.json, /tem \*\*7\*\* \(top\.gg 5 · omniplex\.gg 2\)\./, 'Portuguese');
+  assert.notEqual(CATALOGS.es['votes.show.mineSplit'], CATALOGS.en['votes.show.mineSplit']);
+  assert.notEqual(CATALOGS['pt-BR']['votes.show.mineSplit'], CATALOGS.en['votes.show.mineSplit']);
+  // The top voters stay combined
+  const topPayload = [];
+  await votesCommand.execute({ guildId: null, locale: 'en-US', client, user: { id: '1' }, options: { getSubcommand: () => 'top' }, reply: async (data) => topPayload.push(data) });
+  assert.match(JSON.stringify(topPayload[0].components[0].toJSON()), /No votes yet/, 'the ranking is untouched');
+
   // !cmdconfig
   const text = buildConfigText('?');
   assert.match(text, /\?automod raid on --threshold 6/);
   assert.match(text, /\?automod antinuke-whitelist add \[user\]/);
   assert.match(text, /\?ticket setup/);
-  console.log('Checked the votes: signature, one vote counted once, the thanks, and the recommended config card.');
+  console.log('Checked the votes: signature, one vote counted once, the thanks, the split of !votes show by list, and the recommended config card.');
 })().catch((err) => { console.error(err); process.exit(1); });

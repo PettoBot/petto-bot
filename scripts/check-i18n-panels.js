@@ -298,7 +298,7 @@ function draw(name, build) {
 
   // Votes: the totals and the ranking.
   const votesDb = require('../src/db/votes');
-  votesDb.voteTotals = async () => ({ total: 1520, voters: 300, mine: 4, last: day });
+  votesDb.voteTotals = async () => ({ total: 1520, voters: 300, mine: 4, last: day, lists: { topgg: { total: 1500, mine: 3 }, omniplex: { total: 20, mine: 1 } } });
   votesDb.topVoters = async () => [{ user_id: '5', total: 12 }, { user_id: '6', total: 1 }];
   const votes = require('../src/commands/info/votes');
   await drawAsync('votes card', (lang) => runCommand(votes, { sub: 'show' }, lang));
