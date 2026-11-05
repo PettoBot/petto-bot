@@ -50,9 +50,9 @@ const MODULES = {
     aliases: ['antinukeconfig', 'antiraidconfig', 'antialtconfig'],
     title: t('en', 'config.module.automodconfig.title'),
     command: 'automod',
-    show: [/^raid/, /^anti-alt/, /^antinuke /, /^spam/, /^link/, /^word-filter toggle/, /^word-filter add/, /^invites allow/, /^immune add/, /^antinuke-whitelist add/, /^silent-channel add/, /^template add/, /^native add/, /^strikes/, /^control/],
+    show: [/^raid/, /^anti-alt/, /^antinuke /, /^spam/, /^link/, /^word-filter toggle/, /^word-filter add/, /^invites allow/, /^links allow/, /^immune add/, /^antinuke-whitelist add/, /^silent-channel add/, /^template add/, /^native add/, /^strikes/, /^control/],
     sources: [
-      { table: 'automod_config', label: t('en', 'config.source.automod_config'), skip: ['banned_words', 'allowed_invite_codes'] },
+      { table: 'automod_config', label: t('en', 'config.source.automod_config'), skip: ['banned_words', 'allowed_invite_codes', 'allowed_link_domains'] },
       { table: 'antinuke_config', label: t('en', 'config.source.antinuke_config') },
       { table: 'antinuke_rules', list: true, label: t('en', 'config.source.antinuke_rules'), only: ['rule', 'enabled', 'threshold', 'window_seconds', 'action'] },
       { table: 'automod_rules', list: true, label: t('en', 'config.source.automod_rules'), only: ['name', 'action', 'enabled', 'hits'] },

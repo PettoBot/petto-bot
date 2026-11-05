@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const { extractUrls } = require('../utils/safeBrowsing');
 const { findKnownMalicious } = require('../db/maliciousLinks');
 const { filterName } = require('../utils/nativeAutomod');
+const { stripAllowedLinks } = require('../utils/linkDomains');
 const { t, currentLanguage } = require('../i18n');
 
 module.exports = {
@@ -90,6 +91,11 @@ module.exports = {
         if (rule.exempt_channel_ids?.includes(message.channel.id) || rule.exempt_channel_ids?.includes(message.channel.parentId)) continue;
         if (rule.exempt_role_ids?.some((id) => message.member.roles.cache.has(id))) continue;
         if (!rule.regexes.some((re) => re.test(message.content))) continue;
+        // The "All links" filter lets through a message whose links are all of allowed domains: with those taken out, nothing is left to match.
+        if (rule.template === 'links' && config?.allowed_link_domains?.length) {
+          const rest = stripAllowedLinks(message.content, config.allowed_link_domains);
+          if (!rule.regexes.some((re) => re.test(rest))) continue;
+        }
         countHit(message.guild.id, rule);
         await applyAutomodAction(message, {
           violationType: `filter-${rule.template}`,
