@@ -287,6 +287,7 @@ module.exports = {
   'automation.roletrigger.rule': '{role} ({on}) → **{action}**{duration}{reason}',
   'automation.roletrigger.removed': '{emoji}  O gatilho de {role} foi removido.',
   'automation.roletrigger.notFound': '{role} não tem gatilho.',
+  'automation.roletrigger.coverage': 'Aviso: o Petto vê que um cargo foi dado apenas para membros que ele já tem na memória. Membros que entraram enquanto o Petto estava online estão cobertos, mas neste servidor alguns membros que o Petto ainda não carregou (servidores com mais de {max} membros não são carregados) podem passar despercebidos na primeira vez que recebem um cargo. Uma regra que dispara em `onboarding` não depende disso para membros novos.',
   'automation.roletrigger.added': '{emoji}  Salvo: {line}',
   'automation.roletrigger.breaker': 'Os gatilhos de cargo estão pausados por {minutes} minutos: mais de {limit} ações foram disparadas em um minuto. Se um cargo foi dado por engano, retire-o e confira as regras com `roletrigger list`.',
   'automation.roletrigger.on.role_added': 'ao receber o cargo',

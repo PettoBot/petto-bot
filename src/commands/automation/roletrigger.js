@@ -6,6 +6,7 @@ const { formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
+const roleTriggerWarm = require('../../utils/roleTriggerWarm');
 
 // Administrator only: a rule bans, kicks and jails by itself, so changing them is for who runs the server.
 module.exports = {
@@ -47,7 +48,7 @@ module.exports = {
     if (sub === 'list') {
       const rules = await roleTriggersDb.listRules(guild.id);
       if (!rules.length) return show(t(lang, 'automation.roletrigger.none'));
-      return show(rules.map((rule) => ruleLine(rule, lang)).join('\n'));
+      return show([...rules.map((rule) => ruleLine(rule, lang)), ...coverageNote(guild, lang)].join('\n'));
     }
 
     if (sub === 'remove') {
@@ -70,9 +71,16 @@ module.exports = {
     if (!checked.ok) return show(t(lang, `automation.roletrigger.error.${checked.error}`, { max: 25 }), 0xfe6465);
     await ensureGuild(guild.id);
     const saved = await roleTriggersDb.upsertRule(guild.id, checked.rule);
-    return show(t(lang, 'automation.roletrigger.added', { emoji: EMOJI.APPROVE, line: ruleLine(saved, lang) }), 0xa5ea7a);
+    // The members of the server are loaded in the background (so the rule sees the role given to them); if that cannot be done, the admin is told.
+    roleTriggerWarm.scheduleGuild(guild);
+    return show([t(lang, 'automation.roletrigger.added', { emoji: EMOJI.APPROVE, line: ruleLine(saved, lang) }), ...coverageNote(guild, lang, { loading: true })].join('\n'), 0xa5ea7a);
   },
 };
+
+/** The line that says that members Petto does not have in memory yet may be missed (nothing when the server is covered). */
+function coverageNote(guild, lang, opts) {
+  return roleTriggerWarm.coverageWarning(guild, opts) ? ['', t(lang, 'automation.roletrigger.coverage', { max: roleTriggerWarm.MAX_GUILD_MEMBERS.toLocaleString('en-US') })] : [];
+}
 
 /** One rule as it is listed: `<@&role> (when it is given) → ban (1d)`. */
 function ruleLine(rule, lang) {

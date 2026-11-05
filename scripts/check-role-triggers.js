@@ -270,6 +270,85 @@ const rule = (role_id, action = 'ban', on_event = 'role_added', extra = {}) => (
   assert.equal(displayReason('Role trigger: Suspicious', 'es'), 'Disparador de rol: Suspicious');
   assert.equal(displayReason('Role trigger: Suspicious - raid', 'pt-BR'), 'Gatilho de cargo: Suspicious - raid');
 
+  // ---- Loading the members of the servers with rules (src/utils/roleTriggerWarm.js) ----------------------------------------------
+  const warm = require('../src/utils/roleTriggerWarm');
+  const d = (over) => warm.warmDecision({ memberCount: 1000, cacheSize: 10, loadLevel: 'normal', ...over });
+  assert.equal(d({}), 'warm', 'a small server with an incomplete cache is loaded');
+  assert.equal(d({ cacheSize: 1000 }), 'complete', 'a full cache needs nothing');
+  assert.equal(d({ cacheSize: 960 }), 'complete', '95 percent counts as complete');
+  assert.equal(d({ cacheSize: 900 }), 'warm', 'clearly below the member count is loaded');
+  assert.equal(d({ memberCount: warm.MAX_GUILD_MEMBERS }), 'warm', 'exactly at the cap is loaded');
+  assert.equal(d({ memberCount: warm.MAX_GUILD_MEMBERS + 1 }), 'too_large', 'above the cap is not loaded');
+  assert.equal(d({ memberCount: 50_000, cacheSize: 50_000 }), 'complete', 'a big server with a full cache is fine');
+  assert.equal(d({ budgetLeft: 500 }), 'too_large', 'the budget of all servers together is a cap too');
+  assert.equal(d({ loadLevel: 'degraded' }), 'load', 'degraded waits');
+  assert.equal(d({ loadLevel: 'critical' }), 'load', 'critical waits');
+  assert.equal(d({ loadLevel: 'critical', cacheSize: 1000 }), 'complete', 'a complete cache is complete at any load');
+  assert.equal(d({ memberCount: undefined }), 'unknown');
+  assert.equal(d({ memberCount: 0 }), 'unknown');
+  assert.equal(warm.mayMissMembers({ memberCount: 1000, cacheSize: 10 }), true, 'not loaded yet: the admin is told');
+  assert.equal(warm.mayMissMembers({ memberCount: 1000, cacheSize: 10, loaded: true }), false, 'loaded: nothing to say');
+  assert.equal(warm.mayMissMembers({ memberCount: 1000, cacheSize: 1000 }), false, 'a full cache: nothing to say');
+  assert.equal(warm.mayMissMembers({ memberCount: 30_000, cacheSize: 100, loaded: true }), true, 'above the cap: always told');
+  assert.equal(warm.mayMissMembers({ memberCount: undefined, cacheSize: 0 }), false, 'no member count: nothing to say');
+
+  // The queue runs one server at a time, with the gap between them, and tries a server skipped for the load again later.
+  {
+    const order = [];
+    const sleeps = [];
+    let active = 0;
+    let maxActive = 0;
+    const timers = [];
+    const queue = warm.createWarmQueue({ gapMs: 20_000, retryMs: 300_000, retryMax: 2, sleep: async (ms) => { sleeps.push(ms); }, timer: (fn, ms) => { timers.push({ fn, ms }); return null; } });
+    const job = (name, result) => async () => { active += 1; maxActive = Math.max(maxActive, active); await new Promise((r) => setImmediate(r)); order.push(name); active -= 1; return result; };
+    assert.equal(queue.push('a', job('a')), true);
+    assert.equal(queue.push('a', job('a2')), false, 'the same server is not queued twice');
+    queue.push('b', job('b'));
+    queue.push('c', job('c', 'retry'));
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(order, ['a', 'b', 'c']);
+    assert.equal(maxActive, 1, 'never two at once');
+    assert.deepEqual(sleeps, [20_000, 20_000], 'a gap between servers, none before the first');
+    assert.deepEqual(timers.map((x) => x.ms), [300_000], 'the one skipped for the load is tried again after 5 minutes');
+    timers[0].fn();
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    assert.equal(order.at(-1), 'c', 'the retry ran');
+    assert.equal(timers.length, 2, 'and may be tried once more');
+    timers[1].fn();
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    assert.equal(timers.length, 2, 'but not forever');
+  }
+
+  // guildMemberAvailable only writes a console line and never applies an action.
+  {
+    const availableListener = require('../src/events/guildMemberAvailableRoleTriggers');
+    assert.equal(availableListener.name, 'guildMemberAvailable');
+    const before = { cases: state.cases.length, warns: state.warns.length, jails: state.jails.length };
+    state.rules = [{ guild_id: 'g1', role_id: 'A', action: 'ban', duration_ms: null, reason: null, on_event: 'role_added' }];
+    const logged = [];
+    const logger = require('../src/utils/logger');
+    const originalLocalWarn = logger.localWarn;
+    logger.localWarn = (...args) => logged.push(args.join(' '));
+    try {
+      const held = { id: 'u1', user: { bot: false }, guild: { id: 'g1' }, roles: { cache: new Map([['A', {}]]) } };
+      await availableListener.execute(held);
+      assert.equal(logged.length, 1, 'a holder of a rule role is logged');
+      await availableListener.execute({ ...held, roles: { cache: new Map([['Z', {}]]) } });
+      await availableListener.execute({ ...held, user: { bot: true } });
+      assert.equal(logged.length, 1, 'no role of a rule, or a bot: no line');
+      state.rules = [];
+      await availableListener.execute(held);
+      assert.equal(logged.length, 1, 'no rules in the server: no line');
+    } finally { logger.localWarn = originalLocalWarn; }
+    assert.deepEqual({ cases: state.cases.length, warns: state.warns.length, jails: state.jails.length }, before, 'no action was applied');
+  }
+
+  // The note for the admin exists in the three languages.
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    const text = require(`../src/i18n/locales/${lang}/automation.js`)['automation.roletrigger.coverage'];
+    assert.ok(text && text.includes('{max}'), `coverage note in ${lang}`);
+  }
+
   // The listener is registered on guildMemberUpdate and the command is Administrator-only.
   assert.equal(require('../src/events/guildMemberUpdateRoleTriggers').name, 'guildMemberUpdate');
   assert.equal(String(require('../src/commands/automation/roletrigger').data.toJSON().default_member_permissions), String(PermissionFlagsBits.Administrator));

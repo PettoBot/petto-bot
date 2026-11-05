@@ -30,4 +30,11 @@ async function removeRule(guildId, roleId) {
   return data.length > 0;
 }
 
-module.exports = { listRules, upsertRule, removeRule };
+/** The ids of the servers that have at least one rule (one query, for the start of the bot). */
+async function guildIdsWithRules() {
+  const { data, error } = await database.from('role_triggers').select('guild_id');
+  if (error) throw error;
+  return [...new Set(data.map((row) => row.guild_id))];
+}
+
+module.exports = { listRules, upsertRule, removeRule, guildIdsWithRules };

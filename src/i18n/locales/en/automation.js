@@ -288,6 +288,7 @@ module.exports = {
   'automation.roletrigger.rule': '{role} ({on}) → **{action}**{duration}{reason}',
   'automation.roletrigger.removed': '{emoji}  Removed the trigger of {role}.',
   'automation.roletrigger.notFound': '{role} has no trigger.',
+  'automation.roletrigger.coverage': 'Heads up: Petto sees a role being given only for members it already has in memory. Members who joined while Petto was online are covered, but in this server some members Petto has not loaded yet (servers above {max} members are not loaded) may be missed the first time they are given a role. A rule that fires on `onboarding` does not depend on this for new members.',
   'automation.roletrigger.added': '{emoji}  Saved: {line}',
   'automation.roletrigger.breaker': 'Role triggers are paused for {minutes} minutes: more than {limit} actions fired in one minute. If a role was handed out by mistake, take it away and check the rules with `roletrigger list`.',
   'automation.roletrigger.on.role_added': 'when it is given',

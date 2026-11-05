@@ -287,6 +287,7 @@ module.exports = {
   'automation.roletrigger.rule': '{role} ({on}) → **{action}**{duration}{reason}',
   'automation.roletrigger.removed': '{emoji}  Se quitó el disparador de {role}.',
   'automation.roletrigger.notFound': '{role} no tiene disparador.',
+  'automation.roletrigger.coverage': 'Aviso: Petto ve que se da un rol solo a los miembros que ya tiene en memoria. Los miembros que entraron mientras Petto estaba en línea están cubiertos, pero en este servidor algunos miembros que Petto aún no ha cargado (los servidores de más de {max} miembros no se cargan) pueden pasar desapercibidos la primera vez que reciben un rol. Una regla que se activa con `onboarding` no depende de esto para los miembros nuevos.',
   'automation.roletrigger.added': '{emoji}  Guardado: {line}',
   'automation.roletrigger.breaker': 'Los disparadores de rol están en pausa durante {minutes} minutos: se activaron más de {limit} acciones en un minuto. Si se dio un rol por error, quítalo y revisa las reglas con `roletrigger list`.',
   'automation.roletrigger.on.role_added': 'al recibirlo',

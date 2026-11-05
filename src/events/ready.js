@@ -12,6 +12,8 @@ const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { startGuildLanguageRefresh } = require('../i18n');
 const guildBlacklist = require('../utils/guildBlacklist');
+const roleTriggersDb = require('../db/roleTriggers');
+const roleTriggerWarm = require('../utils/roleTriggerWarm');
 
 /** A while after connecting, says in the log how Discord sees the bot (for example `{"mobile":"idle"}`), to check the phone icon without a screenshot. */
 function reportMobileStatus(client) {
@@ -61,6 +63,12 @@ module.exports = {
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
     startOmniplexStatsJob(client);
     startServerTagCheckJob(client);
+    // Role triggers only see a role given to a member Petto has in memory: the members of the servers that have rules are loaded, one server at a
+    // time, a little after the start (utils/roleTriggerWarm.js; skipped for big servers and under load).
+    setTimeout(() => {
+      roleTriggersDb.guildIdsWithRules().then((ids) => roleTriggerWarm.warmAll(client, ids))
+        .catch((err) => logger.localWarn(`Role triggers: could not start loading members: ${err?.message ?? err}`));
+    }, 30_000).unref?.();
 
     // Keep the existing warmup available, but never issue one invite request per guild at once.
     // At very large scale it can be disabled with INVITE_CACHE_WARM_ON_READY=false; joins still
