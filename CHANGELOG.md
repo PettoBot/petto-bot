@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`!votes show` splits the votes by list.** Why: the command added the votes of top.gg and omniplex.gg together (`248 votes from 61 members`, `you have 7`), so the owner saw 110 votes and could not tell which list they came from, nor whether omniplex votes had started to arrive. Now the card shows, under the server total, one line with each list and its votes (`**top.gg** 110 · **omniplex.gg** 12`, the sum of `weight` per `bot_votes.source`, with the names of `utils/voteLists.js`), and the member's own line adds the split (`<@member> has **7** (top.gg 5 · omniplex.gg 2)`) only when they have votes on both lists; with votes on one list it stays the short line. A source that is neither `topgg` nor `omniplex` is left out of the split but still counts in the totals, and `!votes top` stays combined. It is one more query in `voteTotals` (`GROUP BY source`, in parallel with the two it already ran) that returns a new field `lists`; the other fields did not change. The card keeps its design (Components V2, no color); texts in English, Spanish and Portuguese (`votes.show.mineSplit`). **Not verified:** only tested with the database replaced, never against the real `bot_votes` table, and the omniplex numbers stay 0 until its webhook is active. Checks in `scripts/check-votes.js`; `docs/REFERENCE.md` says this.
+
 ## [0.7.10] — 2026-11-05 · Cupcake
 
 ### Added

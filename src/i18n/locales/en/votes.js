@@ -12,6 +12,7 @@ module.exports = {
   'votes.show.members.one': '**{count}** member',
   'votes.show.members.other': '**{count}** members',
   'votes.show.mine': '{user} has **{count}**.',
+  'votes.show.mineSplit': '{user} has **{count}** ({split}).',
   'votes.show.last': 'Last vote: {time}',
   'votes.boost.active': '{emoji} **Vote boost active:** +{percent}% XP, ends {time}.',
   'votes.boost.inactive': '**No vote boost right now.** Vote on one of the lists below and get +{percent}% XP for {hours} hours in every server that has the vote boost on.',

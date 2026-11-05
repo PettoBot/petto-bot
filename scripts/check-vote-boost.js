@@ -37,7 +37,7 @@ stub('src/db/votes.js', {
     return true;
   },
   recentVotes: async (userId) => { voteReads += 1; return voteRows.get(userId) ?? []; },
-  voteTotals: async () => ({ mine: 1, total: 5, voters: 3, last: new Date().toISOString() }),
+  voteTotals: async () => ({ mine: 1, total: 5, voters: 3, last: new Date().toISOString(), lists: { topgg: { total: 5, mine: 1 } } }),
   topVoters: async () => [],
 });
 const calls = { addXp: [], addVoiceXp: [], period: [], daily: [] };
