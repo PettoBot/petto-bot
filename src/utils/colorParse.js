@@ -226,8 +226,36 @@ function fromHex(digits, prefixed) {
         return make(fromInt(parseInt(digits, 16)), 'hex');
     return null;
 }
+const QUOTES = '`\'"“”‘’';
+/** Removes the quotes around a text (a loop, not a regex: a quantifier before `$` over typed text can take quadratic time). */
+function stripQuotes(text) {
+    let start = 0;
+    let end = text.length;
+    while (start < end && QUOTES.includes(text[start]))
+        start += 1;
+    while (end > start && QUOTES.includes(text[end - 1]))
+        end -= 1;
+    return text.slice(start, end);
+}
+/** No color is written with more than this many characters. */
+const MAX_LENGTH = 120;
 function normalize(text) {
-    return text.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/^[`'"“”‘’]+|[`'"“”‘’]+$/g, '').trim();
+    return stripQuotes(text.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()).trim();
+}
+/** `r255 g136 b0`, `h32 s100 l50`: a letter and a number each, read from left to right in one pass (every piece starts at a letter, so nothing is tried twice). */
+function letterParts(text) {
+    const piece = /([a-z])[\s:]*(-?[\d.]+)(%|deg|°)?([\s,;/]*)/y;
+    const out = [];
+    let at = 0;
+    while (at < text.length) {
+        piece.lastIndex = at;
+        const match = piece.exec(text);
+        if (!match)
+            return null;
+        out.push({ letter: match[1], part: { value: Number(match[2]), unit: match[3] ?? '' }, spaced: match[4].length > 0 && !match[3] });
+        at = piece.lastIndex;
+    }
+    return out.length ? out : null;
 }
 /**
  * Reads a color from what a person typed. Understands: `#ff8800`, `ff8800`, `#f80`, `#ff880080` (alpha is kept apart), `0xff8800`, a plain number (`16746496`),
@@ -236,8 +264,11 @@ function normalize(text) {
  * Three bare numbers are RGB (to say HSL write `hsl`, a `%`, or `h`/`s`/`l`); only digits with exactly 3 or 6 of them are hex, any other number is the decimal one. Null when it is none of them.
  */
 function parseColor(input, random = Math.random) {
-    const text = normalize(String(input ?? ''));
-    if (!text)
+    const raw = String(input ?? '');
+    if (raw.length > MAX_LENGTH * 4)
+        return null;
+    const text = normalize(raw);
+    if (!text || text.length > MAX_LENGTH)
         return null;
     if (exports.RANDOM_WORDS.includes(text)) {
         const color = make([Math.floor(random() * 256), Math.floor(random() * 256), Math.floor(random() * 256)], 'random');
@@ -248,23 +279,31 @@ function parseColor(input, random = Math.random) {
     if (cssName && CSS_HEX.has(cssName))
         return make(fromInt(parseInt(CSS_HEX.get(cssName), 16)), 'name', null, spelled);
     // `rgb(…)`, `hsl 32 100% 50%`, `cmyk(0,47,100,0)`.
-    const fn = /^(rgba?|hsla?|hsva?|hsba?|cmyk)\s*\(?\s*([^()]*?)\s*\)?$/.exec(text);
+    const fn = /^(rgba?|hsla?|hsva?|hsba?|cmyk)/.exec(text);
     if (fn) {
-        const list = parts(fn[2]);
-        if (!list)
-            return null;
-        const kind = fn[1].startsWith('rgb') ? 'rgb' : fn[1].startsWith('hsl') ? 'hsl' : fn[1].startsWith('cmyk') ? 'cmyk' : 'hsv';
-        return kind === 'rgb' ? fromRgbParts(list) : kind === 'cmyk' ? fromCmykParts(list) : fromHslParts(list, kind);
+        let body = text.slice(fn[0].length).trim();
+        if (body.startsWith('('))
+            body = body.slice(1);
+        if (body.endsWith(')'))
+            body = body.slice(0, -1);
+        if (!/[()]/.test(body)) {
+            const list = parts(body);
+            if (!list)
+                return null;
+            const kind = fn[1].startsWith('rgb') ? 'rgb' : fn[1].startsWith('hsl') ? 'hsl' : fn[1].startsWith('cmyk') ? 'cmyk' : 'hsv';
+            return kind === 'rgb' ? fromRgbParts(list) : kind === 'cmyk' ? fromCmykParts(list) : fromHslParts(list, kind);
+        }
     }
     // Letters in front of each number, in any order: `r255 g136 b0`, `h32 s100 l50`, `c0 m47 y100 k0`. Anything that is not one of these sets goes on
     // (`b0b0b0` and `f80` are hex written with letters in them).
-    if (/^(?:[a-z]\s*:?\s*-?[\d.]+(?:%|deg|°)?[\s,;/]*)+$/.test(text) && /^[a-z]\s*:?\s*-?[\d.]/.test(text)) {
+    const lettered = letterParts(text);
+    if (lettered) {
         const found = new Map();
         let repeated = false;
-        for (const piece of text.matchAll(/([a-z])\s*:?\s*(-?[\d.]+)(%|deg|°)?/g)) {
-            if (found.has(piece[1]))
+        for (const { letter, part } of lettered) {
+            if (found.has(letter))
                 repeated = true;
-            found.set(piece[1], { value: Number(piece[2]), unit: piece[3] ?? '' });
+            found.set(letter, part);
         }
         const letters = [...found.keys()].sort().join('');
         const get = (letter) => found.get(letter);
@@ -278,7 +317,7 @@ function parseColor(input, random = Math.random) {
             if (letters === 'ckmy')
                 return fromCmykParts([get('c'), get('m'), get('y'), get('k')]);
         }
-        else if (/^[rgbhslvcmyk]+$/.test([...found.keys()].join('')) && found.size >= 3 && /[rgbhslvcmyk]\s*:?\s*[\d.]+[\s,;/]+[rgbhslvcmyk]\s*:?\s*[\d.]+/.test(text) && /[g-z]/.test(text)) {
+        else if (/^[rgbhslvcmyk]+$/.test([...found.keys()].join('')) && found.size >= 3 && lettered.some((piece, index) => index < lettered.length - 1 && piece.spaced) && /[g-z]/.test(text)) {
             return null; // a repeated letter in a writing like `r255 r0 b1`
         }
     }
