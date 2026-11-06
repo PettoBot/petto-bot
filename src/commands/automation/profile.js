@@ -9,6 +9,7 @@ const { summarize, starsText } = require('../../utils/reviewEngine');
 const { counts, rank, periodStart } = require('../../utils/partnerEngine');
 const { textCard } = require('../../utils/caseCard');
 const { t, tn, formatNumber, currentLanguage, languageOf } = require('../../i18n');
+const { addSubcommands, runWrapped, loadByName } = require('../../utils/umbrella');
 
 const unix = (value) => Math.floor(new Date(value).getTime() / 1000);
 const MAX_CARD = 3900; // Components V2 take 4000 characters of text in a message
@@ -46,18 +47,32 @@ function placeOf(rows, userId) {
   return index === -1 ? null : index + 1;
 }
 
+// What the command holds besides its own subcommands: the group `config` is the old `!profileconfig`.
+const SUBCOMMANDS = [{ group: 'config', wraps: 'profileconfig', description: 'Set up reviews and profiles.' }];
+
 module.exports = {
-  prefixOnly: true,
+  subcommands: SUBCOMMANDS,
+  // Also a slash command: `/profile show` and, in the group `config`, the subcommands of `!profileconfig` (`/profile config channel`).
+  registerSlash: true,
   aliases: ['perfil'],
   profileLines,
   profileText,
-  data: new SlashCommandBuilder()
+  // `!profile @Ana` is `!profile show @Ana`; `!profile config channel #log` is `!profileconfig channel #log`, with its own permission and rules.
+  prefixDefaultSubcommand: 'show',
+  prefixWords: { config: { command: 'profileconfig', args: [] } },
+  rulesViaWords: true,
+  groupRuleKeys: { config: 'profileconfig' },
+  legacyRuleNames: ['community'], // i18n-ignore: a rule key, never shown
+  data: addSubcommands(new SlashCommandBuilder()
     .setName('profile')
-    .setDescription('The profile of a member: rating, uploads, requests and partnerships.')
+    .setDescription('The profile of a member and its settings: rating, uploads, requests and partnerships.')
     .setDMPermission(false)
-    .addUserOption((o) => o.setName('user').setDescription('Who (you by default)').setRequired(false)),
+    .addSubcommand((s) => s.setName('show').setDescription('The profile of a member: rating, uploads, requests and partnerships.').addUserOption((o) => o.setName('user').setDescription('Who (you by default)').setRequired(false))),
+    SUBCOMMANDS, loadByName),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
+    // The group `config` is the old `!profileconfig`: it asks for what that command asks for.
+    if (interaction.options.getSubcommandGroup?.(false) === 'config') return runWrapped(interaction, client, 'profileconfig');
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const lang = await languageOf(interaction);
     const guildId = interaction.guild.id;

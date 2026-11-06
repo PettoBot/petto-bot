@@ -69,7 +69,7 @@ async function buildPeriodPage(guild, page, source, period, lang = currentLangua
 }
 
 module.exports = {
-  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
+  // A prefix command: its slash entry is inside `/levels` or `/bot` (utils/umbrella.js).
   data: new SlashCommandBuilder()
     .setName('top')
     .setDescription('Server XP leaderboard.')

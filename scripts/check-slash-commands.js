@@ -31,7 +31,7 @@ const ESSENTIAL = [
   // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config alias add`,
   // `/protect honeypot add`, `/automation timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
   // only has subcommands (scripts/check-umbrellas-3.js).
-  'automation', 'bot', 'community', 'config', 'contributions', 'greet', 'message', 'protect', 'specialchannels',
+  'automation', 'bot', 'config', 'contributions', 'greet', 'message', 'protect', 'specialchannels',
   'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
   'identity', 'image', 'invites', 'levels', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // The booster role, apart from /me: the old command with all its subcommands (member ones open, `admin` and `filter` check Manage Server inside).
@@ -43,6 +43,8 @@ const ESSENTIAL = [
   'modtools', 'prefix', 'quests', 'social',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
+  // What members can send to the staff, each with the setup next to it (`/suggest send`, `/suggest setup`, `/request config channel`...); it used to be `/community`.
+  'confess', 'poll', 'profile', 'request', 'review', 'suggest',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;

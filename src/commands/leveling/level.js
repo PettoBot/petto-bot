@@ -25,7 +25,7 @@ const ACTION_CHOICES = [
 ];
 
 module.exports = {
-  // A prefix command: its slash entry is inside `/levels`, `/bot` or `/community` (utils/umbrella.js).
+  // A prefix command: its slash entry is inside `/levels` or `/bot` (utils/umbrella.js).
   aliases: ['xp'],
   // `reward add` and `reward remove` take the kind of level last (Discord wants the optional options after the required ones), and the prefix
   // still reads it first as it always did: `!xp reward add voice 5 @Role` is read as `!xp reward add 5 @Role voice`.

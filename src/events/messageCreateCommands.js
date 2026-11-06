@@ -364,7 +364,8 @@ module.exports = {
     // A command can send a first word to another command (`!timeout list` is `!mute list`, `!hardban list` is `!ban list hard`).
     const wordRoute = command ? applyWordRoute(command.prefixWords, canonicalName, argText) : null;
     // An umbrella that sends its first word to the command it wraps (`!config prefix set` is `!prefix set`): the rules of the umbrella still apply.
-    const viaUmbrella = wordRoute && (command.umbrella || command.rulesViaWords) ? command.data.name : null;
+    // (and the names the rules of the umbrella were saved under before, `community` for what is `/suggest` and `/request` now)
+    const viaUmbrella = wordRoute && (command.umbrella || command.rulesViaWords) ? [command.data.name, ...(command.legacyRuleNames ?? [])] : null;
     if (wordRoute) {
       canonicalName = message.client.commandAliases.get(wordRoute.commandName) ?? wordRoute.commandName;
       command = message.client.commands.get(canonicalName);

@@ -23,14 +23,14 @@ const chat = registered.filter((json) => (json.type ?? 1) === 1);
 const menus = registered.filter((json) => (json.type ?? 1) !== 1);
 
 // ---------------------------------------------------------------- 1. no loose command
-// `/help` and `/setup` are commands of their own (they take options and open a guide); everything else has subcommands.
-const STANDALONE = ['help', 'setup'];
+// `/help`, `/poll` and `/setup` are commands of their own (they take options or open a guide or a panel); everything else has subcommands.
+const STANDALONE = ['help', 'poll', 'setup'];
 const loose = chat.filter((json) => !(json.options ?? []).some((option) => option.type === SUBCOMMAND || option.type === GROUP)).map((json) => json.name);
 assert.deepEqual(loose.sort(), [...STANDALONE].sort(), `the only slash commands without subcommands are ${STANDALONE.join(' and ')} (loose: ${loose.join(', ')})`);
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');
 
 // ---------------------------------------------------------------- 2. nothing from the old list
-const OLD_COMMANDS = ['level', 'rank', 'top', 'act', 'auto', 'contrib', 'special', 'botinfo', 'ping', 'poll', 'suggest'];
+const OLD_COMMANDS = ['level', 'rank', 'top', 'act', 'auto', 'contrib', 'special', 'botinfo', 'ping'];
 for (const name of OLD_COMMANDS) assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered any more`);
 const nodeNames = (json, prefix = []) => (json.options ?? []).filter((option) => option.type === SUBCOMMAND || option.type === GROUP).flatMap((option) => [[...prefix, option.name].join(' '), ...nodeNames(option, [...prefix, option.name])]);
 const paths = new Set(chat.flatMap((json) => [json.name, ...nodeNames(json, [json.name])]));
@@ -41,7 +41,7 @@ const OLD_PATHS = [
   'boosterrole admin cooldown', 'boosterrole admin share-limit', 'search anilist anime anime',
 ];
 for (const old of OLD_PATHS) assert.ok(!paths.has(old), `/${old} is not registered any more`);
-for (const kept of ['levels rank', 'levels leaderboard', 'action love hug', 'bot info', 'bot ping', 'community poll', 'community suggestion submit', 'prefix view', 'prefix add', 'prefix remove', 'prefix set', 'prefix reset', 'me prefix']) {
+for (const kept of ['levels rank', 'levels leaderboard', 'action love hug', 'bot info', 'bot ping', 'poll', 'suggest send', 'suggest approve', 'confess send', 'confess approve', 'request make', 'request config channel', 'review give', 'profile show', 'profile config channel', 'prefix view', 'prefix add', 'prefix remove', 'prefix set', 'prefix reset', 'me prefix']) {
   assert.ok(paths.has(kept), `/${kept} is registered`);
 }
 assert.ok(!paths.has('config prefix show'), 'the prefix of the server is /prefix, not a group of /config');
@@ -117,7 +117,6 @@ const FIRST_WORDS = {
   levels: { 'voice-xp': 'level', 'voice-enable': 'level', 'sync-join': 'level', reward: 'level', multiplier: 'level', event: 'level', rank: 'rank', leaderboard: 'top', status: 'level', reset: 'level', rules: 'level', curve: 'level' },
   search: { yt: 'youtube', gh: 'github', ani: 'anilist', chesscom: 'chess', 'minecraft-server': 'minecraft', math: 'calc' },
   bot: { info: 'botinfo', ping: 'ping', botinfo: 'botinfo' },
-  community: { poll: 'poll', suggestion: 'suggestion' },
 };
 for (const [umbrella, words] of Object.entries(FIRST_WORDS)) {
   const command = client.commands.get(umbrella);
@@ -140,7 +139,7 @@ for (const [command, old] of [['action', 'act'], ['automation', 'auto'], ['contr
   assert.ok(commandRules.ruleNames(client.commands.get(command)).includes(old), `a rule saved for ${old} reaches /${command}`);
   assert.ok(commandRules.permissionNames(client.commands.get(command)).includes(old), `a permission level saved for ${old} reaches /${command}`);
 }
-for (const [umbrella, group, sub, rule] of [['levels', 'voice', 'xp', 'level'], ['levels', 'settings', 'curve', 'level'], ['levels', null, 'rank', 'rank'], ['levels', null, 'leaderboard', 'top'], ['bot', null, 'ping', 'ping'], ['bot', null, 'info', 'botinfo'], ['community', null, 'poll', 'poll'], ['community', 'suggestion', 'submit', 'suggest']]) {
+for (const [umbrella, group, sub, rule] of [['levels', 'voice', 'xp', 'level'], ['levels', 'settings', 'curve', 'level'], ['levels', null, 'rank', 'rank'], ['levels', null, 'leaderboard', 'top'], ['bot', null, 'ping', 'ping'], ['bot', null, 'info', 'botinfo'], ['poll', null, null, 'poll'], ['poll', null, null, 'community'], ['suggest', null, 'send', 'suggest'], ['suggest', null, 'approve', 'suggestion'], ['suggest', null, 'setup', 'community'], ['confess', null, 'approve', 'confession'], ['confess', null, 'send', 'confess'], ['request', 'config', 'channel', 'requestconfig'], ['request', 'config', 'channel', 'community'], ['profile', 'config', 'view', 'profileconfig'], ['review', null, 'give', 'community']]) {
   assert.ok(commandRules.ruleNames(client.commands.get(umbrella), { subcommand: sub, group }).includes(rule), `a rule saved for ${rule} reaches /${umbrella} ${group ?? ''} ${sub}`);
 }
 // A name that is a prefix word is never also a registered abbreviation.
@@ -195,8 +194,9 @@ for (const [name, command] of all) {
 }
 assert.deepEqual(missing, [], `public prefix commands with no slash entry (add them to an umbrella, or to LEFT_OUT with the reason):\n${missing.join('\n')}`);
 for (const name of Object.keys(LEFT_OUT)) assert.ok(all.has(name), `${name} (left out) still exists`);
-// `!suggest` is `/community suggestion submit`: the group of suggestions takes it.
-assert.ok(subsOf(all.get('suggestion')).includes('submit'), '/community suggestion submit exists');
+// `!suggest` is `/suggest send`; the subcommands of `!suggestion` are the ones of `/suggest` too.
+assert.ok(subsOf(all.get('suggestion')).includes('submit'), '!suggestion submit exists');
+assert.ok(subsOf(all.get('suggest')).includes('send'), '/suggest send exists');
 
 // ---------------------------------------------------------------- 7. every subcommand of the new umbrellas reaches the old command it wraps
 // (the groups put together by hand: `/levels voice xp` is `!level voice-xp`, `/modtools lockdown add-channel` is `!lockdown channel add`)
@@ -218,7 +218,7 @@ const fakeInteraction = (leaf) => ({
 });
 (async () => {
   let ran = 0;
-  for (const umbrella of ['levels', 'modtools', 'social', 'search', 'bot', 'community', 'config', 'automation']) {
+  for (const umbrella of ['levels', 'modtools', 'social', 'search', 'bot', 'config', 'automation']) {
     const command = all.get(umbrella);
     for (const leaf of command.leaves) {
       if (!leaf.wraps) continue;
@@ -230,7 +230,7 @@ const fakeInteraction = (leaf) => ({
     }
   }
   for (const undo of restore) undo();
-  assert.ok(ran > 250, `${ran} subcommands were run through their umbrella`);
+  assert.ok(ran > 200, `${ran} subcommands were run through their umbrella`);
   console.log(`check-slash-structure: ok (${usage.chat.used} chat commands of ${LIMITS.chat}, ${usage.chat.free} free; ${menus.length} menus; ${ran} umbrella subcommands reach their old command)`);
   setTimeout(() => process.exit(0), 10);
 })().catch((error) => { console.error(error); process.exit(1); });
