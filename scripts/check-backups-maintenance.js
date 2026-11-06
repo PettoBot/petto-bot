@@ -1,5 +1,5 @@
-// Backups are paused: the command and its panel answer that they are under maintenance and the scheduled backups are not taken, except for the
-// owner and the developers, until BACKUPS_MAINTENANCE=off brings them back.
+// Backups are open for everyone. With BACKUPS_MAINTENANCE=on they are paused: the command and its panel answer that they are under maintenance
+// and the scheduled backups are not taken, except for the owner and the developers.
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
@@ -28,7 +28,10 @@ const reply = () => { const replies = []; return { replies, reply: async (payloa
 
 (async () => {
   delete process.env.BACKUPS_MAINTENANCE;
-  assert.equal(backupsPaused(), true, 'backups are paused unless switched back on');
+  assert.equal(backupsPaused(), false, 'backups are open unless they are paused on purpose');
+  assert.equal(backupsUnderMaintenance('u1'), false, 'a member can use them by default');
+  process.env.BACKUPS_MAINTENANCE = 'on';
+  assert.equal(backupsPaused(), true, 'BACKUPS_MAINTENANCE=on pauses them');
   assert.equal(backupsUnderMaintenance('u1'), true, 'a member cannot use them');
   assert.equal(backupsUnderMaintenance('owner1'), false, 'the owner can');
   assert.equal(backupsUnderMaintenance('dev1'), false, 'a developer can');
@@ -48,7 +51,7 @@ const reply = () => { const replies = []; return { replies, reply: async (payloa
   assert.equal(listed, 0, 'no scheduled backup is looked for while paused');
 
   process.env.BACKUPS_MAINTENANCE = 'off';
-  assert.equal(backupsUnderMaintenance('u1'), false, 'BACKUPS_MAINTENANCE=off brings them back for everyone');
+  assert.equal(backupsUnderMaintenance('u1'), false, 'switching the pause off brings them back for everyone');
   await processDueBackups({ guilds: { cache: new Map() }, user: { id: 'bot' } });
   assert.equal(listed, 1, 'the scheduled backups run again');
   console.log('Checked that backups are under maintenance: the command, its panel, the scheduled backups and the switch back on.');

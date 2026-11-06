@@ -34,7 +34,7 @@ const BACKUP_MENU_FLAGS = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
 
 module.exports = {
   teamParts: [
-    { usage: '!backup ...', who: 'owner and developers during maintenance', summary: 'While BACKUPS_MAINTENANCE is not off, backups are paused for everybody but the team (the command, the panel and the schedule).' }, // i18n-ignore: team list
+    { usage: '!backup ...', who: 'owner and developers during maintenance', summary: 'While BACKUPS_MAINTENANCE is on, backups are paused for everybody but the team (the command, the panel and the schedule).' }, // i18n-ignore: team list
   ],
   aliases: ['backups', 'serverbackup'],
   prefixDefaultSubcommand: 'panel',
