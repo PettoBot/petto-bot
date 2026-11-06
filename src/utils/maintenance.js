@@ -1,9 +1,9 @@
-// Parts of Petto that are paused for a while. Backups are kept as they are (the code, the saved backups and the schedules) but cannot be
-// used by anyone except the owner and the developers: the command and its panel say they are under maintenance, and the scheduled backups
-// are not taken. The dashboard shows the same notice. Setting BACKUPS_MAINTENANCE=off brings them back for everyone.
+// Backups are open for every member of a server. They can still be paused for a while: with BACKUPS_MAINTENANCE=on they are kept as they
+// are (the code, the saved backups and the schedules) but cannot be used by anyone except the owner and the developers: the command and its
+// panel say they are under maintenance, and the scheduled backups are not taken. The dashboard shows the same notice.
 const config = require('../config');
 
-const backupsPaused = () => String(process.env.BACKUPS_MAINTENANCE ?? '').toLowerCase() !== 'off';
+const backupsPaused = () => String(process.env.BACKUPS_MAINTENANCE ?? '').toLowerCase() === 'on';
 
 /** Whether the person is part of the team of Petto: its owner or one of its developers. */
 const isTeam = (userId) => Boolean(userId) && (userId === config.ownerId || (config.developerIds ?? []).includes(userId));
