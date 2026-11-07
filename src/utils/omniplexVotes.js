@@ -20,6 +20,60 @@ function verifySignature({ secret, header, rawBody }) {
   return crypto.timingSafeEqual(expected, Buffer.from(match[1], 'hex'));
 }
 
+/** The same text compared in constant time, whatever its length (both sides are hashed first). */
+function sameText(a, b) {
+  const hash = (value) => crypto.createHash('sha256').update(String(value)).digest();
+  return crypto.timingSafeEqual(hash(a), hash(b));
+}
+
+/**
+ * Checks a delivery whichever way the webhook was saved on Omniplex. The way is named by `X-Webhook-Protocol` (`hmac-sha256`, the
+ * recommended one; `simple-auth`: the header `Authorization` is the secret itself; `splashtail`: the older signed and encrypted body, read
+ * as the Omniplex SDK reads it). Without that header the way is guessed from the headers that came. Returns `{ ok, protocol, payload }`
+ * (`payload` is the body read as JSON, the decrypted one for splashtail, or null when it is not JSON) or `{ ok: false, protocol, reason }`.
+ * `header(name)` reads a request header.
+ */
+function checkDelivery({ secret, header, rawBody }) {
+  const named = String(header('x-webhook-protocol') ?? '').trim().toLowerCase();
+  const protocol = named || (header('x-webhook-signature') ? 'hmac-sha256' : (header('authorization') ? 'simple-auth' : ''));
+  const fail = (reason) => ({ ok: false, protocol: protocol || 'none', reason });
+  if (!secret) return fail('no_secret');
+  if (!Buffer.isBuffer(rawBody)) return fail('no_body');
+  const readJson = (buffer) => { try { return JSON.parse(buffer.toString('utf8')); } catch { return null; } };
+
+  if (protocol === 'hmac-sha256') {
+    if (!header('x-webhook-signature')) return fail('no_signature');
+    if (!verifySignature({ secret, header: header('x-webhook-signature'), rawBody })) return fail('bad_signature');
+    return { ok: true, protocol, payload: readJson(rawBody) };
+  }
+  if (protocol === 'simple-auth') {
+    const sent = String(header('authorization') ?? '').trim().replace(/^Bearer\s+/i, '');
+    if (!sent) return fail('no_authorization');
+    if (!sameText(sent, secret)) return fail('bad_authorization');
+    return { ok: true, protocol, payload: readJson(rawBody) };
+  }
+  if (protocol === 'splashtail') {
+    const nonce = String(header('x-webhook-nonce') ?? '');
+    const signature = String(header('x-webhook-signature') ?? '').trim().toLowerCase();
+    if (!nonce || !signature) return fail('no_signature');
+    const inner = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
+    const expected = crypto.createHmac('sha512', nonce).update(inner).digest('hex');
+    if (!sameText(signature, expected)) return fail('bad_signature');
+    try {
+      const body = Buffer.from(rawBody.toString('utf8').trim(), 'hex');
+      if (body.length < 28) return { ok: true, protocol, payload: null };
+      const key = crypto.createHash('sha256').update(secret + nonce).digest();
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, body.subarray(0, 12));
+      decipher.setAuthTag(body.subarray(body.length - 16));
+      const plain = Buffer.concat([decipher.update(body.subarray(12, body.length - 16)), decipher.final()]);
+      return { ok: true, protocol, payload: readJson(plain) };
+    } catch {
+      return { ok: true, protocol, payload: null };
+    }
+  }
+  return fail(protocol ? 'unsupported_protocol' : 'no_credentials');
+}
+
 /** A time written as seconds (the documented form), milliseconds or an ISO date, in milliseconds; null when it is none of them. */
 function readTime(value) {
   if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
@@ -76,4 +130,4 @@ function parseVote(payload, nowMs = Date.now()) {
   return readEvent(payload, nowMs).vote ?? null;
 }
 
-module.exports = { verifySignature, readEvent, parseVote, VOTE_EVENT };
+module.exports = { verifySignature, checkDelivery, readEvent, parseVote, VOTE_EVENT };

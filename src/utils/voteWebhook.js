@@ -88,27 +88,46 @@ function rawBodyOf(req) {
   return Buffer.isBuffer(req.body) ? req.body : null;
 }
 
+/** What the operator can read in the log about each delivery, with no secret and no signature in it. */
+function describeRefusal(result, req, rawBody) {
+  const how = {
+    bad_signature: 'the signature does not match: the secret saved in Omniplex must be the same as OMNIPLEX_WEBHOOK_SECRET', // i18n-ignore: text of the operator log, not shown to members
+    bad_authorization: 'the Authorization header is not the secret: it must be the same as OMNIPLEX_WEBHOOK_SECRET', // i18n-ignore: text of the operator log, not shown to members
+    no_signature: 'the signature header is missing', // i18n-ignore: text of the operator log, not shown to members
+    no_authorization: 'the Authorization header is missing', // i18n-ignore: text of the operator log, not shown to members
+    unsupported_protocol: 'the signing method is not one Petto reads (use "HMAC signature" in the webhook settings of Omniplex)', // i18n-ignore: text of the operator log, not shown to members
+    no_credentials: 'no signature and no Authorization header came with it (set "HMAC signature" and the secret in Omniplex)', // i18n-ignore: text of the operator log, not shown to members
+    no_body: 'the body did not arrive', // i18n-ignore: text of the operator log, not shown to members
+    no_secret: 'OMNIPLEX_WEBHOOK_SECRET is not set', // i18n-ignore: text of the operator log, not shown to members
+  }[result.reason] || result.reason;
+  return `omniplex webhook refused (${result.reason}, method ${result.protocol}, body ${rawBody?.length ?? 0} bytes, content-type ${req.get('content-type') ?? 'none'}): ${how}`; // i18n-ignore: text of the operator log, not shown to members
+}
+
+let noVoteChannelSaid = false;
+
 function createOmniplexHandler(client) {
   return async function omniplexWebhook(req, res) {
     const rawBody = rawBodyOf(req);
-    if (!omniplex.verifySignature({ secret: config.omniplexWebhookSecret, header: req.get('x-webhook-signature'), rawBody })) {
+    const checked = omniplex.checkDelivery({ secret: config.omniplexWebhookSecret, header: (name) => req.get(name), rawBody });
+    if (!checked.ok) {
+      logger.warn(describeRefusal(checked, req, rawBody));
       res.status(401).json({ ok: false, error: 'invalid_signature' });
       return;
     }
-    let payload = null;
-    try {
-      payload = JSON.parse(rawBody.toString('utf8'));
-    } catch {
-      // Signed but not JSON: nothing to do, and nothing to send again.
-    }
-    const event = omniplex.readEvent(payload);
+    const event = omniplex.readEvent(checked.payload);
     if (!event.vote) {
-      if (event.ignored === 'test') logger.info('omniplex webhook test received.');
+      if (event.ignored === 'test') logger.info('omniplex webhook test received: the route, the secret and the signing method work.');
+      else logger.info(`omniplex webhook received and not counted (${event.ignored}${checked.payload?.type ? `, type ${String(checked.payload.type).slice(0, 30)}` : ''}).`);
       res.status(200).json({ ok: true, ignored: true, reason: event.ignored });
       return;
     }
     try {
       const isNew = await votesDb.recordVote(event.vote);
+      logger.info(`omniplex vote ${isNew ? 'stored' : 'received again (already stored)'}: user ${event.vote.userId}.`);
+      if (isNew && !config.voteChannelId && !noVoteChannelSaid) {
+        noVoteChannelSaid = true;
+        logger.info('VOTE_CHANNEL_ID is not set, so votes are stored and counted but nobody is thanked in a channel.');
+      }
       res.status(200).json({ ok: true, duplicate: !isNew });
       await afterVote(client, event.vote, isNew);
     } catch (err) {

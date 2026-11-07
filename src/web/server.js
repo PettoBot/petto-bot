@@ -1070,6 +1070,12 @@ function startServer(client) {
     // Votes for the bot on top.gg (v1 webhook). The URL to save in top.gg is https://<this host>/webhooks/topgg.
     app.post('/webhooks/topgg', topggRateLimiter, createTopggHandler(client));
   }
+  // Said once at start, so a vote that never arrives can be traced to the setup: no route without the secret, no thanks without the channel.
+  if (omniplexEnabled) {
+    logger.info(`Omniplex votes: POST /webhooks/omniplex is listening (signing: HMAC, Authorization secret or splashtail). Thanks channel: ${config.voteChannelId ? 'set' : 'VOTE_CHANNEL_ID is not set, so nobody is thanked'}.`);
+  } else if (config.omniplexToken || config.omniplexVoteUrl) {
+    logger.warn('OMNIPLEX_WEBHOOK_SECRET is not set, so the Omniplex vote webhook does not exist: votes cast there are not stored (every delivery would get a 404 and Omniplex pauses a webhook after 20 failures).');
+  }
   if (omniplexEnabled) {
     // Votes for the bot on omniplex.gg. The URL to save there is https://<this host>/webhooks/omniplex. The raw body is kept by the
     // JSON parser above; express.raw only reads a body that was not JSON, so the signature is checked over the bytes that were sent.
