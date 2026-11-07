@@ -174,5 +174,29 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
   assert.match((await confessions.submit({ guild, user: user('u13'), text: 'again' })).error, /^Espera \d+ segundos? antes/);
   require('../src/i18n').setCachedGuildLanguage(guild.id, 'en');
 
+  // The face of silence at the right side of a confession (not of a reply), the staff sees the author, and the log says who wrote what.
+  config = { ...base, cooldown_seconds: 0, log_channel_id: 'log' };
+  sent.length = 0;
+  result = await confessions.submit({ guild, user: user('u20'), text: 'shh' });
+  const shown = JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c));
+  assert.ok(/"type":9/.test(shown) && shown.includes('"accessory"') && shown.includes('attachment://shh.png'), 'a section with the picture of silence as its side picture');
+  assert.ok(sent[0].files.some((file) => file.name === 'shh.png'), 'and the picture goes with the message');
+  const logged = sent.find((entry) => entry.channel === 'log' || entry.username === 'Confessions log');
+  assert.ok(logged && JSON.stringify(logged.components.map((c) => c.toJSON?.() ?? c)).includes('<@u20>'), 'the log of the staff says who wrote the confession that was posted');
+  sent.length = 0;
+  const own = await confessions.reply({ guild, user: user('u21'), id: result.row.id, text: 'a reply' });
+  assert.ok(!own.error, own.error);
+  const replyShown = JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c));
+  assert.ok(!replyShown.includes('attachment://shh.png'), 'a reply has no side picture');
+  assert.ok(JSON.stringify(sent.map((entry) => entry.components.map((c) => c.toJSON?.() ?? c))).includes('<@u21>'), 'the log says who wrote the reply');
+  config = { ...base, cooldown_seconds: 0, keep_author: false, log_channel_id: 'log' };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u22'), text: 'nobody keeps me' });
+  assert.ok(!JSON.stringify(sent.map((entry) => entry.components.map((c) => c.toJSON?.() ?? c))).includes('u22'), 'with no author kept, the log has nobody to name');
+  config = { ...base, require_review: true, cooldown_seconds: 0 };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u23'), text: 'check this one' });
+  assert.ok(JSON.stringify(sent[0].components).includes('<@u23>'), 'the card of the staff shows who wrote it');
+
   console.log('confessions ok');
 })().catch((error) => { console.error(error); process.exit(1); });

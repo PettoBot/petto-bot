@@ -3912,6 +3912,9 @@ create table if not exists confession_config (
   updated_at        timestamptz not null default now()
 );
 alter table confession_config add column if not exists log_channel_id text;
+-- The color of a confession is a soft pastel yellow now (16772761 = #ffee99); the old green default (10873466) that servers have saved moves with it.
+alter table confession_config alter column color set default 16772761;
+update confession_config set color = 16772761 where color = 10873466;
 
 create table if not exists confessions (
   id                text primary key,
