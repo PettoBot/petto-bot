@@ -6,7 +6,10 @@ const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
 
 const INTERVAL_MS = 6 * 60 * 60_000;
-const PER_RUN = 25; // servers deleted in one pass, so a big backlog does not keep the database busy
+const PER_RUN = 25; // servers deleted before a short rest, so a big backlog does not keep the database busy
+const PASS_MAX = 100; // servers deleted in one pass (the next pass is in a few hours)
+const REST_MS = 1000;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const LOADED_SHARE = 0.9; // the list of servers of the bot must have at least this share of the servers Discord says the bot is in, or it is not trusted (an outage, not people leaving)
 
 /** One pass. Returns { noted, erased, held, would } (`would`: the servers a dry run would have deleted). */
@@ -27,10 +30,12 @@ async function purgeLeftGuilds(client) {
   await departures.sync(missing, present);
   result.noted = missing.length;
 
-  for (const guildId of await departures.due(config.guildPurgeDays, PER_RUN)) {
+  // What is waiting, what stays and what is due, written every pass: it says why servers are still stored when someone asks.
+  const state = await departures.counts(config.guildPurgeDays, config.guildPurgeBackupDays);
+  result.held = state.premium + state.backups;
+  let done = 0;
+  for (const guildId of await departures.due(config.guildPurgeDays, PASS_MAX, config.guildPurgeBackupDays)) {
     if (client.guilds.cache.has(guildId)) { await departures.clear(guildId); continue; } // it came back in the meantime
-    const reason = await departures.holdReason(guildId);
-    if (reason) { result.held += 1; continue; }
     if (config.guildPurgeDryRun) { result.would += 1; logger.info(`Servers cleanup (dry run): would delete what is stored for server ${guildId}.`); continue; }
     try {
       await departures.erase(guildId);
@@ -38,9 +43,11 @@ async function purgeLeftGuilds(client) {
     } catch (error) {
       logger.warn(`Servers cleanup: could not delete the data of server ${guildId}: ${error.message}`);
     }
+    done += 1;
+    if (done % PER_RUN === 0) await sleep(REST_MS);
   }
-  if (result.would) logger.info(`Servers cleanup (dry run): ${result.would} server(s) are past the ${config.guildPurgeDays} days and would be deleted; nothing was deleted.`);
-  if (result.erased || result.held) logger.info(`Servers cleanup: deleted what was stored for ${result.erased} server(s) Petto left more than ${config.guildPurgeDays} days ago${result.held ? `; ${result.held} kept for now (Premium in use or backups)` : ''}.`);
+  const backupText = config.guildPurgeBackupDays ? `kept ${config.guildPurgeBackupDays} days` : 'kept for good'; // i18n-ignore: text of the operator log, not shown to members
+  logger.info(`Servers cleanup: ${state.waiting} left less than ${config.guildPurgeDays} days ago and wait, ${state.due} were due, ${config.guildPurgeDryRun ? `${result.would} would be deleted (dry run)` : `${result.erased} deleted`}; ${state.premium} stay for Premium in use and ${state.backups} for their backups (${backupText}).`);
   return result;
 }
 
