@@ -19,7 +19,7 @@ module.exports = {
   'backup.created.note': 'Configuration only is stored. Petto never stores bot tokens, passwords, or secrets in a backup.',
   'backup.notFound': 'Backup **#{number}** was not found in this server.',
   'backup.noneYet': 'No backups have been saved yet. Use `!backup create` first.',
-  'backup.exportReady': '{emoji} Backup **#{number}** is ready to download.',
+  'backup.exportReady': '{emoji} Backup **#{number}** is ready. Tap the file below to download it (it is a JSON file).',
   'backup.restore.adminOnly': '{emoji} Only server Administrators can restore a backup.',
   'backup.restore.badMode': '{emoji} Restore mode must be `merge` or `replace`.',
   'backup.restore.safetyLabel': 'Before restoring backup #{number}',
