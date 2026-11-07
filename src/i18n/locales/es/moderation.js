@@ -61,6 +61,8 @@ module.exports = {
   'moderation.caseList.ended': 'Terminado',
   'moderation.caseList.activeEnds': 'Activo · termina {time}',
   'moderation.caseList.by': 'por {moderator}',
+  'moderation.caseList.unknownUser': 'Usuario desconocido',
+  'moderation.caseList.unknownModerator': 'Moderador desconocido',
   'moderation.caseList.titleUser': 'Infracciones',
   'moderation.caseList.titleServer': 'Casos de moderación',
   'moderation.caseList.summary.one': '-# {count} caso · Página {page} de {pages}',

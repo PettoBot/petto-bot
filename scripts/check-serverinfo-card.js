@@ -25,7 +25,10 @@ assert.ok(!text.includes('Invite splash'), 'a server with no splash has no butto
 const buttons = json.components.find((component) => component.type === 1).components;
 assert.deepEqual(buttons.map((button) => button.label), ['Icon', 'Banner', 'Server link']);
 assert.ok(buttons.length <= 5);
-assert.ok(json.components.some((component) => component.type === 12), 'the banner is a media gallery');
+assert.ok(!json.components.some((component) => component.type === 12), 'no picture is drawn in the card: the banner and the splash are buttons');
+const withBoth = buildServerInfoCard({ ...data, bannerUrl: 'https://cdn.example/b.png', splashUrl: 'https://cdn.example/s.png' }).toJSON();
+assert.ok(!JSON.stringify(withBoth).includes('"type":12'), 'a server with a banner and a splash still has no picture in the card');
+assert.deepEqual(withBoth.components.find((component) => component.type === 1).components.map((button) => button.label), ['Icon', 'Banner', 'Invite splash', 'Server link'], 'the icon, the banner and the splash are link buttons');
 
 const plain = JSON.stringify(buildServerInfoCard({ ...data, description: null, bannerUrl: null, iconUrl: null, vanityUrl: null, humans: null, bots: null, boosters: null, features: [] }).toJSON());
 assert.ok(!plain.includes('people') && !plain.includes('Boosters') && !plain.includes('Features'), 'what is not known is not shown');

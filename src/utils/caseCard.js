@@ -72,23 +72,43 @@ function caseStatus(row, lang) {
   return Date.parse(row.expires_at) > Date.now() ? t(lang, 'moderation.caseList.activeEnds', { time: `<t:${unixSeconds(row.expires_at)}:R>` }) : t(lang, 'moderation.caseList.ended');
 }
 
-function buildCaseListEntry(row, { showUser, lang }) {
-  const emoji = TYPE_EMOJI[row.type] ?? '';
+const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
+
+/** The icon of a case: the alert for a warning, the hammer for every other sanction, and the question coin for a type that is not known. */
+function caseIcon(row) {
+  if (!TYPE_EMOJI[row.type]) return EMOJI.PETTO_QUESTION;
+  return row.type === 'warn' ? EMOJI.PETTO_ALERT : EMOJI.HAMMER;
+}
+
+/** A person of a case: their mention, or the question coin and "unknown" when Discord has no one by that id any more. */
+function personText(id, people, unknownKey, lang) {
+  if (people && !people.get(String(id))?.known) return `${EMOJI.PETTO_QUESTION} ${t(lang, unknownKey)}`;
+  return `<@${id}>`;
+}
+
+/** One case as a section: its text on the left and a picture on the right (the member, or the moderator in the list of one member). */
+function buildCaseListSection(row, { showUser, people, lang }) {
   const status = caseStatus(row, lang);
-  const people = [showUser ? `<@${row.user_id}>` : null, t(lang, 'moderation.caseList.by', { moderator: `<@${row.moderator_id}>` })].filter(Boolean).join(' · ');
-  return [
-    `### ${[emoji, `#${row.case_number} · ${capitalize(typeName(row.type, lang))}`].filter(Boolean).join(' ')}`,
-    `${people} · <t:${unixSeconds(row.created_at)}:R>${status ? ` · *${status}*` : ''}`,
+  const type = TYPE_EMOJI[row.type] ? capitalize(typeName(row.type, lang)) : String(row.type ?? '?');
+  const who = [
+    showUser ? personText(row.user_id, people, 'moderation.caseList.unknownUser', lang) : null,
+    t(lang, 'moderation.caseList.by', { moderator: personText(row.moderator_id, people, 'moderation.caseList.unknownModerator', lang) }),
+  ].filter(Boolean).join(' · ');
+  const text = [
+    `**${caseIcon(row)} #${row.case_number} · ${type}**`,
+    `${who} · <t:${unixSeconds(row.created_at)}:R>${status ? ` · *${status}*` : ''}`,
     `> ${previewReason(row.reason, lang)}`,
   ].join('\n');
+  const pictureOf = people?.get(String(showUser ? row.user_id : row.moderator_id))?.avatarUrl ?? DEFAULT_AVATAR;
+  return new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text)).setThumbnailAccessory(new ThumbnailBuilder().setURL(pictureOf));
 }
 
 /**
- * Components V2 card for `case list`: a header (server or user), one block per
- * case, and page controls. `ids` carries the previous/next custom ids so the
- * command that owns the collector stays in charge of them.
+ * Components V2 card for `case list`: a header (server or user), one section per case with a picture, a line between them, and page controls.
+ * `people` (from utils/casePeople.js) says who is known and gives their pictures. `ids` carries the previous/next custom ids so the command
+ * that owns the collector stays in charge of them.
  */
-function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids = null, lang = currentLanguage() }) {
+function buildCaseListCard({ rows, count, page, perPage, guild, user = null, people = null, ids = null, lang = currentLanguage() }) {
   const totalPages = Math.max(1, Math.ceil(count / perPage));
   const title = t(lang, user ? 'moderation.caseList.titleUser' : 'moderation.caseList.titleServer');
   const subject = user ? `${user} · \`${user.id}\`` : guild.name;
@@ -97,7 +117,7 @@ function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids
     : guild.iconURL?.({ extension: 'png', size: 256 });
 
   const headerText = new TextDisplayBuilder().setContent([
-    `### ${EMOJI.HAMMER} ${title}`,
+    `**${EMOJI.HAMMER} ${title}**`,
     subject,
     tn(lang, 'moderation.caseList.summary', count, { count, page: page + 1, pages: totalPages }),
   ].join('\n'));
@@ -107,11 +127,9 @@ function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids
   if (iconUrl) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(iconUrl)));
   else card.addTextDisplayComponents(headerText);
 
-  card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
-
-  rows.forEach((row, index) => {
-    if (index > 0) card.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
-    card.addTextDisplayComponents(new TextDisplayBuilder().setContent(buildCaseListEntry(row, { showUser: !user, lang })));
+  rows.forEach((row) => {
+    card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    card.addSectionComponents(buildCaseListSection(row, { showUser: !user, people, lang }));
   });
 
   if (ids && totalPages > 1) {
