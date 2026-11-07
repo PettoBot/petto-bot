@@ -4,6 +4,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
   ContainerBuilder,
+  FileBuilder,
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
   MessageFlags,
@@ -126,7 +127,12 @@ async function exportBackupForInteraction(interaction, requestedNumber = null) {
     name: `petto-backup-${interaction.guild.id}-${number}.json`,
   });
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_exported', number, { source: backup.source || 'manual' });
-  await finish(interaction, buildStatusCard(t(lang, 'backup.exportReady', { emoji: EMOJI.APPROVE, number }), COLORS.GREEN, interaction, lang), { files: [file] });
+  // In a message made of components an attached file is not shown by itself: it needs a file component that points at it, and that is
+  // what gives the member the file to tap and save (without it the card said "ready to download" and there was nothing to download).
+  const card = textCard(t(lang, 'backup.exportReady', { emoji: EMOJI.APPROVE, number }), COLORS.GREEN);
+  card.addFileComponents(new FileBuilder().setURL(`attachment://${file.name}`));
+  card.addActionRowComponents(buildBackupMenuRow(interaction.guild.id, interaction.user.id, lang));
+  await finish(interaction, card, { files: [file] });
 }
 
 async function restore(interaction) {
