@@ -15,12 +15,13 @@ const SUBCOMMANDS = [
   { name: 'ping', wraps: 'ping' },
   { name: 'uptime', wraps: 'uptime' },
   { name: 'version', wraps: 'version' },
+  { name: 'topcommands', wraps: 'topcommands' },
   { group: 'votes', wraps: 'votes' },
   { group: 'premium', wraps: 'premium' },
 ];
 
 module.exports = defineUmbrella({
   name: 'bot',
-  description: 'About Petto: information, latency, uptime, version, votes and Premium.',
+  description: 'About Petto: information, latency, uptime, version, top commands, votes and Premium.',
   subcommands: SUBCOMMANDS,
 });

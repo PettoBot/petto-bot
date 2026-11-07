@@ -121,7 +121,7 @@ const EVERYDAY = new Set([
   'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
-  'partner', 'request', 'review', 'uploads', 'stats',
+  'partner', 'request', 'review', 'uploads', 'stats', 'topcommands',
   // /server and /user: lookups (their subcommands are the old info commands); `/server steal` asks for Manage Guild Expressions inside.
   'server', 'user',
   // /ai (`!ask`, `/ai ask`, `/ai usage`): open to every member on purpose. `ask` has a daily limit for free members inside (scripts/check-ask.js); `usage` only reads.
@@ -765,7 +765,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
       assert.equal(pressed[1][0], 'update', 'the author turns the page');
     }
     await endToEnd('afk', ['set'], { reason: 'lunch' }, live.plain, { include: /lunch/ });
-    await endToEnd('remind', ['add'], { duration: '1h', message: 'water' }, live.plain, { include: /#7|1 hour|1h/i });
+    await endToEnd('remind', ['add'], { duration: '1h', message: 'water' }, live.plain, { include: /<t:\d+:R>[\s\S]*water/i });
     await endToEnd('remind', ['list'], {}, live.plain, { include: /water/ });
     await endToEnd('poll', [], {}, live.plain, { include: /./ });
     await endToEnd('ban', ['user'], { user: target.user, reason: 'spam' }, moderator, { include: /./ });

@@ -262,7 +262,7 @@ module.exports = {
   'cmd.utility.remind.add.opt.message.desc': 'What to remind you about',
   'cmd.utility.remind.list.desc': 'List your active reminders.',
   'cmd.utility.remind.cancel.desc': 'Cancel a reminder.',
-  'cmd.utility.remind.cancel.opt.id.desc': 'Reminder ID (from `remind list`)',
+  'cmd.utility.remind.cancel.opt.id.desc': 'Number of the reminder in your list (from `remind list`)',
   'cmd.utility.rep.desc': 'A simple reputation point members can give each other.',
   'cmd.utility.rep.give.desc': 'Give a member a reputation point.',
   'cmd.utility.rep.give.opt.user.desc': 'Member to thank',
@@ -479,4 +479,6 @@ module.exports = {
   'cmd.utility.weather.opt.place.desc': 'City or country, for example San Salvador or Colombia',
   'cmd.utility.wiki.desc': 'Find a page of the Petto wiki or ask about the terms and conditions.',
   'cmd.utility.wiki.opt.query.desc': 'A feature, a command, or a question about the terms',
+  'cmd.utility.topcommands.desc': 'The commands of Petto that are used the most.',
+  'cmd.utility.topcommands.opt.page.desc': 'Page number',
 };

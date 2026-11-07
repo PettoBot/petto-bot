@@ -23,6 +23,7 @@ const logger = require('../utils/logger');
 const perf = require('../utils/perf');
 const { commandLimiter, isStaffMember } = require('../utils/rateLimits');
 const { logCommandUse } = require('../logging/extraLog');
+const { recordCommandUse } = require('../db/commandUsage');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
 const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
@@ -514,6 +515,8 @@ module.exports = {
 
     // The `commands` log category: the name of the command only, and only when a channel is set for it.
     if (!hiddenAutomodControl) logCommandUse({ guild: message.guild, user: message.author, channel: message.channel, name: canonicalName, prefix, subcommand: interaction.options.getSubcommand(false) }, message.client);
+    // Counted for /topcommands (in memory; written in batches, so it never slows the command).
+    if (!hiddenAutomodControl) recordCommandUse(canonicalName);
 
     // At most a few commands run at once in the whole bot (the line is short and bounded; staff and the team have a share kept for them).
     const slot = await limiter.acquire({ userId: message.author.id, staff });
