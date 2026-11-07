@@ -1,6 +1,6 @@
 // The Components V2 card of `/serverinfo`. It takes plain numbers and text, so it can be checked without Discord.
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MessageFlags,
   SectionBuilder, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder, ThumbnailBuilder,
 } = require('discord.js');
 const { EMOJI } = require('./emojis');
@@ -54,7 +54,7 @@ function buildServerInfoCard(d) {
   const headerText = new TextDisplayBuilder().setContent(header);
   if (d.iconUrl) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(d.iconUrl)));
   else card.addTextDisplayComponents(headerText);
-  if (d.bannerUrl) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(d.bannerUrl)));
+  // The banner and the invite splash are not drawn in the card (they made the message very long): they are the link buttons at the bottom.
 
   const members = [
     row(EMOJI.FIELD_DOT, t(lang, 'info.label.members'), joinParts([
@@ -89,8 +89,6 @@ function buildServerInfoCard(d) {
   card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${t(lang, 'info.serverinfo.sectionPeople')}`, ...members, channels].join('\n')));
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${t(lang, 'info.serverinfo.sectionServer')}`, ...server].join('\n')));
-  // The invite splash (the picture of the invite page) is shown too, under the details.
-  if (d.splashUrl) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(d.splashUrl)));
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
   card.addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'info.serverinfo.footer', { id: d.id, shard: d.shard, shards: d.shards })));
 

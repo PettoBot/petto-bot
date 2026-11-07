@@ -46,7 +46,7 @@ const clientWith = (ids, expected = 0) => ({ isReady: () => true, guilds: { cach
   await pool.query("insert into guild_backups (guild_id, backup_number, created_by, snapshot) values ($1, 1, 'x', '{}')", [G(4)]);
   await pool.query("insert into guild_departures (guild_id, left_at) values ($1, now() - interval '5 days'), ($2, now() - interval '9 days'), ($3, now() - interval '5 days')", [G(2), G(4), G(5)]);
 
-  config.guildPurge = true; config.guildPurgeDays = 3; config.guildPurgeDryRun = false;
+  config.guildPurge = true; config.guildPurgeDays = 3; config.guildPurgeDryRun = false; config.guildPurgeBackupDays = 30;
   // Only the servers of this check are looked at: the others of the test database are "present" too.
   const others = (await pool.query("select guild_id from guilds where guild_id not like '91000000000000%'")).rows.map((row) => row.guild_id);
   const client = clientWith([...others, G(1), G(5)]);
@@ -68,6 +68,37 @@ const clientWith = (ids, expected = 0) => ({ isReady: () => true, guilds: { cach
   assert.equal(await count('guilds', G(3)), 1, 'a server just noticed as missing is not deleted yet');
   const dates = (await pool.query('select guild_id from guild_departures where guild_id like $1 order by 1', ['91000000000000%'])).rows.map((row) => row.guild_id);
   assert.deepEqual(dates, [G(3), G(4)], 'the one that is missing gets its date, the one that came back loses it, the deleted one is forgotten');
+
+  // The servers that stay are not in the way of the others: 30 with backups that left 10 days ago (they stay for 30 days) are the oldest in the line,
+  // and the one that left 5 days ago, with no backups, is deleted all the same. Later they are 40 days gone and go too; with 0 days they stay for good.
+  await clean();
+  config.guildPurgeBackupDays = 30;
+  for (let n = 10; n < 40; n += 1) {
+    await makeGuild(G(n));
+    await pool.query("insert into guild_backups (guild_id, backup_number, created_by, snapshot) values ($1, 1, 'x', '{}')", [G(n)]);
+    await pool.query("insert into guild_departures (guild_id, left_at) values ($1, now() - interval '10 days')", [G(n)]);
+  }
+  await makeGuild(G(60));
+  await pool.query("insert into guild_departures (guild_id, left_at) values ($1, now() - interval '5 days')", [G(60)]);
+  const crowd = clientWith([...others]);
+  let pass = await purgeLeftGuilds(crowd);
+  assert.deepEqual([pass.erased, pass.held], [1, 30], 'the server behind thirty that stay is reached');
+  assert.equal(await count('guilds', G(60)), 0, 'and deleted');
+  assert.equal(await count('guilds', G(10)), 1, 'a server with backups gone 10 days stays');
+  const state = await departures.counts(3, 30);
+  assert.deepEqual([state.waiting, state.backups, state.premium, state.due], [0, 30, 0, 0], 'the counts say why they stay');
+  await pool.query("update guild_departures set left_at = now() - interval '40 days' where guild_id like '91000000000000%'");
+  pass = await purgeLeftGuilds(crowd);
+  assert.equal(pass.erased, 30, 'with the backups kept 30 days, a server gone 40 days goes with them');
+  assert.equal(await count('guild_backups', G(10)), 0, 'the backups too');
+  await clean();
+  config.guildPurgeBackupDays = 0;
+  await makeGuild(G(11));
+  await pool.query("insert into guild_backups (guild_id, backup_number, created_by, snapshot) values ($1, 1, 'x', '{}')", [G(11)]);
+  await pool.query("insert into guild_departures (guild_id, left_at) values ($1, now() - interval '400 days')", [G(11)]);
+  assert.equal((await purgeLeftGuilds(crowd)).erased, 0, 'with 0 days the backups stay for good');
+  assert.equal(await count('guilds', G(11)), 1);
+  config.guildPurgeBackupDays = 30;
 
   // Discord says the bot is in more servers than the bot has loaded: nothing is decided.
   await clean();

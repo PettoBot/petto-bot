@@ -63,6 +63,13 @@ module.exports = {
     .addSubcommand((s) => s.setName('list').setDescription('List all autoresponders.'))
     .addSubcommand((s) => s.setName('show').setDescription('Show full details for one autoresponder.').addStringOption((o) => o.setName('id').setDescription('Autoresponder ID').setRequired(true)))
     .addSubcommand((s) => s.setName('reset').setDescription('Delete every autoresponder in this server.'))
+    .addSubcommand((s) =>
+      s
+        .setName('exclusive')
+        .setDescription('Toggle exclusive access for an autoresponder to a role or channel.')
+        .addStringOption((o) => o.setName('target').setDescription('The channel or the role (mention, ID or name)').setRequired(true))
+        .addStringOption((o) => o.setName('trigger').setDescription('Trigger text of the autoresponder').setRequired(true)),
+    )
 
     .addSubcommandGroup((g) =>
       g
@@ -103,6 +110,8 @@ module.exports = {
         return listCmd(interaction);
       case 'show':
         return showCmd(interaction);
+      case 'exclusive':
+        return exclusiveCmd(interaction);
       default:
         return resetCmd(interaction);
     }
@@ -334,6 +343,44 @@ async function resetCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await arDb.removeAllForGuild(interaction.guild.id);
   await interaction.editReply({ components: [textCard(removed ? tn(lang, 'automation.autoresponder.resetDone', removed, { count: removed, emoji: EMOJI.APPROVE }) : t(lang, 'automation.autoresponder.resetEmpty'), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+}
+
+/**
+ * `autoresponder exclusive <channel or role> <trigger>`: turns on or off the autoresponder for that channel or role alone. It is the same list that
+ * `channel add` and `role add` keep (the channels where it answers, the roles it answers to), found by the trigger text and as one switch:
+ * the first time the target goes in, the next time it comes out.
+ */
+async function exclusiveCmd(interaction) {
+  const lang = await languageOf(interaction);
+  const target = interaction.options.getString('target', true);
+  const trigger = interaction.options.getString('trigger', true);
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  const ar = await arDb.getByTrigger(interaction.guild.id, trigger);
+  if (!ar) {
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.notFoundTrigger', { trigger }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const channel = resolveChannels(interaction.guild, target).resolved[0] ?? null;
+  const role = channel ? null : resolveRoles(interaction.guild, target).resolved[0] ?? null;
+  if (!channel && !role) {
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.exclusiveNoTarget'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const field = channel ? 'channel_ids' : 'role_ids';
+  const id = channel ? channel.id : role.id;
+  const mention = channel ? `<#${id}>` : `<@&${id}>`;
+  const current = new Set(ar[field] ?? []);
+  const wasIn = current.has(id);
+  if (wasIn) current.delete(id); else current.add(id);
+  const updated = await arDb.update(interaction.guild.id, ar.id, { [field]: [...current] });
+
+  const all = t(lang, channel ? 'automation.autoresponder.exclusiveEverywhere' : 'automation.autoresponder.exclusiveEveryone');
+  const list = (updated[field] ?? []).length ? updated[field].map((value) => (channel ? `<#${value}>` : `<@&${value}>`)).join(' ') : all;
+  const text = t(lang, wasIn ? 'automation.autoresponder.exclusiveOff' : 'automation.autoresponder.exclusiveOn', { emoji: EMOJI.APPROVE, trigger, target: mention, list });
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function channelCmd(interaction, sub) {

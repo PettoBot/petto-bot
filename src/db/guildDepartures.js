@@ -30,10 +30,38 @@ async function sync(missingIds, presentIds) {
   if (presentIds.length) await pool().query('delete from guild_departures where guild_id = any($1::text[])', [presentIds]);
 }
 
-/** The servers that left at least `days` days ago (oldest first). */
-async function due(days, limit) {
-  const { rows } = await pool().query(`select guild_id from guild_departures where left_at < now() - make_interval(days => $1) order by left_at limit $2`, [days, limit]);
+/**
+ * The servers that left at least `days` days ago and whose data may go now (oldest first). The ones that must stay are left out here, in the query,
+ * and not after: a server with Premium in use stays, and one with backups stays until it has been gone `backupDays` days (0: it stays for good).
+ * If they were only skipped later, the oldest ones that stay would fill every pass and the servers behind them would never be reached.
+ */
+async function due(days, limit, backupDays = 0) {
+  const { rows } = await pool().query(
+    `select d.guild_id from guild_departures d
+      where d.left_at < now() - make_interval(days => $1::int)
+        and not exists (select 1 from premium_slot_assignments p where p.guild_id = d.guild_id and p.status = 'active')
+        and (not exists (select 1 from guild_backups b where b.guild_id = d.guild_id)
+             or ($3::int > 0 and d.left_at < now() - make_interval(days => $3::int)))
+      order by d.left_at limit $2`, [days, limit, backupDays]);
   return rows.map((row) => row.guild_id);
+}
+
+/** How the servers that left are doing: those still inside the `days`, those past them that stay (Premium in use, backups) and those that are due. */
+async function counts(days, backupDays = 0) {
+  const { rows } = await pool().query(
+    `with d as (
+       select left_at,
+              exists (select 1 from premium_slot_assignments p where p.guild_id = x.guild_id and p.status = 'active') as premium,
+              exists (select 1 from guild_backups b where b.guild_id = x.guild_id) as backups
+         from guild_departures x)
+     select count(*) filter (where left_at >= now() - make_interval(days => $1::int))::int as waiting,
+            count(*) filter (where left_at < now() - make_interval(days => $1::int) and premium)::int as premium,
+            count(*) filter (where left_at < now() - make_interval(days => $1::int) and not premium and backups
+                               and not ($2::int > 0 and left_at < now() - make_interval(days => $2::int)))::int as backups,
+            count(*) filter (where left_at < now() - make_interval(days => $1::int) and not premium
+                               and (not backups or ($2::int > 0 and left_at < now() - make_interval(days => $2::int))))::int as due
+       from d`, [days, backupDays]);
+  return rows[0];
 }
 
 /** Why a server's data must stay for now (a Premium slot in use, backups kept in this database), or null. */
@@ -77,4 +105,4 @@ async function erase(guildId) {
   }
 }
 
-module.exports = { mark, clear, knownGuilds, sync, due, holdReason, erase, looseTables, KEEP };
+module.exports = { mark, clear, knownGuilds, sync, due, counts, holdReason, erase, looseTables, KEEP };

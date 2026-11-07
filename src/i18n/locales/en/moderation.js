@@ -61,6 +61,8 @@ module.exports = {
   'moderation.caseList.ended': 'Ended',
   'moderation.caseList.activeEnds': 'Active · ends {time}',
   'moderation.caseList.by': 'by {moderator}',
+  'moderation.caseList.unknownUser': 'Unknown user',
+  'moderation.caseList.unknownModerator': 'Unknown moderator',
   'moderation.caseList.titleUser': 'Infractions',
   'moderation.caseList.titleServer': 'Moderation cases',
   'moderation.caseList.summary.one': '-# {count} case · Page {page} of {pages}',

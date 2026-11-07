@@ -3,6 +3,7 @@ const { getUserHistory, getCaseHistory, getLastCase, getCase, updateCase, delete
 const { formatCaseLine, formatCaseDetail, typeName } = require('../../utils/caseFormat');
 const { buildCaseListCard, textCard } = require('../../utils/caseCard');
 const { resolveUsers } = require('../../utils/userResolve');
+const { resolveCasePeople } = require('../../utils/casePeople');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const { requireAdministrator } = require('../../utils/moderationCommand');
@@ -13,7 +14,7 @@ const { caseNumberList, listWithMore } = require('../../utils/listCap');
 const LAST_MANY_LIMIT = 15;
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
-const CASES_PER_PAGE = 10;
+const CASES_PER_PAGE = 6;
 
 module.exports = {
   aliases: ['cases'],
@@ -108,6 +109,8 @@ async function list(interaction) {
   const previousId = `case_list_prev:${scopeId}`;
   const nextId = `case_list_next:${scopeId}`;
 
+  let people = await resolveCasePeople(interaction.client, result.rows);
+
   function renderPage(rows, count, currentPage, includeControls = true) {
     if (!rows.length) {
       const emptyText = targetUser ? t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }) : t(lang, 'moderation.case.noCases');
@@ -120,6 +123,7 @@ async function list(interaction) {
       perPage: CASES_PER_PAGE,
       guild: interaction.guild,
       user: targetUser,
+      people,
       ids: includeControls ? { previous: previousId, next: nextId } : null,
       lang,
     });
@@ -163,6 +167,7 @@ async function list(interaction) {
         offset: page * CASES_PER_PAGE,
       });
     }
+    people = await resolveCasePeople(interaction.client, result.rows);
     payload = renderPage(result.rows, result.count, page);
     await click.update(payload);
   }

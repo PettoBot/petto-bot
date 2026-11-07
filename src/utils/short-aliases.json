@@ -79,6 +79,7 @@
  "are": "alias remove",
  "ared": "autoresponder edit",
  "aredi": "automation reaction edit",
+ "arex": "autoresponder exclusive",
  "arl": "autoresponder list",
  "arli": "automation reaction list",
  "arlis": "automation reactionrole list",

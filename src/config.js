@@ -304,6 +304,8 @@ module.exports = {
   guildPurge: process.env.GUILD_PURGE !== 'false',
   guildPurgeDays: Math.max(1, Number(process.env.GUILD_PURGE_DAYS) || 3),
   guildPurgeDryRun: process.env.GUILD_PURGE_DRY_RUN === 'true',
+  // A server that left with backups kept in this database has them deleted too after this many days (0 keeps them for good).
+  guildPurgeBackupDays: process.env.GUILD_PURGE_BACKUP_DAYS?.trim() && Number.isFinite(Number(process.env.GUILD_PURGE_BACKUP_DAYS)) ? Math.max(0, Math.floor(Number(process.env.GUILD_PURGE_BACKUP_DAYS))) : 30,
   youtubeDailyQuota: Math.max(1000, Number(process.env.YOUTUBE_DAILY_QUOTA) || 10_000),
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —
