@@ -42,10 +42,18 @@ const text = (card) => JSON.stringify(card.toJSON());
     assert.ok(!/#\d{3,}/.test(set.replace(/<#\d+>/g, '')), `${lang}: no database number is shown`);
     assert.ok(!set.includes('utility.remind'), `${lang}: every text is translated`);
   }
-  const list = text(reminderListCard({ lang: 'en', rows: [{ id: 90210, remind_at: at, message: 'first' }, { id: 90555, remind_at: at, message: 'x'.repeat(500) }] }));
-  assert.ok(list.includes('**1.**') && list.includes('**2.**'), 'the list is numbered 1, 2 for the member');
-  assert.ok(!list.includes('90210') && !list.includes('90555'), 'the database numbers never show');
-  assert.ok(list.length < 4000 + 600, 'a long message is cut');
+  const rows = [{ id: 90210, remind_at: at, message: 'first' }, { id: 90555, remind_at: at, message: 'x'.repeat(500) }];
+  const listCard = reminderListCard({ lang: 'en', rows }).toJSON();
+  const shown = JSON.stringify(listCard.components.filter((c) => c.type === 10));
+  assert.ok(!/\*\*\d+\.\*\*/.test(shown), 'the list has no numbers at all');
+  assert.ok(!shown.includes('90210') && !shown.includes('90555'), 'the database numbers never show');
+  assert.ok(shown.includes('first') && shown.length < 4000 + 600, 'the messages show and a long one is cut');
+  const menu = listCard.components.find((c) => c.type === 1)?.components?.[0];
+  assert.ok(menu && menu.type === 3 && menu.custom_id === 'remind_cancel', 'a menu cancels one of them');
+  assert.deepEqual(menu.options.map((option) => option.value), ['90210', '90555'], 'the menu is made of the member\'s own reminders');
+  assert.ok(menu.options.every((option) => option.label.length <= 100 && option.description.length <= 100), 'the options fit what Discord allows');
+  const none = JSON.stringify(reminderListCard({ lang: 'en', rows: [] }).toJSON());
+  assert.ok(!none.includes('remind_cancel'), 'no menu when there is nothing to cancel');
 
   // The board: a command starts between one and two million, the same every time, and the runs counted are added.
   for (const name of ['afk', 'snipe', 'remind', 'a-new-command']) {

@@ -267,7 +267,7 @@ const OWN_DATA = {
   'me ranking-on': 'their own visibility in the public ranking', 'me ranking-off': 'their own visibility in the public ranking', 'me lastfm-unlink': 'forgets their own Last.fm name',
   'me reputation-give': 'giving a reputation point is for every member', 'social reputation give': 'giving a reputation point is for every member', 'social birthday set': 'their own birthday', 'social birthday remove': 'their own birthday', 'search lastfm unlink': 'forgets their own Last.fm name', 'myprefix reset': 'their own prefix', 'profilehistory clear': 'their own saved names',
   'profilehistory record': 'their own choice to save names', 'profilehistory names': 'their own names (it saves the current one)', 'profilehistory nicknames': 'their own nicknames (it saves the current one)',
-  'remind cancel': 'their own reminder', 'rep give': 'giving a reputation point is for every member',
+  'rep give': 'giving a reputation point is for every member',
   // (`review remove` writes only their own review: with a `reviewer` given, which this check always fills, a plain member is refused and writes nothing, see check-community-modules.js)
 };
 const FLAGS_EPHEMERAL = 64;
