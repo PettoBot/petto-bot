@@ -4918,3 +4918,15 @@ create table if not exists guild_blacklist (
 );
 alter table guild_blacklist enable row level security;
 -- No policy on purpose: only the bot's own connection reads or writes it.
+
+
+-- ---------------------------------------------------------------------------
+-- command_usage: how many times each command was run, all servers together (the
+-- numbers of `/topcommands`). Counted in memory and written in batches.
+-- ---------------------------------------------------------------------------
+create table if not exists command_usage (
+  command text primary key,
+  uses    bigint not null default 0
+);
+
+alter table command_usage enable row level security;

@@ -61,6 +61,7 @@ const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
+const { recordCommandUse } = require('../db/commandUsage');
 const { commandKey } = require('../handlers/commandHandler');
 const { isHiddenEverywhere } = require('../utils/hiddenCommands');
 const { isPettoOperator } = require('../utils/autoModControl');
@@ -648,6 +649,8 @@ module.exports = {
     }
 
     logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand }, client);
+    // Counted for /topcommands (in memory; written in batches, so it never slows the command).
+    if (interaction.isChatInputCommand()) recordCommandUse(interaction.commandName);
 
     interaction.pettoLang = lang;
     if (roleCheck) interaction.pettoModerationRoleAllowed = await roleCheck;

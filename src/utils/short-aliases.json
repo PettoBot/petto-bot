@@ -174,6 +174,7 @@
  "bt": "ban temp",
  "bte": "bumpreminder template",
  "bth": "bumpreminder thankyou",
+ "bto": "bot topcommands",
  "bu": "ban user",
  "bup": "bot uptime",
  "bus": "ban users",
