@@ -100,7 +100,9 @@ function describeRefusal(result, req, rawBody) {
     no_body: 'the body did not arrive', // i18n-ignore: text of the operator log, not shown to members
     no_secret: 'OMNIPLEX_WEBHOOK_SECRET is not set', // i18n-ignore: text of the operator log, not shown to members
   }[result.reason] || result.reason;
-  return `omniplex webhook refused (${result.reason}, method ${result.protocol}, body ${rawBody?.length ?? 0} bytes, content-type ${req.get('content-type') ?? 'none'}): ${how}`; // i18n-ignore: text of the operator log, not shown to members
+  const bodySize = Buffer.isBuffer(rawBody) ? rawBody.byteLength : 0;
+  const contentType = String(req.get('content-type') ?? 'none').slice(0, 60);
+  return `omniplex webhook refused (${result.reason}, method ${result.protocol}, body ${bodySize} bytes, content-type ${contentType}): ${how}`; // i18n-ignore: text of the operator log, not shown to members
 }
 
 let noVoteChannelSaid = false;
