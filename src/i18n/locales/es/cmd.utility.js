@@ -214,8 +214,7 @@ module.exports = {
   'cmd.utility.remind.add.opt.duration.desc': 'Un lapso o un momento: 10m, 3d 4h, mañana 20:00, 2026-10-12 18:00',
   'cmd.utility.remind.add.opt.message.desc': 'Qué quieres que te recuerde',
   'cmd.utility.remind.list.desc': 'Lista tus recordatorios activos.',
-  'cmd.utility.remind.cancel.desc': 'Cancela un recordatorio.',
-  'cmd.utility.remind.cancel.opt.id.desc': 'ID del recordatorio (de `remind list`)',
+  'cmd.utility.remind.cancel.desc': 'Cancela un recordatorio: elígelo de tu lista.',
   'cmd.utility.rep.desc': 'Un simple punto de reputación que los miembros pueden darse entre sí.',
   'cmd.utility.rep.give.desc': 'Dale un punto de reputación a un miembro.',
   'cmd.utility.rep.give.opt.user.desc': 'Miembro al que agradecer',
@@ -479,4 +478,6 @@ module.exports = {
   'cmd.utility.team.opt.command.desc': 'Una herramienta del equipo para ver en detalle',
   'cmd.utility.guildsend.opt.server.desc': 'ID del servidor, su nombre exacto (entre comillas si tiene espacios) o here.',
   'cmd.utility.leaveguild.opt.server.desc': 'El ID o el nombre exacto del servidor del que Petto debe salir, o --here para este.',
+  'cmd.utility.topcommands.desc': 'Los comandos de Petto que más se usan.',
+  'cmd.utility.topcommands.opt.page.desc': 'Número de página',
 };

@@ -93,7 +93,7 @@ const UMBRELLAS = {
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
   contributions: { category: 'automation', groups: { partner: 2, partnerconfig: 12, uploads: 2, uploadconfig: 7 }, flat: {} },
   specialchannels: { category: 'utility', groups: { counting: 9, counter: 8, imageonly: 3, linkonly: 4 }, flat: {} },
-  bot: { category: 'info', groups: { votes: 2, premium: 1 }, flat: { info: 'botinfo', ping: 'ping', uptime: 'uptime', version: 'version' } },
+  bot: { category: 'info', groups: { votes: 2, premium: 1 }, flat: { info: 'botinfo', ping: 'ping', uptime: 'uptime', version: 'version', topcommands: 'topcommands' } },
 };
 // What each wrapped command asks of the member (a permission, or null for anyone: what it checks by itself is its own).
 const PERMS = {
@@ -106,7 +106,7 @@ const PERMS = {
   suggestion: null, confession: null, confess: null, request: null, requestconfig: 'ManageGuild', review: null, profile: null, profileconfig: 'ManageGuild',
   partner: null, partnerconfig: 'ManageGuild', uploads: null, uploadconfig: 'ManageGuild',
   counting: null, counter: 'ManageChannels', imgonly: null, urlonly: null,
-  uptime: null, version: null, votes: null, premium: null, botinfo: null, ping: null, poll: null,
+  uptime: null, version: null, topcommands: null, votes: null, premium: null, botinfo: null, ping: null, poll: null,
 };
 // The commands that already have subcommands, registered by themselves (with the number of top-level subcommands and groups they have).
 const DIRECT = {
@@ -279,7 +279,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 7 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 8 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).

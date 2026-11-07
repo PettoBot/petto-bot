@@ -121,7 +121,7 @@ const EVERYDAY = new Set([
   'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
-  'partner', 'request', 'review', 'uploads', 'stats',
+  'partner', 'request', 'review', 'uploads', 'stats', 'topcommands',
   // /server and /user: lookups (their subcommands are the old info commands); `/server steal` asks for Manage Guild Expressions inside.
   'server', 'user',
   // /ai (`!ask`, `/ai ask`, `/ai usage`): open to every member on purpose. `ask` has a daily limit for free members inside (scripts/check-ask.js); `usage` only reads.
@@ -267,7 +267,7 @@ const OWN_DATA = {
   'me ranking-on': 'their own visibility in the public ranking', 'me ranking-off': 'their own visibility in the public ranking', 'me lastfm-unlink': 'forgets their own Last.fm name',
   'me reputation-give': 'giving a reputation point is for every member', 'social reputation give': 'giving a reputation point is for every member', 'social birthday set': 'their own birthday', 'social birthday remove': 'their own birthday', 'search lastfm unlink': 'forgets their own Last.fm name', 'myprefix reset': 'their own prefix', 'profilehistory clear': 'their own saved names',
   'profilehistory record': 'their own choice to save names', 'profilehistory names': 'their own names (it saves the current one)', 'profilehistory nicknames': 'their own nicknames (it saves the current one)',
-  'remind cancel': 'their own reminder', 'rep give': 'giving a reputation point is for every member',
+  'rep give': 'giving a reputation point is for every member',
   // (`review remove` writes only their own review: with a `reviewer` given, which this check always fills, a plain member is refused and writes nothing, see check-community-modules.js)
 };
 const FLAGS_EPHEMERAL = 64;
@@ -765,7 +765,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
       assert.equal(pressed[1][0], 'update', 'the author turns the page');
     }
     await endToEnd('afk', ['set'], { reason: 'lunch' }, live.plain, { include: /lunch/ });
-    await endToEnd('remind', ['add'], { duration: '1h', message: 'water' }, live.plain, { include: /#7|1 hour|1h/i });
+    await endToEnd('remind', ['add'], { duration: '1h', message: 'water' }, live.plain, { include: /<t:\d+:R>[\s\S]*water/i });
     await endToEnd('remind', ['list'], {}, live.plain, { include: /water/ });
     await endToEnd('poll', [], {}, live.plain, { include: /./ });
     await endToEnd('ban', ['user'], { user: target.user, reason: 'spam' }, moderator, { include: /./ });
