@@ -325,6 +325,43 @@ const MINUTE = 60_000;
   assert.ok(parseVote(envelope({ metadata: { created_at: { weird: true } } })), 'a strange time never throws');
   assert.equal(parseVote(envelope({ metadata: { created_at: nowSeconds } }), Date.now()).voteId, parsed.voteId, 'the same delivery gives the same id');
 
+  // The ways a webhook can be saved on Omniplex: HMAC (recommended), the secret as the Authorization header, and the older splashtail.
+  {
+    const { checkDelivery } = require('../src/utils/omniplexVotes');
+    const crypto = require('node:crypto');
+    const headers = (map) => (name) => map[name.toLowerCase()];
+    const hmacHeaders = { 'x-webhook-protocol': 'hmac-sha256', 'x-webhook-signature': sign(good) };
+    assert.deepEqual(checkDelivery({ secret, header: headers(hmacHeaders), rawBody: good }).ok, true, 'hmac with its protocol header');
+    assert.equal(checkDelivery({ secret, header: headers({ 'x-webhook-signature': sign(good) }), rawBody: good }).ok, true, 'hmac guessed from the signature header');
+    assert.equal(checkDelivery({ secret, header: headers({ 'x-webhook-protocol': 'HMAC-SHA256', 'x-webhook-signature': sign(good) }), rawBody: good }).protocol, 'hmac-sha256', 'the protocol name in capitals');
+    assert.equal(checkDelivery({ secret: 'other', header: headers(hmacHeaders), rawBody: good }).reason, 'bad_signature');
+    assert.equal(checkDelivery({ secret, header: headers({ 'x-webhook-protocol': 'hmac-sha256' }), rawBody: good }).reason, 'no_signature');
+    assert.equal(checkDelivery({ secret, header: headers({}), rawBody: good }).reason, 'no_credentials');
+    assert.equal(checkDelivery({ secret, header: headers({ 'x-webhook-protocol': 'mystery' }), rawBody: good }).reason, 'unsupported_protocol');
+    assert.equal(checkDelivery({ secret: null, header: headers(hmacHeaders), rawBody: good }).reason, 'no_secret');
+    assert.equal(checkDelivery({ secret, header: headers(hmacHeaders), rawBody: 'text' }).reason, 'no_body');
+    // Simple auth: the secret is the Authorization header (with or without "Bearer ").
+    const simple = (value) => checkDelivery({ secret, header: headers({ 'x-webhook-protocol': 'simple-auth', authorization: value }), rawBody: good });
+    assert.equal(simple(secret).ok, true, 'simple auth');
+    assert.equal(simple(`Bearer ${secret}`).ok, true, 'simple auth with Bearer');
+    assert.equal(simple('nope').reason, 'bad_authorization');
+    assert.equal(checkDelivery({ secret, header: headers({ authorization: secret }), rawBody: good }).protocol, 'simple-auth', 'guessed from the Authorization header');
+    assert.equal(checkDelivery({ secret, header: headers({ 'x-webhook-protocol': 'simple-auth' }), rawBody: good }).reason, 'no_authorization');
+    // Splashtail: signed with HMAC-SHA512 twice and the body encrypted with AES-256-GCM (as the Omniplex SDK reads it).
+    const nonce = 'eKBAmidbjiWSKsvB';
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', crypto.createHash('sha256').update(secret + nonce).digest(), iv);
+    const encrypted = Buffer.concat([cipher.update(good), cipher.final()]);
+    const sealed = Buffer.from(Buffer.concat([iv, encrypted, cipher.getAuthTag()]).toString('hex'));
+    const inner = crypto.createHmac('sha512', secret).update(sealed).digest('hex');
+    const splash = { 'x-webhook-protocol': 'splashtail', 'x-webhook-nonce': nonce, 'x-webhook-signature': crypto.createHmac('sha512', nonce).update(inner).digest('hex') };
+    const opened = checkDelivery({ secret, header: headers(splash), rawBody: sealed });
+    assert.equal(opened.ok, true, 'splashtail');
+    assert.equal(opened.payload?.type, 'NEW_VOTE', 'and its body is read after it is decrypted');
+    assert.equal(checkDelivery({ secret, header: headers({ ...splash, 'x-webhook-signature': 'ab'.repeat(64) }), rawBody: sealed }).reason, 'bad_signature');
+    assert.equal(checkDelivery({ secret, header: headers({ ...splash, 'x-webhook-nonce': '' }), rawBody: sealed }).reason, 'no_signature');
+  }
+
   // The route (top.gg and omniplex both feed the same boost).
   const { createOmniplexHandler, createTopggHandler } = require('../src/utils/voteWebhook');
   const sent = [];

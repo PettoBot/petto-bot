@@ -1,6 +1,11 @@
 const database = require('./database');
 const { ensureGuild } = require('./guilds');
 
+// The color of a confession: a soft pastel yellow. Servers that never chose a color have the old green saved with their settings (it was the
+// default), and it is shown as the new default so they do not have to change it by hand.
+const DEFAULT_COLOR = 0xffee99;
+const OLD_DEFAULT_COLOR = 0xa5ea7a;
+
 const DEFAULTS = {
   enabled: false,
   channel_id: null,
@@ -15,7 +20,7 @@ const DEFAULTS = {
   webhook_avatar: null,
   title: 'Anonymous confession #{confession.number}', // i18n-ignore: English default kept in the database, shown translated
   footer: 'Confession ID: {confession.id}', // i18n-ignore: English default kept in the database, shown translated
-  color: 0xa5ea7a,
+  color: DEFAULT_COLOR,
   button_label: 'Confess',
   reply_label: 'Reply anonymously', // i18n-ignore: English default kept in the database, shown translated
   panel_text: 'Press the button and write it. Nobody will know it was you.', // i18n-ignore: English default kept in the database, shown translated
@@ -30,7 +35,9 @@ const DEFAULTS = {
 async function getConfig(guildId) {
   const { data, error } = await database.from('confession_config').select('*').eq('guild_id', guildId).maybeSingle();
   if (error) throw error;
-  return { ...DEFAULTS, guild_id: guildId, ...(data ?? {}) };
+  const config = { ...DEFAULTS, guild_id: guildId, ...(data ?? {}) };
+  if (config.color === OLD_DEFAULT_COLOR) config.color = DEFAULT_COLOR;
+  return config;
 }
 
 async function updateConfig(guildId, patch) {
@@ -115,4 +122,4 @@ async function unblock(guildId, userId) {
   return (data ?? []).length > 0;
 }
 
-module.exports = { DEFAULTS, getConfig, updateConfig, nextNumber, create, getById, getByNumber, update, remove, list, lastBy, isBlocked, block, unblock };
+module.exports = { DEFAULTS, DEFAULT_COLOR, OLD_DEFAULT_COLOR, getConfig, updateConfig, nextNumber, create, getById, getByNumber, update, remove, list, lastBy, isBlocked, block, unblock };

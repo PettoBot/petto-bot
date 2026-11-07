@@ -2,6 +2,8 @@
 // chose, with or without the staff checking it first, and anyone can answer it anonymously in a thread. The author is kept only for the
 // staff (to reveal who it was or block them) and the server can turn even that off.
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { PermissionFlagsBits, AttachmentBuilder, MessageFlags, ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('../db/confessions');
 const { build } = require('./embedBuilder');
@@ -17,6 +19,16 @@ const BUTTON_PREFIX = 'cfs';
 const YELLOW = 0xffd563;
 const RED = 0xff6b6b;
 const V2 = MessageFlags.IsComponentsV2;
+// The picture at the side of a confession: a face asking for silence (shh). It goes with the message as an attachment, so it does not
+// depend on a public address; it is read once.
+const SHUSH_NAME = 'shh.png';
+let shushBuffer;
+function shushPicture() {
+  if (shushBuffer === undefined) {
+    try { shushBuffer = fs.readFileSync(path.join(__dirname, '..', 'web', 'public', 'confession-shh.png')); } catch { shushBuffer = null; }
+  }
+  return shushBuffer ? new AttachmentBuilder(shushBuffer, { name: SHUSH_NAME }) : null;
+}
 
 function makeId() {
   const part = () => Array.from({ length: 5 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join('');
@@ -55,7 +67,9 @@ function replyButtonRow(row, config, lang = currentLanguage()) {
 
 /** The usual look, written as a design so a saved one of the dashboard can change any part of it. */
 function defaultDesign(config, row, { reply = false, lang = currentLanguage() } = {}) {
-  const children = [{ type: 10, content: `### ${reply ? t(lang, 'confessions.replyTitle') : shownText(config, 'title', lang)}\n{confession.content}` }];
+  const text = { type: 10, content: `### ${reply ? t(lang, 'confessions.replyTitle') : shownText(config, 'title', lang)}\n{confession.content}` };
+  // A confession has the face of silence at its right side (a reply does not).
+  const children = [!reply && shushPicture() ? { type: 9, components: [text], accessory: { type: 11, media: { url: `attachment://${SHUSH_NAME}` } } } : text];
   if (row.image_url) children.push({ type: 12, items: [{ media: { url: '{confession.image}' } }] });
   if (config.footer && !reply) children.push({ type: 14, divider: true, spacing: 1 }, { type: 10, content: `-# ${shownText(config, 'footer', lang)}` });
   return { v2: { components: [{ type: 17, accent_color: config.color, components: children }] } };
@@ -65,12 +79,13 @@ function defaultDesign(config, row, { reply = false, lang = currentLanguage() } 
 async function render(guild, row, config, { pictureName = null, reply = false, lang = null } = {}) {
   const language = lang ?? await guildLanguage(guild.id);
   const own = /^attachment:\/\/([\w.-]+)$/.exec(row.image_url ?? '');
-  const ctx = { guild, confession: confessionVars(row, guild), attachmentNames: new Set([own?.[1], pictureName].filter(Boolean)) };
+  const shush = !reply && !config.embed_template ? shushPicture() : null;
+  const ctx = { guild, confession: confessionVars(row, guild), attachmentNames: new Set([own?.[1], pictureName, shush ? SHUSH_NAME : null].filter(Boolean)) };
   let payload = null;
   if (config.embed_template && !reply) payload = await templatePayload(guild.id, config.embed_template, ctx);
   if (!payload) {
     const built = await build(defaultDesign(config, row, { reply, lang: language }), { ...ctx, allowV2: true });
-    payload = { components: built.components, files: built.files ?? [], embeds: [], flags: built.flags };
+    payload = { components: built.components, files: [...(built.files ?? []), ...(shush ? [shush] : [])], embeds: [], flags: built.flags };
   }
   const rows = !reply && config.allow_replies ? [replyButtonRow(row, config, language)] : [];
   return { content: payload.content || undefined, embeds: payload.embeds ?? [], components: [...(payload.components ?? []), ...rows], files: payload.files ?? [], flags: payload.flags ?? V2, allowedMentions: { parse: [] } };
@@ -161,6 +176,9 @@ async function logAction(guild, config, text, color = 0x4b4f59) {
   }
 }
 
+/** What the log of the staff says about who wrote a confession (nothing when the server keeps no authors). */
+const authorText = (lang, row) => (row?.author_id ? t(lang, 'confessions.log.from', { user: `<@${row.author_id}>`, id: row.author_id }) : '');
+
 const isStaff = (member, config) => Boolean(member && (member.permissions?.has(PermissionFlagsBits.ManageGuild) || (config?.staff_role_id && member.roles?.cache?.has(config.staff_role_id))));
 
 /** Posts a confession that is ready (no review needed or already approved). Returns the updated row. */
@@ -183,7 +201,9 @@ async function publish(guild, row, config, picture = null, lang = currentLanguag
 function reviewCard(row, config, { status = 'pending', by = null, pictureName = null, lang = currentLanguage() } = {}) {
   const color = status === 'rejected' ? RED : status === 'approved' ? config.color : YELLOW;
   const label = status === 'rejected' ? t(lang, 'confessions.review.rejectedBy', { staff: `<@${by}>` }) : status === 'approved' ? t(lang, 'confessions.review.approvedBy', { staff: `<@${by}>` }) : t(lang, 'confessions.review.waiting');
-  const children = [{ type: 10, content: `${t(lang, 'confessions.review.title', { number: row.number, status: label })}\n${String(row.content).slice(0, 1800)}\n-# ID: \`${row.id}\`` }];
+  // The staff sees who wrote it (the review channel is for them), so they know whom to talk to or sanction if it breaks a rule.
+  const from = row.author_id ? `\n-# ${t(lang, 'confessions.review.from', { user: `<@${row.author_id}>`, id: row.author_id })}` : '';
+  const children = [{ type: 10, content: `${t(lang, 'confessions.review.title', { number: row.number, status: label })}\n${String(row.content).slice(0, 1800)}${from}\n-# ID: \`${row.id}\`` }];
   if (pictureName) children.push({ type: 12, items: [{ media: { url: `attachment://${pictureName}` } }] });
   if (status === 'pending') {
     children.push({ type: 1, components: [
@@ -230,6 +250,8 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
       return { row, review: true };
     }
     row = await publish(guild, row, config, picture, lang);
+    const link = `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}`;
+    await logAction(guild, config, t(lang, 'confessions.log.posted', { number: row.number, id: row.id, link, author: authorText(lang, row) }), config.color);
     return { row, message: { url: `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}` } };
   } catch (err) {
     logger.warn(`A confession could not be posted in ${guild.id}: ${err.message}`);
@@ -259,7 +281,7 @@ async function decide({ guild, member, id, approve }) {
     updated = await db.update(id, { status: 'rejected', reviewed_by: member.id });
   }
   if (approve) updated = await db.update(id, { reviewed_by: member.id });
-  await logAction(guild, config, t(lang, approve ? 'confessions.log.approved' : 'confessions.log.rejected', { staff: `${member}`, id, number: row.number }), approve ? config.color : RED);
+  await logAction(guild, config, t(lang, approve ? 'confessions.log.approved' : 'confessions.log.rejected', { staff: `${member}`, id, number: row.number, author: authorText(lang, row) }), approve ? config.color : RED);
   return { row: updated, config };
 }
 
@@ -297,6 +319,7 @@ async function reply({ guild, user, id, text }) {
     const payload = await render(guild, row, config, { reply: true, lang });
     const sent = await sendAnonymous(thread, config, payload, { lang });
     await db.update(row.id, { message_id: sent.id });
+    await logAction(guild, config, t(lang, 'confessions.log.reply', { number: parent.number, id: row.id, link: sent.url ?? `https://discord.com/channels/${guild.id}/${thread.id}/${sent.id}`, author: authorText(lang, row) }), config.color);
   } catch (err) {
     logger.warn(`An anonymous reply could not be posted in ${guild.id}: ${err.message}`);
     await db.remove(guild.id, row.id).catch(() => {});

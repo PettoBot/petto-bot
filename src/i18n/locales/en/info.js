@@ -268,6 +268,8 @@ module.exports = {
   'info.roles.sort.empty.menu': 'Only roles without members',
   'info.serverinfo.verification.none': 'None',
   'info.serverinfo.notFound': 'That server doesn\'t exist, Petto is not in it, or you are not a member of it.',
+  'info.serverinfo.badId': 'That is not a server ID. Turn on Developer Mode, right click the server and choose Copy Server ID (it is a number of 17 to 20 digits).',
+  'info.serverinfo.unavailable': 'Discord could not say if you are a member of that server right now. Try again in a moment.',
   'info.serverinfo.verification.low': 'Low',
   'info.serverinfo.verification.medium': 'Medium',
   'info.serverinfo.verification.high': 'High',
