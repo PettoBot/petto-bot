@@ -268,6 +268,8 @@ module.exports = {
   'info.roles.sort.empty.menu': 'Solo roles sin miembros',
   'info.serverinfo.verification.none': 'ninguna',
   'info.serverinfo.notFound': 'Ese servidor no existe, Petto no está en él o no eres miembro.',
+  'info.serverinfo.badId': 'Eso no es la ID de un servidor. Activa el Modo desarrollador, haz clic derecho en el servidor y elige Copiar ID del servidor (es un número de 17 a 20 cifras).',
+  'info.serverinfo.unavailable': 'Discord no pudo decir ahora si eres miembro de ese servidor. Inténtalo de nuevo en un momento.',
   'info.serverinfo.verification.low': 'baja',
   'info.serverinfo.verification.medium': 'media',
   'info.serverinfo.verification.high': 'alta',
