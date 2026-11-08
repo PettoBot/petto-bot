@@ -173,7 +173,8 @@ async function respond(interaction, status, lang) {
   const reason = interaction.options.getString('reason');
   const result = await suggestions.answer({ guild: interaction.guild, member: interaction.member, id, status, reason });
   if (result.error) return reply(interaction, `${EMOJI.DENY}  ${result.error}`, RED, true);
-  return reply(interaction, t(lang, 'suggestions.answered', { emoji: EMOJI.APPROVE, id, status: suggestions.statusLabel(status, lang).toLocaleLowerCase(lang) }), GREEN);
+  const done = t(lang, 'suggestions.answered', { emoji: EMOJI.APPROVE, id, status: suggestions.statusLabel(status, lang).toLocaleLowerCase(lang) });
+  return reply(interaction, result.warning ? `${done}\n${EMOJI.WARNING}  ${result.warning}` : done, GREEN);
 }
 
 async function erase(interaction, lang) {

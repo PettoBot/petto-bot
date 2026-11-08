@@ -269,9 +269,11 @@ async function answer({ guild, member, id, status, reason }) {
   const row = await db.getSuggestion(guild.id, id);
   if (!row) return { error: t(lang, 'suggestions.error.notFound', { id }) };
   // A suggestion that already has that answer is not answered again (it would only send the thread message and the DM to the author a second time).
-  if (row.status === status) return { error: t(lang, 'suggestions.error.sameStatus', { status: statusLabel(status, lang).toLocaleLowerCase(lang) }) };
+  if (row.status === status) return { error: t(lang, `suggestions.error.sameStatus.${status}`) };
   const updated = await db.updateSuggestion(id, { status, status_reason: String(reason ?? '').slice(0, 1000) || null, status_by: member.id });
-  await refresh(guild, updated, config, { lang });
+  const shown = await refresh(guild, updated, config, { lang });
+  // The message of the suggestion was deleted from the channel: the answer is saved (and the author told), but nothing could be redrawn, and the staff is told.
+  const warning = !shown && updated.message_id ? t(lang, 'suggestions.warning.messageGone') : '';
   const label = statusLabel(status, lang).toLocaleLowerCase(lang);
   const said = updated.status_reason ? `\n> ${updated.status_reason}` : '';
   if (updated.thread_id && status !== 'pending') {
@@ -283,7 +285,7 @@ async function answer({ guild, member, id, status, reason }) {
     const link = updated.message_id && updated.channel_id ? `https://discord.com/channels/${guild.id}/${updated.channel_id}/${updated.message_id}` : '';
     sendDm(author, { content: `${t(lang, 'suggestions.answer.dm', { server: guild.name, status: label })}${said}${link ? `\n${link}` : ''}`, allowedMentions: { parse: [] } }, { guild, kind: 'suggestion' }).catch(() => {});
   }
-  return { row: updated };
+  return { row: updated, ...(warning ? { warning } : {}) };
 }
 
 /** Deletes a suggestion, its message and its thread. */

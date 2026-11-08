@@ -64,10 +64,21 @@ let writes = 0;
 Object.assign(db, { getConfig: async () => ({ dm_author: true }), getSuggestion: async () => stored, updateSuggestion: async (_id, patch) => { writes += 1; return { ...stored, ...patch }; } });
 const guildStub = { id: '5', name: 'G', channels: { fetch: async () => null }, client: { users: { fetch: async () => null } }, members: { cache: new Map() } };
 const again = await s.answer({ guild: guildStub, member: staff, id: stored.id, status: 'denied', reason: '' });
-assert.ok(again.error && /already/i.test(again.error), `denying a denied suggestion is refused: ${JSON.stringify(again)}`);
+assert.ok(again.error && /already denied.*cannot be denied again/i.test(again.error), `denying a denied suggestion is refused with its own words: ${JSON.stringify(again)}`);
+assert.ok(!/\{|\}/.test(again.error), 'no placeholder is left in the refusal');
 assert.equal(writes, 0, 'a refused answer writes nothing');
 const reopened = await s.answer({ guild: guildStub, member: staff, id: stored.id, status: 'approved', reason: '' }).catch((e) => ({ thrown: String(e) }));
 assert.ok(!reopened.error, 'a different answer is still accepted');
+assert.equal(reopened.warning, undefined, 'a suggestion without a message id has nothing to warn about');
 assert.equal(writes, 1, 'a different answer is written');
+// The message of the suggestion was deleted from the channel: the answer is saved and the staff is told it could not be redrawn.
+stored.message_id = '777'; stored.channel_id = '888'; stored.status = 'pending';
+const gone = await s.answer({ guild: guildStub, member: staff, id: stored.id, status: 'approved', reason: '' });
+assert.ok(!gone.error && /deleted/i.test(gone.warning ?? ''), `an answer to a suggestion whose message is gone carries a warning: ${JSON.stringify(gone)}`);
+for (const status of ['pending', 'approved', 'denied', 'considering', 'implemented']) {
+  stored.status = status;
+  const refused = await s.answer({ guild: guildStub, member: staff, id: stored.id, status, reason: '' });
+  assert.ok(refused.error && !/suggestions\./.test(refused.error), `${status} has its own refusal`);
+}
 console.log('suggestions ok');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -327,7 +327,7 @@ function startServer(client) {
         const member = await access.guild.members.fetch(access.userId).catch(() => null);
         const result = await suggestionsUtil.answer({ guild: access.guild, member, id, status, reason: req.body?.reason });
         if (result.error) { res.status(400).json({ ok: false, message: result.error }); return; }
-        res.json({ ok: true, message: t(lang, 'web.api.suggestions.now', { status: suggestionsUtil.statusLabel(status, lang).toLocaleLowerCase(lang) }) });
+        res.json({ ok: true, message: t(lang, 'web.api.suggestions.now', { status: suggestionsUtil.statusLabel(status, lang).toLocaleLowerCase(lang) }), ...(result.warning ? { warning: result.warning } : {}) });
       } catch (err) {
         logger.error(`Dashboard suggestion answer failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, message: t(lang, 'web.api.suggestions.answerFailed') });
