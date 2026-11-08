@@ -53,21 +53,34 @@ function snapshotOf(message) {
 
 const oneLine = (value, max) => String(value ?? '').replace(/[\r\n`]+/g, ' ').trim().slice(0, max);
 
-/** The card of the team: what was reported, where it came from, who reported it, and the button that marks it handled (a handled card has none: it is final). No mention can notify anyone. */
+/** `\n**Answered:** 2 times, the last by <id> <time>` once the team has written to the reporter (nothing when it has not). */
+function repliedLine(row) {
+  const count = Number(row.reply_count ?? 0);
+  if (!count) return '';
+  const at = row.last_reply_at ? Math.floor(new Date(row.last_reply_at).getTime() / 1000) : null;
+  return `\n**Answered:** ${count} ${count === 1 ? 'time' : 'times'}${row.last_reply_by ? `, the last by \`${oneLine(row.last_reply_by, 25)}\`` : ''}${at ? ` <t:${at}:R>` : ''}`;
+}
+
+/** The card of the team: what was reported, where it came from, who reported it, and the buttons of an open report: answer the reporter and mark it handled (a handled card has none: it is final). No mention can notify anyone. */
 function teamCard(row, { handledBy = null } = {}) {
   const handled = row.status === 'handled' || Boolean(handledBy);
   const seconds = Math.floor(new Date(row.created_at ?? Date.now()).getTime() / 1000);
   const origin = row.guild_id ? `${oneLine(row.guild_name, 100) || 'unknown'} (\`${row.guild_id}\`)` : 'Petto itself (no server)';
   const text = [
     `### DM report #${row.id} · ${oneLine(row.category, 40)}`,
-    `**From server:** ${origin}\n**Kind:** \`${oneLine(row.kind, 20)}\`\n**Reporter:** \`${oneLine(row.reporter_id, 25)}\` (\`${oneLine(row.reporter_tag, 40) || 'unknown'}\`)\n**When:** <t:${seconds}:R>\n**DM deleted by the reporter:** ${row.deleted_dm ? 'yes' : 'no'}${handled ? `\n**Handled by:** \`${oneLine(handledBy ?? row.handled_by, 25)}\`` : ''}`,
+    `**From server:** ${origin}\n**Kind:** \`${oneLine(row.kind, 20)}\`\n**Reporter:** \`${oneLine(row.reporter_id, 25)}\` (\`${oneLine(row.reporter_tag, 40) || 'unknown'}\`)\n**When:** <t:${seconds}:R>\n**DM deleted by the reporter:** ${row.deleted_dm ? 'yes' : 'no'}${repliedLine(row)}${handled ? `\n**Handled by:** \`${oneLine(handledBy ?? row.handled_by, 25)}\`` : ''}`,
     `### The reported message\n\`\`\`\n${(row.message_text ?? '').slice(0, LIMITS.snapshot) || '(no text)'}\n\`\`\``,
     `### Details from the reporter\n\`\`\`\n${String(row.details ?? '').replace(/```/g, "'''").slice(0, LIMITS.max)}\n\`\`\``,
   ].join('\n');
   const container = addBlocks(new ContainerBuilder(), text).setAccentColor(handled ? COLORS.GREEN : COLORS.YELLOW);
   // A handled report is final: its card has no button at all (nothing opens it again).
   const components = [container];
-  if (!handled) components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:done:${row.id}`).setLabel('Mark handled').setStyle(ButtonStyle.Success)));
+  if (!handled) {
+    components.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:reply:${row.id}`).setLabel('Reply to reporter').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:done:${row.id}`).setLabel('Mark handled').setStyle(ButtonStyle.Success),
+    ));
+  }
   return { components, flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
@@ -127,7 +140,7 @@ const limiter = createLimiter();
  * Returns `{ ok: false, reason, ...}` (reason: tooShort, badCategory, limit, duplicate, failed) or `{ ok: true, id, delivered, deleted }`.
  * `deps` lets a check give its own database, limiter and channel.
  */
-async function submitDmReport({ client, user, message, guild = null, kind = 'notice', category, details, deleteAfter = false }, deps = {}) {
+async function submitDmReport({ client, user, message, guild = null, kind = 'notice', category, details, deleteAfter = false, lang = null }, deps = {}) {
   const db = deps.db ?? require('../db/dmReports');
   const memory = deps.limiter ?? limiter;
   const text = String(details ?? '').trim();
@@ -146,7 +159,7 @@ async function submitDmReport({ client, user, message, guild = null, kind = 'not
     }
     row = await db.add({
       reporterId: user.id, reporterTag: user.tag ?? user.username ?? null, messageId: message.id, channelId: message.channelId ?? message.channel?.id,
-      guildId: guild?.id ?? null, guildName: guild?.name ?? null, kind, category, details: text, messageText: snapshotOf(message), deletedDm: deleteAfter === true,
+      guildId: guild?.id ?? null, guildName: guild?.name ?? null, kind, category, details: text, messageText: snapshotOf(message), deletedDm: deleteAfter === true, reporterLang: lang,
     });
   } catch (error) {
     memory.release(user.id, message.id);
@@ -163,4 +176,29 @@ async function submitDmReport({ client, user, message, guild = null, kind = 'not
   return { ok: true, id: row.id, delivered: Boolean(deliveredId), deleted };
 }
 
-module.exports = { LIMITS, defang, messageText, snapshotOf, teamCard, deliverToTeam, createLimiter, submitDmReport };
+/**
+ * A card of an open report that was sent before the answer button existed has only "Mark handled": it is edited once, after the bot starts, so the
+ * reports that are still waiting can be answered too. Looks at the newest ones (`limit`), leaves a card that already has the button alone and never throws.
+ * Returns how many cards it changed.
+ */
+async function refreshOpenCards(client, { limit = 25, channelId = config.opsChannels?.dmReports, db = require('../db/dmReports') } = {}) {
+  if (!channelId) return 0;
+  let changed = 0;
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel?.messages?.fetch) return 0;
+    for (const row of await db.openCards(limit)) {
+      try {
+        const message = await channel.messages.fetch(row.delivered_message_id);
+        if (JSON.stringify(message.components?.map(json) ?? []).includes(`${TEAM_PREFIX}:reply:`)) continue;
+        await message.edit(teamCard(row));
+        changed += 1;
+      } catch { /* a card that is gone (deleted) or cannot be edited is left as it is */ }
+    }
+  } catch (error) {
+    logger.warn({ action: 'dm-report' }, `The cards of the open DM reports could not be refreshed: ${error.message}`);
+  }
+  return changed;
+}
+
+module.exports = { LIMITS, defang, messageText, snapshotOf, teamCard, deliverToTeam, createLimiter, submitDmReport, refreshOpenCards };

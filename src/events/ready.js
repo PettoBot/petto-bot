@@ -60,6 +60,12 @@ module.exports = {
       return client.commandAliases?.get(word) ?? route?.disableName ?? route?.command ?? null;
     }).then((changed) => { if (changed) logger.info(`Disabled-command rules: ${changed} saved with an alias now use the real command name.`); })
       .catch((err) => logger.warn(`The disabled-command rules could not be tidied: ${err?.message ?? err}`));
+    // The open DM reports that were sent before the answer button existed get it (once, a little after the start, in the background).
+    setTimeout(() => {
+      require('../utils/dmReports').refreshOpenCards(client)
+        .then((count) => { if (count) logger.info(`Added the answer button to ${count} open DM report card(s).`); })
+        .catch((err) => logger.localWarn(`DM reports: could not refresh the open cards: ${err?.message ?? err}`));
+    }, 20_000).unref?.();
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
     startOmniplexStatsJob(client);
     startServerTagCheckJob(client);

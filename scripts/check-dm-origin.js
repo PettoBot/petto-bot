@@ -41,7 +41,7 @@ const fakeDb = {
     const row = {
       id: table.length + 1, reporter_id: report.reporterId, reporter_tag: report.reporterTag, message_id: report.messageId, channel_id: report.channelId,
       guild_id: report.guildId, guild_name: report.guildName, kind: report.kind, category: report.category, details: report.details,
-      message_text: report.messageText, deleted_dm: report.deletedDm, status: 'open', handled_by: null, created_at: new Date(),
+      message_text: report.messageText, deleted_dm: report.deletedDm, reporter_lang: report.reporterLang ?? null, reply_count: 0, last_reply_by: null, last_reply_at: null, status: 'open', handled_by: null, created_at: new Date(),
     };
     table.push(row);
     return row;
@@ -50,6 +50,8 @@ const fakeDb = {
   async setDeleted() {},
   async handle(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { status: 'handled', handled_by: userId }); return row; },
   async get(id) { return table.find((row) => row.id === Number(id)) ?? null; },
+  async replied(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { reply_count: row.reply_count + 1, last_reply_by: userId, last_reply_at: new Date() }); return row; },
+  async openCards() { return table.filter((row) => row.status === 'open' && row.delivered_message_id); },
 };
 Object.assign(fakeDb, { SQL: {}, createStore: () => fakeDb });
 stub('src/db/dmReports.js', fakeDb);
@@ -61,7 +63,7 @@ const config = require('../src/config');
 const origin = require('../src/utils/dmOrigin');
 const dmReports = require('../src/utils/dmReports');
 const handlers = require('../src/interactions/dmOrigin');
-const { handleTeamButton } = require('../src/interactions/dmTeam');
+const { handleTeamButton, handleTeamModal } = require('../src/interactions/dmTeam');
 const { dmCategoryOptions, DM_CATEGORY_VALUES, isDmReportCategory } = require('../src/utils/reportCategories');
 const realDb = require('../src/db/dmReports');
 assert.equal(realDb.add, fakeDb.add, 'the check runs on the stand-in of the table, never on the database');
@@ -719,6 +721,79 @@ section(async () => {
 });
 
 // The statements of the table: one report for each message, counted by person and time.
+// The team answers the reporter: a button on the card of an open report, a form, a DM in the language of the reporter.
+section(async () => {
+  const row = { id: 51, category: 'dm_abuse', kind: 'setup', guild_id: GUILD_ID, guild_name: 'Mossy Hollow', reporter_id: USER_ID, reporter_tag: 'a#0', reporter_lang: 'es', message_text: 'x', details: 'y'.repeat(30), status: 'open', created_at: new Date(), deleted_dm: false, reply_count: 0, delivered_message_id: '900000000000000001' };
+  table.push(row);
+  const ids = (card) => JSON.stringify(card.components.map(jsonOf));
+  const open = dmReports.teamCard(row);
+  assert.ok(ids(open).includes('dmteam:reply:51') && ids(open).includes('Reply to reporter'), 'an open card can be answered');
+  assert.ok(ids(open).includes('dmteam:done:51'), 'and marked handled');
+  assert.ok(!ids(open).includes('Answered'), 'nothing is said about answers before the first one');
+  const answered = dmReports.teamCard({ ...row, reply_count: 2, last_reply_by: config.ownerId, last_reply_at: new Date() });
+  assert.match(ids(answered), /Answered:\*\* 2 times, the last by/, 'the card says how many times it was answered');
+  const finalCard = dmReports.teamCard({ ...row, status: 'handled', handled_by: config.ownerId });
+  assert.ok(!ids(finalCard).includes('dmteam:reply'), 'a handled card cannot be answered: it has no buttons');
+
+  const operator = config.ownerId;
+  const press = async (id, customId) => { const { interaction, calls } = fake({ customId, user: { id } }); await handleTeamButton(interaction, { db: fakeDb }); return calls; };
+  let calls = await press('111111111111111111', 'dmteam:reply:51');
+  assert.match(calls.replies[0].content, /Only the Petto team/, 'a stranger cannot answer');
+  assert.equal(calls.modal, null);
+  calls = await press(operator, 'dmteam:reply:51');
+  assert.equal(calls.modal.toJSON().custom_id, 'dmteam:replym:51', 'the team gets the form');
+  assert.equal(row.status, 'open', 'asking does not change the report');
+
+  const submit = async (id, customId, text, { sent = [], fail = false, report = row } = {}) => {
+    const { interaction, calls: c } = fake({ customId, user: { id } });
+    interaction.fields = { getTextInputValue: () => text };
+    interaction.client.users = { fetch: async (reporterId) => ({ id: reporterId }) };
+    await handleTeamModal(interaction, { db: fakeDb, sendDm: async (user, payload, options) => { if (fail) throw new Error('Cannot send messages to this user'); sent.push({ user, payload, options }); return {}; } });
+    return { calls: c, sent };
+  };
+  let out = await submit('111111111111111111', 'dmteam:replym:51', 'Hello there, this is a reply.');
+  assert.match(out.calls.replies[0].content, /Only the Petto team/);
+  assert.equal(out.sent.length, 0, 'a stranger sends nothing');
+  out = await submit(operator, 'dmteam:replym:51', 'Hola, ya revisamos el mensaje.\nNo tienes que hacer nada más.', {});
+  assert.equal(out.sent.length, 1, 'the reporter gets one DM');
+  assert.equal(out.sent[0].user.id, USER_ID, 'it goes to the reporter');
+  assert.deepEqual(out.sent[0].options, { guild: null, kind: 'team' }, 'as a message of Petto, not of a server');
+  const dm = JSON.stringify(out.sent[0].payload.components.map(jsonOf));
+  assert.ok(dm.includes('Un mensaje del equipo de Petto sobre tu reporte #51'), 'in the language the reporter used');
+  assert.ok(dm.includes('> Hola, ya revisamos el mensaje.') && dm.includes('> No tienes que hacer nada más.'), 'the words of the team, quoted line by line');
+  assert.ok(!dm.includes(operator), 'who answered is not shown');
+  assert.deepEqual(out.sent[0].payload.allowedMentions, { parse: [] }, 'nothing in it can notify anyone');
+  assert.equal(row.reply_count, 1, 'the answer is counted');
+  assert.match(ids(out.calls.updates[0]), /Answered:\*\* 1 time,/, 'and the card says so');
+  assert.ok(ids(out.calls.updates[0]).includes('dmteam:reply:51'), 'the report stays open for the next answer');
+
+  out = await submit(operator, 'dmteam:replym:51', 'This will not reach them.', { fail: true });
+  assert.match(out.calls.replies[0].content, /could not message the reporter/, 'closed DMs are said, not hidden');
+  assert.equal(row.reply_count, 1, 'a message that did not go is not counted');
+  out = await submit(operator, 'dmteam:replym:51', 'short');
+  assert.match(out.calls.replies[0].content, /at least 10 characters/);
+
+  row.status = 'handled'; row.handled_by = operator;
+  calls = await press(operator, 'dmteam:reply:51');
+  assert.match(calls.replies[0].content, /already handled/, 'a handled report cannot be answered');
+  assert.equal(calls.modal, null);
+  out = await submit(operator, 'dmteam:replym:51', 'Too late to say this.');
+  assert.equal(out.sent.length, 0, 'not even by a form that was left open');
+  row.status = 'open'; row.handled_by = null;
+
+  // The open cards sent before the button existed get it, once; the ones that have it are left alone.
+  const oldCard = { id: 'old', components: [{ toJSON: () => ({ type: 1, components: [{ custom_id: 'dmteam:done:51' }] }) }], edited: 0, async edit() { this.edited += 1; } };
+  const newCard = { id: 'new', components: [{ toJSON: () => ({ type: 1, components: [{ custom_id: 'dmteam:reply:52' }] }) }], edited: 0, async edit() { this.edited += 1; } };
+  table.push({ ...row, id: 52, message_id: 'm52', delivered_message_id: 'new' });
+  row.delivered_message_id = 'old';
+  const channel = { messages: { fetch: async (id) => { if (id === 'old') return oldCard; if (id === 'new') return newCard; throw new Error('Unknown Message'); } } };
+  const changed = await dmReports.refreshOpenCards({ channels: { fetch: async () => channel } }, { channelId: 'c1', db: fakeDb });
+  assert.equal(changed, 1, 'one card was changed');
+  assert.deepEqual([oldCard.edited, newCard.edited], [1, 0], 'the old one got the button, the new one was not touched');
+  assert.equal(await dmReports.refreshOpenCards({ channels: { fetch: async () => { throw new Error('Missing Access'); } } }, { channelId: 'c1', db: fakeDb }), 0, 'a channel that cannot be read changes nothing and does not throw');
+  table.length = 0;
+});
+
 section(async () => {
   const file = require.resolve('../src/db/dmReports.js');
   const stand = require.cache[file];
@@ -731,7 +806,8 @@ section(async () => {
   assert.match(SQL.insert, /on conflict \(message_id\) do nothing/, 'a second report of a message inserts nothing');
   assert.match(SQL.handle, /where id = \$1 and status = 'open'/, 'two people cannot both handle it');
   await store.add({ reporterId: 'r', messageId: 'm', channelId: 'c', kind: 'welcome', category: 'spam', details: 'd' });
-  assert.equal(calls[0].params.length, 11);
+  assert.equal(calls[0].params.length, 12, 'the language of the reporter is stored too');
+  assert.match(SQL.replied, /where id = \$1 and status = 'open'/, 'a handled report is not answered');
   const recent = await store.recent('r', 3600);
   assert.deepEqual([recent.total, recent.oldest instanceof Date], [2, true]);
 });

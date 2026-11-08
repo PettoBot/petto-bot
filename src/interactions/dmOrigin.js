@@ -175,6 +175,7 @@ async function handleModal(interaction) {
     category: interaction.fields.getStringSelectValues(FIELDS.category)?.[0],
     details: interaction.fields.getTextInputValue(FIELDS.details),
     deleteAfter: readCheckbox(interaction.fields, FIELDS.remove),
+    lang,
   });
   if (result.ok) return reply(`${t(lang, 'dm.report.sent', { emoji: EMOJI.APPROVE })}${result.deleted ? `\n${t(lang, 'dm.report.deleted')}` : ''}`);
   const key = { tooShort: 'dm.report.tooShort', badCategory: 'dm.report.badCategory', limit: 'dm.report.limit', duplicate: 'dm.report.duplicate' }[result.reason] ?? 'dm.report.failed';
