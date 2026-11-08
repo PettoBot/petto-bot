@@ -50,6 +50,8 @@ function reactionEmbed(entry, lang) {
 const INDEX_OPTION = (option) => option.setName('index').setDescription('1 is the latest, up to 10').setMinValue(1).setMaxValue(MAX_ENTRIES_PER_CHANNEL).setRequired(false);
 
 module.exports = {
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
+  registerSlash: true,
   aliases: ['sniped'],
   prefixDefaultSubcommand: 'deleted',
   // The words people type: `!snipe edit 2`, `!snipe reaction`, `!snipe reset`.

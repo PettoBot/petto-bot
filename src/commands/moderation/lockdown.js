@@ -13,6 +13,8 @@ const RED = 0xff6b6b;
 const reply = (interaction, text, color = GREEN) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
 module.exports = {
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
+  registerSlash: true,
   // Not `lock`: `!lock` locks the channel you are in (the `channel lock` shortcut), as in other bots.
   aliases: ['raidmode', 'raidstate'],
   prefixDefaultSubcommand: 'status',

@@ -3,7 +3,7 @@ const { applyStatus, currentStatus } = require('../utils/botPresence');
 const { warmGuild } = require('../utils/inviteCache');
 const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
-const { announceDeployReport, cleanupGuildCommands } = require('../handlers/deployCommands');
+const { announceDeployReport, cleanupGuildCommands, syncGuildCommands } = require('../handlers/deployCommands');
 const config = require('../config');
 const disabledCommandsDb = require('../db/disabledCommands');
 const { startOmniplexStatsJob } = require('../jobs/omniplexStatsJob');
@@ -49,7 +49,11 @@ module.exports = {
     // The registration of the slash commands ran before the login: now that the log of Discord is on, it says what it did.
     announceDeployReport();
     // Once, in the background: the server-only copies of the commands left from a registration per server (they showed twice).
-    cleanupGuildCommands(client).catch((err) => logger.warn(`The old server-only slash commands could not be cleaned: ${err?.message ?? err}`));
+    // Then, in every server, the second set of commands (`/case`, `/note`...): the old copies go first so the two never overlap.
+    cleanupGuildCommands(client)
+      .catch((err) => logger.warn(`The old server-only slash commands could not be cleaned: ${err?.message ?? err}`))
+      .then(() => syncGuildCommands(client))
+      .catch((err) => logger.warn(`The server commands could not be registered: ${err?.message ?? err}`));
     startDiscordStatusJob(client);
     // Once, in the background: disabled-command rules saved with an alias (`sug`) take the real name (`suggest`), the only one checked.
     disabledCommandsDb.canonicalizeStored((name) => {

@@ -18,6 +18,8 @@ const MAX_JAIL_MS = 365 * 24 * 60 * 60 * 1000;
 const V2 = MessageFlags.IsComponentsV2;
 
 module.exports = {
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
+  registerSlash: true,
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('jail')

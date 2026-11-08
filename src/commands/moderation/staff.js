@@ -56,6 +56,9 @@ const executor = wrappedExecutor(load, SUBCOMMANDS);
 module.exports = {
   // Also registered as a slash command; the prefix works too.
   registerSlash: true,
+  // The thread, snipe and mass mute actions are not in the menu: `/thread`, `/snipe` and `/mute` are slash commands of their own (`/mute users`, `/mute remove-users`), so no
+  // command is there twice. The words keep working with the prefix (`!staff thread-lock`, `!staff snipe`, `!staff massmute`).
+  prefixOnlySubcommands: ['thread-rename', 'thread-lock', 'thread-unlock', 'snipe', 'massmute', 'massunmute'],
   // `!staff` alone lists the subcommands instead of saying something is wrong.
   listSubcommandsWhenEmpty: true,
   prefixSubcommandAliases: SUBCOMMAND_WORDS,

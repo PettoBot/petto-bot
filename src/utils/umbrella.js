@@ -121,7 +121,7 @@ function addSubcommands(builder, subcommands, load) {
       builder.addSubcommandGroup((group) => {
         group.setName(entry.group).setDescription(entry.description);
         for (const leaf of entry.leaves) {
-          const node = nodeOf(slashJson(load(leaf.wraps)), leaf);
+          const node = nodeOf(slashJson(load(leaf.wraps), { withPrefixOptions: true }), leaf);
           group.addSubcommand((sub) => fillSubcommand(sub, leaf.name, node, leaf.description ?? node.description));
         }
         return group;
@@ -129,7 +129,7 @@ function addSubcommands(builder, subcommands, load) {
       continue;
     }
     if (entry.group) {
-      const json = slashJson(load(entry.wraps));
+      const json = slashJson(load(entry.wraps), { withPrefixOptions: true });
       builder.addSubcommandGroup((group) => {
         group.setName(entry.group).setDescription(entry.description ?? json.description);
         for (const node of subcommandsOfWrapped(entry, json)) group.addSubcommand((sub) => fillSubcommand(sub, node.name, node));
@@ -143,7 +143,7 @@ function addSubcommands(builder, subcommands, load) {
         copyOptions(sub, entry.options);
         return sub;
       }
-      const json = slashJson(load(entry.wraps));
+      const json = slashJson(load(entry.wraps), { withPrefixOptions: true });
       return fillSubcommand(sub, entry.name, nodeOf(json, entry), entry.description);
     });
   }
@@ -159,7 +159,7 @@ function expandGroups(subcommands, load) {
     if (!entry.group) return [entry];
     // A group put together by hand: each leaf is read on its own (the rules of the server name `group leaf`).
     if (entry.leaves) return entry.leaves.map((leaf) => ({ ...leaf, group: entry.group, composed: true }));
-    return subcommandsOfWrapped(entry, slashJson(load(entry.wraps))).map((node) => ({ group: entry.group, name: node.name, wraps: entry.wraps, sub: node.name, ...(entry.wrapsGroup ? { subGroup: entry.wrapsGroup } : {}) }));
+    return subcommandsOfWrapped(entry, slashJson(load(entry.wraps), { withPrefixOptions: true })).map((node) => ({ group: entry.group, name: node.name, wraps: entry.wraps, sub: node.name, ...(entry.wrapsGroup ? { subGroup: entry.wrapsGroup } : {}) }));
   });
 }
 

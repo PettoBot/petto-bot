@@ -536,7 +536,10 @@ function tailOf(node) {
   for (const name of wrappedNames) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `!${name} is still a prefix-only command`);
   // The six old slash commands that an umbrella subcommand replaced are not registered; the old command is still loaded for the prefix.
   for (const name of ['avatar', 'userinfo', 'serverinfo', 'purge', 'unban', 'timeout']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
-  for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'mod', 'staff', 'game', 'me', 'search', 'server', 'user', 'levels', 'modtools', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
+  for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'mod', 'staff', 'game', 'me', 'search', 'server', 'user', 'levels', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
+  // `/modtools` is only a prefix command now: each of its groups is a global slash command of its own.
+  assert.ok(!isSlashCommand(commandFile('modtools')) && commandFile('modtools').prefixOnly, '/modtools is not a slash command any more, !modtools still works');
+  for (const name of ['case', 'note', 'jail', 'mute', 'nickname', 'thread', 'snipe', 'lockdown']) assert.ok(isSlashCommand(commandFile(name)) && !commandFile(name).guildScoped, `/${name} is a global slash command of its own`);
   // What moved into an umbrella is a prefix command now (`!rank`, `!top`, `!ping`, `!botinfo`, `!level`), with its aliases.
   for (const name of ['rank', 'top', 'ping', 'botinfo', 'level']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
   // What was `/community` is a slash command of its own each, and the prefix works as it did.
@@ -697,11 +700,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 70, '70 commands registered with Discord (67 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 67, '67 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 79, '79 commands registered globally with Discord (76 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 76, '76 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [67, 100, 33], '33 slots are free, more than the 20 that are kept');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [76, 100, 24], '24 slots are free, more than the 20 that are kept');
   assert.ok(usage.chat.free >= 20);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);

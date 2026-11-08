@@ -6,6 +6,8 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
+  registerSlash: true,
   aliases: ['notes'],
   // `!notes @user` lists them, like other bots; `!notes del 4` removes one.
   prefixDefaultSubcommand: 'list',

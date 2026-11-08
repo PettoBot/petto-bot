@@ -30,6 +30,8 @@ const activeUnbans = new Map(); // guildId -> { abort: boolean }
 const LIST_LIMIT = 40;
 
 module.exports = {
+  // The duration is read by the prefix (`!ban @x 7d`) but is not an option of `/ban user`: the temporary ban is `/tempban`.
+  prefixOnlyOptions: { user: ['duration'] },
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
   aliases: ['b'],

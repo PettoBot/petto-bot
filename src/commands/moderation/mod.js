@@ -64,7 +64,11 @@ module.exports = {
   registerSlash: true,
   // `/mod tempmute` and `/mod tempban` are not in the `/` menu: a mute or a ban becomes temporary by giving the `duration` of `/mod mute` and `/mod ban`.
   // The words keep working with the prefix (`!mod tempmute @x 3d`, `!tempmute`, `!tban`).
-  prefixOnlySubcommands: ['tempmute', 'tempban'],
+  // The mute, note, case, jail, nickname and lockdown actions are not in the menu either: each is a slash command of its own (`/mute`, `/note`, `/case`, `/jail`,
+  // `/nickname`, `/lockdown`), so no command is there twice. The words keep working with the prefix (`!mod mute @x`, `!mod note @x text`).
+  // Nor are `ban`, `kick`, `warn`, `lock`, `unlock` and `slowmode`: `/ban`, `/kick`, `/warn` and `/channel` are the commands people use, so none is in the menu twice, and
+  // `/tempban` and `/tempmute` are slash commands of their own for the temporary ones.
+  prefixOnlySubcommands: ['tempmute', 'tempban', 'ban', 'kick', 'mute', 'warn', 'note', 'case', 'jail', 'nickname', 'lockdown', 'unlockdown', 'lock', 'unlock', 'slowmode'],
   // `!mod` alone lists the subcommands instead of saying something is wrong.
   listSubcommandsWhenEmpty: true,
   prefixSubcommandAliases: SUBCOMMAND_WORDS,
@@ -89,7 +93,7 @@ module.exports = {
   // What `!help mod ban` says is needed.
   permissionForSubcommand: executor.permissionForSubcommand,
   data: addSubcommands(
-    new SlashCommandBuilder().setName('mod').setDMPermission(false).setDescription('Moderation: ban, kick, mute, warn, purge, lock and more, in one command.'),
+    new SlashCommandBuilder().setName('mod').setDMPermission(false).setDescription('More moderation: unmute, softban, unban, purge, history and the rest of the staff tools.'),
     SUBCOMMANDS,
     load,
   ),

@@ -10,6 +10,8 @@ const THREAD_TYPES = [ChannelType.PublicThread, ChannelType.PrivateThread, Chann
 const threadOption = (opt) => opt.setName('thread').setDescription('The thread (defaults to this one)').addChannelTypes(...THREAD_TYPES).setRequired(false);
 
 module.exports = {
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
+  registerSlash: true,
   aliases: ['th'],
   prefixGreedyStringOptions: { rename: 'name' },
   prefixSubcommandAliases: { close: 'lock', reopen: 'unlock', open: 'unlock', name: 'rename' },

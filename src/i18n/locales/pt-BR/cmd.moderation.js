@@ -137,7 +137,7 @@ module.exports = {
   'cmd.moderation.masswarn.desc': 'Adverte vários membros após confirmação.',
   'cmd.moderation.masswarn.opt.users.desc': 'Menções, IDs ou nomes de usuário exatos, separados por espaços',
   'cmd.moderation.masswarn.opt.reason.desc': 'Motivo das advertências',
-  'cmd.moderation.mod.desc': 'Moderação: banir, expulsar, silenciar, advertir, limpar, bloquear e mais, em um só comando.',
+  'cmd.moderation.mod.desc': 'Mais moderação: dessilenciar, softban, desbanir, limpar, histórico e outras ferramentas da equipe.',
   'cmd.moderation.mod.ban.desc': 'Bane um único membro.',
   'cmd.moderation.mod.ban.opt.user.desc': 'O usuário a ser banido',
   'cmd.moderation.mod.ban.opt.delete_message_days.desc': 'Quantos dias de mensagens recentes do usuário apagar (0-7)',
