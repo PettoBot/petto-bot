@@ -34,8 +34,12 @@ const SUBCOMMANDS = [
   },
 ];
 
-module.exports = defineUmbrella({
+module.exports = Object.assign(defineUmbrella({
   name: 'modtools',
   description: 'More moderation: cases, notes, jail, mutes, nicknames, threads, deleted messages and lockdown.',
   subcommands: SUBCOMMANDS,
+}), {
+  // Not a slash command any more: each group is a command of its own now (`/case`, `/note`, `/jail`, `/mute`, `/nickname`, `/thread`, `/snipe`, `/lockdown`).
+  // `!modtools case view` and the short words that start with it (`!mcv`) keep working with the prefix.
+  prefixOnly: true,
 });

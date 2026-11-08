@@ -1,7 +1,11 @@
 // i18n-ignore-file: log lines for the team of Petto (the host console and the log channel of Discord), not messages for the members.
 const { REST, Routes } = require('discord.js');
 const config = require('../config');
-const { collectCommandData, collectPrivateGuildCommandData } = require('./commandHandler');
+const commandHandler = require('./commandHandler');
+const { collectCommandData, collectPrivateGuildCommandData } = commandHandler;
+// The second set (Discord allows 100 chat commands globally and another 100 in each server). Read when used, so a caller that replaces the
+// handler with only the first two readers (a test) still works: it has no second set.
+const guildSet = () => (typeof commandHandler.collectGuildCommandData === 'function' ? commandHandler.collectGuildCommandData() : []);
 const crypto = require('node:crypto');
 const logger = require('../utils/logger');
 
@@ -65,11 +69,11 @@ async function deployCommands({ force = false, strict = false, rest = new REST({
   // One target per test server when there are some (a list of ids works), or the global one.
   const devGuildIds = devGuildIdsOf();
   const targets = devGuildIds.length
-    ? devGuildIds.map((guildId) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `commands_hash:${guildId}`, body: [...commands, ...(privateByGuild.get(guildId) ?? [])], scope: 'dev' }))
+    ? devGuildIds.map((guildId) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `commands_hash:${guildId}`, body: [...commands, ...guildSet(), ...(privateByGuild.get(guildId) ?? [])], scope: 'dev' }))
     : [{ guildId: null, route: Routes.applicationCommands(config.clientId), key: 'commands_hash:global', body: commands, scope: 'global' }];
   // The servers with private commands that are not a test server: only their private commands, never a copy of the global ones.
   const privateTargets = [...privateByGuild].filter(([guildId]) => !devGuildIds.includes(guildId))
-    .map(([guildId, list]) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `private_commands_hash:${guildId}`, body: list, scope: 'private', private: true }));
+    .map(([guildId, list]) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `private_commands_hash:${guildId}`, body: [...guildSet(), ...list], scope: 'private', private: true }));
 
   let result = null;
   const report = { at: Date.now(), scope: devGuildIds.length ? 'dev' : 'global', targets: [] };
@@ -167,12 +171,17 @@ async function cleanupGuildCommands(client, { rest = null, settings = null, dela
       await pause(delayMs);
       continue;
     }
-    if (Array.isArray(existing) && existing.length) {
+    // What a server may have: the second set. Anything else there is an old copy; the second set itself is kept (and put back if it was missing).
+    const keep = guildSet();
+    const keepNames = new Set(namesOf(keep));
+    const stale = Array.isArray(existing) ? existing.filter((command) => !keepNames.has(command?.name)) : [];
+    if (stale.length) {
       try {
-        await rest.put(route, { body: [] });
-        summary.cleaned.push(`${guildId} (${existing.length})`);
+        await rest.put(route, { body: keep });
+        summary.cleaned.push(`${guildId} (${stale.length})`);
         // A later test-server registration there must not be skipped by an old hash.
         await rememberDeployed(settings, `commands_hash:${guildId}`, '');
+        await rememberDeployed(settings, `guild_commands_hash:${guildId}`, '');
       } catch (error) {
         summary.failed += 1;
         logger.warn(`The old server commands of ${guildId} could not be removed: ${describeError(error)}`);
@@ -204,4 +213,58 @@ function announceDeployReport(report = lastReport) {
   if (report.globalAlso) logger.warn(`DISCORD_DEV_GUILD_ID is set and ${report.globalAlso} global command(s) exist too, so in the test servers every command shows twice. Leave DISCORD_DEV_GUILD_ID empty in production and restart.`);
 }
 
-module.exports = { deployCommands, cleanupGuildCommands, announceDeployReport, getDeployReport: () => lastReport };
+/**
+ * The second set of commands in one server (`guildScoped`: `/case`, `/note`, `/jail`...). `force` (a server Petto just joined: its commands are gone when it
+ * left) always registers; otherwise nothing is sent when the saved hash and what Discord has already match. A server the bot cannot register in (403/404:
+ * invited without the `applications.commands` scope, or it left) is `skipped`, a rate limit is `limited` (`retryAfter` seconds), any other error `failed`.
+ * Returns the status: `unchanged`, `registered`, `skipped`, `limited`, `failed` or `empty` (there is no second set).
+ */
+async function deployGuildCommands(guildId, { force = false, rest = new REST({ globalRequestsPerSecond: Math.max(1, Math.floor((config.restRequestsPerSecond ?? 8) / 2)) }).setToken(config.token), settings = null } = {}) {
+  const body = guildSet();
+  if (!body.length || devGuildIdsOf().length) return { status: 'empty' };
+  // A server with private commands is registered by deployCommands, together with the second set.
+  if (privateCommandsByGuild().has(String(guildId))) return { status: 'unchanged' };
+  settings ??= defaultSettings();
+  const route = Routes.applicationGuildCommands(config.clientId, guildId);
+  const key = `guild_commands_hash:${guildId}`;
+  const hash = hashOf({ app: config.clientId, scope: 'guild', commands: body });
+  try {
+    if (!force && await lastDeployed(settings, key) === hash) {
+      let live = null;
+      try { live = await rest.get(route); } catch (error) { if ([403, 404].includes(error?.status)) return { status: 'skipped' }; /* cannot check: trust the hash */ }
+      if (!Array.isArray(live) || sameNames(live, body)) return { status: 'unchanged' };
+    }
+    await rest.put(route, { body });
+    await rememberDeployed(settings, key, hash);
+    return { status: 'registered', total: body.length };
+  } catch (error) {
+    if ([403, 404].includes(error?.status)) return { status: 'skipped' };
+    if (error?.status === 429) return { status: 'limited', retryAfter: error?.retryAfter ?? error?.rawError?.retry_after ?? 60, error: describeError(error) };
+    return { status: 'failed', error: describeError(error) };
+  }
+}
+
+/**
+ * At start, in the background: the second set in every server Petto is in, one server at a time (a pause between them), only where something is
+ * missing or changed. Stops at a rate limit (the next start goes on) and says in the log what it did.
+ */
+async function syncGuildCommands(client, { rest = null, settings = null, delayMs = 400, guildIds: givenIds = null } = {}) {
+  if (!guildSet().length || devGuildIdsOf().length) return null;
+  rest ??= new REST({ globalRequestsPerSecond: Math.max(1, Math.floor((config.restRequestsPerSecond ?? 8) / 2)) }).setToken(config.token);
+  settings ??= defaultSettings();
+  const guildIds = [...(givenIds ?? client?.guilds?.cache?.keys?.() ?? [])].map(String);
+  const summary = { checked: 0, registered: 0, skipped: 0, failed: 0, stoppedByLimit: false };
+  for (const guildId of guildIds) {
+    summary.checked += 1;
+    const result = await deployGuildCommands(guildId, { rest, settings });
+    if (result.status === 'registered') summary.registered += 1;
+    else if (result.status === 'skipped') summary.skipped += 1;
+    else if (result.status === 'failed') { summary.failed += 1; logger.warn(`The commands of ${guildId} could not be registered: ${result.error}`); }
+    else if (result.status === 'limited') { summary.stoppedByLimit = true; logger.warn(`Discord limits the registration of the server commands (${result.error}); the rest of the servers are done on the next start.`); break; }
+    await pause(delayMs);
+  }
+  logger.info(`Server commands: checked ${summary.checked} server(s), registered them in ${summary.registered}${summary.skipped ? `, ${summary.skipped} could not be reached` : ''}${summary.failed ? `, ${summary.failed} failed` : ''}.`); // i18n-ignore: a log
+  return summary;
+}
+
+module.exports = { deployCommands, deployGuildCommands, syncGuildCommands, cleanupGuildCommands, announceDeployReport, getDeployReport: () => lastReport };

@@ -1,6 +1,6 @@
 const { REST, Routes } = require('discord.js');
 const config = require('./src/config');
-const { deployCommands, cleanupGuildCommands } = require('./src/handlers/deployCommands');
+const { deployCommands, cleanupGuildCommands, syncGuildCommands } = require('./src/handlers/deployCommands');
 const logger = require('./src/utils/logger');
 
 /** Every server the bot is in, read from Discord 200 at a time (this script runs without logging in). */
@@ -20,7 +20,10 @@ async function allGuildIds(rest) {
   // With the commands global, the server-only copies (from a registration with DISCORD_DEV_GUILD_ID) are removed too: they show twice.
   if (!(config.devGuildIds ?? []).length) {
     const rest = new REST({ globalRequestsPerSecond: 4 }).setToken(config.token);
-    await cleanupGuildCommands(null, { rest, force: true, guildIds: await allGuildIds(rest) });
+    const guildIds = await allGuildIds(rest);
+    await cleanupGuildCommands(null, { rest, force: true, guildIds });
+    // The second set (`/case`, `/note`...: the commands registered in each server), in every server, where something is missing.
+    await syncGuildCommands(null, { rest, guildIds });
   }
   process.exit(0);
 })().catch((err) => {

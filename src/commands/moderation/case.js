@@ -17,6 +17,9 @@ const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 const CASES_PER_PAGE = 6;
 
 module.exports = {
+  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['cases'],
   prefixDefaultSubcommand: 'list',
   data: new SlashCommandBuilder()

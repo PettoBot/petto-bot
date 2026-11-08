@@ -151,6 +151,8 @@ function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
     .map((filePath) => ({ filePath, command: require(filePath) }))
     .filter(({ command }) => command?.data)
+    // The commands of the second set (`guildScoped`) are registered in each server, not globally: see collectGuildCommandData.
+    .filter(({ command }) => !command.guildScoped)
     // Private operator tools are registered separately in their declared guild.
     // They must never leak into the global command set or another dev guild.
     .filter(({ command }) => !command.privateGuildId)
@@ -161,6 +163,19 @@ function collectCommandData() {
     .filter(({ command }) => !command.hiddenEverywhere)
     .filter(({ filePath, command }) => (command.data.toJSON().type ?? 1) !== 1 || isSlashCommand(command, categoryFromPath(filePath)))
     // The descriptions go to Discord in Spanish and Portuguese too (names are never translated).
+    .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), slashJson(command)));
+}
+
+/**
+ * The second set of slash commands: Discord gives an application 100 chat commands globally and another 100 in each server, so the commands marked
+ * `guildScoped` (with `registerSlash`) are registered in every server Petto is in instead of globally (utils/guildCommands, handlers/deployCommands).
+ * A name is never in both sets: a command registered in both shows twice.
+ */
+function collectGuildCommandData() {
+  return findCommandFiles(COMMANDS_DIR)
+    .map((filePath) => ({ filePath, command: require(filePath) }))
+    .filter(({ command }) => command?.data && command.guildScoped && !command.prefixOnly && !command.privateGuildId && !command.hiddenEverywhere)
+    .filter(({ command }) => (command.data.toJSON().type ?? 1) === 1 && command.registerSlash)
     .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), slashJson(command)));
 }
 
@@ -176,4 +191,4 @@ function collectPrivateGuildCommandData() {
     .map(({ command }) => ({ guildId: String(command.privateGuildId), data: slashJson(command) }));
 }
 
-module.exports = { loadCommands, commandKey, isSlashCommand, collectCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };
+module.exports = { loadCommands, commandKey, isSlashCommand, collectCommandData, collectGuildCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };

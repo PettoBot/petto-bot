@@ -18,6 +18,9 @@ const MAX_JAIL_MS = 365 * 24 * 60 * 60 * 1000;
 const V2 = MessageFlags.IsComponentsV2;
 
 module.exports = {
+  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  registerSlash: true,
+  guildScoped: true,
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('jail')

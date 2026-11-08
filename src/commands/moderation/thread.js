@@ -10,6 +10,9 @@ const THREAD_TYPES = [ChannelType.PublicThread, ChannelType.PrivateThread, Chann
 const threadOption = (opt) => opt.setName('thread').setDescription('The thread (defaults to this one)').addChannelTypes(...THREAD_TYPES).setRequired(false);
 
 module.exports = {
+  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['th'],
   prefixGreedyStringOptions: { rename: 'name' },
   prefixSubcommandAliases: { close: 'lock', reopen: 'unlock', open: 'unlock', name: 'rename' },

@@ -12,13 +12,15 @@ process.env.DISCORD_CLIENT_ID ??= '1';
 process.env.DISCLOUD_DATABASE_URL ??= 'postgres://check:check@127.0.0.1:1/check';
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { collectCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand, loadCommands } = require('../src/handlers/commandHandler');
+const { collectCommandData, collectGuildCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand, loadCommands } = require('../src/handlers/commandHandler');
 const { slotUsage, commandSize, LIMITS } = require('../src/utils/slashBudget');
 const commandRules = require('../src/utils/commandRules');
 
 const SUBCOMMAND = 1;
 const GROUP = 2;
 const registered = collectCommandData();
+// The second set (registered in each server, `guildScoped`): `/case`, `/note`, `/jail`... Its names and limits are checked like the others.
+const guildSet = collectGuildCommandData();
 const chat = registered.filter((json) => (json.type ?? 1) === 1);
 const menus = registered.filter((json) => (json.type ?? 1) !== 1);
 
@@ -65,13 +67,13 @@ const walkNames = (node, trail) => {
   checkName(node.name, trail);
   for (const option of node.options ?? []) walkNames(option, `${trail} ${option.name}`);
 };
-for (const json of chat) walkNames(json, `/${json.name}`);
+for (const json of [...chat, ...guildSet]) walkNames(json, `/${json.name}`);
 // `reputation` is the word of the group that wraps `rep`, and `rep` itself stays a prefix word: only registered names are checked here.
 assert.deepEqual(wordProblems, [], `names that are not whole words:\n${wordProblems.join('\n')}`);
 
 // ---------------------------------------------------------------- 5. the limits of Discord
 const limitProblems = [];
-for (const json of chat) {
+for (const json of [...chat, ...guildSet]) {
   const top = (json.options ?? []).filter((option) => option.type === SUBCOMMAND || option.type === GROUP);
   if (top.length > LIMITS.subcommands) limitProblems.push(`/${json.name}: ${top.length} subcommands and groups (at most ${LIMITS.subcommands})`);
   for (const group of top.filter((option) => option.type === GROUP)) {
@@ -174,7 +176,7 @@ for (const command of all.values()) {
 }
 // What is left out on purpose, with the reason.
 const LEFT_OUT = {
-  timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/mod tempmute` and `/modtools mute temp` are the same)',
+  timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/mod tempmute` and `/mute temp` are the same)',
 };
 // The join roles and the sticky roles are groups of `/role` (`/role join`, `/role sticky`), which is not an umbrella.
 const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky' };
@@ -185,6 +187,8 @@ for (const [name, command] of all) {
   if ((json.type ?? 1) !== 1 || command.category === 'music' || command.teamOnly || command.ownerOnly || command.hiddenEverywhere || command.privateGuildId || command.hiddenFromHelp || command.slashOnly) continue;
   // The cards of `!<module>config`, generated for every module: they only explain the settings of a module.
   if (/^Show the .* settings and how to change them\.$/.test(json.description)) continue;
+  // `!modtools` is only the prefix umbrella of the commands that are slash commands of their own now (`/case`, `/note`, `/jail`...): each of them is checked as itself.
+  if (name === 'modtools') continue;
   const have = covered.get(name);
   const dropped = new Set(command.prefixOnlySubcommands ?? []);
   const subs = subsOf(command).filter((sub) => !dropped.has(sub) && !(command.teamParts ?? []).includes(sub));
@@ -199,7 +203,7 @@ assert.ok(subsOf(all.get('suggestion')).includes('submit'), '!suggestion submit 
 assert.ok(subsOf(all.get('suggest')).includes('send'), '/suggest send exists');
 
 // ---------------------------------------------------------------- 7. every subcommand of the new umbrellas reaches the old command it wraps
-// (the groups put together by hand: `/levels voice xp` is `!level voice-xp`, `/modtools lockdown add-channel` is `!lockdown channel add`)
+// (the groups put together by hand: `/levels voice xp` is `!level voice-xp`)
 const moderationPermissions = require('../src/utils/moderationPermissions');
 moderationPermissions.hasConfiguredRole = async () => false;
 const recorded = [];
@@ -218,7 +222,7 @@ const fakeInteraction = (leaf) => ({
 });
 (async () => {
   let ran = 0;
-  for (const umbrella of ['levels', 'modtools', 'social', 'search', 'bot', 'config', 'automation']) {
+  for (const umbrella of ['levels', 'social', 'search', 'bot', 'config', 'automation']) {
     const command = all.get(umbrella);
     for (const leaf of command.leaves) {
       if (!leaf.wraps) continue;
@@ -230,7 +234,7 @@ const fakeInteraction = (leaf) => ({
     }
   }
   for (const undo of restore) undo();
-  assert.ok(ran > 200, `${ran} subcommands were run through their umbrella`);
+  assert.ok(ran > 150, `${ran} subcommands were run through their umbrella`);
   console.log(`check-slash-structure: ok (${usage.chat.used} chat commands of ${LIMITS.chat}, ${usage.chat.free} free; ${menus.length} menus; ${ran} umbrella subcommands reach their old command)`);
   setTimeout(() => process.exit(0), 10);
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -8,7 +8,7 @@ process.env.DISCLOUD_DATABASE_URL ??= 'postgres://check:check@127.0.0.1:1/check'
 const {
   ApplicationCommandType, ApplicationCommandOptionType, SlashCommandBuilder, ContextMenuCommandBuilder,
 } = require('discord.js');
-const { collectCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand } = require('../src/handlers/commandHandler');
+const { collectCommandData, collectGuildCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand } = require('../src/handlers/commandHandler');
 
 // The interaction actions (hug, pat, slap...) are all subcommands of the one command /action (Discord allows 100 slash commands, and
 // every action used to be its own); everything else is listed by name. A change here is a change of what members see in
@@ -38,18 +38,21 @@ const ESSENTIAL = [
   'boosterrole',
   // The AI that answers questions: `/ai ask` and `/ai usage` (open to every member; the first one has a daily limit for free members).
   'ai',
-  // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), the
-  // prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
-  'modtools', 'prefix', 'quests', 'social',
+  // The prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
+  'prefix', 'quests', 'social',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
   // What members can send to the staff, each with the setup next to it (`/suggest send`, `/suggest setup`, `/request config channel`...); it used to be `/community`.
   'confess', 'poll', 'profile', 'request', 'review', 'suggest',
 ];
+// The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). The rest of the
+// moderation commands that `/mod` and `/staff` do not hold, each one a command of its own (`/case delete-all`, `/note add`...; there used to be `/modtools` around them).
+const GUILD_SET = ['case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread'];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;
 
 const registered = collectCommandData();
+const guildSet = collectGuildCommandData();
 const chat = registered.filter((json) => (json.type ?? 1) === ApplicationCommandType.ChatInput);
 const roleplay = new Set(findCommandFiles(COMMANDS_DIR).filter((file) => file.includes('/roleplay/')).map((file) => require(file).data.name));
 // Discord's limits for one command, from its documentation (docs.discord.com/developers/interactions/application-commands).
@@ -62,6 +65,11 @@ assert.equal(registered.length, EXPECTED_TOTAL, `${EXPECTED_TOTAL} commands are 
 // Discord allows 100 chat commands and 15 of each context menu type for an app.
 assert.ok(chat.length <= LIMITS.chatCommands, `${chat.length} chat commands fit under Discord's ${LIMITS.chatCommands}`);
 assert.equal(new Set(chat.map((json) => json.name)).size, chat.length, 'no two slash commands share a name');
+// The second set: its own 100, no menus, no name that is also global (it would show twice), and nothing a Discord server would refuse.
+assert.deepEqual(guildSet.map((json) => json.name).sort(), [...GUILD_SET].sort(), 'the commands registered in each server are exactly the listed ones');
+assert.ok(guildSet.every((json) => (json.type ?? 1) === ApplicationCommandType.ChatInput), 'the second set has chat commands only');
+assert.ok(guildSet.length <= LIMITS.chatCommands, `${guildSet.length} server commands fit under Discord's ${LIMITS.chatCommands} for each server`);
+assert.deepEqual(guildSet.filter((json) => chat.some((global) => global.name === json.name)).map((json) => json.name), [], 'no command is both global and in the second set');
 
 // Every registered command is rebuilt from its JSON by discord.js's own builders, which refuse what Discord refuses.
 const NAME = /^[-_\p{Ll}\p{N}\p{sc=Deva}\p{sc=Thai}]{1,32}$/u;
@@ -113,7 +121,7 @@ function totalLength(json, locale) {
   return total;
 }
 
-for (const json of registered) {
+for (const json of [...registered, ...guildSet]) {
   if ((json.type ?? 1) !== 1) {
     try { new ContextMenuCommandBuilder().setName(json.name).setType(json.type).toJSON(); } catch (error) { problems.push(`${json.name}: ${String(error.message).split('\n')[0]}`); }
     continue;

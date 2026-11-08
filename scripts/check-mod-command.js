@@ -560,8 +560,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 70, '70 commands registered with Discord (67 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 67, '67 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 69, '69 commands registered with Discord (66 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 66, '66 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const registeredMod = registered.find((each) => each.name === 'mod');
   assert.ok(registeredMod, '/mod is registered with Discord, so deploy-commands.js sends it');

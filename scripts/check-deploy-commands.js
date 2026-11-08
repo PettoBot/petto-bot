@@ -4,7 +4,9 @@ const path = require('node:path');
 const handlerPath = path.resolve(__dirname, '../src/handlers/commandHandler.js');
 let current = [{ name: 'ping' }];
 let privateCommands = [];
-require.cache[handlerPath] = { id: handlerPath, filename: handlerPath, loaded: true, exports: { collectCommandData: () => current, collectPrivateGuildCommandData: () => privateCommands } };
+// The second set: the commands that are registered in each server (`guildScoped`).
+let second = [];
+require.cache[handlerPath] = { id: handlerPath, filename: handlerPath, loaded: true, exports: { collectCommandData: () => current, collectGuildCommandData: () => second, collectPrivateGuildCommandData: () => privateCommands } };
 const configPath = path.resolve(__dirname, '../src/config.js');
 require.cache[configPath] = { id: configPath, filename: configPath, loaded: true, exports: { token: 't', clientId: '1', devGuildId: null } };
 const { deployCommands } = require('../src/handlers/deployCommands');
@@ -118,6 +120,51 @@ const { deployCommands } = require('../src/handlers/deployCommands');
   config.devGuildIds = [];
   privateCommands = [];
   logger.info = realInfo; logger.warn = realWarn;
+
+  // The second set (`/case`, `/note`...): registered in each server, only where something is missing or changed, never on top of the global ones.
+  {
+    const { deployGuildCommands, syncGuildCommands } = require('../src/handlers/deployCommands');
+    second = [{ name: 'case' }, { name: 'note' }];
+    const servers = new Map();
+    const calls = [];
+    const restServers = {
+      get: async (route) => { const id = scopeOf(route); if (id === '403') throw Object.assign(new Error('Missing Access'), { status: 403 }); return servers.get(id) ?? []; },
+      put: async (route, { body }) => { const id = scopeOf(route); calls.push(['put', id]); if (id === '403') throw Object.assign(new Error('Missing Access'), { status: 403 });
+      if (id === '429') throw Object.assign(new Error('You are being rate limited.'), { status: 429, retryAfter: 30 }); servers.set(id, body); return body; },
+    };
+    const store4 = new Map();
+    const settings4 = { getSetting: async (key) => store4.get(key) ?? null, setSetting: async (key, value) => { store4.set(key, value); } };
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4 })).status, 'registered', 'a server without them gets them');
+    assert.deepEqual(servers.get('11').map((c) => c.name), ['case', 'note'], 'the second set, and nothing global');
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4 })).status, 'unchanged', 'a server that has them is not sent them again');
+    assert.equal(calls.length, 1, 'only one registration so far');
+    servers.set('11', []);
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4 })).status, 'registered', 'a server that lost them (the bot left and came back) gets them again even if the hash says they are there');
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4, force: true })).status, 'registered', 'force registers anyway');
+    second = [{ name: 'case' }, { name: 'note' }, { name: 'jail' }];
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4 })).status, 'registered', 'a change in the set is registered');
+    assert.equal((await deployGuildCommands('403', { rest: restServers, settings: settings4 })).status, 'skipped', 'a server where Petto cannot register (403) is skipped, not a failure');
+    assert.equal((await deployGuildCommands('429', { rest: restServers, settings: settings4 })).status, 'limited', 'a rate limit is reported with its wait');
+    // At start every server is looked at, one by one, and the loop stops at a rate limit.
+    calls.length = 0;
+    const startClient = { guilds: { cache: new Map([['21', {}], ['22', {}], ['429', {}], ['23', {}]]) } };
+    const synced = await syncGuildCommands(startClient, { rest: restServers, settings: settings4, delayMs: 0 });
+    assert.deepEqual(calls.map((c) => c[1]), ['21', '22', '429'], 'the servers are done in order and the rate limit stops the rest');
+    assert.equal(synced.registered, 2);
+    assert.equal(synced.stoppedByLimit, true);
+    // The cleanup of old server copies keeps the second set (and puts it back) instead of emptying the server.
+    config.devGuildIds = [];
+    const old = { get: async () => [{ name: 'old' }, { name: 'case' }], put: async (_route, { body }) => { calls.push(['cleanup', body.map((c) => c.name)]); return body; } };
+    calls.length = 0;
+    await cleanupGuildCommands({ guilds: { cache: new Map([['31', {}]]) } }, { rest: old, settings: { getSetting: async () => null, setSetting: async () => {} }, delayMs: 0, force: true });
+    assert.deepEqual(calls, [['cleanup', ['case', 'note', 'jail']]], 'old copies are removed and the commands of the second set stay');
+    // With test servers the second set goes along with the global commands, and no server is touched by the per-server registration.
+    config.devGuildIds = ['293504726505357312'];
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4 })).status, 'empty', 'in test-server mode the per-server registration does nothing');
+    config.devGuildIds = [];
+    second = [];
+    assert.equal((await deployGuildCommands('11', { rest: restServers, settings: settings4 })).status, 'empty', 'with no second set there is nothing to register');
+  }
 
   console.log('Checked that the commands are registered only when they change and a failure does not stop the start.');
 })();

@@ -21,8 +21,13 @@ async function registeredCommands(client) {
 /** The commands Petto loads that are sent to Discord: the slash commands (see `isSlashCommand`) and the context menus; a command that works only with the prefix is not. */
 function loadedCommands(client) {
   return [...client.commands.values()]
-    .filter((command) => command?.data && !command.prefixOnly && !command.privateGuildId && (isSlashCommand(command) || (command.data.toJSON().type ?? 1) !== 1))
+    .filter((command) => command?.data && !command.prefixOnly && !command.privateGuildId && !command.guildScoped && (isSlashCommand(command) || (command.data.toJSON().type ?? 1) !== 1))
     .map((command) => slashJson(command));
+}
+
+/** The second set (`guildScoped`): registered in each server, with its own 100 slots. */
+function serverCommands(client) {
+  return [...client.commands.values()].filter((command) => command?.data && command.guildScoped && isSlashCommand(command));
 }
 
 function slotLines(usage) {
@@ -75,12 +80,19 @@ module.exports = {
       lines.push('**Slash command slots (global)**', ...slotLines(usage), `${EMOJI.WARNING} Discord could not be asked, so this is what Petto loads, not what is registered.`);
     }
 
+    // The second set of commands: registered in every server the bot is in, with its own 100 slots on top of the global ones.
+    const serverUsed = serverCommands(client).length;
+    lines.push('', '**Server commands (registered in each server)**', `${EMOJI.STAR} Slash commands: **${serverUsed} / ${LIMITS.chat}** (${Math.max(0, LIMITS.chat - serverUsed)} left in each server)`);
+
     // The commands that work only with the prefix (the ones people see in the help): how many could still be moved to slash commands, and which of them
     // are too big to go as they are (more than 25 subcommands, or 8000 characters).
     const prefixCommands = [...client.commands.values()].filter((command) => !command.hiddenFromHelp && !isSlashCommand(command) && (command.data.toJSON().type ?? 1) === 1);
     const tooBig = nearLimit(prefixCommands.map((command) => command.data.toJSON()), { subcommands: 26, size: LIMITS.size + 1 });
     lines.push('', `**Only with the prefix (not slash yet): ${prefixCommands.length}**`);
-    if (registered) lines.push(`Room to move them all: ${slotUsage(registered).chat.free >= prefixCommands.length ? 'yes' : `no, ${slotUsage(registered).chat.free} slots for ${prefixCommands.length} commands`}.`);
+    if (registered) {
+      const room = slotUsage(registered).chat.free + Math.max(0, LIMITS.chat - serverUsed);
+      lines.push(`Room to move them all: ${room >= prefixCommands.length ? 'yes' : `no, ${room} slots for ${prefixCommands.length} commands`} (global and server slots together).`);
+    }
     if (tooBig.length) lines.push(`Too big to move as they are: ${tooBig.slice(0, 10).map((entry) => `\`${entry.name}\` (${entry.subcommands} subcommands, ${entry.size} characters)`).join(', ')}.`);
 
     return reply(interaction, lines.join('\n'), 0xa5ea7a);

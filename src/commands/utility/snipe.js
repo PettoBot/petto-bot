@@ -50,6 +50,9 @@ function reactionEmbed(entry, lang) {
 const INDEX_OPTION = (option) => option.setName('index').setDescription('1 is the latest, up to 10').setMinValue(1).setMaxValue(MAX_ENTRIES_PER_CHANNEL).setRequired(false);
 
 module.exports = {
+  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['sniped'],
   prefixDefaultSubcommand: 'deleted',
   // The words people type: `!snipe edit 2`, `!snipe reaction`, `!snipe reset`.

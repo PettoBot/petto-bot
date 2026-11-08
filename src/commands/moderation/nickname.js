@@ -15,6 +15,9 @@ const GREY = 0x4b4f59;
 const RED = 0xfe6465;
 
 module.exports = {
+  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['nick', 'rename', 'setnick'],
   prefixDefaultSubcommand: 'set',
   prefixSubcommandAliases: { clear: 'reset', remove: 'reset', list: 'forced', view: 'forced', freeze: 'force' },
