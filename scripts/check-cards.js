@@ -76,6 +76,22 @@ for (const preset of RANK_PRESETS) {
 if (process.env.WRITE_CARD_FIXTURE === '1') fs.writeFileSync(fixturePath, `${JSON.stringify(pinned, null, 2)}\n`);
 assert.deepEqual(JSON.parse(fs.readFileSync(fixturePath, 'utf8')), pinned, 'the layouts changed: run with WRITE_CARD_FIXTURE=1 and copy the file to the dashboard');
 
+// The decoration of the avatar is on every card that shows an avatar (the rank in both layouts, the level-up and the welcome ones), over the avatar, only when the
+// person has one, and it can be turned off; a card with no avatar has none.
+for (const [kind, presets] of [['rank', RANK_PRESETS], ['welcome', PRESETS]]) {
+  for (const preset of presets) {
+    const on = buildBasicLayers({ ...(kind === 'rank' ? RANK_DEFAULTS : BASIC_DEFAULTS), preset, font: 'Poppins' }, 1024, 400, kind);
+    const at = on.findIndex((layer) => layer.id === 'decoration');
+    assert.ok(at > 0 && on[at - 1].type === 'avatar', `${kind}/${preset}: the decoration comes right after the avatar`);
+    assert.equal(on[at].showIf, '{user.avatar_decoration}', `${kind}/${preset}: only drawn when the person has one`);
+    assert.equal(on[at].w, on[at - 1].size * 1.2, `${kind}/${preset}: a fifth bigger than the avatar, like Discord`);
+    assert.equal(on[at].x, on[at - 1].x, `${kind}/${preset}: around the avatar`);
+    assert.equal(on[at].y, on[at - 1].y);
+    assert.ok(!buildBasicLayers({ ...(kind === 'rank' ? RANK_DEFAULTS : BASIC_DEFAULTS), preset, showDecoration: false }, 1024, 400, kind).some((layer) => layer.id === 'decoration'), `${kind}/${preset}: it can be turned off`);
+    assert.ok(!buildBasicLayers({ ...(kind === 'rank' ? RANK_DEFAULTS : BASIC_DEFAULTS), preset, showAvatar: false }, 1024, 400, kind).some((layer) => layer.id === 'decoration'), `${kind}/${preset}: no avatar, no decoration`);
+  }
+}
+
 // Drawing.
 assert.deepEqual(fitRect(200, 100, 0, 0, 100, 100, 'cover'), { x: -50, y: 0, w: 200, h: 100 });
 assert.deepEqual(fitRect(200, 100, 0, 0, 100, 100, 'contain'), { x: 0, y: 25, w: 100, h: 50 });

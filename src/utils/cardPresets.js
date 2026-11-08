@@ -101,9 +101,21 @@ function normalizeBasic(raw, kind = 'welcome') {
     showTitle: flag(input.showTitle, true),
     showName: flag(input.showName, true),
     showSubtitle: flag(input.showSubtitle, true),
+    // The decoration of the avatar, drawn when the person has one (a welcome card too, like the rank and the level-up cards).
+    showDecoration: flag(input.showDecoration, true),
+    animateDecoration: flag(input.animateDecoration, false),
     ...panelSettings(input),
   };
 }
+
+/**
+ * The decoration of the avatar as Discord shows it (a fifth bigger than the avatar, around it), drawn over the avatar of the person. It is only drawn when
+ * the person has one, and it moves for a Premium server when the card asks for it (`animateDecoration`).
+ */
+const decorationLayer = (b, x, y, size) => ({
+  id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x, y, w: size * 1.2, h: size * 1.2, fit: 'contain', radius: 0, opacity: 1,
+  showIf: '{user.avatar_decoration}', ...(b.animateDecoration ? { animate: true } : {}),
+});
 
 const FIT_LINES = { title: 1, name: 1, subtitle: 2, extra: 1 };
 const textLayer = (id, value, x, y, size, o = {}) => ({
@@ -133,7 +145,7 @@ function buildLevelUpLayers(b, width, height) {
   const avatarX = margin + height * 0.1 + avatar * 0.6;
   if (b.showAvatar) {
     layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: avatarX, y: height / 2, size: avatar, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 16, x: 0, y: 4 } });
-    if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}', ...(b.animateDecoration ? { animate: true } : {}) });
+    if (b.showDecoration) layers.push(decorationLayer(b, avatarX, height / 2, avatar));
   }
   // The hexagons of the levels (drawn below) are where the texts on the left must stop.
   const newH = height * 0.56;
@@ -181,6 +193,7 @@ function buildRankLayers(b, width, height) {
   if (b.preset === 'rankBottom') {
     const size = height * 0.5;
     if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 60 + size / 2 + 10, y: height * 0.38, size, shape: b.avatarShape, border: { color: b.accent, width: 7 }, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
+    if (b.showAvatar && b.showDecoration) layers.push(decorationLayer(b, 60 + size / 2 + 10, height * 0.38, size));
     const x = 60 + size + 50;
     const w = width - x - 70;
     line('name', b.showName, b.name, x, height * 0.24, 46, { align: 'left', weight: 800, w });
@@ -192,6 +205,7 @@ function buildRankLayers(b, width, height) {
   }
   const size = height * 0.56;
   if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 56 + size / 2 + 14, y: height / 2, size, shape: b.avatarShape, border: { color: b.accent, width: 7 }, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
+  if (b.showAvatar && b.showDecoration) layers.push(decorationLayer(b, 56 + size / 2 + 14, height / 2, size));
   const x = 56 + size + 60;
   const right = width - 70;
   const w = right - x;
@@ -211,6 +225,7 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500, kind = 'welcome'
   const layers = [];
   const avatar = (x, y, size) => {
     if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x, y, size, shape: b.avatarShape, border: { color: b.accent, width: 8 }, shadow: { color: '#000000', blur: 24, x: 0, y: 6 } });
+    if (b.showAvatar && b.showDecoration) layers.push(decorationLayer(b, x, y, size));
   };
   const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
 
