@@ -29,6 +29,7 @@ module.exports = {
   'suggestions.error.ownVote': 'No puedes votar en tu propia sugerencia.',
   'suggestions.error.staffAnswer': 'Solo el staff puede responder sugerencias.',
   'suggestions.error.notStatus': 'Ese no es un estado.',
+  'suggestions.error.sameStatus': 'Esta sugerencia ya está marcada como {status}.',
   'suggestions.error.notFound': 'No hay ninguna sugerencia con el ID `{id}` en este servidor.',
   'suggestions.error.staffDelete': 'Solo el staff puede borrar sugerencias.',
   'suggestions.error.staffVotes': 'Solo el staff puede ver quién votó.',

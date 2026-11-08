@@ -268,6 +268,8 @@ async function answer({ guild, member, id, status, reason }) {
   if (!STATUSES[status]) return { error: t(lang, 'suggestions.error.notStatus') };
   const row = await db.getSuggestion(guild.id, id);
   if (!row) return { error: t(lang, 'suggestions.error.notFound', { id }) };
+  // A suggestion that already has that answer is not answered again (it would only send the thread message and the DM to the author a second time).
+  if (row.status === status) return { error: t(lang, 'suggestions.error.sameStatus', { status: statusLabel(status, lang).toLocaleLowerCase(lang) }) };
   const updated = await db.updateSuggestion(id, { status, status_reason: String(reason ?? '').slice(0, 1000) || null, status_by: member.id });
   await refresh(guild, updated, config, { lang });
   const label = statusLabel(status, lang).toLocaleLowerCase(lang);

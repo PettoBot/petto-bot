@@ -56,5 +56,18 @@ const spanish = JSON.stringify(s.defaultDesign({ status_colors: false, anonymous
 assert.ok(spanish.includes('**Sugerencia**') && spanish.includes('Anónimo') && spanish.includes('{suggestion.content}'), 'the usual look in Spanish keeps its variables');
 assert.equal(s.statusLabel('considering', 'pt-BR'), 'Em análise');
 assert.equal(s.statusLabel('considering'), 'Under consideration');
+// A suggestion is not answered twice with the same answer: no second message to the thread or DM to the author, and the row is not touched.
+const db = require('../src/db/suggestions');
+const staff = { id: '9', permissions: { has: () => true } };
+const stored = { id: 'abcde-fghij', status: 'denied', author_id: '1' };
+let writes = 0;
+Object.assign(db, { getConfig: async () => ({ dm_author: true }), getSuggestion: async () => stored, updateSuggestion: async (_id, patch) => { writes += 1; return { ...stored, ...patch }; } });
+const guildStub = { id: '5', name: 'G', channels: { fetch: async () => null }, client: { users: { fetch: async () => null } }, members: { cache: new Map() } };
+const again = await s.answer({ guild: guildStub, member: staff, id: stored.id, status: 'denied', reason: '' });
+assert.ok(again.error && /already/i.test(again.error), `denying a denied suggestion is refused: ${JSON.stringify(again)}`);
+assert.equal(writes, 0, 'a refused answer writes nothing');
+const reopened = await s.answer({ guild: guildStub, member: staff, id: stored.id, status: 'approved', reason: '' }).catch((e) => ({ thrown: String(e) }));
+assert.ok(!reopened.error, 'a different answer is still accepted');
+assert.equal(writes, 1, 'a different answer is written');
 console.log('suggestions ok');
 })().catch((error) => { console.error(error); process.exit(1); });
