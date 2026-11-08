@@ -107,12 +107,39 @@ function describeRefusal(result, req, rawBody) {
 
 let noVoteChannelSaid = false;
 
+// A delivery that is refused (a second webhook of Omniplex with an old secret, someone testing the address) is written in the console of the host every time,
+// but it reaches the log channel at most once an hour per reason, with how many there were: it said the same thing over and over, in the channel of errors.
+const REFUSAL_NOTICE_MS = 60 * 60_000;
+const refusalNotices = new Map();
+
+/** The names of the headers that tell which webhook sent it (no value, except the id of the webhook or of the delivery): to find the one with the old secret. */
+function webhookHeaders(req) {
+  const names = Object.keys(req.headers ?? {}).filter((name) => /^x-(webhook|omniplex)/i.test(name) && !/signature|secret|auth/i.test(name));
+  return names.map((name) => (/id$/i.test(name) ? `${name}=${String(req.headers[name]).slice(0, 60)}` : name)).join(', ');
+}
+
+/** Says a refused delivery: always in the console, and in the log channel once an hour per reason. */
+function reportRefusal(result, req, rawBody, now = Date.now()) {
+  const text = `${describeRefusal(result, req, rawBody)}${webhookHeaders(req) ? ` [${webhookHeaders(req)}]` : ''}`; // i18n-ignore: text of the operator log, not shown to members
+  const key = String(result.reason);
+  const notice = refusalNotices.get(key) ?? { at: 0, since: 0 };
+  notice.since += 1;
+  if (now - notice.at >= REFUSAL_NOTICE_MS) {
+    logger.warn(`${text}${notice.since > 1 ? ` (${notice.since} refused since the last notice)` : ''}`); // i18n-ignore: text of the operator log, not shown to members
+    notice.at = now;
+    notice.since = 0;
+  } else {
+    logger.localWarn(text);
+  }
+  refusalNotices.set(key, notice);
+}
+
 function createOmniplexHandler(client) {
   return async function omniplexWebhook(req, res) {
     const rawBody = rawBodyOf(req);
     const checked = omniplex.checkDelivery({ secret: config.omniplexWebhookSecret, header: (name) => req.get(name), rawBody });
     if (!checked.ok) {
-      logger.warn(describeRefusal(checked, req, rawBody));
+      reportRefusal(checked, req, rawBody);
       res.status(401).json({ ok: false, error: 'invalid_signature' });
       return;
     }
@@ -139,4 +166,4 @@ function createOmniplexHandler(client) {
   };
 }
 
-module.exports = { createTopggHandler, createOmniplexHandler };
+module.exports = { createTopggHandler, createOmniplexHandler, reportRefusal };
