@@ -34,6 +34,8 @@ const remember = (feedId, itemIds) => {
   }
 };
 
+const forget = (feedId, itemIds) => { for (const id of itemIds) remembered.delete(`${feedId}:${id}`); };
+
 /** Marks items as seen BEFORE anything is sent: a step that fails after a send (the database, the record of the success) can then never post the same thing again. */
 async function markBeforeSending(feed, items) {
   if (!items.length) return;
@@ -42,6 +44,12 @@ async function markBeforeSending(feed, items) {
   try {
     await feedsDb.markSeen(ids.map((id) => [feed.id, id]));
   } catch (error) {
+    // The feed was deleted while this pass was running (the list of feeds was read before): there is nobody to post to any more. This used to be
+    // written as a warning and the notices still went out, a few seconds after the feed was removed. Nothing is sent: the pass stops for this feed.
+    if (error?.code === '23503' || /feed_seen_feed_id_fkey/.test(String(error?.message ?? ''))) {
+      forget(feed.id, ids);
+      throw error;
+    }
     logger.warn(`Feed ${feed.id}: could not write ${ids.length} item(s) as seen, they are kept in memory until the bot restarts: ${error.message}`);
   }
 }
