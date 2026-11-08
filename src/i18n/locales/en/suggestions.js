@@ -29,6 +29,7 @@ module.exports = {
   'suggestions.error.ownVote': 'You cannot vote on your own suggestion.',
   'suggestions.error.staffAnswer': 'Only the staff can answer suggestions.',
   'suggestions.error.notStatus': 'That is not a status.',
+  'suggestions.error.sameStatus': 'This suggestion is already marked as {status}.',
   'suggestions.error.notFound': 'There is no suggestion with the ID `{id}` in this server.',
   'suggestions.error.staffDelete': 'Only the staff can delete suggestions.',
   'suggestions.error.staffVotes': 'Only the staff can see who voted.',
