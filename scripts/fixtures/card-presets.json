@@ -44,6 +44,19 @@
       }
     },
     {
+      "id": "decoration",
+      "type": "image",
+      "src": "{user.avatar_decoration}",
+      "x": 512,
+      "y": 210,
+      "w": 228,
+      "h": 228,
+      "fit": "contain",
+      "radius": 0,
+      "opacity": 1,
+      "showIf": "{user.avatar_decoration}"
+    },
+    {
       "id": "name",
       "type": "text",
       "text": "{user.display_name}",
@@ -111,6 +124,19 @@
         "x": 0,
         "y": 6
       }
+    },
+    {
+      "id": "decoration",
+      "type": "image",
+      "src": "{user.avatar_decoration}",
+      "x": 260,
+      "y": 250,
+      "w": 312,
+      "h": 312,
+      "fit": "contain",
+      "radius": 0,
+      "opacity": 1,
+      "showIf": "{user.avatar_decoration}"
     },
     {
       "id": "title",
@@ -228,6 +254,19 @@
       }
     },
     {
+      "id": "decoration",
+      "type": "image",
+      "src": "{user.avatar_decoration}",
+      "x": 512,
+      "y": 165,
+      "w": 240,
+      "h": 240,
+      "fit": "contain",
+      "radius": 0,
+      "opacity": 1,
+      "showIf": "{user.avatar_decoration}"
+    },
+    {
       "id": "title",
       "type": "text",
       "text": "Welcome",
@@ -333,6 +372,19 @@
       }
     },
     {
+      "id": "decoration",
+      "type": "image",
+      "src": "{user.avatar_decoration}",
+      "x": 225.28,
+      "y": 250,
+      "w": 276,
+      "h": 276,
+      "fit": "contain",
+      "radius": 0,
+      "opacity": 1,
+      "showIf": "{user.avatar_decoration}"
+    },
+    {
       "id": "title",
       "type": "text",
       "text": "Welcome",
@@ -436,6 +488,19 @@
         "x": 0,
         "y": 5
       }
+    },
+    {
+      "id": "decoration",
+      "type": "image",
+      "src": "{user.avatar_decoration}",
+      "x": 159.60000000000002,
+      "y": 160,
+      "w": 215.04000000000002,
+      "h": 215.04000000000002,
+      "fit": "contain",
+      "radius": 0,
+      "opacity": 1,
+      "showIf": "{user.avatar_decoration}"
     },
     {
       "id": "name",
@@ -580,6 +645,19 @@
         "x": 0,
         "y": 5
       }
+    },
+    {
+      "id": "decoration",
+      "type": "image",
+      "src": "{user.avatar_decoration}",
+      "x": 150,
+      "y": 121.6,
+      "w": 192,
+      "h": 192,
+      "fit": "contain",
+      "radius": 0,
+      "opacity": 1,
+      "showIf": "{user.avatar_decoration}"
     },
     {
       "id": "name",
