@@ -63,7 +63,8 @@ const config = require('../src/config');
 const origin = require('../src/utils/dmOrigin');
 const dmReports = require('../src/utils/dmReports');
 const handlers = require('../src/interactions/dmOrigin');
-const { handleTeamButton, handleTeamModal } = require('../src/interactions/dmTeam');
+const { handleTeamButton, handleTeamModal, replyModal } = require('../src/interactions/dmTeam');
+const replyModalJson = () => replyModal({ id: 51 }).toJSON();
 const { dmCategoryOptions, DM_CATEGORY_VALUES, isDmReportCategory } = require('../src/utils/reportCategories');
 const realDb = require('../src/db/dmReports');
 assert.equal(realDb.add, fakeDb.add, 'the check runs on the stand-in of the table, never on the database');
@@ -770,6 +771,29 @@ section(async () => {
   out = await submit(operator, 'dmteam:replym:51', 'This will not reach them.', { fail: true });
   assert.match(out.calls.replies[0].content, /could not message the reporter/, 'closed DMs are said, not hidden');
   assert.equal(row.reply_count, 1, 'a message that did not go is not counted');
+  // The box "Mark the report as handled after sending": the answer goes and the report is closed in the same step.
+  const withBox = (checked) => ({ getTextInputValue: () => 'Hola, listo, ya lo revisamos y no hay nada más que hacer.', getCheckbox: (id) => { assert.equal(id, 'handle'); return checked; } });
+  {
+    const { interaction, calls: c } = fake({ customId: 'dmteam:replym:51', user: { id: operator } });
+    interaction.fields = withBox(true);
+    interaction.client.users = { fetch: async (reporterId) => ({ id: reporterId }) };
+    const sent2 = [];
+    await handleTeamModal(interaction, { db: fakeDb, sendDm: async (user, payload) => { sent2.push(payload); return {}; } });
+    assert.equal(sent2.length, 1, 'with the box ticked the reporter still gets the message');
+    assert.equal(row.status, 'handled', 'and the report is handled');
+    assert.ok(!ids(c.updates[0]).includes('dmteam:'), 'its card has no buttons: it is final');
+    assert.match(ids(c.updates[0]), /Handled by/, 'it says who handled it');
+    row.status = 'open'; row.handled_by = null;
+  }
+  {
+    const { interaction, calls: c } = fake({ customId: 'dmteam:replym:51', user: { id: operator } });
+    interaction.fields = withBox(false);
+    interaction.client.users = { fetch: async (reporterId) => ({ id: reporterId }) };
+    await handleTeamModal(interaction, { db: fakeDb, sendDm: async () => ({}) });
+    assert.equal(row.status, 'open', 'with the box not ticked the report stays open');
+    assert.ok(ids(c.updates[0]).includes('dmteam:reply:51'), 'and can be answered again');
+  }
+  assert.ok(JSON.stringify(replyModalJson()).includes('Mark the report as handled after sending'), 'the form has the box');
   out = await submit(operator, 'dmteam:replym:51', 'short');
   assert.match(out.calls.replies[0].content, /at least 10 characters/);
 
