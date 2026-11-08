@@ -286,8 +286,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     wrapped.data.toJSON().options?.forEach(walk);
   }
   // Only prefix commands are wrapped (the ones that were already slash commands, `/remind`, `/rank`, `/afk`..., stay as they are).
-  // (`thread`, `snipe` and `mute` are the exception: they are also slash commands of their own now, registered in each server, so `/thread lock` and `/staff thread-lock` both exist.)
-  for (const file of wrappedFiles) assert.ok(!isSlashCommand(commandFile(file)) || commandFile(file).guildScoped, `${file} was a prefix command (the slash ones are not wrapped twice)`);
+  // (`thread`, `snipe` and `mute` are the exception: they are also slash commands of their own now, so `/thread lock` and `/staff thread-lock` both exist.)
+  for (const file of wrappedFiles) assert.ok(!isSlashCommand(commandFile(file)) || ['thread', 'snipe', 'mute'].includes(file), `${file} was a prefix command (the slash ones are not wrapped twice)`);
 
   // Each subcommand has the description and the options of what it wraps: the same names, types, required flags, limits and choices.
   const shape = (options) => (options ?? []).map((option) => [option.name, option.type, Boolean(option.required), option.description, option.channel_types ?? null, option.choices ?? null, option.min_value ?? null, option.max_value ?? null, option.min_length ?? null, option.max_length ?? null]);
@@ -480,7 +480,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
   for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github', 'voice', 'massban']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
-  for (const name of ['thread', 'snipe']) assert.ok(isSlashCommand(commandFile(name)) && commandFile(name).guildScoped, `/${name} is a slash command of the second set (registered in each server), and !${name} works as before`);
+  for (const name of ['thread', 'snipe']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is a slash command of its own, and !${name} works as before`);
   // The booster role is its own slash command, with every subcommand, and not a subcommand of /me any more (`!boosterrole` and `!br` work as before).
   assert.ok(isSlashCommand(commandFile('boosterrole')), '/boosterrole is a slash command');
   assert.equal(commandFile('boosterrole').data.toJSON().options.length, 12, '/boosterrole has its 9 subcommands and the groups admin, settings and filter');
@@ -676,8 +676,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 69, '69 commands registered globally with Discord (66 slash commands and the 3 menus; the commands of the second set are registered in each server: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 66, '66 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 77, '77 commands registered globally with Discord (74 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 74, '74 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });

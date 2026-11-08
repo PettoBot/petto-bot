@@ -20,9 +20,8 @@ const { sendDm } = require('../../utils/dmOrigin');
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
 module.exports = {
-  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
   registerSlash: true,
-  guildScoped: true,
   aliases: ['m'],
   prefixDefaultSubcommand: 'user',
   // A mute becomes temporary by giving a duration (`/mod mute duration:3d`, `!mute @member 3d`): `temp` is not in the `/` menu, and `!mute temp` still works.

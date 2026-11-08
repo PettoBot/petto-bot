@@ -560,8 +560,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 69, '69 commands registered with Discord (66 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 66, '66 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 77, '77 commands registered with Discord (74 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 74, '74 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const registeredMod = registered.find((each) => each.name === 'mod');
   assert.ok(registeredMod, '/mod is registered with Discord, so deploy-commands.js sends it');
@@ -580,7 +580,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.equal(mod.permissionForSubcommand(sub), BigInt(old.default_member_permissions), `/mod ${sub} asks for what /${name} asked for`);
   }
   assert.ok(chat.find((each) => each.name === 'ban').default_member_permissions === String(F.BanMembers));
-  for (const name of ['tempban', 'softban', 'hardban', 'jail', 'note', 'case', 'history', 'lockdown']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not a slash command`);
+  for (const name of ['tempban', 'softban', 'hardban', 'history']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not a slash command`);
+  // The jail, the notes, the cases and the lockdown are slash commands of their own (they used to be groups of `/modtools`).
+  for (const name of ['jail', 'note', 'case', 'lockdown']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
 
   const size = (value) => [...String(value ?? '')].length;
   const LOCALES = ['es-ES', 'es-419', 'pt-BR'];

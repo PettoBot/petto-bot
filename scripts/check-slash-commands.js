@@ -40,14 +40,17 @@ const ESSENTIAL = [
   'ai',
   // The prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
   'prefix', 'quests', 'social',
+  // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), each one a command of its own
+  // (`/case delete-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
+  'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
   // What members can send to the staff, each with the setup next to it (`/suggest send`, `/suggest setup`, `/request config channel`...); it used to be `/community`.
   'confess', 'poll', 'profile', 'request', 'review', 'suggest',
 ];
-// The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). The rest of the
-// moderation commands that `/mod` and `/staff` do not hold, each one a command of its own (`/case delete-all`, `/note add`...; there used to be `/modtools` around them).
-const GUILD_SET = ['case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread'];
+// The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). It is empty while
+// the global 100 have room; a command goes there when `guildScoped: true` is added to it (and it is listed here).
+const GUILD_SET = [];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;
 

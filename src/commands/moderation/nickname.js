@@ -15,9 +15,8 @@ const GREY = 0x4b4f59;
 const RED = 0xfe6465;
 
 module.exports = {
-  // A direct slash command of its own, from the second set (the 100 commands Discord gives each server): see handlers/deployCommands.js.
+  // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
   registerSlash: true,
-  guildScoped: true,
   aliases: ['nick', 'rename', 'setnick'],
   prefixDefaultSubcommand: 'set',
   prefixSubcommandAliases: { clear: 'reset', remove: 'reset', list: 'forced', view: 'forced', freeze: 'force' },

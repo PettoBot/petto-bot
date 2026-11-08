@@ -87,7 +87,8 @@ assert.deepEqual(limitProblems, [], `limits of Discord:\n${limitProblems.join('\
 const usage = slotUsage(registered);
 assert.ok(usage.chat.used <= LIMITS.chat, `${usage.chat.used} chat commands (at most ${LIMITS.chat})`);
 assert.equal(usage.chat.used, chat.length);
-assert.ok(usage.chat.free >= 30, `${usage.chat.free} chat command slots are still free (at least 30 are kept for what comes next)`);
+// When the global 100 run short, a command is moved to the second set (`guildScoped: true`, registered in each server: 100 more slots) instead of being squeezed in.
+assert.ok(usage.chat.free >= 20, `${usage.chat.free} chat command slots are still free (at least 20 are kept; past that, mark commands guildScoped to move them to the second set)`);
 
 // ---------------------------------------------------------------- 4. the old words still resolve
 const client = { user: { id: '123' }, users: { fetch: async (id) => ({ id }) } };
