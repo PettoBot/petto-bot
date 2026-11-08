@@ -1536,6 +1536,28 @@ const allText = (message) => JSON.stringify(json(message.components));
           assert.equal(rows[0].ready, true);
           assert.equal(sentTo.length, 0, 'and posts none of it');
 
+          // A feed that is deleted while a pass is running (the list was read before): its new items are not posted after the deletion, and it is said as a plain note
+          // (the foreign key of feed_seen), never as a warning. Any other failure of the database still lets the notices go out, kept in memory.
+          rows[0].ready = true;
+          const warnings = [];
+          const logger = require('../src/utils/logger');
+          const realWarn = logger.warn;
+          logger.warn = (...args) => { warnings.push(args.join(' ')); };
+          const fresh = [{ id: 't3_10', type: 'post', title: 'B', url: 'https://www.reddit.com/r/bonded/comments/10', publishedAt: now, platform: 'reddit', author: 'r/bonded' }];
+          rows[0].types = ['post'];
+          const engine = require('../src/feeds/engine');
+          engine.forgetSchedule();
+          feedsDb.markSeen = async () => { throw Object.assign(new Error('insert or update on table "feed_seen" violates foreign key constraint "feed_seen_feed_id_fkey"'), { code: '23503' }); };
+          await assert.rejects(engine.processFeed({ guilds: { cache: posts } }, rows[0], { items: fresh }, new Map(), new Set(), now), (error) => error.code === '23503');
+          assert.equal(sentTo.length, 0, 'a feed deleted during the pass posts nothing');
+          assert.deepEqual(warnings, [], 'and it is not a warning');
+          feedsDb.markSeen = async () => { throw new Error('the database is down'); };
+          await engine.processFeed({ guilds: { cache: posts } }, rows[0], { items: fresh }, new Map(), new Set(), now);
+          assert.equal(sentTo.length, 1, 'a database that is down does not stop a feed that exists (kept in memory)');
+          assert.match(warnings.join('\n'), /could not write 1 item\(s\) as seen/);
+          logger.warn = realWarn;
+          engine.forgetSchedule();
+
           // The lookup itself limited (nothing was saved): the plain limited text, in the three languages, and the refusal says so too.
           start();
           globalThis.fetch = answer([status(429)]);
