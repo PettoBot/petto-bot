@@ -163,7 +163,7 @@ src/
       kick.js                   user / users
       mute.js                   user / users / temp / remove / remove-users
       warn.js                   user / users
-      case.js                   list / last / last-many / view / edit / edit-many / delete / delete-all
+      case.js                   list / last / last-many / view / edit / edit-many / delete / remove-all
       note.js                   add / view / list
       role.js                   add / remove
       channel.js                lock / unlock / slowmode / clear
@@ -491,7 +491,7 @@ Jail takes a member out of the server's channels without banning them: they lose
 - `view <case>` — look up one case by number
 - `edit <case> [reason] [duration]` / `edit-many <cases> [reason] [duration]` — change a case's reason and/or (for tempban/tempmute) push its expiry out from now
 - `delete <case>` — delete one case
-- `delete-all <user>` — wipe a user's entire history, behind a button confirmation
+- `remove-all <user>` (was `delete-all`) — wipe a user's entire history, behind a button confirmation
 
 ### `/note` — non-punitive staff notes, no case number, requires Moderate Members
 - `add <user> <note>` · `view <id>` · `list <user>`

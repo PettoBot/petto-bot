@@ -40,7 +40,7 @@ const ESSENTIAL = [
   // The prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
   'prefix', 'quests', 'social',
   // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), each one a command of its own
-  // (`/case delete-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
+  // (`/case remove-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
   // A ban and a mute that end, as commands of their own (`/tempban user duration`; `/ban user` and `/mute user` have no duration option).
   'tempban', 'tempmute',
