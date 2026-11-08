@@ -70,7 +70,7 @@ const { PREFIX: EMBED_BUTTON_PREFIX } = require('../utils/embedActions');
 const { handleButton: handleEmbedButton } = require('../interactions/embedButtons');
 const { PREFIX: DM_ORIGIN_PREFIX, MODAL_PREFIX: DM_REPORT_MODAL_PREFIX, TEAM_PREFIX: DM_TEAM_PREFIX } = require('../utils/dmOrigin');
 const { handleButton: handleDmOriginButton, handleModal: handleDmReportModal } = require('../interactions/dmOrigin');
-const { handleTeamButton: handleDmTeamButton } = require('../interactions/dmTeam');
+const { handleTeamButton: handleDmTeamButton, handleTeamModal: handleDmTeamModal } = require('../interactions/dmTeam');
 const { PREFIX: FEED_SENSE_PREFIX, handleButton: handleFeedSense } = require('../interactions/feedSense');
 const { t, formatDecimal, languageOf } = require('../i18n');
 
@@ -95,6 +95,10 @@ module.exports = {
     }
     if (interaction.isButton() && interaction.customId.startsWith(`${DM_TEAM_PREFIX}:`)) {
       try { await handleDmTeamButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the button of a direct message report:', err); }
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${DM_TEAM_PREFIX}:`)) {
+      try { await handleDmTeamModal(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling the form that answers a direct message report:', err); }
       return;
     }
 

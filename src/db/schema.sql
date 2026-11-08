@@ -4881,6 +4881,11 @@ create table if not exists dm_reports (
   handled_at           timestamptz,
   created_at           timestamptz not null default now()
 );
+-- The language the reporter used (the team's answer is written to them in it) and what the team has answered so far.
+alter table dm_reports add column if not exists reporter_lang text;
+alter table dm_reports add column if not exists reply_count integer not null default 0;
+alter table dm_reports add column if not exists last_reply_by text;
+alter table dm_reports add column if not exists last_reply_at timestamptz;
 create index if not exists idx_dm_reports_reporter on dm_reports(reporter_id, created_at desc);
 create index if not exists idx_dm_reports_open on dm_reports(created_at) where status = 'open';
 alter table dm_reports enable row level security;

@@ -34,4 +34,6 @@ module.exports = {
   'dm.report.limit': 'Ya enviaste {max} reportes en la última hora. Inténtalo de nuevo en {minutes} minutos.',
   'dm.report.duplicate': 'Ya reportaste este mensaje. El staff de Petto lo revisará.',
   'dm.report.failed': 'No se pudo guardar tu reporte ahora mismo. Inténtalo más tarde.',
+  'dm.team.title': 'Un mensaje del equipo de Petto sobre tu reporte #{number}',
+  'dm.team.footer': 'Petto no puede leer respuestas en este chat. Si algo sigue mal, envía un reporte nuevo con el botón de reporte que está debajo de un mensaje de Petto.',
 };

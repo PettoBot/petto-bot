@@ -6,8 +6,8 @@ const { getPrimaryPool } = require('./postgres');
 
 /** The statements, exported so the checks can assert what they say. */
 const SQL = Object.freeze({
-  insert: `insert into dm_reports (reporter_id, reporter_tag, message_id, channel_id, guild_id, guild_name, kind, category, details, message_text, deleted_dm)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+  insert: `insert into dm_reports (reporter_id, reporter_tag, message_id, channel_id, guild_id, guild_name, kind, category, details, message_text, deleted_dm, reporter_lang)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 on conflict (message_id) do nothing
 returning *`,
   recentCount: "select count(*)::int as total from dm_reports where reporter_id = $1 and created_at > now() - ($2::int * interval '1 second')",
@@ -16,6 +16,9 @@ returning *`,
   deleted: 'update dm_reports set deleted_dm = true where id = $1',
   handle: "update dm_reports set status = 'handled', handled_by = $2, handled_at = now() where id = $1 and status = 'open' returning *",
   get: 'select * from dm_reports where id = $1',
+  // The team answered the reporter: counted only while the report is open (an answer to a handled one is not sent).
+  replied: "update dm_reports set reply_count = reply_count + 1, last_reply_by = $2, last_reply_at = now() where id = $1 and status = 'open' returning *",
+  openCards: "select * from dm_reports where status = 'open' and delivered_message_id is not null order by id desc limit $1",
 });
 
 /**
@@ -28,7 +31,7 @@ function createStore(query) {
     async add(report) {
       const { rows } = await query(SQL.insert, [
         report.reporterId, report.reporterTag ?? null, report.messageId, report.channelId, report.guildId ?? null, report.guildName ?? null,
-        report.kind, report.category, report.details, report.messageText ?? null, report.deletedDm === true,
+        report.kind, report.category, report.details, report.messageText ?? null, report.deletedDm === true, report.reporterLang ?? null,
       ]);
       return rows?.[0] ?? null;
     },
@@ -45,6 +48,8 @@ function createStore(query) {
     async setDeleted(id) { await query(SQL.deleted, [id]); },
     async handle(id, userId) { return (await query(SQL.handle, [id, String(userId)])).rows?.[0] ?? null; },
     async get(id) { return (await query(SQL.get, [id])).rows?.[0] ?? null; },
+    async replied(id, userId) { return (await query(SQL.replied, [id, String(userId)])).rows?.[0] ?? null; },
+    async openCards(limit = 25) { return (await query(SQL.openCards, [Math.max(1, Math.min(100, Number(limit) || 25))])).rows ?? []; },
   };
 }
 

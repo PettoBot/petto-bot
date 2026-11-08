@@ -34,4 +34,6 @@ module.exports = {
   'dm.report.limit': 'Você já enviou {max} denúncias na última hora. Tente de novo em {minutes} minutos.',
   'dm.report.duplicate': 'Você já denunciou esta mensagem. A equipe do Petto vai analisá-la.',
   'dm.report.failed': 'Não foi possível salvar a sua denúncia agora. Tente novamente mais tarde.',
+  'dm.team.title': 'Uma mensagem da equipe do Petto sobre a sua denúncia #{number}',
+  'dm.team.footer': 'O Petto não consegue ler respostas neste chat. Se algo continuar errado, envie uma nova denúncia com o botão de denúncia que fica abaixo de uma mensagem do Petto.',
 };
