@@ -697,7 +697,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     const registeredCommand = registered.find((each) => each.name === umbrella);
     assert.ok(registeredCommand, `/${umbrella} is registered with Discord, so deploy-commands.js sends it`);
     assert.ok(registeredCommand.options.length <= 25, `/${umbrella} has ${registeredCommand.options.length} subcommands (at most 25)`);
-    assert.ok(deployed.some((each) => each.name === umbrella && each.options.length === TABLES[umbrella].length), `deploy-commands.js sends /${umbrella} to Discord`);
+    // (what an umbrella keeps for the prefix only, `prefixOnlySubcommands`, is not sent: a command that is a slash command of its own is not in the menu twice.)
+    const kept = TABLES[umbrella].length - (commandFile(umbrella).prefixOnlySubcommands ?? []).length;
+    assert.ok(deployed.some((each) => each.name === umbrella && each.options.length === kept), `deploy-commands.js sends /${umbrella} to Discord`);
     walk(registeredCommand, `/${umbrella}`);
     assert.notEqual(registeredCommand.description_localizations['es-ES'], registeredCommand.description);
     assert.notEqual(registeredCommand.description_localizations['pt-BR'], registeredCommand.description);

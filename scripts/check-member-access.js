@@ -285,9 +285,7 @@ const DECLARED = {
 };
 // `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are not slash commands any more (their umbrella subcommand has every option and action of
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
-// (`/case`, `/note`, `/jail`, `/mute`, `/nickname`, `/thread`, `/snipe` and `/lockdown` are slash commands of their own now, so `/mod case`, `/mod note`... and `/staff thread-lock`,
-// `/staff snipe` are twins of them: kept on purpose, a decision of the owner for later.)
-const UMBRELLA_TWINS = ['mod ban = /ban', 'mod kick = /kick', 'mod mute = /mute', 'mod warn = /warn', 'mod note = /note', 'mod case = /case', 'mod jail = /jail', 'mod nickname = /nickname', 'mod lockdown = /lockdown', 'mod unlockdown = /lockdown', 'mod lock = /channel', 'mod unlock = /channel', 'mod slowmode = /channel', 'staff thread-rename = /thread', 'staff thread-lock = /thread', 'staff thread-unlock = /thread', 'staff snipe = /snipe'];
+const UMBRELLA_TWINS = ['mod ban = /ban', 'mod kick = /kick', 'mod warn = /warn', 'mod lock = /channel', 'mod unlock = /channel', 'mod slowmode = /channel'];
 const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', unban: 'mod unban', purge: 'mod purge', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
@@ -695,7 +693,8 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   const slashNames = new Set(data.map((entry) => entry.name));
   const twins = [];
   // `/modtools` is only a prefix command now, so what it wraps is not a twin of anything.
-  for (const command of all.filter((each) => each.data.name !== 'modtools')) for (const [sub, wrapped] of Object.entries(command.ruleKeys ?? {})) if (slashNames.has(wrapped) && wrapped !== command.data.name) twins.push(`${command.data.name} ${sub} = /${wrapped}`);
+  // (`/mod mute`, `/mod note`... and `/staff thread-lock`, `/staff snipe`... are kept for the prefix only (`prefixOnlySubcommands`): the command is a slash command of its own, so it is not in the menu twice.)
+  for (const command of all.filter((each) => each.data.name !== 'modtools')) for (const [sub, wrapped] of Object.entries(command.ruleKeys ?? {})) if (slashNames.has(wrapped) && wrapped !== command.data.name && !(command.prefixOnlySubcommands ?? []).includes(sub)) twins.push(`${command.data.name} ${sub} = /${wrapped}`);
   assert.deepEqual(twins, UMBRELLA_TWINS, 'the umbrella subcommands that also exist as a slash command of their own (the list is written here so a new one is a decision)');
 
   // ---------------------------------------------------------- 6. the 15 most used commands, end to end: the answer is built, with no error
