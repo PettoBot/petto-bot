@@ -831,7 +831,8 @@ const reset = () => { order.length = 0; dms.length = 0; channelSends.length = 0;
   assert.ok(cmd('channel').data.toJSON().options.some((option) => option.name === 'create'), 'but it still exists for the prefix');
   assert.ok(!collectCommandData().find((json) => json.name === 'automod').options.some((option) => option.name === 'control'), '/automod control is not registered either');
   const modJson = collectCommandData().find((json) => json.name === 'mod');
-  assert.ok(['lock', 'unlock', 'slowmode'].every((name) => modJson.options.some((option) => option.name === name)), '/mod lock, unlock and slowmode stay');
+  assert.ok(['lock', 'unlock', 'slowmode'].every((name) => channelJson.options.some((option) => option.name === name)), '/channel lock, unlock and slowmode stay');
+  assert.ok(!['lock', 'unlock', 'slowmode'].some((name) => modJson.options.some((option) => option.name === name)), '/mod does not hold them any more (no command is in the menu twice)');
   const refusedCreate = await send('!channel create news', { as: ANA, perms: PermissionFlagsBits.Administrator, guild: premiumGuild });
   assert.ok(/team|equipo|equipe/i.test(refusedCreate.sent.join('')), '!channel create still refuses a non-team member with its message');
 

@@ -26,7 +26,7 @@ const menus = registered.filter((json) => (json.type ?? 1) !== 1);
 
 // ---------------------------------------------------------------- 1. no loose command
 // `/help`, `/poll` and `/setup` are commands of their own (they take options or open a guide or a panel); everything else has subcommands.
-const STANDALONE = ['help', 'poll', 'setup'];
+const STANDALONE = ['help', 'poll', 'setup', 'tempban', 'tempmute'];
 const loose = chat.filter((json) => !(json.options ?? []).some((option) => option.type === SUBCOMMAND || option.type === GROUP)).map((json) => json.name);
 assert.deepEqual(loose.sort(), [...STANDALONE].sort(), `the only slash commands without subcommands are ${STANDALONE.join(' and ')} (loose: ${loose.join(', ')})`);
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');

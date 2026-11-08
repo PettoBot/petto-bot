@@ -285,7 +285,8 @@ const DECLARED = {
 };
 // `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are not slash commands any more (their umbrella subcommand has every option and action of
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
-const UMBRELLA_TWINS = ['mod ban = /ban', 'mod kick = /kick', 'mod warn = /warn', 'mod lock = /channel', 'mod unlock = /channel', 'mod slowmode = /channel'];
+// None is left: what `/mod` and `/staff` held of a command that is a slash command of its own is for the prefix only now.
+const UMBRELLA_TWINS = [];
 const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', unban: 'mod unban', purge: 'mod purge', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did

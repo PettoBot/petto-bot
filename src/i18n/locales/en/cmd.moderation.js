@@ -162,7 +162,7 @@ module.exports = {
   'cmd.moderation.masswarn.desc': 'Warn multiple members after confirmation.',
   'cmd.moderation.masswarn.opt.users.desc': 'Mentions, IDs, or exact usernames, separated by spaces',
   'cmd.moderation.masswarn.opt.reason.desc': 'Reason for the warnings',
-  'cmd.moderation.mod.desc': 'Moderation: ban, kick, mute, warn, purge, lock and more, in one command.',
+  'cmd.moderation.mod.desc': 'More moderation: unmute, softban, unban, purge, history and the rest of the staff tools.',
   'cmd.moderation.mod.ban.desc': 'Ban a single member.',
   'cmd.moderation.mod.ban.opt.user.desc': 'The user to ban',
   'cmd.moderation.mod.ban.opt.delete_message_days.desc': 'Delete this many days of the user\'s recent messages (0-7)',

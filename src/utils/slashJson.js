@@ -8,13 +8,24 @@
 const SUBCOMMAND = 1;
 const GROUP = 2;
 
-function slashJson(command) {
+function slashJson(command, { withPrefixOptions = false } = {}) {
   const json = command.data.toJSON();
   const dropped = new Set(command.prefixOnlySubcommands ?? []);
-  if (!dropped.size) return json;
+  // `prefixOnlyOptions` ({ 'user': ['duration'] }: the options of a subcommand that only the prefix reads): `!ban @x 7d` still takes the duration, `/ban user` does not
+  // show it (the temporary ban is `/tempban`). The builder keeps them so the prefix reads them in the same order.
+  // An umbrella that wraps the command reads the options for the prefix too (`!mod ban @x 7d`), so it asks for them (`withPrefixOptions`).
+  const hidden = withPrefixOptions ? {} : (command.prefixOnlyOptions ?? {});
+  if (!dropped.size && !Object.keys(hidden).length) return json;
   const strip = (options, parents) => (options ?? [])
     .filter((option) => !((option.type === SUBCOMMAND || option.type === GROUP) && dropped.has([...parents, option.name].join(' '))))
-    .map((option) => (option.type === GROUP ? { ...option, options: strip(option.options, [...parents, option.name]) } : option))
+    .map((option) => {
+      if (option.type === GROUP) return { ...option, options: strip(option.options, [...parents, option.name]) };
+      if (option.type === SUBCOMMAND && hidden[[...parents, option.name].join(' ')]) {
+        const away = new Set(hidden[[...parents, option.name].join(' ')]);
+        return { ...option, options: (option.options ?? []).filter((inner) => !away.has(inner.name)) };
+      }
+      return option;
+    })
     .filter((option) => !(option.type === GROUP && !option.options.length));
   return { ...json, options: strip(json.options, []) };
 }
