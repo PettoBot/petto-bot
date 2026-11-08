@@ -5,15 +5,6 @@ const { SlashCommandBuilder } = require('discord.js');
 const { COMMAND_NAME, GROUPS, DESCRIPTIONS } = require('../../utils/actions');
 const { executeAction } = require('../../utils/roleplay');
 
-// Discord shows these names in the language of the person (the English ones are the real names, the prefix uses them too).
-const NAMES = {
-  [COMMAND_NAME]: { 'es-ES': 'accion', 'es-419': 'accion', 'pt-BR': 'acao' },
-  love: { 'es-ES': 'afecto', 'es-419': 'afecto', 'pt-BR': 'afeto' },
-  play: { 'es-ES': 'juego', 'es-419': 'juego', 'pt-BR': 'brincadeira' },
-  fight: { 'es-ES': 'pelea', 'es-419': 'pelea', 'pt-BR': 'briga' },
-  feel: { 'es-ES': 'animo', 'es-419': 'animo', 'pt-BR': 'humor' },
-  react: { 'es-ES': 'reaccion', 'es-419': 'reaccion', 'pt-BR': 'reacao' },
-};
 const GROUP_DESCRIPTIONS = {
   love: 'Affection and sweet gestures.',
   play: 'Playful and silly actions.',
@@ -24,12 +15,11 @@ const GROUP_DESCRIPTIONS = {
 
 const data = new SlashCommandBuilder()
   .setName(COMMAND_NAME)
-  .setNameLocalizations(NAMES[COMMAND_NAME])
   .setDescription('Interact with members: hugs, pats, slaps and more.')
   .setDMPermission(false);
 for (const group of GROUPS) {
   data.addSubcommandGroup((builder) => {
-    builder.setName(group.name).setNameLocalizations(NAMES[group.name]).setDescription(GROUP_DESCRIPTIONS[group.name]);
+    builder.setName(group.name).setDescription(GROUP_DESCRIPTIONS[group.name]);
     for (const name of group.actions) {
       // The member is optional: without one, the action is something the author does alone (`!hug` hugs themselves).
       builder.addSubcommand((sub) => sub

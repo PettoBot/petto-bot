@@ -7,6 +7,8 @@ const logger = require('../../utils/logger');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A slash command of its own (`/clearinvites`), not a subcommand of `/mod`.
+  registerSlash: true,
   aliases: ['deleteinvites', 'purgeinvites'],
   data: new SlashCommandBuilder()
     .setName('clearinvites')

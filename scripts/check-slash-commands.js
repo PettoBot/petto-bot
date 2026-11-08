@@ -21,9 +21,8 @@ const ESSENTIAL = [
   // `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are NOT registered any more: `/server info`, `/user info`, `/user avatar`,
   // `/mod unban`, `/mod purge` and `/mod tempmute` have every option and action of them (the prefix words work as before).
   'server', 'user',
-  // The umbrella of moderation (`/mod ban`, `kick`, `purge`...): one slash command for the everyday moderation commands; each subcommand
-  // asks for the permission of the command it wraps when it runs (src/commands/moderation/mod.js).
-  'mod',
+  // The moderation commands that used to be subcommands of `/mod` are commands of their own (`/softban`, `/hardban`, `/purge`, `/history`...); `/mod` is a prefix command only.
+  'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites',
   // The second batch of umbrellas, wrapping prefix-only commands: the fun and games (`/game 8ball`, `minecraft`...), what is yours (`/me birthday`,
   // `rep`...), lookups (`/search weather`, `youtube`...) and the staff tools that do not fit `/mod` (`/staff massban`, `voice-mute`...). Each one only
   // has subcommands, and `/staff` asks for the permission of the command each one wraps when it runs. The rest of the prefix commands move little by little.
@@ -158,7 +157,8 @@ assert.deepEqual(problems, [], `Slash commands Discord would refuse:\n${problems
       assert.deepEqual(sub.options.map((option) => [option.name, option.type, Boolean(option.required)]), [['user', ApplicationCommandOptionType.User, false]], `/action ${group.name} ${sub.name} takes an optional user`);
     }
   }
-  assert.deepEqual(act.name_localizations, { 'es-ES': 'accion', 'es-419': 'accion', 'pt-BR': 'acao' });
+  assert.equal(act.name_localizations, undefined, 'the names of /action and its groups are English in every language, like every other command');
+  assert.ok(groups.every((group) => group.name_localizations === undefined), 'and so are the names of its groups');
   const english = totalLength(act, null);
   const sizes = [null, 'es-ES', 'pt-BR'].map((locale) => totalLength(act, locale));
   assert.ok(Math.max(...sizes) < LIMITS.commandSize, `/action is ${Math.max(...sizes)} characters (at most ${LIMITS.commandSize})`);
@@ -174,7 +174,7 @@ for (const file of findCommandFiles(COMMANDS_DIR)) {
 }
 
 // The slash commands the umbrellas replaced are not registered, but the old commands are loaded for the prefix.
-for (const name of ['serverinfo', 'userinfo', 'avatar', 'unban', 'purge', 'timeout']) {
+for (const name of ['serverinfo', 'userinfo', 'avatar', 'unban', 'timeout']) {
   assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered (an umbrella subcommand replaces it)`);
   const file = findCommandFiles(COMMANDS_DIR).find((path) => require(path).data?.name === name);
   assert.ok(file && !isSlashCommand(require(file)) && !require(file).prefixOnly, `!${name} is still loaded for the prefix`);

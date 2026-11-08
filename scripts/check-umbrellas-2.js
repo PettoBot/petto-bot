@@ -491,7 +491,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   for (const name of ['rank', 'top']) assert.ok(!isSlashCommand(commandFile(name)) && client.commands.has(name), `/${name} is not a slash command any more (/levels rank, /levels leaderboard) and !${name} still works`);
   assert.ok(isSlashCommand(commandFile('suggest')) && client.commands.has('suggest'), '/suggest is a slash command again (/suggest send), and !suggest still works');
   // `/avatar`, `/userinfo`, `/purge` (and `/serverinfo`, `/unban`, `/timeout`) were replaced by `/user avatar`, `/user info`, `/mod purge`...: the prefix is unchanged.
-  for (const name of ['avatar', 'userinfo', 'purge', 'serverinfo', 'unban', 'timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
+  for (const name of ['avatar', 'userinfo', 'serverinfo', 'unban', 'timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
 
   // ------------------------------------------------------------ SECURITY: the permission of each wrapped command, slash and prefix
   const wrongFor = (flag) => (flag === 'ManageGuild' ? F.ManageMessages : F.ManageGuild);
@@ -676,8 +676,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 79, '79 commands registered globally with Discord (76 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 76, '76 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 85, '85 commands registered globally with Discord (82 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 82, '82 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });

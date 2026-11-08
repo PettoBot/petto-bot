@@ -3,6 +3,8 @@ const ban = require('./ban');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  // A slash command of its own (`/hardban`), not a subcommand of `/mod`.
+  registerSlash: true,
   aliases: ['hban', 'hb'],
   // `!hardban list`: the hard bans.
   prefixWords: { list: { command: 'ban', args: ['list', 'true'] } },

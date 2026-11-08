@@ -11,6 +11,8 @@ const { t, languageOf } = require('../../i18n');
 const { sendDm } = require('../../utils/dmOrigin');
 
 module.exports = {
+  // A slash command of its own (`/softban`), not a subcommand of `/mod`.
+  registerSlash: true,
   aliases: ['sb', 'sofban'],
   data: new SlashCommandBuilder()
     .setName('softban')

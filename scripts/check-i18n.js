@@ -107,8 +107,8 @@ for (const [category, list] of Object.entries(entries)) {
 }
 
 // (c) And the descriptions as Discord gets them, every language of every command, subcommand and option.
-// Names are never translated, except /action and its groups: the owner chose to show them as `accion` and `acao` (checked below).
-const MAY_HAVE_LOCAL_NAMES = /^(roleplay\/action\.js|registered \/action)(\/(love|play|fight|feel|react))?$/;
+// Names are never translated: every command, subcommand and option keeps its English name in every language (/action and its groups too).
+const MAY_HAVE_LOCAL_NAMES = /^$/;
 const DISCORD_NAME = /^[-_\u02BC\p{L}\p{N}\p{sc=Deva}\p{sc=Thai}]{1,32}$/u;
 const tooLong = (node, trail) => {
   const found = [];

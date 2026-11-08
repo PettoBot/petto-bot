@@ -21,6 +21,8 @@ function staffRolesOf(member) {
 }
 
 module.exports = {
+  // A slash command of its own (`/stripstaff`), not a subcommand of `/mod`.
+  registerSlash: true,
   aliases: ['strip', 'destaff'],
   data: new SlashCommandBuilder()
     .setName('stripstaff')

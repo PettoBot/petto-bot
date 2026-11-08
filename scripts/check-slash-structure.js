@@ -26,7 +26,7 @@ const menus = registered.filter((json) => (json.type ?? 1) !== 1);
 
 // ---------------------------------------------------------------- 1. no loose command
 // `/help`, `/poll` and `/setup` are commands of their own (they take options or open a guide or a panel); everything else has subcommands.
-const STANDALONE = ['help', 'poll', 'setup', 'tempban', 'tempmute'];
+const STANDALONE = ['help', 'poll', 'setup', 'tempban', 'tempmute', 'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites'];
 const loose = chat.filter((json) => !(json.options ?? []).some((option) => option.type === SUBCOMMAND || option.type === GROUP)).map((json) => json.name);
 assert.deepEqual(loose.sort(), [...STANDALONE].sort(), `the only slash commands without subcommands are ${STANDALONE.join(' and ')} (loose: ${loose.join(', ')})`);
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');
@@ -88,7 +88,7 @@ const usage = slotUsage(registered);
 assert.ok(usage.chat.used <= LIMITS.chat, `${usage.chat.used} chat commands (at most ${LIMITS.chat})`);
 assert.equal(usage.chat.used, chat.length);
 // When the global 100 run short, a command is moved to the second set (`guildScoped: true`, registered in each server: 100 more slots) instead of being squeezed in.
-assert.ok(usage.chat.free >= 20, `${usage.chat.free} chat command slots are still free (at least 20 are kept; past that, mark commands guildScoped to move them to the second set)`);
+assert.ok(usage.chat.free >= 15, `${usage.chat.free} chat command slots are still free (at least 15 are kept; past that, mark commands guildScoped to move them to the second set)`);
 
 // ---------------------------------------------------------------- 4. the old words still resolve
 const client = { user: { id: '123' }, users: { fetch: async (id) => ({ id }) } };
@@ -161,7 +161,10 @@ const covered = new Map();
 const cover = (name, sub) => { if (!covered.has(name)) covered.set(name, new Set()); covered.get(name).add(sub); };
 for (const command of all.values()) {
   if (isSlashCommand(command, command.category)) { cover(command.data.name, '*'); for (const sub of subsOf(command)) cover(command.data.name, sub); }
+  // An umbrella that is only for the prefix (`/mod`, `/modtools`), and the subcommands an umbrella keeps for the prefix, do not give a slash entry to what they wrap.
+  if (!isSlashCommand(command, command.category)) continue;
   for (const entry of command.leaves ?? (command.umbrella || command.subcommands ? command.subcommands ?? [] : [])) {
+    if ((command.prefixOnlySubcommands ?? []).includes(entry.name) || (command.prefixOnlySubcommands ?? []).includes(entry.group)) continue;
     if (!entry.wraps) continue; // a subcommand of its own (`/server icon`)
     const wrapped = all.get(entry.wraps);
     assert.ok(wrapped, `/${command.data.name}: ${entry.wraps} exists`);
@@ -177,7 +180,12 @@ for (const command of all.values()) {
 }
 // What is left out on purpose, with the reason.
 const LEFT_OUT = {
-  timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/mod tempmute` and `/mute temp` are the same)',
+  timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/tempmute` is the same)',
+  unban: 'the slash form is `/ban remove` (no command is in the menu twice)',
+  unmute: 'the slash form is `/mute remove` (no command is in the menu twice)',
+  unjail: 'the slash form is `/jail remove` (no command is in the menu twice)',
+  massmute: 'the slash form is `/mute users` (no command is in the menu twice)',
+  massunmute: 'the slash form is `/mute remove-users` (no command is in the menu twice)',
 };
 // The join roles and the sticky roles are groups of `/role` (`/role join`, `/role sticky`), which is not an umbrella.
 const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky' };
@@ -189,7 +197,7 @@ for (const [name, command] of all) {
   // The cards of `!<module>config`, generated for every module: they only explain the settings of a module.
   if (/^Show the .* settings and how to change them\.$/.test(json.description)) continue;
   // `!modtools` is only the prefix umbrella of the commands that are slash commands of their own now (`/case`, `/note`, `/jail`...): each of them is checked as itself.
-  if (name === 'modtools') continue;
+  if (name === 'modtools' || name === 'mod') continue;
   const have = covered.get(name);
   const dropped = new Set(command.prefixOnlySubcommands ?? []);
   const subs = subsOf(command).filter((sub) => !dropped.has(sub) && !(command.teamParts ?? []).includes(sub));

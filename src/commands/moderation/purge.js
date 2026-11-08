@@ -17,8 +17,8 @@ const RESULT_LIFETIME_MS = 8_000;
 const NEEDED = ['ViewChannel', 'ReadMessageHistory', 'ManageMessages'];
 
 module.exports = {
-  // Not registered as a slash command any more: `/mod purge` replaces it (same options, same code). It keeps working with the prefix.
-  registerSlash: false,
+  // A slash command of its own again (`/purge`): `/mod` is not a slash command any more. The prefix is as before.
+  registerSlash: true,
   aliases: ['prune'],
   prefixArgs: purgePrefixArgs,
   // Written after the prefix, the text takes every word left; the other text options are given with --starts_with, --before...
