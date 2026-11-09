@@ -32,4 +32,17 @@ function slashJson(command, { withPrefixOptions = false } = {}) {
   return { ...json, options: strip(json.options, []) };
 }
 
-module.exports = { slashJson };
+/**
+ * A command that does one thing most of the time (`/ban`, `/kick`, `/mute`, `/warn`, `/jail`) takes its options directly, not under a subcommand that repeats its name
+ * (`/ban user`). The prefix builder keeps the subcommand (`!ban @x`, `!ban remove`...), so the command says in `slashFlatten` which subcommand it is: the registered command
+ * gets the options of that one and the rest of the subcommands are served by commands of their own (`/unban`, `/banlist`...). Applied after the descriptions are translated
+ * (they are looked up by the path of the subcommand), and `execute` is given that subcommand back (`interactionCreate`, `utils/moderationCommand.asSubcommand`).
+ */
+function flattenSlash(command, json) {
+  const name = command.slashFlatten;
+  if (!name) return json;
+  const own = (json.options ?? []).find((option) => option.type === SUBCOMMAND && option.name === name);
+  return own ? { ...json, options: own.options ?? [] } : json;
+}
+
+module.exports = { slashJson, flattenSlash };

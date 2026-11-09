@@ -3,6 +3,7 @@ const jail = require('./jail');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('unjail')
     .setDescription('Release a member from jail and give their roles back.')

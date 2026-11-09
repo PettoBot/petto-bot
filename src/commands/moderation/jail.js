@@ -20,6 +20,8 @@ const V2 = MessageFlags.IsComponentsV2;
 module.exports = {
   // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
   registerSlash: true,
+  // `/jail` takes the options of its `user` subcommand directly (no `/jail user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('jail')

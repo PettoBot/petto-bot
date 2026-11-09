@@ -3,6 +3,7 @@ const mute = require('./mute');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
   aliases: ['untimeout'],
   data: new SlashCommandBuilder()
     .setName('unmute')

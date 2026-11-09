@@ -4,6 +4,8 @@ const base = require('./imute');
 
 module.exports = {
   registerSlash: true,
+  // `/imagemute` takes the options of its `user` subcommand directly (no `/imagemute user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   guildScoped: true,
   hiddenFromHelp: true,
   legacyRuleNames: ['imute'],

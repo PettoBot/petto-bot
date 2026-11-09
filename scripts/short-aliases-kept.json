@@ -77,7 +77,10 @@
  "grob": "search roblox user",
  "grp": "game rockpaperscissors",
  "gst": "search steam profile",
+ "jll": "jaillist",
+ "jls": "jailsetup",
  "mcda": "modtools case remove-all",
+ "mtls": "mutelist",
  "pfxa": "prefix add",
  "pfxr": "prefix remove",
  "pfxre": "prefix reset",
@@ -119,5 +122,8 @@
  "sul": "specialchannels linkonly list",
  "sur": "specialchannels linkonly remove",
  "sus": "specialchannels linkonly sites",
- "sy": "search youtube video"
+ "sy": "search youtube video",
+ "wa": "warnescalation add",
+ "wl": "warnescalation list",
+ "wr": "warnescalation remove"
 }

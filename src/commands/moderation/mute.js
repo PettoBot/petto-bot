@@ -24,6 +24,8 @@ module.exports = {
   prefixOnlyOptions: { user: ['duration'] },
   // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
   registerSlash: true,
+  // `/mute` takes the options of its `user` subcommand directly (no `/mute user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   aliases: ['m'],
   prefixDefaultSubcommand: 'user',
   // A mute becomes temporary by giving a duration (`/mod mute duration:3d`, `!mute @member 3d`): `temp` is not in the `/` menu, and `!mute temp` still works.

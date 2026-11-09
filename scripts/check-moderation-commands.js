@@ -160,7 +160,7 @@ const lastText = (interaction) => {
     assert.ok(resolveSubcommandOptions(json, subArgs), `${route.alias} reaches ${route.command} ${subArgs.join(' ')}`);
     for (const [word, target] of Object.entries(route.words ?? {})) assert.ok(resolveSubcommandOptions(json, target.args), `${route.alias} ${word} reaches ${route.command} ${target.args.join(' ')}`);
   }
-  for (const alias of ['lock', 'unlock', 'topic', 'nsfw', 'drag', 'reason', 'warns', 'mhistory', 'modstats', 'iunmute', 'runmute', 'forcenick', 'temprole', 'jaillist', 'timeouts', 'newmembers', 'picperms']) {
+  for (const alias of ['lock', 'unlock', 'topic', 'nsfw', 'drag', 'reason', 'warns', 'mhistory', 'modstats', 'iunmute', 'runmute', 'forcenick', 'temprole', 'timeouts', 'newmembers', 'picperms']) {
     assert.ok(client.commandRoutes.has(alias), `!${alias} is a shortcut`);
   }
   assert.equal(client.commandRoutes.get('lock').command, 'channel', '!lock locks the channel (lockdown no longer takes the name)');

@@ -4,6 +4,8 @@ const base = require('./rmute');
 
 module.exports = {
   registerSlash: true,
+  // `/reactionmute` takes the options of its `user` subcommand directly (no `/reactionmute user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   guildScoped: true,
   hiddenFromHelp: true,
   legacyRuleNames: ['rmute'],
