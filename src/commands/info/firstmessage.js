@@ -2,9 +2,6 @@ const { SlashCommandBuilder } = require('discord.js');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
-  // A slash command of its own (`/firstmessage`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
-  guildScoped: true,
   data: new SlashCommandBuilder()
     .setName('firstmessage')
     .setDMPermission(false)

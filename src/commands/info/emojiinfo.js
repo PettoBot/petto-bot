@@ -5,9 +5,6 @@ const { t, languageOf } = require('../../i18n');
 const EMOJI_RE = /<(a?):(\w+):(\d+)>/;
 
 module.exports = {
-  // A slash command of its own (`/emojiinfo`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
-  guildScoped: true,
   aliases: ['ei'],
   data: new SlashCommandBuilder()
     .setName('emojiinfo')

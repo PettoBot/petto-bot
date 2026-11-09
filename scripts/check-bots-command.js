@@ -37,7 +37,7 @@ const run = async (guild, userId = '5') => {
   assert.equal(json.name, 'bots');
   assert.equal(json.default_member_permissions ?? null, null, 'no permission is asked');
   for (const flag of ['prefixOnly', 'hiddenFromHelp', 'hiddenEverywhere', 'slashOnly', 'privateGuildId']) assert.ok(!command[flag], `${flag} is not set: it is a normal visible command`);
-  assert.ok(command.registerSlash && command.guildScoped, 'it is a slash command of its own (it was /server bots), registered in each server');
+  assert.ok(!command.registerSlash && !command.guildScoped, 'it is not a slash command of its own: the slash form is /server bots');
   assert.ok(!(json.options ?? []).length, 'it takes nothing');
   assert.deepEqual(command.aliases, ['botlist']);
 

@@ -32,8 +32,6 @@ function roleList(roles, lang) {
 }
 
 module.exports = {
-  // A slash command of its own (`/userinfo`): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('userinfo')
     .setDMPermission(false)

@@ -20,8 +20,11 @@ const SUBCOMMANDS = [
   { group: 'premium', wraps: 'premium' },
 ];
 
-module.exports = defineUmbrella({
+module.exports = Object.assign(defineUmbrella({
   name: 'bot',
-  description: 'About Petto: information, latency, uptime, version, top commands, votes and Premium.',
+  description: 'About Petto: information, latency, uptime, version, top commands and votes.',
   subcommands: SUBCOMMANDS,
+}), {
+  // Premium is `/premium` now (status, add, remove, servers): it is not in the menu twice. `!bot premium ...` keeps working with the prefix.
+  prefixOnlySubcommands: ['premium'],
 });

@@ -17,9 +17,9 @@ const ROLEPLAY = 1;
 const ESSENTIAL = [
   // Everyday commands that also work with `/` (they keep working with the prefix).
   'afk', 'ban', 'channel', 'embed', 'giveaway', 'help', 'kick', 'remind', 'ticket', 'warn',
-  // What `/server`, `/user`, `/staff` and `/config` held is a command of its own each (`/serverinfo`, `/userinfo`, `/avatar`, `/backup`, `/alias`, `/voice`...); the four are
-  // prefix commands only now (`!server info`, `!user avatar`, `!staff voice mute`, `!config alias add` work as before). The most used are global, the rest are in the second set.
-  'userinfo', 'avatar', 'banner', 'serverinfo', 'roleinfo', 'channelinfo', 'roles', 'emojis', 'backup', 'alias', 'voice',
+  // What is shown about a member and about a server is grouped: `/user info|avatar|banner...` and `/server info|banner|icon...`. `/staff` and `/config` are prefix commands only
+  // (`!staff voice mute`, `!config alias add`): what they held is a command of its own each (`/backup`, `/alias`, `/voice`...).
+  'user', 'server', 'backup', 'alias', 'voice',
   // The moderation commands that used to be subcommands of `/mod` are commands of their own (`/softban`, `/hardban`, `/purge`, `/history`...); `/mod` is a prefix command only.
   'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites',
   // The second batch of umbrellas, wrapping prefix-only commands: the fun and games (`/game 8ball`, `minecraft`...), what is yours (`/me birthday`,
@@ -37,7 +37,7 @@ const ESSENTIAL = [
   // The AI that answers questions: `/ai ask` and `/ai usage` (open to every member; the first one has a daily limit for free members).
   'ai',
   // The prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
-  'prefix', 'quests', 'social',
+  'prefix', 'premium', 'quests', 'social',
   // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), each one a command of its own
   // (`/case remove-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
@@ -51,8 +51,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  'activity', 'appeals', 'customize', 'boosters', 'bots', 'channels', 'cmdconfig', 'disablecommand', 'emojiinfo', 'firstmessage', 'imagemute', 'inviteinfo', 'moderation', 'nuke', 'permissions', 'raid',
-  'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'massban', 'reactionmute', 'restrictcommand', 'rolemembers', 'sanctionmessage', 'serverbanner', 'servericon', 'serversplash', 'snowflake', 'statsconfig', 'steal', 'summary', 'usercosmetics',
+  'appeals', 'cmdconfig', 'customize', 'disablecommand', 'imagemute', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'moderation', 'nuke', 'raid', 'reactionmute', 'restrictcommand', 'sanctionmessage', 'statsconfig',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;

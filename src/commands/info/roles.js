@@ -35,8 +35,6 @@ register('roles', {
 });
 
 module.exports = {
-  // A slash command of its own (`/roles`): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
   aliases: ['rl'],
   data: new SlashCommandBuilder().setName('roles')
     .setDMPermission(false).setDescription('Lists every role in this server, a page at a time.'),
