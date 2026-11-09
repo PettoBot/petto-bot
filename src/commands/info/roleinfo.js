@@ -8,8 +8,6 @@ const KEY_PERMISSIONS = ['Administrator', 'ManageGuild', 'ManageRoles', 'ManageC
   .map((name) => [name, PermissionFlagsBits[name]]);
 
 module.exports = {
-  // A slash command of its own (`/roleinfo`): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
   aliases: ['ri'],
   data: new SlashCommandBuilder()
     .setName('roleinfo')

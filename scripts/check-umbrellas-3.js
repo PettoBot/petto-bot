@@ -539,8 +539,9 @@ function tailOf(node) {
   // The six old slash commands that an umbrella subcommand replaced are not registered; the old command is still loaded for the prefix.
   for (const name of ['unban', 'timeout']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
   for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'game', 'me', 'search', 'levels', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
-  // `/server`, `/user`, `/staff` and `/config` are prefix commands only now: what each held is a slash command of its own.
-  for (const name of ['server', 'user', 'staff', 'config']) assert.ok(!isSlashCommand(commandFile(name)) && commandFile(name).prefixOnly, `/${name} is a prefix umbrella only`);
+  // `/staff` and `/config` are prefix commands only now: what each held is a slash command of its own. `/server` and `/user` are slash commands (grouped, not loose).
+  for (const name of ['staff', 'config']) assert.ok(!isSlashCommand(commandFile(name)) && commandFile(name).prefixOnly, `/${name} is a prefix umbrella only`);
+  for (const name of ['server', 'user']) assert.ok(isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is a slash command`);
   // `/modtools` is only a prefix command now: each of its groups is a global slash command of its own.
   assert.ok(!isSlashCommand(commandFile('modtools')) && commandFile('modtools').prefixOnly, '/modtools is not a slash command any more, !modtools still works');
   for (const name of ['case', 'note', 'jail', 'mute', 'nickname', 'thread', 'snipe', 'lockdown']) assert.ok(isSlashCommand(commandFile(name)) && !commandFile(name).guildScoped, `/${name} is a global slash command of its own`);
@@ -704,11 +705,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 93, '93 commands registered globally with Discord (90 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 90, '90 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 87, '87 commands registered globally with Discord (84 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 84, '84 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [90, 100, 10], '10 slots are free, more than the 10 that are kept');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [84, 100, 16], '16 slots are free, more than the 10 that are kept');
   assert.ok(usage.chat.free >= 10);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);

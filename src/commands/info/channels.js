@@ -34,9 +34,6 @@ register('channels', {
 });
 
 module.exports = {
-  // A slash command of its own (`/channels`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
-  guildScoped: true,
   aliases: ['chs'],
   data: new SlashCommandBuilder().setName('channels')
     .setDMPermission(false).setDescription('Lists the channels of this server, a page at a time.'),

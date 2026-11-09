@@ -3,8 +3,6 @@
 const base = require('./inrole');
 
 module.exports = {
-  registerSlash: true,
-  guildScoped: true,
   hiddenFromHelp: true,
   legacyRuleNames: ['inrole'],
   // The builder of `inrole` with the name of this command.

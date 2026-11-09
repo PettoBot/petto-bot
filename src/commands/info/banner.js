@@ -3,8 +3,6 @@ const { INFO_ACCENT, infoPayload, noticePayload } = require('../../utils/infoCar
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
-  // A slash command of its own (`/banner`): the umbrella that held it is a prefix command only now.
-  registerSlash: true,
   aliases: ['bn'],
   data: new SlashCommandBuilder()
     .setName('banner')

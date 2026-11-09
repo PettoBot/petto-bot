@@ -147,8 +147,9 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   assert.ok(server && user, '/server and /user are loaded');
   for (const command of [server, user]) {
     assert.equal(command.category, 'info', `${command.data.name} is listed with the info commands in !help`);
-    assert.ok(!command.hiddenFromHelp && !command.slashOnly && command.prefixOnly === true, `${command.data.name} is a prefix umbrella, shown in !help (what it held is a slash command of its own now)`);
-    for (const old of ['serverinfo', 'userinfo', 'avatar']) assert.ok(client.commands.get(old) && client.commands.get(old).registerSlash === true, `${old} is a slash command of its own now`);
+    assert.ok(!command.hiddenFromHelp && !command.slashOnly && !command.prefixOnly, `${command.data.name} is a prefix and a slash command, shown in !help`);
+    assert.equal(command.registerSlash, true);
+    for (const old of ['serverinfo', 'userinfo', 'avatar']) assert.ok(client.commands.get(old) && !client.commands.get(old).registerSlash, `${old} stays loaded for the prefix and is no longer registered as a slash command`);
     assert.equal(command.rulesBySubcommand, true);
     assert.equal(command.prefixDefaultSubcommand, 'info', `${command.data.name} alone is its info`);
     assert.equal(command.data.toJSON().dm_permission, false);
@@ -295,10 +296,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.deepEqual(await ran(content), [file], `${content} still runs ${file}`);
   }
   // The routes `!servericon`, `!serverbanner`, `!serversplash` and the short aliases of the table.
-  // (they are commands of their own now: `/servericon`, `/serverbanner` and `/serversplash`, registered in each server; `!server icon` still works.)
   for (const word of ['servericon', 'serverbanner', 'serversplash']) {
-    assert.ok(client.commands.has(word) && client.commands.get(word).registerSlash === true, `/${word} is a slash command of its own`);
-    assert.ok(!client.commandRoutes.has(word), `${word} is a command, not a route of /server`);
+    assert.ok(client.commands.has(word) && !client.commandRoutes.has(word), `!${word} is a command of its own (and /server ${word.replace('server', '')} shows the same picture)`);
   }
   for (const [target, alias] of Object.entries(Object.fromEntries(Object.entries(SHORT_ALIAS_TABLE).map(([word, to]) => [to, word])))) {
     if (!/^(server|user) /.test(target)) continue;
@@ -462,8 +461,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   // ------------------------------------------------------------ Discord: the descriptions in Spanish and Portuguese, the numbers and the sizes
   const registered = collectCommandData();
   const chat = registered.filter((json) => (json.type ?? 1) === 1);
-  assert.equal(registered.length, 93, '93 commands registered globally with Discord (90 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 90, '90 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 87, '87 commands registered globally with Discord (84 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 84, '84 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const size = (value) => [...String(value ?? '')].length;
   const LOCALES = ['es-ES', 'es-419', 'pt-BR'];
@@ -477,16 +476,30 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     }
     for (const child of node.options ?? []) walk(child, `${trail} ${child.name}`);
   };
-  // `/server` and `/user` are prefix commands only now: what they held is a command of its own each (`/serverinfo`, `/userinfo`, `/avatar`, `/banner`...), the descriptions in
-  // Spanish and Portuguese of the global ones are checked here, and the rest are in the second set (scripts/check-slash-commands.js).
-  assert.ok(!registered.some((each) => ['server', 'user'].includes(each.name)), '/server and /user are not registered with Discord');
-  for (const name of ['serverinfo', 'userinfo', 'avatar', 'banner', 'roleinfo', 'channelinfo', 'roles', 'emojis']) {
+  for (const name of ['server', 'user']) {
     const json = registered.find((each) => each.name === name);
     assert.ok(json, `/${name} is registered with Discord, so deploy-commands.js sends it`);
     walk(json, `/${name}`);
-    assert.notEqual(json.description_localizations['es-ES'], json.description, `/${name} is translated into Spanish`);
-    assert.notEqual(json.description_localizations['pt-BR'], json.description, `/${name} is translated into Portuguese`);
+    assert.ok(json.options.length <= 25, `/${name} has ${json.options.length} subcommands (at most 25)`);
+    // The command and its subcommands are in the language of the person, not the English text.
+    assert.notEqual(json.description_localizations['es-ES'], json.description);
+    assert.notEqual(json.description_localizations['pt-BR'], json.description);
+    for (const sub of json.options) assert.notEqual(sub.description_localizations['es-ES'], sub.description, `/${name} ${sub.name} is translated into Spanish`);
+    for (const sub of json.options) assert.notEqual(sub.description_localizations['pt-BR'], sub.description, `/${name} ${sub.name} is translated into Portuguese`);
+    for (const locale of [null, ...LOCALES]) {
+      let total = 0;
+      const add = (node) => {
+        total += size(node.name) + size((locale && node.description_localizations?.[locale]) || node.description);
+        for (const child of node.options ?? []) add(child);
+      };
+      add(json);
+      assert.ok(total < 2500, `/${name}${locale ? ` [${locale}]` : ''} is ${total} characters (Discord allows 8000)`);
+    }
   }
+  // The three old everyday slash commands that /server and /user replaced are loaded for the prefix only.
+  for (const name of ['serverinfo', 'userinfo', 'avatar']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered: /server info, /user info and /user avatar replace it`);
+  // Nothing else of the wrapped commands became a slash command.
+  for (const name of ['roles', 'channels', 'emojis', 'boosters', 'banner', 'usercosmetics', 'permissions', 'snowflake', 'firstmessage', 'activity']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not a slash command`);
   // Every key of the English catalog of the info commands has its Spanish and Portuguese text.
   const english = CATALOGS.en;
   for (const key of Object.keys(english).filter((each) => /^cmd\.info\.(server|user)\./.test(each))) {
