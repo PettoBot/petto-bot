@@ -135,8 +135,10 @@ const command = require('../src/commands/info/feedback');
   assert.equal(answer.flags & 64, 64);
   assert.equal(answer.flags & 32768, 32768);
   const body = JSON.stringify(answer.components.map((c) => c.toJSON()));
-  assert.ok(body.includes('https://petto.sbs/feedback') && body.includes('take the vote back'));
-  assert.deepEqual(answer.components[1].toJSON().components.map((button) => button.url), ['https://petto.sbs/feedback', 'https://petto.sbs/feedback/new']);
+  const boardUrl = 'https://petto.sbs/feedback';
+  const sentence = require('../src/i18n').t('en', 'feedback.command.share', { url: boardUrl });
+  assert.ok(body.includes(sentence) && body.includes('take the vote back'), 'the text names the board');
+  assert.deepEqual(answer.components[1].toJSON().components.map((button) => button.url), [boardUrl, `${boardUrl}/new`]);
   assert.ok(JSON.stringify(command.buildFeedbackAnswer('es', 'https://petto.sbs').components.map((c) => c.toJSON())).includes('Tablero de feedback'));
 
   console.log('The feedback board in Discord works.');
