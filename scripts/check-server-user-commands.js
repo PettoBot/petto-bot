@@ -461,8 +461,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   // ------------------------------------------------------------ Discord: the descriptions in Spanish and Portuguese, the numbers and the sizes
   const registered = collectCommandData();
   const chat = registered.filter((json) => (json.type ?? 1) === 1);
-  assert.equal(registered.length, 87, '87 commands registered globally with Discord (84 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 84, '84 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 90, '90 commands registered globally with Discord (87 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 87, '87 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const size = (value) => [...String(value ?? '')].length;
   const LOCALES = ['es-ES', 'es-419', 'pt-BR'];

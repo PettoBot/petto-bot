@@ -42,7 +42,6 @@ const BASE_PREFIX_ROUTES = [
   { alias: 'revokefiles', command: 'channel', args: ['files'], subcommand: 'files' },
   { alias: 'picperms', command: 'channel', args: ['files', 'on'], subcommand: 'files' },
   { alias: 'drag', command: 'voice', args: ['drag'], subcommand: 'drag' },
-  { alias: 'jaillist', command: 'jail', args: ['list'], subcommand: 'list' },
   { alias: 'timeouts', command: 'mute', args: ['list'], subcommand: 'list' },
   { alias: 'modstats', command: 'case', args: ['stats'], subcommand: 'stats' },
   { alias: 'mhistory', command: 'case', args: ['search', '--moderator'], subcommand: 'search' },

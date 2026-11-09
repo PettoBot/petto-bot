@@ -17,6 +17,8 @@ const { sendDm } = require('../../utils/dmOrigin');
 module.exports = {
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
+  // `/kick` takes the options of its `user` subcommand directly (no `/kick user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   // `/masskick` is the slash form of `users`; the word stays for the prefix (`!kick users`).
   slashHiddenSubcommands: ['users'],
   aliases: ['k'],

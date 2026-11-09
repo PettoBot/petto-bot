@@ -24,6 +24,8 @@ const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 module.exports = {
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
+  // `/warn` takes the options of its `user` subcommand directly (no `/warn user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   // `/masswarn` is the slash form of `users`; the word stays for the prefix (`!warn users`).
   slashHiddenSubcommands: ['users'],
   aliases: ['w'],

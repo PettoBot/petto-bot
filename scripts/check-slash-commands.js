@@ -43,6 +43,8 @@ const ESSENTIAL = [
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
   // A ban and a mute that end, as commands of their own (`/tempban user duration`; `/ban user` and `/mute user` have no duration option).
   'tempban', 'tempmute',
+  // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`); what else they held is a command of its own: `/unban`, `/unmute`, `/unjail`.
+  'unban', 'unmute', 'unjail',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
   // What members can send to the staff, each with the setup next to it (`/suggest send`, `/suggest setup`, `/request config channel`...); it used to be `/community`.
@@ -51,7 +53,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  'appeals', 'cmdconfig', 'customize', 'disablecommand', 'imagemute', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'moderation', 'nuke', 'raid', 'reactionmute', 'restrictcommand', 'sanctionmessage', 'statsconfig',
+  'appeals', 'banlist', 'cmdconfig', 'customize', 'disablecommand', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'warnescalation',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;
@@ -175,7 +177,7 @@ for (const file of findCommandFiles(COMMANDS_DIR)) {
 }
 
 // The slash commands the umbrellas replaced are not registered, but the old commands are loaded for the prefix.
-for (const name of ['unban', 'timeout']) {
+for (const name of ['timeout']) {
   assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered (an umbrella subcommand replaces it)`);
   const file = findCommandFiles(COMMANDS_DIR).find((path) => require(path).data?.name === name);
   assert.ok(file && !isSlashCommand(require(file)) && !require(file).prefixOnly, `!${name} is still loaded for the prefix`);

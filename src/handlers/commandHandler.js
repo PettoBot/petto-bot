@@ -4,7 +4,7 @@ const { ApplicationCommandType, Collection } = require('discord.js');
 const logger = require('../utils/logger');
 const { aliasesFor, DEFAULT_PREFIX_ROUTES } = require('../utils/defaultCommandAliases');
 const { localizeCommandJson } = require('../i18n');
-const { slashJson } = require('../utils/slashJson');
+const { slashJson, flattenSlash } = require('../utils/slashJson');
 
 /**
  * The key a command is stored under in client.commands. Discord lets a user menu and a message menu share a name
@@ -163,7 +163,7 @@ function collectCommandData() {
     .filter(({ command }) => !command.hiddenEverywhere)
     .filter(({ filePath, command }) => (command.data.toJSON().type ?? 1) !== 1 || isSlashCommand(command, categoryFromPath(filePath)))
     // The descriptions go to Discord in Spanish and Portuguese too (names are never translated).
-    .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), slashJson(command)));
+    .map(({ filePath, command }) => flattenSlash(command, localizeCommandJson(categoryFromPath(filePath), slashJson(command))));
 }
 
 /**
@@ -176,7 +176,7 @@ function collectGuildCommandData() {
     .map((filePath) => ({ filePath, command: require(filePath) }))
     .filter(({ command }) => command?.data && command.guildScoped && !command.prefixOnly && !command.privateGuildId && !command.hiddenEverywhere)
     .filter(({ command }) => (command.data.toJSON().type ?? 1) === 1 && command.registerSlash)
-    .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), slashJson(command)));
+    .map(({ filePath, command }) => flattenSlash(command, localizeCommandJson(categoryFromPath(filePath), slashJson(command))));
 }
 
 /**

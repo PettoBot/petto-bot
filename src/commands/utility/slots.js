@@ -1,7 +1,7 @@
 // i18n-ignore-file: Petto team operator command.
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { isSlashCommand } = require('../../handlers/commandHandler');
-const { slashJson } = require('../../utils/slashJson');
+const { slashJson, flattenSlash } = require('../../utils/slashJson');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const { slotUsage, nearLimit, difference, LIMITS } = require('../../utils/slashBudget');
 const { textCard } = require('../../utils/caseCard');
@@ -22,7 +22,7 @@ async function registeredCommands(client) {
 function loadedCommands(client) {
   return [...client.commands.values()]
     .filter((command) => command?.data && !command.prefixOnly && !command.privateGuildId && !command.guildScoped && (isSlashCommand(command) || (command.data.toJSON().type ?? 1) !== 1))
-    .map((command) => slashJson(command));
+    .map((command) => flattenSlash(command, slashJson(command)));
 }
 
 /** The second set (`guildScoped`): registered in each server, with its own 100 slots. */

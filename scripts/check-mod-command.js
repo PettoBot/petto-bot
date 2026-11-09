@@ -561,14 +561,14 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 87, '87 commands registered with Discord (84 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 84, '84 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 90, '90 commands registered with Discord (87 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 87, '87 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   assert.ok(!registered.some((each) => each.name === 'mod'), '/mod is not registered with Discord: it is a prefix command only (`!mod ban @x`)');
   // `/ban`, `/kick` and `/warn` are still registered with their own permissions (each has subcommands that /mod does not wrap, and /mod is at 25).
   for (const name of ['ban', 'kick', 'warn', 'channel']) assert.ok(chat.some((each) => each.name === name), `/${name} is still registered`);
   // `/unban` and `/timeout` are `/ban remove` and `/tempmute` (same options, same permission): not registered, the prefix is unchanged. `/purge` is a command of its own again.
-  for (const name of ['unban', 'timeout']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not registered any more`);
+  for (const name of ['timeout']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not registered any more`);
   assert.ok(chat.some((each) => each.name === 'purge'), '/purge is a slash command');
   for (const [name, sub] of [['unban', 'unban'], ['purge', 'purge'], ['timeout', 'tempmute']]) {
     const old = client.commands.get(name).data.toJSON();
@@ -586,8 +586,12 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // A ban or a mute that ends is `/tempban` and `/tempmute`: `/ban user` and `/mute user` have no duration in the menu (the prefix still reads it: `!ban @x 7d`), and `/mod`
   // keeps none of the actions that have a command of their own.
   for (const name of ['tempban', 'tempmute']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
-  const optionNames = (command, sub) => chat.find((each) => each.name === command).options.find((option) => option.name === sub).options.map((option) => option.name);
-  assert.ok(!optionNames('ban', 'user').includes('duration') && !optionNames('mute', 'user').includes('duration'), '/ban user and /mute user have no duration option in the menu');
+  // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`): the rest is `/unban`, `/banlist`, `/unmute`...
+  const optionNames = (command) => chat.find((each) => each.name === command).options.map((option) => option.name);
+  assert.deepEqual(optionNames('ban'), ['user', 'delete_message_days', 'reason'], '/ban takes the member directly');
+  assert.ok(!optionNames('ban').includes('duration') && !optionNames('mute').includes('duration'), '/ban and /mute have no duration option in the menu');
+  for (const name of ['ban', 'kick', 'mute', 'warn', 'jail']) assert.ok(chat.find((each) => each.name === name).options.every((option) => option.type !== 1 && option.type !== 2), `/${name} has no subcommands`);
+  for (const name of ['unban', 'unmute', 'unjail']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
   assert.ok(client.commands.get('ban').data.toJSON().options.find((option) => option.name === 'user').options.some((option) => option.name === 'duration'), 'but the prefix still reads it');
   // The jail, the notes, the cases and the lockdown are slash commands of their own (they used to be groups of `/modtools`).
   for (const name of ['jail', 'note', 'case', 'lockdown']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);

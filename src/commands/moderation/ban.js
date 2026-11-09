@@ -34,6 +34,8 @@ module.exports = {
   prefixOnlyOptions: { user: ['duration'] },
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
+  // `/ban` takes the options of its `user` subcommand directly (no `/ban user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
+  slashFlatten: 'user',
   aliases: ['b'],
   prefixSubcommandAliases: { recent: 'list', kill: 'cancel' },
   prefixDefaultSubcommand: 'user',

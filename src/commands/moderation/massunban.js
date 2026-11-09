@@ -13,8 +13,10 @@ module.exports = {
     .setDescription('Unban every banned user after administrator confirmation.')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setDMPermission(false)
-    .addStringOption((option) => option.setName('reason').setDescription('Reason for the mass unban').setRequired(false)),
+    .addStringOption((option) => option.setName('reason').setDescription('Reason for the mass unban').setRequired(false))
+    .addBooleanOption((option) => option.setName('cancel').setDescription('Stop the mass unban that is running instead of starting one').setRequired(false)),
   async execute(interaction) {
-    return ban.execute(asSubcommand(interaction, 'remove-all'));
+    // `cancel:true` stops the one that is running (`!massunban cancel` with the prefix).
+    return ban.execute(asSubcommand(interaction, interaction.options.getBoolean('cancel') ? 'cancel' : 'remove-all'));
   },
 };

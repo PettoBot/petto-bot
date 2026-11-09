@@ -77,6 +77,7 @@ const { t, formatDecimal, languageOf } = require('../i18n');
 const { reportInteractionError } = require('../utils/interactionErrors');
 const perf = require('../utils/perf');
 const { commandLimiter, isStaffMember } = require('../utils/rateLimits');
+const { asSubcommand } = require('../utils/moderationCommand');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
@@ -667,7 +668,9 @@ module.exports = {
       return;
     }
     try {
-      await command.execute(interaction, client);
+      // A command registered with the options of one subcommand (`/ban`: `slashFlatten`) is given that subcommand, as the prefix and its code expect.
+      const flat = command.slashFlatten && interaction.isChatInputCommand?.() && !interaction.options.getSubcommand(false);
+      await command.execute(flat ? asSubcommand(interaction, command.slashFlatten) : interaction, client);
       // Once, for a server whose language Petto only detected: the first administrator whose Discord is in another language hears about `!language`.
       if (interaction.isChatInputCommand()) maybeHintLanguage(interaction);
     } catch (err) {
