@@ -23,8 +23,8 @@ function premiumTierNumber(tier) {
 }
 
 module.exports = {
-  // Not registered as a slash command any more: `/server info` replaces it (same options, same code). It keeps working with the prefix.
-  registerSlash: false,
+  // A slash command of its own (`/serverinfo`): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('serverinfo')
     .setDMPermission(false)

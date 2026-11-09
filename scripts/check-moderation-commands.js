@@ -164,7 +164,7 @@ const lastText = (interaction) => {
     assert.ok(client.commandRoutes.has(alias), `!${alias} is a shortcut`);
   }
   assert.equal(client.commandRoutes.get('lock').command, 'channel', '!lock locks the channel (lockdown no longer takes the name)');
-  for (const [alias, target] of [['unbanall', 'massunban'], ['hb', 'hardban'], ['nick', 'nickname'], ['untimeout', 'unmute'], ['antiraid', 'automod'], ['rc', 'restrictcommand'], ['recentban', 'raid'], ['imagemute', 'imute'], ['reactionmute', 'rmute'], ['strip', 'stripstaff']]) {
+  for (const [alias, target] of [['unbanall', 'massunban'], ['hb', 'hardban'], ['nick', 'nickname'], ['untimeout', 'unmute'], ['antiraid', 'automod'], ['rc', 'restrictcommand'], ['recentban', 'raid'], ['strip', 'stripstaff']]) {
     assert.equal(client.commandAliases.get(alias), target, `!${alias} is ${target}`);
   }
   for (const card of ['nicknameconfig', 'raidconfig', 'threadconfig', 'stripstaffconfig', 'imuteconfig', 'rmuteconfig', 'clearinvitesconfig', 'restrictcommandconfig']) {

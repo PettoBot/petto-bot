@@ -8,10 +8,14 @@ const { t, languageOf } = require('../../i18n');
 const row = (icon, label, value) => (value === null || value === undefined || value === '' ? null : `${icon} **${label}** ${value}`);
 
 module.exports = {
+  // A slash command of its own (`/usercosmetics`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   // A prefix command (`!usercosmetics`, `!uc`): the card shows pictures and has no slash twin.
   aliases: ['uc', 'cosmetics', 'cosmeticos'],
   data: new SlashCommandBuilder()
     .setName('usercosmetics')
+    .setDMPermission(false)
     .setDescription('Shows the avatar decoration, nameplate and server tag of a member.')
     .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false)),
 

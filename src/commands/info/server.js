@@ -41,8 +41,8 @@ const SUBCOMMANDS = [
 const executor = wrappedExecutor(load, SUBCOMMANDS.filter((entry) => entry.wraps));
 
 module.exports = {
-  // Also registered as a slash command (a tidier `/` list: the server things are found by typing `/server`); the prefix works too.
-  registerSlash: true,
+  // Not a slash command any more: each thing it held is a command of its own (`/server` is prefix only; `!server ...` and every word of it work as before).
+  prefixOnly: true,
   // `!server` alone, or with an ID, is what it always was: `!server info`.
   prefixDefaultSubcommand: 'info',
   prefixSubcommandAliases: {

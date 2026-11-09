@@ -54,8 +54,8 @@ const { greedy } = prefixOptionsOf(SUBCOMMANDS, load);
 const executor = wrappedExecutor(load, SUBCOMMANDS);
 
 module.exports = {
-  // Also registered as a slash command; the prefix works too.
-  registerSlash: true,
+  // Not a slash command any more: each thing it held is a command of its own (`/staff` is prefix only; `!staff ...` and every word of it work as before).
+  prefixOnly: true,
   // The thread, snipe and mass mute actions are not in the menu: `/thread`, `/snipe` and `/mute` are slash commands of their own (`/mute users`, `/mute remove-users`), so no
   // command is there twice. The words keep working with the prefix (`!staff thread-lock`, `!staff snipe`, `!staff massmute`).
   prefixOnlySubcommands: ['thread-rename', 'thread-lock', 'thread-unlock', 'snipe', 'massmute', 'massunmute'],

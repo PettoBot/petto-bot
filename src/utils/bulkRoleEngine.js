@@ -4,7 +4,8 @@ const tempRolesDb = require('../db/tempRoles');
 const logger = require('./logger');
 const { textCard } = require('./caseCard');
 const { t, tn, guildLanguage } = require('../i18n');
-const { ERROR_CODES, checkTargetRole, classifyMember, matchesFilters, buildCardText, dangerousBits } = require('./bulkRolePlan');
+const { ERROR_CODES, CHANGES_PER_SECOND, checkTargetRole, classifyMember, matchesFilters, buildCardText, dangerousBits } = require('./bulkRolePlan');
+const activity = require('./bulkRoleActivity');
 
 const PAGE_SIZE = 1000; // members Discord gives in one request when the list is read page by page
 const SAVE_EVERY = 25; // members between two saves of the progress...
@@ -52,6 +53,26 @@ async function* memberPages(guild, after = '0') {
   for (let i = 0; i < everyone.length; i += PAGE_SIZE) yield everyone.slice(i, i + PAGE_SIZE);
 }
 
+/**
+ * What the job is going to do, counted before it starts: how many members the server has, how many already have the role, and how many really need a change
+ * (the others are left alone). Read page by page like the job itself, from `after`; null when the list cannot be read (the job then goes without the count).
+ */
+async function countPlan(guild, job, after = '0') {
+  const plan = { scanned: 0, withRole: 0, todo: 0 };
+  try {
+    for await (const page of memberPages(guild, after)) {
+      for (const member of page) {
+        plan.scanned++;
+        if (member.roles.cache.has(job.target_role_id)) plan.withRole++;
+        if (classifyMember(member, job) === 'change') plan.todo++;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return plan;
+}
+
 /** Edits the message that follows a job started from a command (a job from the dashboard has none). Never throws. */
 async function showCard(client, job, lang, patch, dangerous) {
   if (!job.progress_channel_id || !job.progress_message_id) return;
@@ -69,7 +90,7 @@ async function showCard(client, job, lang, patch, dangerous) {
  * a restart cut goes on from the member where it was (see requeueRunning). Role changes go one member at a time: Discord's own limit for the route paces
  * them, and the job reads the row now and then to see if it was cancelled or paused.
  */
-async function processBulkRoleJob(client, job) {
+async function runBulkRoleJob(client, job) {
   const guild = await client.guilds.fetch(job.guild_id).catch(() => null);
   if (!guild) return fail(job, 'guild_gone');
 
@@ -99,6 +120,18 @@ async function processBulkRoleJob(client, job) {
     error_count: Number(job.error_count ?? 0),
   };
   await bulkRoleJobsDb.updateJob(job.id, { status: 'running', started_at: startedAt, total_members: total });
+  // Before the first change: who has the role already, out of how many, and so how many changes there are and about how long they take at the pace Discord allows.
+  state.planning = true;
+  await showCard(client, job, lang, state, dangerous);
+  const plan = await countPlan(guild, job, job.cursor_id ?? '0');
+  state.planning = false;
+  if (plan) {
+    state.plan_total = Math.max(total, plan.scanned);
+    state.plan_with_role = plan.withRole;
+    state.plan_todo = state.success_count + plan.todo;
+    logger.info(`Bulk role job #${job.id}: ${plan.todo} of ${state.plan_total} members need the change (${plan.withRole} have the role already); about ${Math.ceil(plan.todo / CHANGES_PER_SECOND)} s at the pace Discord allows.`);
+  }
+  state.changes_started_at = new Date().toISOString();
   await showCard(client, job, lang, state, dangerous);
 
   let cursor = job.cursor_id ?? '0';
@@ -207,4 +240,14 @@ async function processBulkRoleJob(client, job) {
   }
 }
 
-module.exports = { processBulkRoleJob, matchesFilters, memberPages };
+/** Runs a job to its end. While it runs, the waits on the limit of the route that gives roles are not warned about every minute (utils/bulkRoleActivity.js). */
+async function processBulkRoleJob(client, job) {
+  activity.enter();
+  try {
+    return await runBulkRoleJob(client, job);
+  } finally {
+    activity.leave();
+  }
+}
+
+module.exports = { processBulkRoleJob, matchesFilters, memberPages, countPlan };

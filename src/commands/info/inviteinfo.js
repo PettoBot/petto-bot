@@ -4,9 +4,13 @@ const { COLORS } = require('../../utils/colors');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A slash command of its own (`/inviteinfo`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['ii'],
   data: new SlashCommandBuilder()
     .setName('inviteinfo')
+    .setDMPermission(false)
     .setDescription('Shows information about an invite code.')
     .addStringOption((o) => o.setName('code').setDescription('Invite code or link').setRequired(true)),
 

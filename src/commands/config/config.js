@@ -25,10 +25,10 @@ const SUBCOMMANDS = [
   { group: 'statistics', wraps: 'statsconfig' },
 ];
 
-module.exports = defineUmbrella({
+module.exports = Object.assign(defineUmbrella({
   name: 'config',
   description: "Petto's settings: language, aliases, who may use what, sanction messages, appeals, backups.",
   subcommands: SUBCOMMANDS,
   // The prefix of the server has its own command now (`/prefix`); `!config prefix set` still reaches it.
   legacyRoutes: { prefix: { command: 'prefix', args: [] } },
-});
+}), { prefixOnly: true }); // not a slash command any more: `/language`, `/alias`, `/backup`... are commands of their own; `!config ...` works as before

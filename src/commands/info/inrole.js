@@ -32,6 +32,7 @@ module.exports = {
   aliases: ['ir', 'members'],
   data: new SlashCommandBuilder()
     .setName('inrole')
+    .setDMPermission(false)
     .setDescription('Lists the members that have a role, a page at a time.')
     .addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)),
 

@@ -19,10 +19,7 @@ const DEFAULT_COMMAND_ALIASES = {
 // existing `channel` command, so the old `!channel ...` and `!ch ...` forms stay
 // valid while common moderation actions can be typed directly.
 const BASE_PREFIX_ROUTES = [
-  // The pictures of a server: `!servericon` is `!server icon`, and `!disablecommand servericon` turns off that one (the rest of /server stays).
-  { alias: 'servericon', command: 'server', args: ['icon'], subcommand: 'icon', disableName: 'servericon' },
-  { alias: 'serverbanner', command: 'server', args: ['banner'], subcommand: 'banner', disableName: 'serverbanner' },
-  { alias: 'serversplash', command: 'server', args: ['splash'], subcommand: 'splash', disableName: 'serversplash' },
+  // (`!servericon`, `!serverbanner` and `!serversplash` are commands of their own now: src/commands/info/servericon.js and its two neighbours.)
   // The AI that answers questions: `!ask who won...` is `!ai ask who won...` (also `petto ask ...` and `@Petto ask ...`), `!askusage` is `!ai usage`.
   // `ask` is a word a server may already use for an alias or a custom command: it keeps it (`yieldsToServer`), as a short alias does.
   { alias: 'ask', command: 'ai', args: ['ask'], subcommand: 'ask', disableName: 'ask', yieldsToServer: true },

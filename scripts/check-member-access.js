@@ -117,7 +117,7 @@ const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(Bi
 // Open at Discord and in the code, for everybody (read something, or work on the member's own data).
 const EVERYDAY = new Set([
   'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
-  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
+  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'rolemembers', 'servericon', 'serverbanner', 'serversplash', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
   'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
@@ -287,7 +287,7 @@ const DECLARED = {
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
 // None is left: what `/mod` and `/staff` held of a command that is a slash command of its own is for the prefix only now.
 const UMBRELLA_TWINS = [];
-const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', unban: 'mod unban', timeout: 'mod tempmute' };
+const REMOVED_TWINS = { unban: 'mod unban', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
 const executed = [];

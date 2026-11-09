@@ -23,8 +23,11 @@ function formatSeconds(seconds) {
 }
 
 module.exports = {
+  // A slash command of its own (`/channelinfo`): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('channelinfo')
+    .setDMPermission(false)
     .setDescription('Shows information about a channel.')
     .addChannelOption((o) => o.setName('channel').setDescription('Channel (default: this one)').setRequired(false)),
   aliases: ['ci'],

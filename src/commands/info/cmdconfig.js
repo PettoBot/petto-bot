@@ -42,7 +42,9 @@ function buildConfigText(prefix, lang = currentLanguage()) {
 }
 
 module.exports = {
-  prefixOnly: true,
+  // A slash command of its own (`/cmdconfig`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   data: new SlashCommandBuilder()
     .setName('cmdconfig')
     .setDescription('Show the recommended Petto configuration, with commands ready to copy.')

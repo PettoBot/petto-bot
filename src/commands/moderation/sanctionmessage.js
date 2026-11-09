@@ -19,6 +19,9 @@ const typeOption = (option) => option
 const slotChoices = [{ name: 'DM to the member', value: 'dm' }, { name: 'Reply where the command was used', value: 'reply' }, { name: 'Sanctions log entry', value: 'log' }];
 
 module.exports = {
+  // A slash command of its own (`/sanctionmessage`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['sanctionmsg', 'sanctionmessages'],
   data: new SlashCommandBuilder()
     .setName('sanctionmessage')

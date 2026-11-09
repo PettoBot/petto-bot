@@ -1,6 +1,7 @@
 // i18n-ignore-file: internal telemetry (logs).
 const config = require('../config');
 const logger = require('./logger');
+const { quietRoute } = require('./bulkRoleActivity');
 
 const LOG_COOLDOWN_MS = 60_000;
 const ATTACHED = Symbol('pettoRestRateLimitTelemetry');
@@ -24,6 +25,8 @@ function attachRestRateLimitTelemetry(client) {
   client.rest.on('rateLimited', (info = {}) => {
     // The wait of the bot's own limit (see `restRequestsPerSecond`) is not Discord limiting it: nothing to warn about.
     if (info.global && Number(info.limit) === Number(config.restRequestsPerSecond)) return;
+    // While a bulk role job runs, waiting on the limit of the route that gives roles is the normal pace of the job (utils/bulkRoleActivity.js).
+    if (!info.global && quietRoute(safeRoute(info.route))) return;
     const key = routeKey(info);
     const now = Date.now();
     const lastLogged = lastLoggedAt.get(key) || 0;

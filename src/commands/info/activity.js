@@ -6,6 +6,9 @@ const logger = require('../../utils/logger');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A slash command of its own (`/activity`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['ac'],
   data: new SlashCommandBuilder()
     .setName('activity')

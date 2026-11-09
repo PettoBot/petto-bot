@@ -8,6 +8,8 @@ const { t, tn, languageOf } = require('../../i18n');
 const { mentionList, listWithMore } = require('../../utils/listCap');
 
 module.exports = {
+  // A slash command of its own (`/voice`): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
   aliases: ['v'],
   // Each action asks for its own permission, not all three voice permissions at once.
   prefixPermissionOverrides: {

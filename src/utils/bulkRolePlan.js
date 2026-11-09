@@ -106,8 +106,23 @@ function parseJoinedInput(text, now = Date.now()) {
   return span ? new Date(now - span).toISOString() : undefined;
 }
 
-/** The time that is left, in milliseconds, from what has been checked so far; `null` while there is too little to tell. */
+// Discord lets a bot give or take about ten roles every ten seconds on a server: that is what the estimate starts from, until the job has measured its own pace.
+const CHANGES_PER_SECOND = 1;
+
+/**
+ * The time that is left, in milliseconds. With the count of who needs a change (`plan_todo`, made before the job starts) it is the changes that are left at the pace
+ * of the job (the one it has measured after a few changes, or Discord's own limit at first); without it, from what has been checked so far. `null` while there is too little to tell.
+ */
 function etaMs(job, now = Date.now()) {
+  if (job.plan_todo != null) {
+    const changed = Number(job.success_count ?? 0);
+    const left = Math.max(0, Number(job.plan_todo) - changed - Number(job.error_count ?? 0));
+    if (!left) return 0;
+    const started = job.changes_started_at ? new Date(job.changes_started_at).getTime() : NaN;
+    const elapsed = (now - started) / 1000;
+    const rate = Number.isFinite(started) && changed >= 5 && elapsed > 0 ? changed / elapsed : CHANGES_PER_SECOND;
+    return Math.round((left / Math.max(rate, 0.05)) * 1000);
+  }
   const started = job.started_at ? new Date(job.started_at).getTime() : NaN;
   const done = Number(job.processed_members ?? 0);
   const total = Number(job.total_members ?? 0);
@@ -136,6 +151,8 @@ function buildCardText(lang, job, { now = Date.now(), dangerous = 0n } = {}) {
   if (status === 'failed') {
     lines.push(t(lang, `moderation.bulkRole.card.error.${job.error_code && ERROR_CODES[job.error_code] ? job.error_code : 'generic'}`, { text: job.error_message ?? '' }));
   }
+  if (job.planning && ['pending', 'running'].includes(status)) lines.push(t(lang, 'moderation.bulkRole.card.counting'));
+  if (job.plan_todo != null) lines.push(t(lang, 'moderation.bulkRole.card.plan', { total: Number(job.plan_total ?? 0), withRole: Number(job.plan_with_role ?? 0), todo: Number(job.plan_todo) }));
   if (status !== 'failed' || done > 0) lines.push(t(lang, 'moderation.bulkRole.card.progress', { done, total }));
   if (preview) {
     lines.push(t(lang, 'moderation.bulkRole.card.previewCounts', { changed, skipped, filtered }));
@@ -144,7 +161,7 @@ function buildCardText(lang, job, { now = Date.now(), dangerous = 0n } = {}) {
   }
   if (status === 'running' || status === 'pending') {
     const left = etaMs(job, now);
-    if (left !== null) lines.push(t(lang, 'moderation.bulkRole.card.eta', { time: formatDuration(Math.max(1000, left), lang) }));
+    if (left !== null && left > 0) lines.push(t(lang, 'moderation.bulkRole.card.eta', { time: formatDuration(Math.max(1000, left), lang) }));
   }
   if (['completed', 'cancelled', 'failed'].includes(status) && job.started_at && job.finished_at) {
     const took = new Date(job.finished_at).getTime() - new Date(job.started_at).getTime();
@@ -161,5 +178,5 @@ function buildCardText(lang, job, { now = Date.now(), dangerous = 0n } = {}) {
 }
 
 module.exports = {
-  ERROR_CODES, DANGEROUS_PERMISSIONS, DANGEROUS_MASK, dangerousBits, checkTargetRole, roleCount, matchesFilters, classifyMember, parseJoinedInput, etaMs, buildCardText,
+  CHANGES_PER_SECOND, ERROR_CODES, DANGEROUS_PERMISSIONS, DANGEROUS_MASK, dangerousBits, checkTargetRole, roleCount, matchesFilters, classifyMember, parseJoinedInput, etaMs, buildCardText,
 };

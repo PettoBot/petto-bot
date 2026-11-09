@@ -28,8 +28,11 @@ register('emojis', {
 });
 
 module.exports = {
+  // A slash command of its own (`/emojis`): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
   aliases: ['emojilist', 'emotes'],
-  data: new SlashCommandBuilder().setName('emojis').setDescription('Lists the custom emojis of this server, a page at a time.'),
+  data: new SlashCommandBuilder().setName('emojis')
+    .setDMPermission(false).setDescription('Lists the custom emojis of this server, a page at a time.'),
 
   async execute(interaction) {
     await sendPager(interaction, 'emojis');

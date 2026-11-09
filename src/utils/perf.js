@@ -285,7 +285,7 @@ function recordRest({ family, totalMs, gateMs = 0, netMs = 0, status = 0, attemp
       context.firstReplyMs = nowMs() - context.startedAt;
     }
   }
-  if (totalMs > SLOW_REST_MS) {
+  if (totalMs > SLOW_REST_MS && !require('./bulkRoleActivity').quietRoute(family)) {
     warnThrottled(`rest:${family}`, `Slow Discord request ${family}: ${Math.round(totalMs)} ms (our queue ${Math.round(gateMs)} ms, network ${Math.round(netMs)} ms, rest waiting inside the REST client or retrying ${Math.round(Math.max(0, totalMs - gateMs - netMs))} ms, ${attempts} attempt(s), status ${status || 'none'}).`);
   }
 }
@@ -309,7 +309,7 @@ function recordRateLimit({ family, waitMs, global = false, scope = 'route', sour
   entry.rateLimited += 1;
   rateLimitEvents.push({ at: Date.now(), family, waitMs: Math.round(waitMs), global, scope, source });
   if (rateLimitEvents.length > 200) rateLimitEvents.shift();
-  if (waitMs > SLOW_REST_MS || global) {
+  if (global || (waitMs > SLOW_REST_MS && !require('./bulkRoleActivity').quietRoute(family))) {
     warnThrottled(`rl:${family}:${global}`, `Discord rate limit (${global ? 'global' : scope}, ${source}) on ${family}: waiting ${Math.round(waitMs)} ms.`);
   }
 }

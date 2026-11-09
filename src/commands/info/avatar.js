@@ -3,8 +3,8 @@ const { INFO_ACCENT, infoPayload } = require('../../utils/infoCard');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
-  // Not registered as a slash command any more: `/user avatar` replaces it (same options, same code). It keeps working with the prefix.
-  registerSlash: false,
+  // A slash command of its own (`/avatar`): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('avatar')
     .setDMPermission(false)

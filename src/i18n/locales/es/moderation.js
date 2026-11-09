@@ -790,6 +790,8 @@ module.exports = {
   'moderation.bulkRole.card.error.crashed': 'Se detuvo por un error inesperado. Lo que ya se hizo queda hecho.',
   'moderation.bulkRole.card.error.generic': 'Falló: {text}',
   'moderation.bulkRole.card.progress': 'Revisados **{done}** de **{total}** miembros',
+  'moderation.bulkRole.card.plan': 'Servidor: **{total}** miembros · **{withRole}** ya tienen el rol · **{todo}** necesitan el cambio',
+  'moderation.bulkRole.card.counting': 'Contando a quién le falta el cambio…',
   'moderation.bulkRole.card.counts': 'Cambiados **{changed}** · ya estaban bien **{skipped}** · fallidos **{failed}**',
   'moderation.bulkRole.card.previewCounts': 'Cambiaría a **{changed}** · ya están bien **{skipped}** · no coinciden **{filtered}**',
   'moderation.bulkRole.card.eta': 'Faltan unos {time}',

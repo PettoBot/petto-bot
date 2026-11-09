@@ -173,6 +173,38 @@ const baseJob = (extra = {}) => ({
   assert.deepEqual([result.processed_members, result.success_count, result.skipped_count], [2300, 1150, 1150]);
   assert.equal(result.cursor_id, '3299');
 
+  // Before the first change the job counts the server: how many members, how many already have the role and how many need the change, and from that how long it takes.
+  {
+    const { countPlan } = require('../src/utils/bulkRoleEngine');
+    const bulkPlan = require('../src/utils/bulkRolePlan');
+    const server = [member('10'), member('11', { roles: ['500'] }), member('12', { roles: ['500'] }), member('13'), member('14', { bot: true }), member('15')];
+    const counted = await countPlan(makeGuild(server), baseJob({ member_type: 'humans' }));
+    assert.deepEqual(counted, { scanned: 6, withRole: 2, todo: 3 }, 'six members, two have the role, three humans need it (the bot is not for this job)');
+    const removal = await countPlan(makeGuild(server), baseJob({ action: 'remove' }));
+    assert.equal(removal.todo, 2, 'taking the role away needs a change only for the two who have it');
+    assert.deepEqual(await countPlan(makeGuild(server), baseJob(), '999999'), { scanned: 0, withRole: 0, todo: 0 }, 'nobody after the end');
+    // The time is the changes that are left at the pace of the job: Discord's own pace at first, the measured one after a few changes.
+    const withPlan = { plan_total: 6, plan_with_role: 2, plan_todo: 100, success_count: 0, error_count: 0, changes_started_at: '2025-01-01T00:00:00Z' };
+    assert.equal(bulkPlan.etaMs(baseJob(withPlan), Date.parse('2025-01-01T00:00:00Z')), 100_000, '100 changes at one per second (ten every ten seconds)');
+    assert.equal(bulkPlan.etaMs(baseJob({ ...withPlan, success_count: 20 }), Date.parse('2025-01-01T00:00:10Z')), 40_000, 'after 20 changes in 10 seconds the pace is 2 a second: 80 left take 40 s');
+    assert.equal(bulkPlan.etaMs(baseJob({ ...withPlan, success_count: 100 }), Date.parse('2025-01-01T00:02:00Z')), 0, 'nothing left');
+    const planned = bulkPlan.buildCardText('es', baseJob({ ...withPlan, status: 'running', processed_members: 3, total_members: 6 }), { now: Date.parse('2025-01-01T00:00:00Z') });
+    assert.match(planned.text, /Servidor: \*\*6\*\* miembros · \*\*2\*\* ya tienen el rol · \*\*100\*\* necesitan el cambio/, 'the card says how many have the role out of the total');
+    assert.match(planned.text, /Faltan unos?|Quedan|restan|falta/i, 'and how long is left');
+    assert.match(bulkPlan.buildCardText('en', baseJob({ status: 'running', planning: true })).text, /Counting who needs a change/, 'while it counts');
+    // Waiting on the limit of the role route is how a bulk job works: no warning every minute while one runs (the other routes are still reported).
+    const activity = require('../src/utils/bulkRoleActivity');
+    assert.equal(activity.quietRoute('PUT /guilds/:id/members/:id/roles/:id'), false, 'nothing is quiet with no job');
+    activity.enter();
+    assert.equal(activity.quietRoute('PUT /guilds/:id/members/:id/roles/:id'), true, 'quiet while a job runs');
+    assert.equal(activity.quietRoute('POST /channels/:id/messages'), false, 'other routes are still reported');
+    activity.leave();
+    assert.equal(activity.running(), false);
+    // The engine marks itself as running only while the job is.
+    result = await run([member('10'), member('11')]);
+    assert.equal(activity.running(), false, 'the job leaves the quiet state when it ends');
+  }
+
   // The list of Discord refused: the full fetch is read in pages instead.
   result = await run([member('10'), member('13')], {}, { listFails: true });
   assert.deepEqual([result.status, result.success_count], ['completed', 2]);

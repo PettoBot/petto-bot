@@ -119,6 +119,9 @@ module.exports = {
   'cmd.info.server.icon.desc': 'Mostra o ícone deste servidor, com links em todos os tamanhos.',
   'cmd.info.server.banner.desc': 'Mostra o banner deste servidor, com links em todos os tamanhos.',
   'cmd.info.server.splash.desc': 'Mostra o plano de fundo do convite deste servidor, com links em todos os tamanhos.',
+  'cmd.info.servericon.desc': 'Mostra o ícone deste servidor, com links em todos os tamanhos.',
+  'cmd.info.serverbanner.desc': 'Mostra o banner deste servidor, com links em todos os tamanhos.',
+  'cmd.info.serversplash.desc': 'Mostra o plano de fundo do convite deste servidor, com links em todos os tamanhos.',
   'cmd.info.server.roles.desc': 'Lista todos os cargos deste servidor, uma página por vez.',
   'cmd.info.server.channels.desc': 'Lista os canais deste servidor, uma página por vez.',
   'cmd.info.server.emojis.desc': 'Lista os emojis personalizados deste servidor, uma página por vez.',
@@ -171,4 +174,6 @@ module.exports = {
   'cmd.info.bot.premium.desc': 'Veja ou gerencie o Petto Premium pelo prefixo de mensagens.',
   'cmd.info.bot.premium.status.desc': 'Mostra o status Premium seu ou de outro usuário.',
   'cmd.info.bot.premium.status.opt.user.desc': 'Usuário a verificar (padrão: você)',
+  'cmd.info.rolemembers.desc': 'Lista os membros que têm um cargo, uma página por vez.',
+  'cmd.info.rolemembers.opt.role.desc': 'Cargo',
 };

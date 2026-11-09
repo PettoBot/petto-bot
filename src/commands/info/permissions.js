@@ -21,8 +21,12 @@ function chips(names, lang) {
 }
 
 module.exports = {
+  // A slash command of its own (`/permissions`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   data: new SlashCommandBuilder()
     .setName('permissions')
+    .setDMPermission(false)
     .setDescription("Shows a member's effective permissions in a channel.")
     .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false))
     .addChannelOption((o) => o.setName('channel').setDescription('Channel (default: this one)').setRequired(false)),

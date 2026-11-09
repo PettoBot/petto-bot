@@ -18,8 +18,8 @@ const SUBCOMMANDS = [
 ];
 
 module.exports = {
-  // Also registered as a slash command (a tidier `/` list: the member things are found by typing `/user`); the prefix works too.
-  registerSlash: true,
+  // Not a slash command any more: each thing it held is a command of its own (`/user` is prefix only; `!user ...` and every word of it work as before).
+  prefixOnly: true,
   // `!user` alone, or with a member, is `!user info`.
   prefixDefaultSubcommand: 'info',
   prefixSubcommandAliases: {
