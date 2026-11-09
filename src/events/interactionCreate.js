@@ -48,6 +48,7 @@ const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleM
 const { PREFIX: FORM_PREFIX, handleFormInteraction } = require('../interactions/forms');
 const { isForumId, handleInteraction: handleForumInteraction } = require('../interactions/forum');
 const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleModal: handleSuggestionModal } = require('../interactions/suggestions');
+const { PREFIX: FEEDBACK_PREFIX, handleButton: handleFeedbackButton } = require('../interactions/feedbackVotes');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
@@ -158,6 +159,10 @@ module.exports = {
     }
     if (interaction.isModalSubmit() && interaction.customId.startsWith(`${CONFESSION_PREFIX}:`)) {
       await handleConfessionModal(interaction);
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith(`${FEEDBACK_PREFIX}:`)) {
+      await handleFeedbackButton(interaction);
       return;
     }
     if (interaction.isButton() && interaction.customId.startsWith(`${SUGGESTION_PREFIX}:`)) {

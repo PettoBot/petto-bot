@@ -53,6 +53,7 @@ const { supportOwnerAllows } = require('./supportOwner');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
+const { registerFeedbackBoardRoutes } = require('./feedbackBoardRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
 const { sendMethodNow } = require('../utils/questMethod');
@@ -843,6 +844,8 @@ function startServer(client) {
     registerForumRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
+    // The feedback board of the website: publish, redraw and delete the Discord card of a post.
+    registerFeedbackBoardRoutes(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
     // The dashboard saved a new language for a server: use it at once (the bot caches each server's language for 5 minutes).
     registerGuildLanguageRoute(app, {

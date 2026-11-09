@@ -258,6 +258,10 @@ module.exports = {
   // for the support data the bot may keep there later), so the main database keeps the settings. Without it everything stays in the main database.
   data2DatabaseUrl: process.env.PETTO_DATA2_DATABASE_URL?.trim() || null,
   data2DatabaseSsl: envBool('PETTO_DATA2_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
+  // The feedback board of the website (petto.sbs/feedback): the channel of the Petto server where each post is published as a card with
+  // Like and Dislike buttons (feedback/service.js). Without it the board still works and the posts are only on the website.
+  feedbackChannelId: process.env.FEEDBACK_CHANNEL_ID?.trim() || null,
+  siteUrl: (process.env.PETTO_SITE_URL?.trim() || 'https://petto.sbs').replace(/\/+$/, ''),
   // Shared secret for server-side dashboard requests. Keep this identical to the
   // web worker secret, but never send it to the browser.
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
