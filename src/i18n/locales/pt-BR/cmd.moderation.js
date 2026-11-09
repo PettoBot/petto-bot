@@ -727,4 +727,8 @@ module.exports = {
   'cmd.moderation.reactionmute.remove.desc': 'Devolve a um membro as reações e emojis externos.',
   'cmd.moderation.reactionmute.remove.opt.user.desc': 'O membro',
   'cmd.moderation.reactionmute.remove.opt.reason.desc': 'Motivo (aparece no registro de auditoria)',
+  'cmd.moderation.channel.copyperms.desc': 'Copia as permissões de um canal para outro (substitui as antigas ou as combina).',
+  'cmd.moderation.channel.copyperms.opt.from.desc': 'O canal de onde as permissões são copiadas',
+  'cmd.moderation.channel.copyperms.opt.to.desc': 'O canal que as recebe (padrão: este)',
+  'cmd.moderation.channel.copyperms.opt.merge.desc': 'Mantém as permissões que o canal já tem (padrão: substitui)',
 };

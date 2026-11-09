@@ -51,7 +51,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  'activity', 'appeals', 'boosters', 'bots', 'channels', 'cmdconfig', 'disablecommand', 'emojiinfo', 'firstmessage', 'imagemute', 'inviteinfo', 'moderation', 'nuke', 'permissions', 'raid',
+  'activity', 'appeals', 'customize', 'boosters', 'bots', 'channels', 'cmdconfig', 'disablecommand', 'emojiinfo', 'firstmessage', 'imagemute', 'inviteinfo', 'moderation', 'nuke', 'permissions', 'raid',
   'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'massban', 'reactionmute', 'restrictcommand', 'rolemembers', 'sanctionmessage', 'serverbanner', 'servericon', 'serversplash', 'snowflake', 'statsconfig', 'steal', 'summary', 'usercosmetics',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];

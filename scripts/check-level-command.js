@@ -128,5 +128,27 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
     assert.match(rankSource, /prefixWords: Object\.fromEntries\(\['add', 'remove', 'set'\]\.map\(\(word\) => \[word, \{ command: 'level', args: \['manage', 'level', word\] \}\]\)\)/, '!lvl add|remove|set change the levels');
   }
 
+  // The XP column is a bigint and the database hands it over as a string: adding 1500 to "8921" must give 10421, not "89211500" (level 9 became 381).
+  {
+    const users = require('../src/db/levelUsers.js');
+    const saved = [];
+    users.ensureUser = async (_guild, user) => ({ xp: user === 'dest' ? '500' : '8921', level: '9' });
+    users.setXpAndLevel = async (_guild, user, xp, level) => { saved.push({ user, xp, level }); };
+    const manage = (sub, action, amount, target = null) => ({
+      ...fakeInteraction('x', sub), pettoLang: 'en',
+      options: { getSubcommand: () => sub, getSubcommandGroup: () => 'manage', getString: () => action, getUser: (name) => (name === 'user' ? { id: 'user', toString: () => '<@user>' } : target), getInteger: () => amount },
+    });
+    await command.execute(manage('xp', 'add', 1500));
+    assert.deepEqual(saved.at(-1), { user: 'user', xp: 10421, level: saved.at(-1).level }, 'xp add 1500 on 8921 is 10421');
+    assert.equal(typeof saved.at(-1).xp, 'number');
+    assert.ok(saved.at(-1).level < 15, 'a few levels, not hundreds');
+    await command.execute(manage('xp', 'remove', 921));
+    assert.equal(saved.at(-1).xp, 8000, 'xp remove');
+    await command.execute(manage('xp', 'transfer', 100, { id: 'dest', toString: () => '<@dest>' }));
+    assert.deepEqual(saved.slice(-2).map((row) => [row.user, row.xp]), [['dest', 600], ['user', 8821]], 'xp transfer adds to the destination as a number');
+    await command.execute(manage('level', 'add', 2));
+    assert.equal(saved.at(-1).level, 11, 'level add 2 on 9 is 11, not "92"');
+  }
+
   console.log('Checked that /level rules, rank-style and event work with the prefix, and the order of the notify options.');
 })().catch((error) => { console.error(error); process.exit(1); });

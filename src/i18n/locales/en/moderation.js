@@ -812,4 +812,10 @@ module.exports = {
   'moderation.role.job.resume': '{emoji}  Job #{id} goes on.',
   'moderation.role.job.cancel': '{emoji}  Job #{id} is being cancelled: the member in progress finishes, then it stops.',
   'moderation.role.temp.hadIt': 'They already had this role, so it is still taken away when the time is up.',
+  'moderation.channel.copyperms.same': 'The two channels are the same one.',
+  'moderation.channel.copyperms.wrongType': 'Both have to be channels with permissions (text, voice, forum, stage or category).',
+  'moderation.channel.copyperms.needsPermissions': 'I need Manage Channels and Manage Roles in the channel that gets the permissions.',
+  'moderation.channel.copyperms.replaced': '{emoji}  The permissions of {from} are now the ones of {to}.',
+  'moderation.channel.copyperms.merged': '{emoji}  The permissions of {from} were added to the ones of {to}.',
+  'moderation.channel.audit.copyperms': 'Permissions copied from {channel} by {user}',
 };

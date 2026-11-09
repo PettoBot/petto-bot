@@ -812,4 +812,10 @@ module.exports = {
   'moderation.role.job.resume': '{emoji}  A tarefa #{id} continua.',
   'moderation.role.job.cancel': '{emoji}  A tarefa #{id} está sendo cancelada: o membro em andamento termina e depois para.',
   'moderation.role.temp.hadIt': 'Ele já tinha este cargo, então ele ainda é tirado quando o tempo acabar.',
+  'moderation.channel.copyperms.same': 'Os dois canais são o mesmo.',
+  'moderation.channel.copyperms.wrongType': 'Os dois precisam ser canais com permissões (texto, voz, fórum, palco ou categoria).',
+  'moderation.channel.copyperms.needsPermissions': 'Preciso de Gerenciar canais e Gerenciar cargos no canal que recebe as permissões.',
+  'moderation.channel.copyperms.replaced': '{emoji}  As permissões de {to} agora são as de {from}.',
+  'moderation.channel.copyperms.merged': '{emoji}  As permissões de {from} foram somadas às de {to}.',
+  'moderation.channel.audit.copyperms': 'Permissões copiadas de {channel} por {user}',
 };
