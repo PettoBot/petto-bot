@@ -93,5 +93,44 @@ const client = { guilds: { cache: new Collection([A, B, C, D, E].map((guild) => 
   assert.deepEqual(await complete('remove', ''), ['★ Beta Server'], 'to remove, the servers that hold their slot');
   assert.deepEqual(await complete('add', 'del'), ['Delta Server']);
 
+  // The status of your own: the buttons and the menus under the card.
+  {
+    premium = { active: true, assignments: [{ guild_id: B.id }], slotsUsed: 1, slotsTotal: 2, status: 'active', entitlement: {}, activeEntitlements: [{ plan_key: 'premium-1' }] };
+    let collect = null;
+    const edits = [];
+    const message = { createMessageComponentCollector: () => ({ on: (event, fn) => { if (event === 'collect') collect = fn; } }), edit: async () => {} };
+    const rowsOf = (payload) => JSON.parse(JSON.stringify(payload.components[0])).components.filter((node) => node.type === 1);
+    const ids = (payload) => rowsOf(payload).map((row) => row.components.map((component) => component.custom_id ?? 'link'));
+    let first = null;
+    await command.execute({
+      pettoLang: 'en', guild: A, user: { id: ME, displayAvatarURL: () => 'https://x/a.png' }, client,
+      options: { getSubcommand: () => 'status', getUser: () => null },
+      reply: async (payload) => { first = payload; return message; },
+    });
+    assert.deepEqual(ids(first), [['premium_add_here'], ['premium_add_pick'], ['premium_remove_pick'], ['link', 'link']], 'a button for this server, a menu to give, a menu to take back, and the links');
+    const addMenu = rowsOf(first)[1].components[0]; const removeMenu = rowsOf(first)[2].components[0];
+    assert.deepEqual(addMenu.options.map((option) => option.label), ['Alpha Server', 'Delta Server'], 'the menu to give lists the servers you manage that do not have your slot yet (Beta already has it)');
+    assert.deepEqual(removeMenu.options.map((option) => option.label), ['Beta Server'], 'the menu to take back lists the servers that hold your slot');
+    assert.equal(rowsOf(first)[0].components[0].disabled ?? false, false, 'the button is on: you manage this server and have a slot left');
+    // Somebody else presses a button: told in private, nothing changes.
+    const replies = [];
+    const before = calls.length;
+    await collect({ user: { id: 'other' }, customId: 'premium_add_here', reply: async (payload) => replies.push(payload) });
+    assert.equal(calls.length, before); assert.match(JSON.stringify(replies), /for who asked/);
+    // The owner picks a server in the menu: the slot is given and the card is drawn again with what happened.
+    assignResult = { ok: true, assignment: {} };
+    await collect({ user: { id: ME }, client, customId: 'premium_add_pick', values: [D.id], deferUpdate: async () => {}, editReply: async (payload) => edits.push(payload), followUp: async () => {} });
+    assert.deepEqual(calls.at(-1), ['assign', ME, D.id]);
+    assert.match(JSON.stringify(edits.at(-1)), /Premium is now active in \*\*Delta Server\*\*/);
+    await collect({ user: { id: ME }, client, customId: 'premium_remove_pick', values: [B.id], deferUpdate: async () => {}, editReply: async (payload) => edits.push(payload), followUp: async () => {} });
+    assert.deepEqual(calls.at(-1), ['unassign', ME, B.id]);
+    // No slots left: no menu to give, and the button of a server without your slot is off.
+    premium = { ...premium, slotsUsed: 2 };
+    let full = null;
+    await command.execute({ pettoLang: 'en', guild: A, user: { id: ME, displayAvatarURL: () => 'https://x/a.png' }, client, options: { getSubcommand: () => 'status', getUser: () => null }, reply: async (payload) => { full = payload; return message; } });
+    assert.deepEqual(ids(full).map((row) => row[0]), ['premium_add_here', 'premium_remove_pick', 'link']);
+    assert.equal(rowsOf(full)[0].components[0].disabled, true);
+  }
+
   console.log('check-premium-slash: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

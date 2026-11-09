@@ -630,4 +630,9 @@ module.exports = {
   'info.premium.remove.none': '{emoji} **{server}** does not have a slot of yours.',
   'info.premium.servers.title': '### Your Premium servers ({used} / {total})',
   'info.premium.info': '### Petto Premium\nPlans and what they include: {url}\n\n- `/premium status` shows your plan and slots.\n- `/premium add` gives a slot to a server where you are an administrator (pick it from the list; this server by default).\n- `/premium remove` takes the slot back.\n- `/premium servers` lists the servers that have it.\n\nYou can also do it in the dashboard: {dashboard}',
+  'info.premium.notYours': '{emoji} Those buttons are for who asked. Use `/premium status` for yours.',
+  'info.premium.addHere.button': 'Give Premium to this server',
+  'info.premium.removeHere.button': 'Take Premium back from this server',
+  'info.premium.addPick.menu': 'Give Premium to another server...',
+  'info.premium.removePick.menu': 'Take a slot back from...',
 };

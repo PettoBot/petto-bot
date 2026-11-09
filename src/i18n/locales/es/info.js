@@ -630,4 +630,9 @@ module.exports = {
   'info.premium.remove.none': '{emoji} **{server}** no tiene un espacio tuyo.',
   'info.premium.servers.title': '### Tus servidores con Premium ({used} / {total})',
   'info.premium.info': '### Petto Premium\nPlanes y qué incluyen: {url}\n\n- `/premium status` muestra tu plan y tus espacios.\n- `/premium add` da un espacio a un servidor donde eres administrador (elígelo de la lista; este servidor por defecto).\n- `/premium remove` recupera el espacio.\n- `/premium servers` lista los servidores que lo tienen.\n\nTambién puedes hacerlo en la dashboard: {dashboard}',
+  'info.premium.notYours': '{emoji} Esos botones son de quien lo pidió. Usa `/premium status` para el tuyo.',
+  'info.premium.addHere.button': 'Dar Premium a este servidor',
+  'info.premium.removeHere.button': 'Quitar Premium de este servidor',
+  'info.premium.addPick.menu': 'Dar Premium a otro servidor...',
+  'info.premium.removePick.menu': 'Recuperar un espacio de...',
 };
