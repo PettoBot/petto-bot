@@ -4,7 +4,7 @@ const { createCase } = require('../../db/modActions');
 const { canModerate } = require('../../utils/permissions');
 const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
-const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
+const { sanctionDM, sanctionReply, updateSanctionDm } = require('../../utils/sanctionTemplates');
 const logger = require('../../utils/logger');
 const { failureDetail } = require('../../utils/moderationCommand');
 const { t, languageOf } = require('../../i18n');
@@ -39,9 +39,11 @@ module.exports = {
 
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
+    const dmOptions = { type: 'softban', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user };
+    let dm = null;
     if (targetMember) {
-      await sendDm(targetMember, await sanctionDM({ type: 'softban', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
-        .catch(() => logger.warn(`Could not DM softban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
+      dm = await sendDm(targetMember, await sanctionDM(dmOptions))
+        .catch(() => { logger.warn(`Could not DM softban notice to ${targetUser.id} in guild ${interaction.guild.id}.`); return null; });
     }
 
     try {
@@ -58,6 +60,7 @@ module.exports = {
 
     await ensureGuild(interaction.guild.id);
     const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'softban', reason });
+    await updateSanctionDm(dm, { ...dmOptions, caseNumber: modCase.case_number });
 
     await sanctionReply(interaction, { modCase, type: 'softban', target: targetUser, moderator: interaction.user, reason });
     await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
