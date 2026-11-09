@@ -23,7 +23,7 @@ async function releaseRedemption(jti) {
   if (error) throw error;
 }
 
-/** Whether this user has ever successfully redeemed a verification link in this guild before (used to skip re-gating on rejoin). */
+/** Whether this user has ever successfully redeemed a verification link in this guild before (the "you are already verified" answer of the letters). Not used to skip the gate when they join again. */
 async function hasEverVerified(guildId, userId) {
   const { data, error } = await database.from('verification_redemptions').select('jti').eq('guild_id', guildId).eq('user_id', userId).limit(1).maybeSingle();
   if (error) throw error;

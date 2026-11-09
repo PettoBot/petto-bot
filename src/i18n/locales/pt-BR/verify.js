@@ -59,7 +59,6 @@ module.exports = {
   'verify.send.failed': '{emoji}  Não consegui mandar DM para {user} (DMs fechadas).',
   'verify.send.failedLink': '{emoji}  Não consegui mandar DM para {user} (DMs fechadas). Link: {link}',
   'verify.reason.resent': 'Link de verificação reenviado',
-  'verify.reason.returning': 'Verificação: voltou um membro que já tinha se verificado',
   'verify.reason.newMember': 'Verificação: novo membro',
   'verify.reason.passed': 'Passou na verificação',
   'verify.reason.panel': 'Petto: painel de verificação',
