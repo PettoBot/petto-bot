@@ -20,7 +20,7 @@ const OPEN_ENDED = new Set(['ban', 'hardban', 'mute', 'jail']);
  * Builds the DM sent to a sanctioned user, shared by every sanction command (ban/kick/mute/warn/tempban/tempmute) so they all read the same way:
  *
  *   <emoji>  You have been banned from **Guild Name** for 7 days
- *   **Reason:** spamming
+ *   **Reason:** spamming          ("No reason given" when there is none: every sanction has the same lines)
  *   **Duration:** Permanent        (only for a sanction that has no end; a timed one says its time in the first line)
  *   -# Case #12                    (when the case is known)
  *
@@ -33,7 +33,7 @@ function buildSanctionDM({ type, guild, reason, duration, caseNumber = null, app
   const emoji = EMOJI.HAMMER;
   const action = t(lang, `moderation.dm.${DM_TYPES.has(type) ? type : 'unknown'}${duration ? 'Timed' : ''}`, { server: guild.name, duration });
   const lines = [`${emoji}  ${action}`];
-  if (reason) lines.push(t(lang, 'moderation.dm.reasonLine', { reason: displayReason(reason, lang) }));
+  lines.push(t(lang, 'moderation.dm.reasonLine', { reason: reason ? displayReason(reason, lang) : t(lang, 'moderation.card.noReason') }));
   if (!duration && OPEN_ENDED.has(type)) lines.push(t(lang, 'moderation.dm.durationLine', { duration: t(lang, 'moderation.dm.permanent') }));
   if (caseNumber != null) lines.push(t(lang, 'moderation.dm.caseLine', { number: caseNumber }));
   if (appealLine) lines.push('', appealLine);

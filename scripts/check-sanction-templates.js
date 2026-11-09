@@ -15,7 +15,7 @@ stub('src/db/senderIdentities.js', { FEATURES: [], get: async () => null });
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => { if (name === brokenName) throw new Error('db down'); return templates[name] ? { name, data: templates[name] } : null; } });
 stub('src/db/sanctionTemplates.js', { templateFor: async (guildId, type, slot) => slots[`${type}:${slot}`] ?? slots[`default:${slot}`] ?? null });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
-const { sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed } = require('../src/utils/sanctionTemplates');
+const { sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed, updateSanctionDm } = require('../src/utils/sanctionTemplates');
 const { resolve } = require('../src/utils/embedVariables');
 
 const { Collection } = require('discord.js');
@@ -113,6 +113,17 @@ const moderator = { id: '222', username: 'mod', displayAvatarURL: () => 'https:/
   assert.ok((await run('list', {})).includes('dmcard'));
   await run('clear', { type: 'ban', slot: 'dm' });
   assert.equal(store.get('ban').dm, null);
+  // A kick or a ban messages the member before the case exists: once it does, the message that was sent is edited to carry the case number (and a failure changes nothing).
+  {
+    const edits = [];
+    const kept = { ...slots };
+    for (const key of Object.keys(slots)) delete slots[key]; // no template of the server: the usual text
+    await updateSanctionDm({ edit: async (body) => { edits.push(body); } }, { type: 'softban', guild, client, reason: null, user: target, caseNumber: 9 });
+    assert.equal(edits.length, 1); assert.match(edits[0].content, /Case #9/); assert.match(edits[0].content, /From /, 'the origin line stays');
+    await updateSanctionDm(null, { type: 'kick', guild, client, user: target, caseNumber: 9 });
+    await updateSanctionDm({ edit: async () => { throw new Error('gone'); } }, { type: 'kick', guild, client, user: target, caseNumber: 9 });
+    Object.assign(slots, kept);
+  }
   // The text of the DM (no "Sent from..." line: the origin line and the buttons are added when it is sent): the reason, "Permanent" for a sanction with no end, the case.
   {
     const { buildSanctionDM } = require('../src/utils/sanctionMessage');
@@ -124,7 +135,10 @@ const moderator = { id: '222', username: 'mod', displayAvatarURL: () => 'https:/
     const timed = buildSanctionDM({ type: 'tempban', guild, client, reason: 'spamming', duration: '7 days', lang: 'en' });
     assert.match(timed, /temporarily banned from \*\*Liam\*\* for 7 days/); assert.ok(!/Duration:|Case #/.test(timed), 'a timed sanction says its time in the first line; no case, no case line');
     const warn = buildSanctionDM({ type: 'warn', guild, client, reason: null, lang: 'en' });
-    assert.ok(!/Duration|Reason/.test(warn), 'a warn has no duration, and no reason line when there is none');
+    assert.ok(!/Duration/.test(warn), 'a warn has no duration');
+    assert.match(warn, /\*\*Reason:\*\* No reason/, 'every sanction has its reason line, "No reason given" when there is none');
+    const kick = buildSanctionDM({ type: 'kick', guild, client, reason: null, caseNumber: 7, lang: 'en' }).split('\n');
+    assert.equal(kick.length, 3, 'a kick: the sentence, the reason and the case'); assert.equal(kick[2], '-# Case #7');
     const es = buildSanctionDM({ type: 'ban', guild, client, reason: 'spam', caseNumber: 3, lang: 'es' });
     assert.match(es, /Se te baneó|baneado/); assert.match(es, /\*\*Razón:\*\* spam/); assert.match(es, /\*\*Duración:\*\* Permanente/); assert.match(es, /-# Caso #3/);
     for (const text of [ban.join('\n'), timed, warn, es]) assert.ok(!/Sent from|Enviado desde|members|miembros/.test(text), 'the line that repeated the server and its size is gone');

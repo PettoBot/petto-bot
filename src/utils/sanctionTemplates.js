@@ -95,6 +95,20 @@ async function composeSanctionDM({ type, guild, client, reason, duration, user =
   }
 }
 
+/**
+ * The sanctions that remove the member (ban, kick, softban) message them BEFORE they go, when the case does not exist yet. Once it does, the message that was sent is edited to
+ * carry the case number (`dm` is the message `sendDm` returned, or nothing when it could not be sent). A failure here never matters: the message stays as it was.
+ */
+async function updateSanctionDm(dm, options) {
+  if (!dm || typeof dm.edit !== 'function') return;
+  try {
+    const { decorate } = require('./dmOrigin');
+    await dm.edit(decorate(await sanctionDM(options)));
+  } catch (error) {
+    logger.warn({ action: 'sanction-dm' }, `The case number could not be added to the sanction DM: ${error.message}`);
+  }
+}
+
 /** The message of a sanction, told where it comes from (the server and "a moderation action"): `sendDm` adds the line and the buttons with it. */
 async function sanctionDM(options) {
   return withOrigin(await composeSanctionDM(options), { guild: options.guild, kind: 'sanction' });
@@ -158,4 +172,4 @@ async function sanctionLogEmbed({ modCase, guild, target, moderator, reason, dur
   }
 }
 
-module.exports = { actionText, sourceText, sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed };
+module.exports = { actionText, sourceText, sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed, updateSanctionDm };

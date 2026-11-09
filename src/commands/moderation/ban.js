@@ -12,7 +12,7 @@ const { canModerate } = require('../../utils/permissions');
 const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
 const { sendLog } = require('../../logging/engine');
-const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
+const { sanctionDM, sanctionReply, updateSanctionDm } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration, splitLeadingDuration } = require('../../utils/duration');
 const { withOptionValues } = require('../../utils/optionOverrides');
@@ -121,10 +121,12 @@ async function banUser(rawInteraction, { hard = false } = {}) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  // Best-effort: DM before the ban, since the bot can't message someone it no longer shares a server with.
+  // Best-effort: DM before the ban, since the bot can't message someone it no longer shares a server with (the case number is added to it once it exists).
+  const dmOptions = { type, guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user };
+  let dm = null;
   if (targetMember) {
-    await sendDm(targetMember, await sanctionDM({ type, guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
-      .catch(() => logger.warn(`Could not DM ban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
+    dm = await sendDm(targetMember, await sanctionDM(dmOptions))
+      .catch(() => { logger.warn(`Could not DM ban notice to ${targetUser.id} in guild ${interaction.guild.id}.`); return null; });
   }
 
   try {
@@ -141,6 +143,7 @@ async function banUser(rawInteraction, { hard = false } = {}) {
   await ensureGuild(interaction.guild.id);
   if (hard) await addHardBan(interaction.guild.id, targetUser.id, interaction.user.id, reason);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type, reason });
+  await updateSanctionDm(dm, { ...dmOptions, caseNumber: modCase.case_number });
 
   await sanctionReply(interaction, { modCase, type, target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
@@ -176,12 +179,15 @@ async function banUsers(interaction) {
         blocked.push(user);
         continue;
       }
+      const dmOptions = { type: 'ban', guild: interaction.guild, client: interaction.client, reason, member, moderator: interaction.user };
+      let dm = null;
       if (member) {
-        await sendDm(member, await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
-          .catch(() => logger.warn(`Could not DM ban notice to ${user.id} in guild ${interaction.guild.id}.`));
+        dm = await sendDm(member, await sanctionDM(dmOptions))
+          .catch(() => { logger.warn(`Could not DM ban notice to ${user.id} in guild ${interaction.guild.id}.`); return null; });
       }
       await interaction.guild.members.ban(user.id, { reason: reason ?? undefined });
       const modCase = await createCase({ guildId: interaction.guild.id, userId: user.id, moderatorId: interaction.user.id, type: 'ban', reason });
+      await updateSanctionDm(dm, { ...dmOptions, caseNumber: modCase.case_number });
       caseNumbers.push(modCase.case_number);
       succeeded.push(user);
       await logSanction(interaction.client, interaction.guild, { modCase, target: user, moderator: interaction.user, reason });
@@ -226,9 +232,11 @@ async function tempBan(interaction) {
 
   const duration = formatDuration(durationMs, lang);
 
+  const dmOptions = { type: 'tempban', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user };
+  let dm = null;
   if (targetMember) {
-    await sendDm(targetMember, await sanctionDM({ type: 'tempban', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user }))
-      .catch(() => logger.warn(`Could not DM tempban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
+    dm = await sendDm(targetMember, await sanctionDM(dmOptions))
+      .catch(() => { logger.warn(`Could not DM tempban notice to ${targetUser.id} in guild ${interaction.guild.id}.`); return null; });
   }
 
   try {
@@ -245,6 +253,7 @@ async function tempBan(interaction) {
   const expiresAt = new Date(Date.now() + durationMs).toISOString();
   await ensureGuild(interaction.guild.id);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'tempban', reason, expiresAt });
+  await updateSanctionDm(dm, { ...dmOptions, caseNumber: modCase.case_number });
 
   await sanctionReply(interaction, { modCase, type: 'tempban', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason, duration });
