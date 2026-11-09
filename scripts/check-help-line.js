@@ -266,5 +266,19 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
     assert.equal(help.optionDescription(undefined, 'fallback'), 'fallback');
   }
 
+    // The first page of a command with subcommands is its overview (in the style of the help of Bleed): the group, who can use it, the syntax and every subcommand with what it does.
+    {
+      const ban = client.commands.get('ban');
+      const overview = help.groupOverviewText('!', ban, [{ path: ['user'], description: 'Ban a user.' }, { path: ['remove'], description: 'Unban a user.' }], 'en');
+      assert.equal(overview.head.split('\n')[0], '### Group: ban');
+      assert.ok(overview.body.includes('**Syntax:** `!ban <subcommand>`'), 'the syntax of the group');
+      assert.ok(/`!ban user`: \S/.test(overview.body) && /`!ban remove`: \S/.test(overview.body), 'a line for each subcommand with what it does');
+      assert.ok(/\*\*Permission:\*\*/.test(overview.body), 'who can use it');
+      const many = help.groupOverviewText('!', ban, Array.from({ length: 30 }, (_, i) => ({ path: [`s${i}`], description: 'x' })), 'en');
+      assert.ok(many.body.includes('and 16 more'), 'a long list is cut and says how many are left');
+      assert.ok(many.head.length + many.body.length < 3500, 'it fits in a message');
+      const spanishGroup = help.groupOverviewText('!', ban, [{ path: ['user'], description: 'x' }], 'es');
+      assert.ok(spanishGroup.head.startsWith('### Grupo: ban') && spanishGroup.body.includes('**Sintaxis:**'), 'in the language of the server');
+    }
   console.log('help line checks passed');
 })().catch((error) => { console.error(error); process.exit(1); });
