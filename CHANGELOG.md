@@ -5,6 +5,7 @@ All notable changes to Petto are documented here.
 ## [Unreleased]
 
 ### Added
+- **Level words with the prefix are in one place.** `!xp add|remove|set|transfer @member 1500` changes the XP of a member and `!lvl add|remove|set @member 5` (also `!nivel`, `!rank`) its level; before, `!xp add` answered "add is not part of level". `!rank @member` and `!lvl` alone are still the card, `!xp` still opens the settings (`!xp reward add`, `!xp event add`...). They are the same commands as `/levels manage xp` and `/levels manage level` (same permission and code).
 - **`!help <command>` opens with the group page, in the style of Bleed.** For a command with subcommands the first page is `Group: ban`: what it does, who can use it, the syntax (`!ban <subcommand>`), every subcommand with its description and `Page 1/5 (4 entries) · Module: moderation`; the pages after it are the subcommands one by one and the menu jumps to any. `/help` shows the same list when a command is opened from the menu. `/ban remove-all` stays in the `/` menu next to `/massunban`.
 - **`/massban`, `/masskick`, `/masswarn`, `/massunban`, `/massmute` and `/massunmute` are slash commands again, with the names people know.** They are in the server set (`guildScoped`). `/ban users`, `/kick users`, `/warn users`, `/mute users` and `/mute remove-users` leave the `/` menu so no command is there twice; the words keep working with the prefix and in `!modtools` (`slashHiddenSubcommands`).
 

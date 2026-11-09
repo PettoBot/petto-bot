@@ -17,6 +17,9 @@ module.exports = {
     .addUserOption((o) => o.setName('user').setDescription('Member to check (default: you)').setRequired(false))
     .addStringOption((o) => o.setName('type').setDescription('Which leveling system to view').addChoices({ name: 'Messages', value: 'messages' }, { name: 'Voice', value: 'voice' }).setRequired(false)),
   aliases: ['nivel', 'lvl'],
+  // `!rank @member` shows the card; `!lvl add @member 5` (also `set` and `remove`) changes the levels of a member, the same as `!level manage level add @member 5`.
+  // The XP of a member is `!xp add|remove|set|transfer`.
+  prefixWords: Object.fromEntries(['add', 'remove', 'set'].map((word) => [word, { command: 'level', args: ['manage', 'level', word] }])),
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
