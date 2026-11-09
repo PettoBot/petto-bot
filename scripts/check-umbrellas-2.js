@@ -143,7 +143,7 @@ const TABLES = {
 };
 const UMBRELLAS = Object.keys(TABLES);
 const CATEGORY = { game: 'fun', me: 'utility', staff: 'moderation' };
-const NEW_SLASH = ['game', 'me', 'staff'];
+const NEW_SLASH = ['game', 'me']; // (`/staff` is a prefix umbrella now: imute, rmute, voice, nuke and raid are slash commands of their own)
 // What /search wraps (it is tested with the groups of scripts/check-umbrellas-3.js); the words of /search that these checks type are spied too.
 const SEARCH_FILES = [...new Set([...client.commands.values()].filter((command) => command.category === 'integrations' || ['weather', 'time', 'wiki', 'calc', 'color'].includes(command.data.name)).map((command) => command.data.name))].filter((name) => name !== 'search');
 const commandFile = (name) => client.commands.get(name);
@@ -256,11 +256,12 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     const command = client.commands.get(umbrella);
     assert.ok(command, `/${umbrella} is loaded`);
     assert.equal(command.category, CATEGORY[umbrella], `/${umbrella} is in ${CATEGORY[umbrella]}`);
-    assert.ok(!command.hiddenFromHelp && !command.slashOnly && !command.prefixOnly, `/${umbrella} is a prefix and a slash command, shown in !help`);
-    assert.equal(command.registerSlash, true);
+    const flattened = ['user', 'server', 'staff', 'config'].includes(umbrella); // a prefix umbrella now: what it held is a slash command of its own
+    assert.ok(!command.hiddenFromHelp && !command.slashOnly && (flattened ? command.prefixOnly === true : !command.prefixOnly), `/${umbrella} is shown in !help (${flattened ? 'prefix only' : 'a prefix and a slash command'})`);
+    if (!flattened) assert.equal(command.registerSlash, true);
     assert.equal(command.rulesBySubcommand, true);
     assert.equal(command.listSubcommandsWhenEmpty, true);
-    assert.ok(isSlashCommand(command));
+    assert.equal(isSlashCommand(command), !flattened);
     assert.equal(client.commandAliases.has(umbrella) || client.commandRoutes.has(umbrella), false, `\`${umbrella}\` was not a word of anything else`);
     const json = command.data.toJSON();
     assert.equal(json.dm_permission, false);
@@ -287,7 +288,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   }
   // Only prefix commands are wrapped (the ones that were already slash commands, `/remind`, `/rank`, `/afk`..., stay as they are).
   // (`thread`, `snipe` and `mute` are the exception: they are also slash commands of their own now, so `/thread lock` and `/staff thread-lock` both exist.)
-  for (const file of wrappedFiles) assert.ok(!isSlashCommand(commandFile(file)) || ['thread', 'snipe', 'mute'].includes(file), `${file} was a prefix command (the slash ones are not wrapped twice)`);
+  // (`/staff` is a prefix umbrella now: what it wraps is a slash command of its own, so this holds for the umbrellas that are still slash commands only.)
+  const wrappedBySlashUmbrellas = [...new Set(UMBRELLAS.filter((umbrella) => !['user', 'server', 'staff', 'config'].includes(umbrella)).flatMap((umbrella) => TABLES[umbrella].map((row) => row[1])))];
+  for (const file of wrappedBySlashUmbrellas) assert.ok(!isSlashCommand(commandFile(file)) || ['thread', 'snipe', 'mute'].includes(file), `${file} was a prefix command (the slash ones are not wrapped twice)`);
 
   // Each subcommand has the description and the options of what it wraps: the same names, types, required flags, limits and choices.
   const shape = (options) => (options ?? []).map((option) => [option.name, option.type, Boolean(option.required), option.description, option.channel_types ?? null, option.choices ?? null, option.min_value ?? null, option.max_value ?? null, option.min_length ?? null, option.max_length ?? null]);
@@ -474,12 +477,12 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   }
   for (const [word, command] of [['cf', 'coinflip'], ['eightball', '8ball'], ['tod', 'truthordare'], ['wyr', 'wouldyourather'], ['nhie', 'neverhaveiever'], ['mc', 'minecraft'], ['rbx', 'roblox'], ['mr', 'modrinth'], ['bday', 'birthday'],
     ['bd', 'birthday'], ['reputation', 'rep'], ['userprefix', 'myprefix'], ['phist', 'profilehistory'], ['globalrank', 'globalranking'], ['sp', 'spotify'], ['br', 'boosterrole'], ['ani', 'anilist'], ['lfm', 'lastfm'], ['yt', 'youtube'],
-    ['wp', 'wikipedia'], ['wk', 'wiki'], ['clima', 'weather'], ['tz', 'time'], ['gh', 'github'], ['pkg', 'package'], ['imagemute', 'imute'], ['reactionmute', 'rmute'], ['th', 'thread'], ['n', 'nuke'], ['mban', 'massban'], ['mkick', 'masskick'],
+    ['wp', 'wikipedia'], ['wk', 'wiki'], ['clima', 'weather'], ['tz', 'time'], ['gh', 'github'], ['pkg', 'package'], ['th', 'thread'], ['n', 'nuke'], ['mban', 'massban'], ['mkick', 'masskick'],
     ['mmute', 'massmute'], ['munban', 'massunban'], ['unbanall', 'massunban'], ['munmute', 'massunmute'], ['mwarn', 'masswarn'], ['sniped', 'snipe'], ['v', 'voice'], ['recentban', 'raid']]) {
     assert.equal(client.commandAliases.get(word), command, `${word} is still ${command}`);
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
-  for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github', 'voice', 'massban']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
+  for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
   for (const name of ['thread', 'snipe']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is a slash command of its own, and !${name} works as before`);
   // The booster role is its own slash command, with every subcommand, and not a subcommand of /me any more (`!boosterrole` and `!br` work as before).
   assert.ok(isSlashCommand(commandFile('boosterrole')), '/boosterrole is a slash command');
@@ -491,7 +494,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   for (const name of ['rank', 'top']) assert.ok(!isSlashCommand(commandFile(name)) && client.commands.has(name), `/${name} is not a slash command any more (/levels rank, /levels leaderboard) and !${name} still works`);
   assert.ok(isSlashCommand(commandFile('suggest')) && client.commands.has('suggest'), '/suggest is a slash command again (/suggest send), and !suggest still works');
   // `/avatar`, `/userinfo`, `/purge` (and `/serverinfo`, `/unban`, `/timeout`) were replaced by `/user avatar`, `/user info`, `/mod purge`...: the prefix is unchanged.
-  for (const name of ['avatar', 'userinfo', 'purge', 'serverinfo', 'unban', 'timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
+  for (const name of ['unban', 'timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
 
   // ------------------------------------------------------------ SECURITY: the permission of each wrapped command, slash and prefix
   const wrongFor = (flag) => (flag === 'ManageGuild' ? F.ManageMessages : F.ManageGuild);
@@ -676,8 +679,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 79, '79 commands registered globally with Discord (76 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 76, '76 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 92, '92 commands registered globally with Discord (89 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 89, '89 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
@@ -724,7 +727,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // The Spanish and Portuguese of a subcommand are the ones of the command it wraps.
   const es = registered.find((each) => each.name === 'game').options.find((sub) => sub.name === 'coinflip').description_localizations['es-ES'];
   assert.equal(es, CATALOGS.es['cmd.fun.coinflip.desc']);
-  assert.equal(registered.find((each) => each.name === 'staff').options.find((sub) => sub.name === 'voice-mute').description_localizations['pt-BR'], CATALOGS['pt-BR']['cmd.moderation.voice.mute.desc']);
+  assert.equal(registered.find((each) => each.name === 'voice').options.find((sub) => sub.name === 'mute').description_localizations['pt-BR'], CATALOGS['pt-BR']['cmd.moderation.voice.mute.desc']);
 
   // ------------------------------------------------------------ the short aliases
   for (const umbrella of UMBRELLAS) {

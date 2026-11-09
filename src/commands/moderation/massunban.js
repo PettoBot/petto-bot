@@ -3,6 +3,8 @@ const ban = require('./ban');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['munban', 'unbanall'],
   // `!unbanall cancel` stops the one that is running.
   prefixWords: { cancel: { command: 'ban', args: ['cancel'] }, kill: { command: 'ban', args: ['cancel'] } },

@@ -17,21 +17,19 @@ const ROLEPLAY = 1;
 const ESSENTIAL = [
   // Everyday commands that also work with `/` (they keep working with the prefix).
   'afk', 'ban', 'channel', 'embed', 'giveaway', 'help', 'kick', 'remind', 'ticket', 'warn',
-  // The two umbrellas: everything about a server (`/server info`, `icon`...) and about a member (`/user info`, `avatar`...). `/serverinfo`,
-  // `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are NOT registered any more: `/server info`, `/user info`, `/user avatar`,
-  // `/mod unban`, `/mod purge` and `/mod tempmute` have every option and action of them (the prefix words work as before).
-  'server', 'user',
-  // The umbrella of moderation (`/mod ban`, `kick`, `purge`...): one slash command for the everyday moderation commands; each subcommand
-  // asks for the permission of the command it wraps when it runs (src/commands/moderation/mod.js).
-  'mod',
+  // What `/server`, `/user`, `/staff` and `/config` held is a command of its own each (`/serverinfo`, `/userinfo`, `/avatar`, `/backup`, `/alias`, `/voice`...); the four are
+  // prefix commands only now (`!server info`, `!user avatar`, `!staff voice mute`, `!config alias add` work as before). The most used are global, the rest are in the second set.
+  'userinfo', 'avatar', 'banner', 'serverinfo', 'roleinfo', 'channelinfo', 'roles', 'emojis', 'backup', 'alias', 'voice',
+  // The moderation commands that used to be subcommands of `/mod` are commands of their own (`/softban`, `/hardban`, `/purge`, `/history`...); `/mod` is a prefix command only.
+  'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites',
   // The second batch of umbrellas, wrapping prefix-only commands: the fun and games (`/game 8ball`, `minecraft`...), what is yours (`/me birthday`,
   // `rep`...), lookups (`/search weather`, `youtube`...) and the staff tools that do not fit `/mod` (`/staff massban`, `voice-mute`...). Each one only
   // has subcommands, and `/staff` asks for the permission of the command each one wraps when it runs. The rest of the prefix commands move little by little.
-  'game', 'me', 'search', 'staff',
+  'game', 'me', 'search',
   // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config alias add`,
   // `/protect honeypot add`, `/automation timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
   // only has subcommands (scripts/check-umbrellas-3.js).
-  'automation', 'bot', 'config', 'contributions', 'greet', 'message', 'protect', 'specialchannels',
+  'automation', 'bot', 'contributions', 'greet', 'message', 'protect', 'specialchannels',
   'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
   'identity', 'image', 'invites', 'levels', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // The booster role, apart from /me: the old command with all its subcommands (member ones open, `admin` and `filter` check Manage Server inside).
@@ -41,7 +39,7 @@ const ESSENTIAL = [
   // The prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
   'prefix', 'quests', 'social',
   // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), each one a command of its own
-  // (`/case delete-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
+  // (`/case remove-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
   // A ban and a mute that end, as commands of their own (`/tempban user duration`; `/ban user` and `/mute user` have no duration option).
   'tempban', 'tempmute',
@@ -50,9 +48,12 @@ const ESSENTIAL = [
   // What members can send to the staff, each with the setup next to it (`/suggest send`, `/suggest setup`, `/request config channel`...); it used to be `/community`.
   'confess', 'poll', 'profile', 'request', 'review', 'suggest',
 ];
-// The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). It is empty while
-// the global 100 have room; a command goes there when `guildScoped: true` is added to it (and it is listed here).
-const GUILD_SET = [];
+// The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
+// `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
+const GUILD_SET = [
+  'activity', 'appeals', 'customize', 'boosters', 'bots', 'channels', 'cmdconfig', 'disablecommand', 'emojiinfo', 'firstmessage', 'imagemute', 'inviteinfo', 'moderation', 'nuke', 'permissions', 'raid',
+  'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'massban', 'reactionmute', 'restrictcommand', 'rolemembers', 'sanctionmessage', 'serverbanner', 'servericon', 'serversplash', 'snowflake', 'statsconfig', 'steal', 'summary', 'usercosmetics',
+];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;
 
@@ -158,7 +159,8 @@ assert.deepEqual(problems, [], `Slash commands Discord would refuse:\n${problems
       assert.deepEqual(sub.options.map((option) => [option.name, option.type, Boolean(option.required)]), [['user', ApplicationCommandOptionType.User, false]], `/action ${group.name} ${sub.name} takes an optional user`);
     }
   }
-  assert.deepEqual(act.name_localizations, { 'es-ES': 'accion', 'es-419': 'accion', 'pt-BR': 'acao' });
+  assert.equal(act.name_localizations, undefined, 'the names of /action and its groups are English in every language, like every other command');
+  assert.ok(groups.every((group) => group.name_localizations === undefined), 'and so are the names of its groups');
   const english = totalLength(act, null);
   const sizes = [null, 'es-ES', 'pt-BR'].map((locale) => totalLength(act, locale));
   assert.ok(Math.max(...sizes) < LIMITS.commandSize, `/action is ${Math.max(...sizes)} characters (at most ${LIMITS.commandSize})`);
@@ -174,7 +176,7 @@ for (const file of findCommandFiles(COMMANDS_DIR)) {
 }
 
 // The slash commands the umbrellas replaced are not registered, but the old commands are loaded for the prefix.
-for (const name of ['serverinfo', 'userinfo', 'avatar', 'unban', 'purge', 'timeout']) {
+for (const name of ['unban', 'timeout']) {
   assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered (an umbrella subcommand replaces it)`);
   const file = findCommandFiles(COMMANDS_DIR).find((path) => require(path).data?.name === name);
   assert.ok(file && !isSlashCommand(require(file)) && !require(file).prefixOnly, `!${name} is still loaded for the prefix`);

@@ -44,6 +44,8 @@ function currentStatus({ jail, member, muteRoleId, banned }, lang) {
 }
 
 module.exports = {
+  // A slash command of its own (`/history`), not a subcommand of `/mod`.
+  registerSlash: true,
   aliases: ['hist', 'modhistory'],
   data: new SlashCommandBuilder()
     .setName('history')

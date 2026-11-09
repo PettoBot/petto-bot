@@ -278,6 +278,47 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
 }
 
+/**
+ * The first page of a command with subcommands (in the style of the help of Bleed): "Group: ban", what it does, who can use it, its syntax and the list of its
+ * subcommands with what each one does, then "Page 1/5 (4 entries) · Module". The pages after it are the entries one by one; the menu jumps to any of them.
+ */
+const GROUP_LINES_MAX = 14;
+function groupOverviewText(prefix, command, entries, lang) {
+  const json = command.data.toJSON();
+  const commandPrefix = command.slashOnly ? '/' : prefix;
+  const description = commandDescription(lang, command, [], null, json.description) || t(lang, 'help.noDescription');
+  const needed = json.default_member_permissions;
+  const permission = needed == null ? t(lang, 'help.detail.anyone') : `${EMOJI.WARNING} ${describePermissions(String(needed), lang)}`;
+  const shown = entries.slice(0, GROUP_LINES_MAX).map((entry) => {
+    const text = optionDescription(commandDescription(lang, command, entry.path, null, entry.description), t(lang, 'help.noDescription'));
+    return `\`${commandPrefix}${[json.name, ...entry.path].join(' ')}\`: ${text}`;
+  });
+  if (entries.length > shown.length) shown.push(t(lang, 'help.group.more', { count: entries.length - shown.length }));
+  return {
+    head: [t(lang, 'help.group.title', { title: json.name }), `> ${description}`].join('\n'),
+    body: [
+      `**${t(lang, 'help.group.permission')}:** ${permission}`,
+      '',
+      `**${t(lang, 'help.group.syntax')}:** \`${commandPrefix}${json.name} <${t(lang, 'help.group.subcommand')}>\``,
+      '',
+      `**${t(lang, 'help.group.subcommands')}**`,
+      ...shown,
+    ].join('\n'),
+  };
+}
+
+function groupOverviewCard(client, guild, prefix, command, entries, pages, lang = currentLanguage()) {
+  const { head, body } = groupOverviewText(prefix, command, entries, lang);
+  const moduleLabel = categoryMeta(command.category, lang).label;
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(head))
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
+  return new ContainerBuilder()
+    .addSectionComponents(section)
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${body}\n\n${t(lang, 'help.group.footer', { pages, entries: entries.length, module: moduleLabel })}`));
+}
+
 const OPTION_DESCRIPTION_MAX = 100;
 
 /**
@@ -387,15 +428,15 @@ function categoryView(client, guild, categoryId, includeHidden = false, lang = c
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function subcommandView(client, guild, command, categoryId, includeHidden = false, lang = currentLanguage()) {
+function subcommandView(client, guild, command, categoryId, includeHidden = false, lang = currentLanguage(), prefix = '!') {
   const json = command.data.toJSON();
   const entries = visibleEntries(command, includeHidden);
   const meta = categoryMeta(categoryId, lang);
-  const description = commandDescription(lang, command, [], null, json.description) || t(lang, 'help.noDescription');
+  const overview = groupOverviewText(prefix, command, entries, lang);
 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(tn(lang, 'help.sub.text', entries.length, { name: json.name, description, label: meta.label })),
+      new TextDisplayBuilder().setContent(overview.head),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
@@ -407,6 +448,8 @@ function subcommandView(client, guild, command, categoryId, includeHidden = fals
   const container = new ContainerBuilder()
     .addSectionComponents(section)
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(t(lang, 'help.back.to.button', { name: meta.label })).setStyle(ButtonStyle.Secondary)))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${overview.body}\n\n-# ${meta.label}`))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(entries.length > 25 ? t(lang, 'help.sub.pickMore', { total: entries.length, name: json.name }) : t(lang, 'help.sub.pick')))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_sub').setPlaceholder(t(lang, 'help.sub.placeholder.menu')).addOptions(options)));
@@ -523,8 +566,14 @@ module.exports = {
         return;
       }
 
+      // Page 0 is the overview of the command (its subcommands); the entries follow, one for each page.
+      const pages = entries.length + 1;
       let page = 0;
-      const rows = (current, disabled = false) => [entryDetailCard(client, interaction.guild, prefix, command, entries[current], current, entries.length, lang), ...entryPickers(command, entries, current, lang, disabled), navRow(current, entries.length, disabled)];
+      const rows = (current, disabled = false) => [
+        current === 0 ? groupOverviewCard(client, interaction.guild, prefix, command, entries, pages, lang) : entryDetailCard(client, interaction.guild, prefix, command, entries[current - 1], current - 1, entries.length, lang),
+        ...entryPickers(command, entries, current - 1, lang, disabled),
+        navRow(current, pages, disabled),
+      ];
       const msg = await interaction.reply({ components: rows(0), flags: PUBLIC });
       const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
@@ -539,8 +588,8 @@ module.exports = {
           return;
         }
         if (i.customId === 'help_prev') page = Math.max(0, page - 1);
-        if (i.customId === 'help_next') page = Math.min(entries.length - 1, page + 1);
-        if (i.customId.startsWith('help_entry')) page = Math.min(entries.length - 1, Math.max(0, Number(i.values?.[0]) || 0));
+        if (i.customId === 'help_next') page = Math.min(pages - 1, page + 1);
+        if (i.customId.startsWith('help_entry')) page = Math.min(entries.length, Math.max(0, Number(i.values?.[0]) || 0) + 1);
         await i.update({ components: rows(page), flags: MessageFlags.IsComponentsV2 });
       });
       collector.on('end', (_c, reason) => {
@@ -584,7 +633,7 @@ module.exports = {
         if (entries.length === 1 && !entries[0].path.length) {
           await i.update(detailView(client, interaction.guild, prefix, command, entries[0], currentCategory, includeHidden, lang));
         } else {
-          await i.update(subcommandView(client, interaction.guild, command, currentCategory, includeHidden, lang));
+          await i.update(subcommandView(client, interaction.guild, command, currentCategory, includeHidden, lang, prefix));
         }
         return;
       }
@@ -617,7 +666,7 @@ module.exports = {
           return;
         }
         currentCategory = i.customId.split(':')[1];
-        await i.update(subcommandView(client, interaction.guild, currentCommand, currentCategory, includeHidden, lang));
+        await i.update(subcommandView(client, interaction.guild, currentCommand, currentCategory, includeHidden, lang, prefix));
       }
     });
 
@@ -638,3 +687,5 @@ module.exports.subcommandView = subcommandView;
 module.exports.optionDescription = optionDescription;
 module.exports.categoryView = categoryView;
 module.exports.categoryMeta = categoryMeta;
+module.exports.groupOverviewText = groupOverviewText;
+module.exports.groupOverviewCard = groupOverviewCard;

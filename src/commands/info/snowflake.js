@@ -8,9 +8,13 @@ function timestampFromSnowflake(id) {
 }
 
 module.exports = {
+  // A slash command of its own (`/snowflake`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['sf', 'id'],
   data: new SlashCommandBuilder()
     .setName('snowflake')
+    .setDMPermission(false)
     .setDescription('Decodes the creation timestamp embedded in any Discord ID.')
     .addStringOption((o) => o.setName('id').setDescription('A Discord ID (user, channel, role, message, ...)').setRequired(true)),
 

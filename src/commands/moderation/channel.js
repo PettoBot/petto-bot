@@ -104,6 +104,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('topic').setDescription('Change the topic of a channel ("none" clears it).').addStringOption((opt) => opt.setName('text').setDescription('The new topic').setRequired(true).setMaxLength(1024)).addChannelOption((opt) => opt.setName('channel').setDescription('Channel (defaults to this one)').setRequired(false)))
     .addSubcommand((sub) => sub.setName('nsfw').setDescription('Turn the age-restricted (NSFW) mark of a channel on or off.').addChannelOption((opt) => opt.setName('channel').setDescription('Channel (defaults to this one)').setRequired(false)).addBooleanOption((opt) => opt.setName('value').setDescription('On or off (default: switch it)').setRequired(false)))
     .addSubcommand((sub) => sub.setName('files').setDescription('Allow or block files and embeds in a channel, for everyone or for a role or member.').addBooleanOption((opt) => opt.setName('enabled').setDescription('Allow (on) or block (off)').setRequired(true)).addStringOption((opt) => opt.setName('target').setDescription('Role or member (defaults to @everyone)').setRequired(false)).addChannelOption((opt) => opt.setName('channel').setDescription('Channel (defaults to this one)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('copyperms').setDescription('Copy the permissions of one channel to another (replace the old ones or merge them).').addChannelOption((opt) => opt.setName('from').setDescription('The channel to copy the permissions from').setRequired(true)).addChannelOption((opt) => opt.setName('to').setDescription('The channel that gets them (defaults to this one)').setRequired(false)).addBooleanOption((opt) => opt.setName('merge').setDescription('Keep the permissions the channel already has (default: replace them)').setRequired(false)))
     .addSubcommand((sub) => sub.setName('move-all').setDescription('Move everyone from your voice channel to another.').addChannelOption((opt) => opt.setName('destination').setDescription('Destination voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))),
 
   async execute(interaction) {
@@ -120,6 +121,7 @@ module.exports = {
     if (sub === 'topic') return topic(interaction);
     if (sub === 'nsfw') return nsfw(interaction);
     if (sub === 'files') return files(interaction);
+    if (sub === 'copyperms') return copyPerms(interaction);
     return moveAll(interaction);
   },
 };
@@ -433,6 +435,51 @@ async function nsfw(interaction) {
   await interaction.editReply({ components: [textCard(t(lang, value ? 'moderation.channel.nsfw.on' : 'moderation.channel.nsfw.off', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
+/** The overwrites of a channel as the plain list Discord takes (`{ id, type, allow, deny }`), so they can be put on another channel. */
+function overwritesOf(channel) {
+  return [...channel.permissionOverwrites.cache.values()].map((entry) => ({ id: entry.id, type: entry.type, allow: entry.allow.bitfield, deny: entry.deny.bitfield }));
+}
+
+/**
+ * The overwrites a channel ends with: the ones of the source alone (replace), or the ones it has with the ones of the source on top (merge: for the same role or
+ * member the source wins). Pure, so it can be checked without Discord.
+ */
+function copiedOverwrites(source, current, merge) {
+  if (!merge) return source;
+  const byId = new Map(current.map((entry) => [entry.id, entry]));
+  for (const entry of source) byId.set(entry.id, entry);
+  return [...byId.values()];
+}
+
+async function copyPerms(interaction) {
+  const lang = await languageOf(interaction);
+  const source = interaction.options.getChannel('from', true);
+  const target = interaction.options.getChannel('to') ?? interaction.channel;
+  const merge = interaction.options.getBoolean('merge') ?? false;
+  const me = interaction.guild.members.me;
+  if (source.id === target.id) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.copyperms.same'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!source.permissionOverwrites || !target.permissionOverwrites) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.copyperms.wrongType'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!target.permissionsFor(me)?.has(PermissionFlagsBits.ManageChannels) || !target.permissionsFor(me)?.has(PermissionFlagsBits.ManageRoles)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.copyperms.needsPermissions'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  try {
+    await target.permissionOverwrites.set(copiedOverwrites(overwritesOf(source), overwritesOf(target), merge), t(lang, 'moderation.channel.audit.copyperms', { user: interaction.user.tag, channel: source.name }));
+  } catch (err) {
+    logger.warn(`channel copyperms failed from ${source.id} to ${target.id}: ${err.message}`);
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.channel.permissionsFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  await interaction.editReply({ components: [textCard(t(lang, merge ? 'moderation.channel.copyperms.merged' : 'moderation.channel.copyperms.replaced', { emoji: EMOJI.APPROVE, from: `${source}`, to: `${target}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
 async function files(interaction) {
   const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel') ?? interaction.channel;
@@ -495,3 +542,5 @@ async function moveAll(interaction) {
 
   await interaction.editReply({ components: [textCard(tn(lang, 'moderation.channel.moveAll.done', count, { emoji: EMOJI.APPROVE, count, channel: `${destination}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
+
+module.exports.copiedOverwrites = copiedOverwrites;

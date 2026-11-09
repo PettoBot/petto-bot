@@ -13,6 +13,8 @@ const STATUS_KEYS = { active: 'active', pending: 'pending', past_due: 'pastDue',
 // `!premium grant ...` are sent there by `prefixWords`.
 
 module.exports = {
+  // For scripts/check-premium-status.js: the card of the status.
+  buildStatusEmbedForCheck: (...args) => buildStatusEmbed(...args),
   // This builder is used by the prefix parser only. deployCommands.js skips
   // every command marked prefixOnly, so no /premium command is created.
   prefixOnly: true,
@@ -62,9 +64,7 @@ function buildStatusEmbed(interaction, user, premium, lang) {
   const entitlement = premium.entitlement;
   const status = STATUS_KEYS[premium.status] ? t(lang, `info.premium.status.${STATUS_KEYS[premium.status]}`) : premium.status;
   const stateColor = premium.active ? COLORS.GREEN : premium.status === 'free' ? COLORS.DEFAULT : COLORS.YELLOW;
-  const assigned = premium.assignments.length
-    ? premium.assignments.map((assignment) => formatGuild(interaction, assignment.guild_id)).join('\n').slice(0, 1024)
-    : t(lang, 'info.premium.noServers');
+  const assigned = premium.assignments.length ? serverList(interaction, premium.assignments) : t(lang, 'info.premium.noServers');
   const period = premium.active
     ? (premium.expiresAt ? `<t:${Math.floor(new Date(premium.expiresAt).getTime() / 1000)}:F>` : t(lang, 'info.premium.permanent'))
     : entitlement?.current_period_end ? `<t:${Math.floor(new Date(entitlement.current_period_end).getTime() / 1000)}:F>` : '—';
@@ -76,12 +76,31 @@ function buildStatusEmbed(interaction, user, premium, lang) {
     .setDescription(t(lang, premium.active ? 'info.premium.description.active' : 'info.premium.description.inactive'))
     .addFields(
       { name: t(lang, 'info.premium.field.user'), value: `<@${user.id}>\n\`${user.id}\``, inline: true },
-      { name: t(lang, 'info.premium.field.plan'), value: entitlement?.plan_key ?? t(lang, 'info.premium.status.free'), inline: true },
+      { name: t(lang, 'info.premium.field.plan'), value: planNames(premium) || (entitlement?.plan_key ?? t(lang, 'info.premium.status.free')), inline: true },
       { name: t(lang, 'info.premium.field.period'), value: period, inline: true },
       { name: t(lang, 'info.premium.field.slots'), value: `${premium.slotsUsed} / ${premium.slotsTotal}`, inline: true },
       { name: t(lang, 'info.premium.field.servers'), value: assigned, inline: false },
     )
     .setFooter({ text: t(lang, 'info.premium.footer') });
+}
+
+/** Every server that has a slot, one a line; when they do not fit in a field of the card, the last line says how many more there are (`+3`). */
+function serverList(interaction, assignments) {
+  const lines = assignments.map((assignment) => formatGuild(interaction, assignment.guild_id));
+  let text = '';
+  for (let i = 0; i < lines.length; i++) {
+    const next = text ? `${text}\n${lines[i]}` : lines[i];
+    if (next.length > 980) return `${text}\n+${lines.length - i}`;
+    text = next;
+  }
+  return text;
+}
+
+/** The plans of every active Premium of the person (one when they have one), each once with how many times it counts. */
+function planNames(premium) {
+  const counts = new Map();
+  for (const each of premium.activeEntitlements ?? []) counts.set(each.plan_key ?? '—', (counts.get(each.plan_key ?? '—') ?? 0) + 1);
+  return [...counts].map(([plan, count]) => (count > 1 ? `${plan} ×${count}` : plan)).join('\n').slice(0, 1024);
 }
 
 function formatGuild(interaction, guildId) {

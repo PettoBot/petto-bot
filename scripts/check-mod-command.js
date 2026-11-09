@@ -190,8 +190,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ the command exists, once, in the moderation category
   assert.ok(mod, '/mod is loaded');
   assert.equal(mod.category, 'moderation');
-  assert.ok(!mod.hiddenFromHelp && !mod.slashOnly && !mod.prefixOnly, '/mod is a prefix and a slash command, shown in !help');
-  assert.equal(mod.registerSlash, true);
+  assert.ok(!mod.hiddenFromHelp && !mod.slashOnly, '/mod is shown in !help');
+  assert.equal(mod.prefixOnly, true, '/mod is a prefix command only: every action it holds is a slash command of its own');
+  assert.ok(!mod.registerSlash);
   assert.equal(mod.rulesBySubcommand, true);
   assert.equal(mod.listSubcommandsWhenEmpty, true);
   const json = mod.data.toJSON();
@@ -560,19 +561,15 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 79, '79 commands registered with Discord (76 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 76, '76 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 92, '92 commands registered with Discord (89 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 89, '89 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
-  const registeredMod = registered.find((each) => each.name === 'mod');
-  assert.ok(registeredMod, '/mod is registered with Discord, so deploy-commands.js sends it');
-  assert.ok(registeredMod.options.length <= 25, `/mod has ${registeredMod.options.length} subcommands (at most 25)`);
-  const deployed = [];
-  await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
-  assert.ok(deployed.some((each) => each.name === 'mod' && each.options.length === 10), 'deploy-commands.js sends /mod to Discord (without what is a slash command of its own: ban, kick, mute, warn, note, case, jail, nickname, lockdown, unlockdown, lock, unlock, slowmode, and tempmute, tempban: they are prefix-only)');
+  assert.ok(!registered.some((each) => each.name === 'mod'), '/mod is not registered with Discord: it is a prefix command only (`!mod ban @x`)');
   // `/ban`, `/kick` and `/warn` are still registered with their own permissions (each has subcommands that /mod does not wrap, and /mod is at 25).
   for (const name of ['ban', 'kick', 'warn', 'channel']) assert.ok(chat.some((each) => each.name === name), `/${name} is still registered`);
-  // `/unban`, `/purge` and `/timeout` are replaced by `/mod unban`, `/mod purge` and `/mod tempmute` (same options, same permission): not registered, the prefix is unchanged.
-  for (const name of ['unban', 'purge', 'timeout']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not registered any more`);
+  // `/unban` and `/timeout` are `/ban remove` and `/tempmute` (same options, same permission): not registered, the prefix is unchanged. `/purge` is a command of its own again.
+  for (const name of ['unban', 'timeout']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not registered any more`);
+  assert.ok(chat.some((each) => each.name === 'purge'), '/purge is a slash command');
   for (const [name, sub] of [['unban', 'unban'], ['purge', 'purge'], ['timeout', 'tempmute']]) {
     const old = client.commands.get(name).data.toJSON();
     const replacement = mod.data.toJSON().options.find((each) => each.name === sub);
@@ -580,14 +577,18 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.equal(mod.permissionForSubcommand(sub), BigInt(old.default_member_permissions), `/mod ${sub} asks for what /${name} asked for`);
   }
   assert.ok(chat.find((each) => each.name === 'ban').default_member_permissions === String(F.BanMembers));
-  for (const name of ['softban', 'hardban', 'history']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not a slash command`);
+  // What `/mod` held is a command of its own each (`/softban`, `/hardban`, `/history`, `/stripstaff`, `/clearinvites`, `/pauseinvites`, `/purge`), asking for the permission it always did.
+  for (const [name, bit] of [['softban', F.BanMembers], ['hardban', F.BanMembers], ['history', F.ModerateMembers], ['stripstaff', F.Administrator], ['clearinvites', F.ManageGuild], ['pauseinvites', F.Administrator], ['purge', F.ManageMessages]]) {
+    const json = chat.find((each) => each.name === name);
+    assert.ok(json, `/${name} is a slash command`);
+    assert.equal(json.default_member_permissions, String(bit), `/${name} asks for ${bit}`);
+  }
   // A ban or a mute that ends is `/tempban` and `/tempmute`: `/ban user` and `/mute user` have no duration in the menu (the prefix still reads it: `!ban @x 7d`), and `/mod`
   // keeps none of the actions that have a command of their own.
   for (const name of ['tempban', 'tempmute']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
   const optionNames = (command, sub) => chat.find((each) => each.name === command).options.find((option) => option.name === sub).options.map((option) => option.name);
   assert.ok(!optionNames('ban', 'user').includes('duration') && !optionNames('mute', 'user').includes('duration'), '/ban user and /mute user have no duration option in the menu');
   assert.ok(client.commands.get('ban').data.toJSON().options.find((option) => option.name === 'user').options.some((option) => option.name === 'duration'), 'but the prefix still reads it');
-  assert.deepEqual(chat.find((each) => each.name === 'mod').options.map((option) => option.name).sort(), ['clearinvites', 'hardban', 'history', 'pauseinvites', 'purge', 'softban', 'stripstaff', 'unban', 'unjail', 'unmute'], '/mod keeps only what has no command of its own');
   // The jail, the notes, the cases and the lockdown are slash commands of their own (they used to be groups of `/modtools`).
   for (const name of ['jail', 'note', 'case', 'lockdown']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
 
@@ -603,23 +604,11 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     }
     for (const child of node.options ?? []) walk(child, `${trail} ${child.name}`);
   };
-  walk(registeredMod, '/mod');
-  assert.notEqual(registeredMod.description_localizations['es-ES'], registeredMod.description);
-  assert.notEqual(registeredMod.description_localizations['pt-BR'], registeredMod.description);
-  for (const sub of registeredMod.options) {
-    assert.notEqual(sub.description_localizations['es-ES'], sub.description, `/mod ${sub.name} is translated into Spanish`);
-    assert.notEqual(sub.description_localizations['pt-BR'], sub.description, `/mod ${sub.name} is translated into Portuguese`);
-  }
-  // What Discord counts of a command: names, descriptions, choices and values, in each language, at most 8000.
-  for (const locale of [null, ...LOCALES]) {
-    let total = 0;
-    const add = (node) => {
-      total += size(node.name) + size((locale && node.description_localizations?.[locale]) || node.description);
-      for (const choice of node.choices ?? []) total += size(choice.name) + size(choice.value);
-      for (const child of node.options ?? []) add(child);
-    };
-    add(registeredMod);
-    assert.ok(total < 8000, `/mod${locale ? ` [${locale}]` : ''} is ${total} characters (Discord allows 8000)`);
+  for (const name of ['softban', 'hardban', 'history', 'stripstaff', 'clearinvites', 'pauseinvites', 'purge', 'tempban', 'tempmute']) {
+    const json = chat.find((each) => each.name === name);
+    walk(json, `/${name}`);
+    assert.notEqual(json.description_localizations['es-ES'], json.description, `/${name} is translated into Spanish`);
+    assert.notEqual(json.description_localizations['pt-BR'], json.description, `/${name} is translated into Portuguese`);
   }
   // Every key of the English catalog of /mod has its Spanish and Portuguese text, and the card of the list too.
   for (const key of Object.keys(CATALOGS.en).filter((each) => /^cmd\.moderation\.mod\./.test(each))) assert.ok(CATALOGS.es[key] && CATALOGS['pt-BR'][key], `${key} is in es and pt-BR`);

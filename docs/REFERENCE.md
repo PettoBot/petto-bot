@@ -163,7 +163,7 @@ src/
       kick.js                   user / users
       mute.js                   user / users / temp / remove / remove-users
       warn.js                   user / users
-      case.js                   list / last / last-many / view / edit / edit-many / delete / delete-all
+      case.js                   list / last / last-many / view / edit / edit-many / delete / remove-all
       note.js                   add / view / list
       role.js                   add / remove
       channel.js                lock / unlock / slowmode / clear
@@ -491,7 +491,7 @@ Jail takes a member out of the server's channels without banning them: they lose
 - `view <case>` — look up one case by number
 - `edit <case> [reason] [duration]` / `edit-many <cases> [reason] [duration]` — change a case's reason and/or (for tempban/tempmute) push its expiry out from now
 - `delete <case>` — delete one case
-- `delete-all <user>` — wipe a user's entire history, behind a button confirmation
+- `remove-all <user>` (was `delete-all`) — wipe a user's entire history, behind a button confirmation
 
 ### `/note` — non-punitive staff notes, no case number, requires Moderate Members
 - `add <user> <note>` · `view <id>` · `list <user>`
@@ -530,7 +530,7 @@ Every one checks the moderator's permission, Petto's permission and the role hie
 - `!channel topic|nsfw|files` (`!topic`, `!nsfw`, `!naughty`, `!revokefiles`, `!picperms @member`), and `!hide`/`!unhide` take an optional role or member. `!lock` is the channel lock (the `lockdown` command no longer takes that alias; it answers to `!raidmode` and `!raidstate`).
 - `!voice drag <users> [channel]` (`!drag`); each voice action asks for its own permission.
 
-**Temporary sanctions and auto-expiry:** A mute or a ban with a duration (`/mod mute duration:3d`, `/mod ban duration:7d`, `!mute @member 3d`, `!ban temp`, `!tempmute`) stores an `expires_at`; `temp` is not a slash subcommand (`/ban temp`, `/mod tempmute`, `/mod tempban` and `!modtools mute temp` are prefix-only). `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry": this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
+**Temporary sanctions and auto-expiry:** A mute or a ban with a duration (`/tempmute user duration:3d`, `/tempban user duration:7d`, `!mute @member 3d`, `!ban temp`, `!tempmute`) stores an `expires_at`; `/ban user` and `/mute user` have no duration in the menu (`/ban temp`, `/mod tempmute` and `!modtools mute temp` are prefix-only). `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry": this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
 
 ### `!backup` / Petto Vault — requires Manage Server
 

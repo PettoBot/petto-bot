@@ -9,6 +9,9 @@ const { t, languageOf } = require('../../i18n');
 const MAX_EMOJIS = 20;
 
 module.exports = {
+  // A slash command of its own (`/steal`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['stl'],
   data: new SlashCommandBuilder()
     .setName('steal')

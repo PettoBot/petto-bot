@@ -8,6 +8,8 @@ const { requireAdministrator } = require('../../utils/moderationCommand');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A slash command of its own (`/pauseinvites`), not a subcommand of `/mod`.
+  registerSlash: true,
   aliases: ['pi'],
   data: new SlashCommandBuilder()
     .setName('pauseinvites')

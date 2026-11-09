@@ -27,6 +27,8 @@ const ACTION_CHOICES = [
 module.exports = {
   // A prefix command: its slash entry is inside `/levels` or `/bot` (utils/umbrella.js).
   aliases: ['xp'],
+  // `!xp add @member 1500` (and `remove`, `set`, `transfer`) is the XP of a member: the same as `!level manage xp add @member 1500`. The levels are `!lvl add|set|remove`.
+  prefixWords: Object.fromEntries(['add', 'remove', 'set', 'transfer'].map((word) => [word, { command: 'level', args: ['manage', 'xp', word] }])),
   // `reward add` and `reward remove` take the kind of level last (Discord wants the optional options after the required ones), and the prefix
   // still reads it first as it always did: `!xp reward add voice 5 @Role` is read as `!xp reward add 5 @Role voice`.
   prefixArgs(argText) {
@@ -984,18 +986,20 @@ async function manageXp(interaction, lang) {
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
   const data = await levelUsersDb.ensureUser(interaction.guild.id, targetUser.id);
 
-  let newXp = data.xp;
-  if (action === 'add') newXp = data.xp + amount;
+  // The XP column is a bigint and the database hands it over as a string ("8921"): it is a number before anything is added to it.
+  const current = Number(data.xp) || 0;
+  let newXp = current;
+  if (action === 'add') newXp = current + amount;
   else if (action === 'set') newXp = amount;
-  else if (action === 'remove') newXp = Math.max(0, data.xp - amount);
+  else if (action === 'remove') newXp = Math.max(0, current - amount);
   else if (action === 'transfer') {
-    if (data.xp < amount) {
+    if (current < amount) {
       await reply(interaction, t(lang, 'leveling.manage.notEnough', { emoji: EMOJI.DENY, user: `${targetUser}` }), 0xfe6465);
       return;
     }
-    newXp = data.xp - amount;
+    newXp = current - amount;
     const destData = await levelUsersDb.ensureUser(interaction.guild.id, destUser.id);
-    const destNewXp = destData.xp + amount;
+    const destNewXp = (Number(destData.xp) || 0) + amount;
     await levelUsersDb.setXpAndLevel(interaction.guild.id, destUser.id, destNewXp, levelForXp(destNewXp, config));
   }
 
@@ -1018,10 +1022,11 @@ async function manageLevel(interaction, lang) {
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
   const data = await levelUsersDb.ensureUser(interaction.guild.id, targetUser.id);
 
-  let newLevel = data.level;
-  if (action === 'add') newLevel = data.level + amount;
+  const currentLevel = Number(data.level) || 0;
+  let newLevel = currentLevel;
+  if (action === 'add') newLevel = currentLevel + amount;
   else if (action === 'set') newLevel = amount;
-  else if (action === 'remove') newLevel = Math.max(0, data.level - amount);
+  else if (action === 'remove') newLevel = Math.max(0, currentLevel - amount);
 
   const newXp = totalXpForLevel(newLevel, config);
   await levelUsersDb.setXpAndLevel(interaction.guild.id, targetUser.id, newXp, newLevel);

@@ -3,7 +3,7 @@ const { createPermissionMuteCommand } = require('../../utils/permissionMute');
 
 module.exports = createPermissionMuteCommand('reaction', {
   name: 'rmute',
-  aliases: ['reactionmute'],
+  aliases: [],
   description: 'Take away the reactions and external emojis of a member in every channel.',
   userText: 'Reaction mute a member.',
   removeText: 'Give a member their reactions and external emojis back.',

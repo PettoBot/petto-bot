@@ -23,6 +23,9 @@ function recentJoins(members, windowMs, now = Date.now()) {
 }
 
 module.exports = {
+  // A slash command of its own (`/raid`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['recentban', 'chunkban', 'raidban'],
   prefixDefaultSubcommand: 'clean',
   data: new SlashCommandBuilder()

@@ -17,6 +17,9 @@ const TITLES = { overview: 'Summary', messages: 'Messages', voice: 'Voice', join
 const ACCENTS = { overview: 0xf0a88f, messages: 0xf0a88f, voice: 0x9bd0f5, joins: 0x8fdca8, leaves: 0xf08fa0, invites: 0xc6a8f5, sanctions: 0xf5c26b };
 
 module.exports = {
+  // A slash command of its own (`/summary`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['digest', 'weekly'],
   data: new SlashCommandBuilder()
     .setName('summary')

@@ -237,6 +237,9 @@ register('blocked', {
 const channelOption = (description) => (o) => o.setName('channel').setDescription(description).setRequired(false);
 
 module.exports = {
+  // A slash command of its own (`/disablecommand`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   data: new SlashCommandBuilder()
     .setName('disablecommand')
     .setDescription('Turn commands off for the whole server or in some channels.')

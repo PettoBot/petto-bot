@@ -15,6 +15,9 @@ const OFF = /^(off|no|false|0|disable|disabled|desactivar|desactivado|desligar|d
 const onOff = (value, lang) => t(lang, value ? 'info.statsConfig.on' : 'info.statsConfig.off');
 
 module.exports = {
+  // A slash command of its own (`/statsconfig`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['statconfig', 'analyticsconfig'],
   prefixDefaultSubcommand: 'view',
   data: new SlashCommandBuilder()

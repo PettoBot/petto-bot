@@ -117,7 +117,7 @@ const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(Bi
 // Open at Discord and in the code, for everybody (read something, or work on the member's own data).
 const EVERYDAY = new Set([
   'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
-  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
+  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'rolemembers', 'servericon', 'serverbanner', 'serversplash', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
   'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
@@ -287,7 +287,7 @@ const DECLARED = {
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
 // None is left: what `/mod` and `/staff` held of a command that is a slash command of its own is for the prefix only now.
 const UMBRELLA_TWINS = [];
-const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', unban: 'mod unban', purge: 'mod purge', timeout: 'mod tempmute' };
+const REMOVED_TWINS = { unban: 'mod unban', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
 const executed = [];
@@ -693,9 +693,9 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // The commands that are in two places: an umbrella subcommand and the old command, both slash commands (kept on purpose, a decision of the owner for later).
   const slashNames = new Set(data.map((entry) => entry.name));
   const twins = [];
-  // `/modtools` is only a prefix command now, so what it wraps is not a twin of anything.
+  // `/mod` and `/modtools` are only prefix commands now, so what they wrap is not a twin of anything: only what is registered counts.
   // (`/mod mute`, `/mod note`... and `/staff thread-lock`, `/staff snipe`... are kept for the prefix only (`prefixOnlySubcommands`): the command is a slash command of its own, so it is not in the menu twice.)
-  for (const command of all.filter((each) => each.data.name !== 'modtools')) for (const [sub, wrapped] of Object.entries(command.ruleKeys ?? {})) if (slashNames.has(wrapped) && wrapped !== command.data.name && !(command.prefixOnlySubcommands ?? []).includes(sub)) twins.push(`${command.data.name} ${sub} = /${wrapped}`);
+  for (const command of all.filter((each) => slashNames.has(each.data.name))) for (const [sub, wrapped] of Object.entries(command.ruleKeys ?? {})) if (slashNames.has(wrapped) && wrapped !== command.data.name && !(command.prefixOnlySubcommands ?? []).includes(sub)) twins.push(`${command.data.name} ${sub} = /${wrapped}`);
   assert.deepEqual(twins, UMBRELLA_TWINS, 'the umbrella subcommands that also exist as a slash command of their own (the list is written here so a new one is a decision)');
 
   // ---------------------------------------------------------- 6. the 15 most used commands, end to end: the answer is built, with no error

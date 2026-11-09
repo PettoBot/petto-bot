@@ -60,8 +60,10 @@ const WORDS = {
 const SUBCOMMAND_WORDS = Object.fromEntries(Object.entries(WORDS).flatMap(([name, words]) => words.map((word) => [word, name])));
 
 module.exports = {
-  // Also registered as a slash command; the prefix works too.
-  registerSlash: true,
+  // Not a slash command any more: every action it held is a command of its own (`/ban`, `/kick`, `/warn`, `/mute`, `/tempban`, `/tempmute`, `/softban`, `/hardban`, `/purge`,
+  // `/history`, `/stripstaff`, `/clearinvites`, `/pauseinvites`, `/channel`...; unban, unmute and unjail are `/ban remove`, `/mute remove` and `/jail remove`).
+  // `!mod ban @x` and every word of it keep working with the prefix.
+  prefixOnly: true,
   // `/mod tempmute` and `/mod tempban` are not in the `/` menu: a mute or a ban becomes temporary by giving the `duration` of `/mod mute` and `/mod ban`.
   // The words keep working with the prefix (`!mod tempmute @x 3d`, `!tempmute`, `!tban`).
   // The mute, note, case, jail, nickname and lockdown actions are not in the menu either: each is a slash command of its own (`/mute`, `/note`, `/case`, `/jail`,

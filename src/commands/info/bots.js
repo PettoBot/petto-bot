@@ -65,6 +65,9 @@ register('bots', {
 
 /** Lists the bots of this server for anybody (nothing is asked of the member): a page at a time, the oldest first. */
 module.exports = {
+  // A slash command of its own (`/bots`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['botlist'],
   botsOf,
   data: new SlashCommandBuilder()

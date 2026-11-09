@@ -144,10 +144,12 @@ async function listUserAssignments(userId) {
 async function getUserPremium(userId) {
   const entitlements = await listUserPremium(userId);
   const assignments = await listUserAssignments(userId);
-  const entitlement = entitlements.find(isActiveEntitlement) ?? null;
-  const activeAssignments = entitlement
-    ? assignments.filter((assignment) => assignment.status === 'active' && String(assignment.entitlement_id) === String(entitlement.id))
-    : [];
+  // A person can hold more than one active Premium at once (a plan they pay for and one granted by hand, or two grants): every one of them counts, and the servers
+  // and slots of all of them are shown, not only those of the newest.
+  const activeEntitlements = entitlements.filter(isActiveEntitlement);
+  const entitlement = activeEntitlements[0] ?? null;
+  const activeIds = new Set(activeEntitlements.map((each) => String(each.id)));
+  const activeAssignments = assignments.filter((assignment) => assignment.status === 'active' && activeIds.has(String(assignment.entitlement_id)));
   const latest = entitlements[0] ?? null;
 
   return {
@@ -157,10 +159,11 @@ async function getUserPremium(userId) {
     planKey: entitlement?.plan_key ?? latest?.plan_key ?? null,
     expiresAt: entitlement?.current_period_end ?? latest?.current_period_end ?? null,
     entitlement,
+    activeEntitlements,
     entitlements,
     assignments: activeAssignments,
     slotsUsed: activeAssignments.length,
-    slotsTotal: entitlement?.slot_limit ?? 0,
+    slotsTotal: activeEntitlements.reduce((sum, each) => sum + Number(each.slot_limit ?? 0), 0),
   };
 }
 
@@ -233,14 +236,21 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
   if (!isDiscordId(guildId)) return { ok: false, code: 'invalid_guild' };
 
   const entitlements = await listUserPremium(userId);
-  const entitlement = entitlementId
+  let entitlement = entitlementId
     ? entitlements.find((candidate) => String(candidate.id) === String(entitlementId))
     : entitlements.find(isActiveEntitlement);
   if (!entitlement || !isActiveEntitlement(entitlement)) return { ok: false, code: 'no_active_entitlement' };
+  // Without a named entitlement, the one that still has a free slot: a person with two active Premiums is not told "no slots" while the second has room.
+  if (!entitlementId) {
+    const mine = (await listUserAssignments(userId)).filter((assignment) => assignment.status === 'active');
+    const freeOne = entitlements.filter(isActiveEntitlement).find((candidate) => mine.filter((assignment) => String(assignment.entitlement_id) === String(candidate.id)).length < Number(candidate.slot_limit ?? 0));
+    if (freeOne) entitlement = freeOne;
+  }
 
   const guildAssignments = await activeAssignmentsForGuild(guildId);
   const current = guildAssignments[0];
-  if (current?.user_id !== String(userId)) return { ok: false, code: 'server_taken', assignment: current };
+  // Another person already holds this server's slot. A server with no slot yet is free (before, "no slot" was read as "taken" and a free server could not be assigned).
+  if (current && current.user_id !== String(userId)) return { ok: false, code: 'server_taken', assignment: current };
   if (current?.user_id === String(userId) && String(current.entitlement_id) === String(entitlement.id)) {
     return { ok: true, already: true, assignment: current };
   }

@@ -3,6 +3,8 @@ const warn = require('./warn');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['mwarn'],
   data: new SlashCommandBuilder()
     .setName('masswarn')

@@ -21,6 +21,9 @@ function actionOption(option) {
 }
 
 module.exports = {
+  // A slash command of its own (`/moderation`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['modconfig', 'modroles'],
   prefixDefaultSubcommand: 'allow',
   data: new SlashCommandBuilder()

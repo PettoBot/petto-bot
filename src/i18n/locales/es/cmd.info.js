@@ -119,6 +119,9 @@ module.exports = {
   'cmd.info.server.icon.desc': 'Muestra el ícono de este servidor, con enlaces en todos los tamaños.',
   'cmd.info.server.banner.desc': 'Muestra el banner de este servidor, con enlaces en todos los tamaños.',
   'cmd.info.server.splash.desc': 'Muestra el fondo de invitación de este servidor, con enlaces en todos los tamaños.',
+  'cmd.info.servericon.desc': 'Muestra el ícono de este servidor, con enlaces en todos los tamaños.',
+  'cmd.info.serverbanner.desc': 'Muestra el banner de este servidor, con enlaces en todos los tamaños.',
+  'cmd.info.serversplash.desc': 'Muestra el fondo de invitación de este servidor, con enlaces en todos los tamaños.',
   'cmd.info.server.roles.desc': 'Lista todos los roles de este servidor, una página a la vez.',
   'cmd.info.server.channels.desc': 'Lista los canales de este servidor, una página a la vez.',
   'cmd.info.server.emojis.desc': 'Lista los emojis personalizados de este servidor, una página a la vez.',
@@ -171,4 +174,6 @@ module.exports = {
   'cmd.info.bot.premium.desc': 'Mira o gestiona Petto Premium desde el prefijo de mensajes.',
   'cmd.info.bot.premium.status.desc': 'Muestra el estado de Premium tuyo o de otro usuario.',
   'cmd.info.bot.premium.status.opt.user.desc': 'Usuario que revisar (predeterminado: tú)',
+  'cmd.info.rolemembers.desc': 'Lista los miembros que tienen un rol, una página a la vez.',
+  'cmd.info.rolemembers.opt.role.desc': 'Rol',
 };

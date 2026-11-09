@@ -5,6 +5,8 @@ const { textCard } = require('../../utils/caseCard');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A slash command of its own (`/alias`): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
   aliases: ['aliases'],
   data: new SlashCommandBuilder()
     .setName('alias')

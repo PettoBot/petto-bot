@@ -3,6 +3,8 @@ const ban = require('./ban');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['mban'],
   data: new SlashCommandBuilder()
     .setName('massban')

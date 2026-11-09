@@ -22,6 +22,9 @@ function commandName(client, raw, userId = null) {
 }
 
 module.exports = {
+  // A slash command of its own (`/restrictcommand`), registered in each server (the second set of slash commands): the umbrella that held it is a prefix command only now.
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['restrictcmd', 'restrict', 'rc'],
   prefixDefaultSubcommand: 'add',
   prefixSubcommandAliases: { create: 'add', del: 'remove', delete: 'remove', clear: 'reset', view: 'list' },

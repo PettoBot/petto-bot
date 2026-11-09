@@ -3,7 +3,7 @@ const { createPermissionMuteCommand } = require('../../utils/permissionMute');
 
 module.exports = createPermissionMuteCommand('image', {
   name: 'imute',
-  aliases: ['imagemute', 'picmute'],
+  aliases: ['picmute'],
   description: 'Take away the files and embeds of a member in every channel (they can still talk).',
   userText: 'Image mute a member.',
   removeText: 'Give a member their files and embeds back.',

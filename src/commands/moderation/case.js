@@ -21,6 +21,8 @@ module.exports = {
   registerSlash: true,
   aliases: ['cases'],
   prefixDefaultSubcommand: 'list',
+  // `remove-all` was `delete-all`: the old word still works with the prefix (`!case delete-all @x`).
+  prefixSubcommandAliases: { 'delete-all': 'remove-all' },
   data: new SlashCommandBuilder()
     .setName('case')
     .setDescription('Look up, edit, or delete moderation case history.')
@@ -68,7 +70,7 @@ module.exports = {
     )
     .addSubcommand((sub) => sub.setName('stats').setDescription('What the moderators did lately, or one moderator.').addIntegerOption((opt) => opt.setName('days').setDescription('How many days back (default 30)').setMinValue(1).setMaxValue(365)).addUserOption((opt) => opt.setName('moderator').setDescription('Only this moderator')))
     .addSubcommand((sub) => sub.setName('delete').setDescription('Delete a single case by number.').addIntegerOption((opt) => opt.setName('case').setDescription('Case number').setRequired(true).setMinValue(1)))
-    .addSubcommand((sub) => sub.setName('delete-all').setDescription("Delete a user's entire case history.").addUserOption((opt) => opt.setName('user').setDescription('The user whose cases to wipe').setRequired(true))),
+    .addSubcommand((sub) => sub.setName('remove-all').setDescription("Delete a user's entire case history.").addUserOption((opt) => opt.setName('user').setDescription('The user whose cases to wipe').setRequired(true))),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
