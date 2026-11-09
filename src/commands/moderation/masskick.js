@@ -3,6 +3,8 @@ const kick = require('./kick');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['mkick'],
   data: new SlashCommandBuilder()
     .setName('masskick')

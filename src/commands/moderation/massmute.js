@@ -3,6 +3,8 @@ const mute = require('./mute');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  registerSlash: true,
+  guildScoped: true,
   aliases: ['mmute'],
   data: new SlashCommandBuilder()
     .setName('massmute')

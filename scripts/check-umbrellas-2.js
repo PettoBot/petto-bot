@@ -482,7 +482,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.equal(client.commandAliases.get(word), command, `${word} is still ${command}`);
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
-  for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github', 'massban']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
+  for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
   for (const name of ['thread', 'snipe']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is a slash command of its own, and !${name} works as before`);
   // The booster role is its own slash command, with every subcommand, and not a subcommand of /me any more (`!boosterrole` and `!br` work as before).
   assert.ok(isSlashCommand(commandFile('boosterrole')), '/boosterrole is a slash command');

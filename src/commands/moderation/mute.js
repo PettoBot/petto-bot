@@ -28,6 +28,8 @@ module.exports = {
   prefixDefaultSubcommand: 'user',
   // A mute becomes temporary by giving a duration (`/mod mute duration:3d`, `!mute @member 3d`): `temp` is not in the `/` menu, and `!mute temp` still works.
   prefixOnlySubcommands: ['temp'],
+  slashHiddenSubcommands: ['users', 'remove-users'],
+  // `users`... are in the menu as `/massban`, `/masskick`...; the words stay for the prefix and the umbrellas.
   data: new SlashCommandBuilder()
     .setName('mute')
     .setDescription('Stop a member from talking, with an optional length and reason.')

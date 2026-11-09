@@ -10,7 +10,9 @@ const GROUP = 2;
 
 function slashJson(command, { withPrefixOptions = false } = {}) {
   const json = command.data.toJSON();
-  const dropped = new Set(command.prefixOnlySubcommands ?? []);
+  // `slashHiddenSubcommands`: subcommands only the `/` menu leaves out (a slash command of its own does the same: `/massban` for `/ban users`). The prefix and the
+  // umbrellas that wrap the command (`!modtools mute users`) keep them, so they are dropped only when the menu is being built.
+  const dropped = new Set([...(command.prefixOnlySubcommands ?? []), ...(withPrefixOptions ? [] : (command.slashHiddenSubcommands ?? []))]);
   // `prefixOnlyOptions` ({ 'user': ['duration'] }: the options of a subcommand that only the prefix reads): `!ban @x 7d` still takes the duration, `/ban user` does not
   // show it (the temporary ban is `/tempban`). The builder keeps them so the prefix reads them in the same order.
   // An umbrella that wraps the command reads the options for the prefix too (`!mod ban @x 7d`), so it asks for them (`withPrefixOptions`).

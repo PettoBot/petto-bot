@@ -39,6 +39,8 @@ module.exports = {
   prefixDefaultSubcommand: 'user',
   // A ban becomes temporary by giving a duration (`/ban user duration:3d`, `!ban @member 3d`): `temp` is not in the `/` menu, and `!ban temp` still works.
   prefixOnlySubcommands: ['temp'],
+  slashHiddenSubcommands: ['users', 'remove-all'],
+  // `users`... are in the menu as `/massban`, `/masskick`...; the words stay for the prefix and the umbrellas.
   data: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Ban members from the server.')
