@@ -76,18 +76,18 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
  * What the sanctioned member is sent: the server's DM template when it has one, the usual text otherwise. Meant to go
  * straight into `.send(...)`, which takes either. Petto's own text is in the server's language.
  */
-async function composeSanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
+async function composeSanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator', caseNumber = null }) {
   const lang = await guildLanguage(guild.id);
   let appealUrl = null;
   let appealNote = null;
   // The one place every sanction DM learns about appeals (the server chooses if and for which sanctions the link goes, and its own line).
   try { ({ url: appealUrl, note: appealNote } = await require('./appeals').appealDmFor(guild.id, type)); } catch { /* No appeal link: the sanction DM still goes out. */ }
-  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, appealUrl, appealNote, lang });
+  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, caseNumber, appealUrl, appealNote, lang });
   try {
     const name = await templateFor(guild.id, type, 'dm');
     if (!name) return fallback();
     const target = user ?? member?.user ?? null;
-    const ctx = sanctionContext({ type, guild, user: target, member, moderator: moderator ?? client.user, reason, durationText: duration, source, appealUrl, lang });
+    const ctx = sanctionContext({ type, guild, user: target, member, moderator: moderator ?? client.user, reason, durationText: duration, source, caseNumber, appealUrl, lang });
     return (await templatePayload(guild.id, name, ctx)) ?? fallback();
   } catch (error) {
     logger.warn({ guildId: guild?.id, action: 'sanction-dm' }, `The sanction DM template failed: ${error.message}`);

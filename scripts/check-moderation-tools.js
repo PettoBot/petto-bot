@@ -106,7 +106,7 @@ const actor = { id: 'mod', username: 'mod' };
   assert.match(buildCaseCard({ caseNumber: 3, type: 'ban', target, reason: '' }).toJSON().content, /\*\*rule_breaker\*\* \(<@5>\) was banned from the server\. Reason: \*\*No reason provided\*\*\.\n-# case · #3$/);
   const { buildSanctionDM } = require('../src/utils/sanctionMessage');
   const dm = buildSanctionDM({ type: 'warn', guild: { id: '9', name: 'Servidor', memberCount: 1 }, client: { user: { username: 'Petto' } }, reason: 'flood', appealUrl: 'https://appeal.test', lang: 'pt-BR' });
-  assert.match(dm, /Você recebeu uma advertência em \*\*Servidor\*\* \| Motivo: `flood`\n\nAcha que foi um engano\? Apele aqui: https:\/\/appeal\.test\n\n-# Enviado por 'Petto' \(`9`\) com 1 membro$/);
+  assert.match(dm, /Você recebeu uma advertência em \*\*Servidor\*\*\n\*\*Motivo:\*\* flood\n\nAcha que foi um engano\? Apele aqui: https:\/\/appeal\.test$/);
 
   console.log('moderation tools ok');
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -113,5 +113,21 @@ const moderator = { id: '222', username: 'mod', displayAvatarURL: () => 'https:/
   assert.ok((await run('list', {})).includes('dmcard'));
   await run('clear', { type: 'ban', slot: 'dm' });
   assert.equal(store.get('ban').dm, null);
+  // The text of the DM (no "Sent from..." line: the origin line and the buttons are added when it is sent): the reason, "Permanent" for a sanction with no end, the case.
+  {
+    const { buildSanctionDM } = require('../src/utils/sanctionMessage');
+    const guild = { name: 'Liam', memberCount: 37, id: '1502171756113432607' };
+    const client = { user: { username: 'petto' } };
+    const ban = buildSanctionDM({ type: 'ban', guild, client, reason: 'spamming', caseNumber: 12, lang: 'en' }).split('\n');
+    assert.equal(ban[0].endsWith('You have been banned from **Liam**'), true);
+    assert.deepEqual(ban.slice(1), ['**Reason:** spamming', '**Duration:** Permanent', '-# Case #12']);
+    const timed = buildSanctionDM({ type: 'tempban', guild, client, reason: 'spamming', duration: '7 days', lang: 'en' });
+    assert.match(timed, /temporarily banned from \*\*Liam\*\* for 7 days/); assert.ok(!/Duration:|Case #/.test(timed), 'a timed sanction says its time in the first line; no case, no case line');
+    const warn = buildSanctionDM({ type: 'warn', guild, client, reason: null, lang: 'en' });
+    assert.ok(!/Duration|Reason/.test(warn), 'a warn has no duration, and no reason line when there is none');
+    const es = buildSanctionDM({ type: 'ban', guild, client, reason: 'spam', caseNumber: 3, lang: 'es' });
+    assert.match(es, /Se te baneó|baneado/); assert.match(es, /\*\*Razón:\*\* spam/); assert.match(es, /\*\*Duración:\*\* Permanente/); assert.match(es, /-# Caso #3/);
+    for (const text of [ban.join('\n'), timed, warn, es]) assert.ok(!/Sent from|Enviado desde|members|miembros/.test(text), 'the line that repeated the server and its size is gone');
+  }
   console.log('Checked the sanction variables, DM, reply and log with and without a template.');
 })().catch((error) => { console.error(error); process.exit(1); });
