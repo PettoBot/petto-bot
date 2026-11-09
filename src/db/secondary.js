@@ -1,26 +1,13 @@
 // i18n-ignore-file: SQL and database plumbing, no text anybody reads
-// The second database (PETTO_DATA2_DATABASE_URL) for the heavy data that is only copies or can be rebuilt (today the public threat lists; the avatar
-// copies of the profile history were kept here until the avatar history was removed). Without it these tables stay in the main database, exactly as before. The tables are made in the second database
-// the first time it is used, and what the main database already has is moved over in the background (jobs/dataMoveJob.js).
+// The second database (PETTO_DATA2_DATABASE_URL). Nothing is kept in it for now: the public threat lists that were here are gone (Google Safe Browsing
+// is the link check, and what it flags is a few rows in the main database), so no table is made in it and nothing reads or writes it. It stays free
+// for when the main database is split in two (see docs/REFERENCE.md). `scripts/purge-avatar-history.js` can still look at it for the old avatar copies.
 const { Pool } = require('pg');
 const config = require('../config');
 const { getPrimaryPool, createPostgresClient } = require('./postgres');
 
-const SCHEMA = `
-  create table if not exists malicious_links (
-    normalized_url        text primary key,
-    hostname              text not null,
-    threat_types          text[] not null default '{}'::text[],
-    source                text not null default 'public_threat_feeds',
-    reported_by           text,
-    first_seen_guild_id   text,
-    first_seen_channel_id text,
-    first_seen_at         timestamptz not null default now(),
-    last_checked_at       timestamptz not null default now(),
-    dev_alerted_at        timestamptz
-  );
-  create index if not exists malicious_links_hostname_idx on malicious_links (hostname);
-`;
+// No tables: the second database is left as it is. When some data moves here again, its `create table if not exists` goes in this text.
+const SCHEMA = '';
 
 let dedicated;
 let schemaReady;
@@ -41,7 +28,7 @@ function rawPool() {
 
 /** Makes the tables of the second database once (nothing to do when there is none). */
 function ready() {
-  if (!isSeparate()) return Promise.resolve();
+  if (!isSeparate() || !SCHEMA.trim()) return Promise.resolve();
   if (!schemaReady) schemaReady = rawPool().query(SCHEMA).catch((error) => { schemaReady = null; throw error; });
   return schemaReady;
 }

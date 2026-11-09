@@ -692,9 +692,8 @@ create table if not exists automod_silent_channels (
 
 alter table automod_silent_channels enable row level security;
 
--- Global malicious-link cache populated by scheduled threat-feed imports and
--- explicit !am link checks. Ordinary messages query this local table/cache and
--- never call an external reputation service.
+-- Links Google Safe Browsing flagged in explicit !am link checks, kept so they are not asked twice. Ordinary
+-- messages query this table/cache and never call an external reputation service.
 create table if not exists malicious_links (
   normalized_url       text primary key,
   hostname             text not null,

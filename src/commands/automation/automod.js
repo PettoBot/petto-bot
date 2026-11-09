@@ -3,7 +3,8 @@ const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig, addBannedWord, removeBannedWord, addImmuneRole, removeImmuneRole, listSilentChannels, addSilentChannel, removeSilentChannel } = require('../../db/automod');
 const { getConfig: getAntinukeConfig, upsertConfig: upsertAntinukeConfig, addWhitelist, removeWhitelist } = require('../../db/antinuke');
 const { normalizeUrl, defangUrl } = require('../../utils/safeBrowsing');
-const { findKnownMalicious, markDeveloperAlerted } = require('../../db/maliciousLinks');
+const { markDeveloperAlerted } = require('../../db/maliciousLinks');
+const { checkLink } = require('../../utils/linkCheck');
 const { notifyMaliciousLink } = require('../../utils/maliciousLinkAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -314,33 +315,29 @@ async function link(interaction, lang) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  // First consult Petto's own threat DB. Known malicious URLs never consume a
-  // Public feed results are reused instead of making an external request again.
-  let known = null;
-  try {
-    known = (await findKnownMalicious([url]))[0] ?? null;
-  } catch (err) {
-    // A DB outage should not make the manual checker useless; fall back to the
-    // external lookup, but log that the cache/database path was unavailable.
-    logger.error('Malicious-link DB lookup failed:', err);
+  // A link Petto already knows is not asked again; any other one is asked to Google Safe Browsing and kept when Google flags it.
+  const verdict = await checkLink(url, { reportedBy: interaction.user?.id, guildId: interaction.guildId, channelId: interaction.channelId });
+
+  if (verdict.state === 'unavailable') {
+    await interaction.editReply({ components: [textCard(t(lang, 'security.link.unavailable'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
   }
 
-  if (known) {
-    const threats = known.threat_types ?? [];
-    const labels = threats.map((type) => threatLabel(type, lang));
+  if (verdict.state === 'flagged') {
+    const labels = verdict.threats.map((type) => threatLabel(type, lang));
     const text = t(lang, 'security.link.flagged', { emoji: EMOJI.DENY, url: defangUrl(url), threats: labels.join(', ') || t(lang, 'security.link.unknownThreat') });
     await interaction.editReply({ components: [textCard(text, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 
-    // Retry the developer alert only if a previous attempt never succeeded.
-    if (!known.dev_alerted_at) {
+    // The development team is told once: a link whose alert never went out is told again the next time it is checked.
+    if (!verdict.row?.dev_alerted_at) {
       const sent = await notifyMaliciousLink(interaction.client, {
         url,
-        threatTypes: threats,
+        threatTypes: verdict.threats,
         reporterId: interaction.user?.id,
         guild: interaction.guild,
         channel: interaction.channel,
       });
-      if (sent) await markDeveloperAlerted(url).catch((err) => logger.error('Failed to mark malicious-link alert as sent:', err));
+      if (sent && verdict.row) await markDeveloperAlerted(url).catch((err) => logger.error('Failed to mark malicious-link alert as sent:', err));
     }
     return;
   }
