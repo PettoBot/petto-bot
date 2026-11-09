@@ -1,11 +1,9 @@
-// The public threat lists live in the second database when there is one (db/secondary.js), else in the main one.
-const secondary = require('./secondary');
-
-const database = secondary.database;
+// The links Google Safe Browsing flagged (`!automod link`), kept so the same link is never asked twice and so an ordinary message with it can be
+// removed without calling Google. They are few, so they live in the main database.
+const database = require('./database');
 
 const POSITIVE_TTL_MS = 5 * 60_000;
 const NEGATIVE_TTL_MS = 30_000;
-const HOST_WIDE_SOURCES = new Set(['phishing_filter_domains']);
 const cache = new Map();
 
 function getCached(url) {
@@ -26,10 +24,6 @@ function setCached(url, value) {
   return value;
 }
 
-function hostWideRow(row) {
-  return row && HOST_WIDE_SOURCES.has(row.source) ? row : null;
-}
-
 async function getKnownMalicious(url, { force = false } = {}) {
   if (!force) {
     const cached = getCached(url);
@@ -43,18 +37,7 @@ async function getKnownMalicious(url, { force = false } = {}) {
     .maybeSingle();
 
   if (error) throw error;
-  if (data) return setCached(url, data);
-
-  // Domain-only public feeds are stored as http://host/. Treat those entries
-  // as a host match so a malicious path on the same domain is also blocked.
-  const hostname = new URL(url).hostname.toLowerCase();
-  const hostResult = await database
-    .from('malicious_links')
-    .select('*')
-    .eq('hostname', hostname);
-
-  if (hostResult.error) throw hostResult.error;
-  return setCached(url, (hostResult.data ?? []).map(hostWideRow).find(Boolean) ?? null);
+  return setCached(url, data ?? null);
 }
 
 async function findKnownMalicious(urls) {
@@ -79,23 +62,8 @@ async function findKnownMalicious(urls) {
     if (error) throw error;
 
     const rows = new Map((data ?? []).map((row) => [row.normalized_url, row]));
-    const hostnames = [...new Set(missing.map((url) => {
-      try { return new URL(url).hostname.toLowerCase(); } catch { return null; }
-    }).filter(Boolean))];
-    const hostResult = hostnames.length
-      ? await database.from('malicious_links').select('*').in('hostname', hostnames)
-      : { data: [], error: null };
-    if (hostResult.error) throw hostResult.error;
-    const hostRows = new Map();
-    for (const row of hostResult.data ?? []) {
-      const hostRow = hostWideRow(row);
-      if (hostRow && !hostRows.has(hostRow.hostname)) hostRows.set(hostRow.hostname, hostRow);
-    }
-
     for (const url of missing) {
-      let hostname = null;
-      try { hostname = new URL(url).hostname.toLowerCase(); } catch {}
-      const row = rows.get(url) ?? hostRows.get(hostname) ?? null;
+      const row = rows.get(url) ?? null;
       setCached(url, row);
       if (row) hits.push(row);
     }
@@ -104,14 +72,14 @@ async function findKnownMalicious(urls) {
   return hits;
 }
 
-async function recordMaliciousLink({ url, threatTypes, reportedBy, guildId, channelId, source = 'public_threat_feeds' }) {
+async function recordMaliciousLink({ url, threatTypes, reportedBy, guildId, channelId, source = 'google_safe_browsing' }) {
   const parsed = new URL(url);
   const now = new Date().toISOString();
   const payload = {
     normalized_url: url,
     hostname: parsed.hostname.toLowerCase(),
     threat_types: [...new Set(threatTypes ?? [])],
-    source: String(source || 'public_threat_feeds').slice(0, 80),
+    source: String(source || 'google_safe_browsing').slice(0, 80),
     reported_by: reportedBy ?? null,
     first_seen_guild_id: guildId ?? null,
     first_seen_channel_id: channelId ?? null,
@@ -134,41 +102,6 @@ async function recordMaliciousLink({ url, threatTypes, reportedBy, guildId, chan
   return setCached(url, data);
 }
 
-/**
- * Imports feed results in chunks. Only threat-intelligence fields are updated,
- * so a feed refresh never erases who first reported a URL or its alert state.
- */
-async function upsertMaliciousLinks(rows, { chunkSize = 500 } = {}) {
-  const unique = new Map();
-
-  for (const row of rows ?? []) {
-    if (!row?.normalizedUrl || !row?.hostname) continue;
-    const normalizedUrl = String(row.normalizedUrl).slice(0, 2_000);
-    const threatTypes = [...new Set((row.threatTypes ?? []).map((type) => String(type).slice(0, 80)).filter(Boolean))];
-    unique.set(normalizedUrl, {
-      normalized_url: normalizedUrl,
-      hostname: String(row.hostname).toLowerCase().slice(0, 255),
-      threat_types: threatTypes,
-      source: String(row.source || 'threat_feed').slice(0, 80),
-      last_checked_at: row.lastCheckedAt || new Date().toISOString(),
-    });
-  }
-
-  const values = [...unique.values()];
-  for (let offset = 0; offset < values.length; offset += chunkSize) {
-    const chunk = values.slice(offset, offset + chunkSize);
-    const { error } = await database
-      .from('malicious_links')
-      .upsert(chunk, { onConflict: 'normalized_url' });
-    if (error) throw error;
-  }
-
-  // A refresh may add a URL that was previously cached as clean. Evict all
-  // imported URLs so the next ordinary-message lookup sees the database row.
-  for (const row of values) cache.delete(row.normalized_url);
-  return values.length;
-}
-
 async function markDeveloperAlerted(url) {
   const alertedAt = new Date().toISOString();
   const { data, error } = await database
@@ -184,22 +117,9 @@ async function markDeveloperAlerted(url) {
   return data;
 }
 
-/**
- * Forgets the entries of a public feed that the feed has not listed for `days` days (it lists what is still live: the rest was taken down), after a
- * refresh that worked. What a person reported is never deleted. Returns how many.
- */
-async function pruneStaleFeedLinks(source, days = 14) {
-  const { rowCount } = await secondary.pool.query(
-    `delete from malicious_links where source = $1 and reported_by is null and dev_alerted_at is null and last_checked_at < now() - make_interval(days => $2)`,
-    [String(source), days]);
-  if (rowCount) cache.clear();
-  return rowCount;
-}
-
-module.exports = { pruneStaleFeedLinks,
+module.exports = {
   getKnownMalicious,
   findKnownMalicious,
   recordMaliciousLink,
-  upsertMaliciousLinks,
   markDeveloperAlerted,
 };

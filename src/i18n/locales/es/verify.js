@@ -59,7 +59,6 @@ module.exports = {
   'verify.send.failed': '{emoji}  No pude enviarle un MD a {user} (tiene los MD cerrados).',
   'verify.send.failedLink': '{emoji}  No pude enviarle un MD a {user} (tiene los MD cerrados). Enlace: {link}',
   'verify.reason.resent': 'Enlace de verificación reenviado',
-  'verify.reason.returning': 'Verificación: vuelve un miembro que ya se había verificado',
   'verify.reason.newMember': 'Verificación: miembro nuevo',
   'verify.reason.passed': 'Pasó la verificación',
   'verify.reason.panel': 'Petto: panel de verificación',

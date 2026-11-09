@@ -34,7 +34,6 @@ const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
 const { startPremiumCleanupJob } = require('./src/jobs/premiumCleanupJob');
 const { startPremiumLogJob } = require('./src/jobs/premiumLogJob');
-const { startMaliciousFeedJob } = require('./src/jobs/maliciousFeedJob');
 const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
 const { startRolloutAlertsJob } = require('./src/jobs/rolloutAlertsJob');
 const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
@@ -48,7 +47,6 @@ const { startAfkMentionsJob } = require('./src/jobs/afkMentionsJob');
 const { startFeedsJob } = require('./src/jobs/feedsJob');
 const music = require('./src/music/node');
 const { startGuildPurgeJob } = require('./src/jobs/guildPurgeJob');
-const { startDataMoveJob } = require('./src/jobs/dataMoveJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
@@ -219,7 +217,6 @@ async function main() {
   startPremiumRoleJob(client);
   startPremiumCleanupJob(client);
   startPremiumLogJob(client);
-  startMaliciousFeedJob();
   startQuestAlertsJob(client);
   startRolloutAlertsJob(client);
   startRequestTimeoutJob(client);
@@ -232,7 +229,6 @@ async function main() {
   startAfkMentionsJob();
   startFeedsJob(client);
   startGuildPurgeJob(client);
-  startDataMoveJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
   // The measurements (the loop, the CPU, the memory), the circuit breaker and the watchdog start last, once everything else is running.

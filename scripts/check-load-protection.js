@@ -166,7 +166,7 @@ const clock = (start = 1_000_000) => { let at = start; return { now: () => at, t
     metrics = { ...metrics, loopP99Ms: 900 };
     loadGuard.tick();
     assert.equal(loadGuard.level(), 'degraded');
-    for (const job of ['feedsJob', 'guildSnapshotJob', 'counterJob', 'bumpReminderJob', 'discordOps', 'maliciousFeedJob']) assert.equal(loadGuard.allowsJob(job), false, `${job} is paused when degraded`);
+    for (const job of ['feedsJob', 'guildSnapshotJob', 'counterJob', 'bumpReminderJob', 'discordOps']) assert.equal(loadGuard.allowsJob(job), false, `${job} is paused when degraded`);
     for (const job of ['expireSanctions', 'lockdownJob', 'joinGateJob', 'antiScamJob', 'statusHeartbeatJob', 'giveawayJob', 'reminderJob']) assert.equal(loadGuard.allowsJob(job), true, `${job} keeps running when degraded`);
     for (const file of ['interactionCreate', 'messageCreateCommands', 'messageCreateTicketActivity', 'messageCreateLevelXp', 'guildMemberAddVerification', 'messageCreateAutomod', 'messageDelete', 'guildBanAdd']) assert.equal(loadGuard.allowsEvent(file), true, `${file} is not shed when degraded`);
     for (const file of ['messageUpdatePublishLog', 'pollVoteAddLog', 'stickerCreate']) assert.equal(loadGuard.allowsEvent(file), false, `${file} (a log of low value) is dropped when degraded`);

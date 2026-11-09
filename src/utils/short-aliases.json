@@ -415,6 +415,7 @@
  "fcl": "form close",
  "fd": "form delete",
  "fda": "feed add",
+ "fdb": "feedback",
  "fde": "form deny",
  "fdl": "feed list",
  "fdm": "feed message",

@@ -258,13 +258,16 @@ module.exports = {
   // for the support data the bot may keep there later), so the main database keeps the settings. Without it everything stays in the main database.
   data2DatabaseUrl: process.env.PETTO_DATA2_DATABASE_URL?.trim() || null,
   data2DatabaseSsl: envBool('PETTO_DATA2_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
+  // The feedback board of the website (petto.sbs/feedback): the channel of the Petto server where each post is published as a card with
+  // Like and Dislike buttons (feedback/service.js). Without it the board still works and the posts are only on the website.
+  feedbackChannelId: process.env.FEEDBACK_CHANNEL_ID?.trim() || null,
+  siteUrl: (process.env.PETTO_SITE_URL?.trim() || 'https://petto.sbs').replace(/\/+$/, ''),
   // Shared secret for server-side dashboard requests. Keep this identical to the
   // web worker secret, but never send it to the browser.
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
-  // Public threat feeds are synchronized into the local malicious_links table;
-  // no API account or key is required and ordinary messages never call them.
-  // Six hours keeps public feed downloads infrequent while refreshing the local cache.
-  maliciousFeedSyncIntervalMs: envInt('MALICIOUS_FEED_SYNC_INTERVAL_MS', 6 * 60 * 60_000, 60 * 60_000, 24 * 60 * 60_000),
+  // Optional: Google Safe Browsing, the check of `!automod link` (a free key from Google Cloud). What it flags is kept in the malicious_links
+  // table, so the same link is never asked twice and ordinary messages never call Google.
+  googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY?.trim() || null,
   // Dedicated destination for newly discovered malicious URLs. Falls back to
   // the general Petto operations channel so alerts still have a destination.
   maliciousLinkAlertChannelId: /^\d{15,25}$/.test(process.env.PETTO_MALICIOUS_LINK_ALERT_CHANNEL_ID || '')

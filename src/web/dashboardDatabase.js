@@ -1,9 +1,6 @@
 const config = require('../config');
 const { createPostgresClient, getPrimaryPool } = require('../db/postgres');
-const secondary = require('../db/secondary');
 
-// The tables kept in the second database when there is one (the dashboard reads and deletes them through this route too).
-const SECONDARY_TABLES = new Set(['malicious_links']);
 const logger = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
 const { normalizeScheduleFields } = require('../utils/timerSchedule');
@@ -276,7 +273,7 @@ async function handleDashboardRest(req, res) {
   try {
     const primaryPool = getPrimaryPool();
     // The dashboard raises the change stamp of the server itself (petto:ver), so these writes do not raise it again.
-    const client = createPostgresClient(SECONDARY_TABLES.has(table) ? secondary.pool : primaryPool, { announce: false });
+    const client = createPostgresClient(primaryPool, { announce: false });
     const selection = parseSelect(first(req.query.select));
     const preference = preferences(req);
     const countExact = preference.has('count=exact');

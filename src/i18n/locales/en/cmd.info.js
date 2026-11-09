@@ -39,6 +39,7 @@ module.exports = {
   'cmd.info.emojiinfo.desc': 'Shows information about a custom emoji.',
   'cmd.info.emojiinfo.opt.emoji.desc': 'A custom emoji',
   'cmd.info.emojis.desc': 'Lists the custom emojis of this server, a page at a time.',
+  'cmd.info.feedback.desc': 'Open the feedback board, and see how to send an idea or vote.',
   'cmd.info.firstmessage.desc': 'Jumps to the first message in a channel.',
   'cmd.info.firstmessage.opt.channel.desc': 'Channel (default: this one)',
   'cmd.info.inrole.desc': 'Lists the members that have a role, a page at a time.',

@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const stickyRolesDb = require('../db/stickyRoles');
 const identityDb = require('../db/identity');
+const { getConfig: getVerifyConfig } = require('../db/verificationConfig');
 const { addRoles } = require('../utils/deadRoles');
 const logger = require('../utils/logger');
 const { t, currentLanguage } = require('../i18n');
@@ -24,8 +25,11 @@ module.exports = {
       // The roles of Vanity and Server Tag rules are not given back: they depend on what the member wears now, and the rules
       // give them again when it still matches (a role given back here would be taken for one a person gave).
       const ruleRoles = new Set(await identityDb.managedRoleIds(member.guild.id).catch(() => []));
+      // Nor is the verified role: a member who comes back has to verify again (events/guildMemberAddVerification.js), and the role would let them skip it.
+      const verify = await getVerifyConfig(member.guild.id).catch(() => null);
+      const verifiedRoleId = verify?.enabled ? verify.verified_role_id : null;
       const assignable = snapshot.role_ids.filter((id) => {
-        if (ruleRoles.has(id)) return false;
+        if (ruleRoles.has(id) || id === verifiedRoleId) return false;
         const role = member.guild.roles.cache.get(id);
         return role && role.position < me.roles.highest.position;
       });

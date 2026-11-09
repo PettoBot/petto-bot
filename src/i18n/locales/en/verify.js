@@ -59,7 +59,6 @@ module.exports = {
   'verify.send.failed': '{emoji}  Could not DM {user} (DMs closed).',
   'verify.send.failedLink': '{emoji}  Could not DM {user} (DMs closed). Link: {link}',
   'verify.reason.resent': 'Verification link resent',
-  'verify.reason.returning': 'Verification gate: returning verified member',
   'verify.reason.newMember': 'Verification gate: new member',
   'verify.reason.passed': 'Passed verification',
   'verify.reason.panel': 'Petto: verification panel',
