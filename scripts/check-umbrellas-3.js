@@ -93,7 +93,7 @@ const UMBRELLAS = {
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
   contributions: { category: 'automation', groups: { partner: 2, partnerconfig: 12, uploads: 2, uploadconfig: 7 }, flat: {} },
   specialchannels: { category: 'utility', groups: { counting: 9, counter: 8, imageonly: 3, linkonly: 4 }, flat: {} },
-  bot: { category: 'info', groups: { votes: 2, premium: 1 }, flat: { info: 'botinfo', ping: 'ping', uptime: 'uptime', version: 'version', topcommands: 'topcommands' } },
+  bot: { category: 'info', groups: { votes: 2, premium: 5 }, flat: { info: 'botinfo', ping: 'ping', uptime: 'uptime', version: 'version', topcommands: 'topcommands' } },
 };
 // What each wrapped command asks of the member (a permission, or null for anyone: what it checks by itself is its own).
 const PERMS = {
@@ -280,7 +280,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 8 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 16, greet: 24, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 12 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).
@@ -290,7 +290,7 @@ function tailOf(node) {
     assert.ok(wrapped, `${file} exists`);
     assert.ok(!wrapped.hiddenFromHelp && !wrapped.privateGuildId, `${file} is not private`);
     // (what `/config` held is a slash command of its own now: `/alias`, `/backup`... so this holds for what the other umbrellas wrap.)
-    assert.ok(!isSlashCommand(wrapped) || ['alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig'].includes(file), `${file} is still a prefix command: the old command works as it did`);
+    assert.ok(!isSlashCommand(wrapped) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig'].includes(file), `${file} is still a prefix command: the old command works as it did`);
     assert.ok(!(wrapped.data.toJSON().options ?? []).some((option) => option.type === 2), `${file} has no groups of its own`);
     assert.equal(wrapped.prefixArgs === undefined || ['disablecommand'].includes(file), true, `${file}: a prefixArgs reader is read by the old command itself (the prefix goes to it)`);
   }
@@ -535,7 +535,7 @@ function tailOf(node) {
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
   assert.equal(client.commandAliases.get('gw'), 'giveaway');
-  for (const name of wrappedNames) assert.ok(client.commands.has(name) && (!isSlashCommand(commandFile(name)) || ['alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig'].includes(name)), `!${name} is still a prefix command (the ones of /config are slash commands of their own now)`);
+  for (const name of wrappedNames) assert.ok(client.commands.has(name) && (!isSlashCommand(commandFile(name)) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig'].includes(name)), `!${name} is still a prefix command (the ones of /config are slash commands of their own now)`);
   // The six old slash commands that an umbrella subcommand replaced are not registered; the old command is still loaded for the prefix.
   for (const name of ['unban', 'timeout']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
   for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'game', 'me', 'search', 'levels', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
@@ -704,11 +704,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 92, '92 commands registered globally with Discord (89 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 89, '89 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 93, '93 commands registered globally with Discord (90 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 90, '90 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [89, 100, 11], '11 slots are free, more than the 10 that are kept');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [90, 100, 10], '10 slots are free, more than the 10 that are kept');
   assert.ok(usage.chat.free >= 10);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
@@ -751,6 +751,7 @@ function tailOf(node) {
     for (const key of Object.keys(CATALOGS.en).filter((each) => each.startsWith(`cmd.${spec.category}.${umbrella}.`))) assert.ok(CATALOGS.es[key] && CATALOGS['pt-BR'][key], `${key} is in es and pt-BR`);
     for (const group of Object.keys(spec.groups)) {
       const own = json.options.find((each) => each.name === group);
+      if (!own && (commandFile(umbrella).prefixOnlySubcommands ?? []).includes(group)) continue; // a group kept for the prefix only (`!bot premium`: /premium is a command of its own)
       const oldCategory = path.basename(path.dirname(commandFile(fileOf(group)).filePath ?? require.resolve(`../src/commands/${spec.category}/${fileOf(group)}`)));
       assert.equal(own.description_localizations['es-ES'], CATALOGS.es[`cmd.${oldCategory}.${fileOf(group)}.desc`], `/${umbrella} ${group} is described in Spanish like !${fileOf(group)}`);
       assert.equal(own.description_localizations['pt-BR'], CATALOGS['pt-BR'][`cmd.${oldCategory}.${fileOf(group)}.desc`]);

@@ -44,24 +44,27 @@ const premium = require('../src/db/premium');
   assert.deepEqual(status.activeEntitlements.map((each) => each.id), ['e2', 'e1']);
   assert.equal(status.entitlement.id, 'e2', 'the first one is still the main one');
 
-  // The card names the plans and every server.
-  const { buildStatusEmbedForCheck } = require('../src/commands/info/premium');
-  assert.equal(typeof buildStatusEmbedForCheck, 'function');
+  // The card (Components V2) names the plans and every server.
+  const { buildStatusCardForCheck } = require('../src/commands/info/premium');
+  assert.equal(typeof buildStatusCardForCheck, 'function');
+  const textsOf = (node) => (node?.components ?? []).flatMap((child) => [...(child.content ? [child.content] : []), ...textsOf(child), ...(child.accessory ? textsOf({ components: [child.accessory] }) : [])]);
+  const person = { id: USER, username: 'liam', displayAvatarURL: () => 'https://x/a.png' };
   const interaction = { client: { guilds: { cache: new Map([['201', { name: 'One' }], ['202', { name: 'Two' }], ['203', { name: 'Three' }]]) } } };
-  const embed = buildStatusEmbedForCheck(interaction, { id: USER, username: 'liam', displayAvatarURL: () => 'https://x/a.png' }, status, 'en').toJSON();
-  const field = (name) => embed.fields.find((each) => each.name === name)?.value ?? '';
-  const servers = embed.fields.at(-1).value;
-  assert.ok(/One/.test(servers) && /Two/.test(servers) && /Three/.test(servers), 'the card lists the three servers');
-  assert.match(embed.fields.find((each) => /premium-1/.test(each.value))?.value ?? '', /premium-manual-3/, 'and both plans');
-  assert.equal(embed.fields.find((each) => /\/ 4|3 \/ 4/.test(each.value))?.value, '3 / 4');
-  void field;
+  const card = buildStatusCardForCheck(interaction, person, status, 'en').toJSON();
+  assert.equal(card.type, 17, 'a Components V2 container, not an embed');
+  const all = textsOf(card).join('\n');
+  assert.ok(/One/.test(all) && /Two/.test(all) && /Three/.test(all), 'the card lists the three servers');
+  assert.match(all, /premium-1[\s\S]*premium-manual-3/, 'and both plans');
+  assert.match(all, /`3 \/ 4`/, 'and the slots of all of them');
+  assert.ok(card.components.some((row) => row.type === 1 && row.components.every((button) => button.style === 5)), 'with two link buttons');
+  assert.match(all, /\/premium add/, 'and says how to give a slot');
 
   // Too many servers for a field: the last line says how many more.
   const lots = Array.from({ length: 60 }, (_, index) => ({ guild_id: String(1000000000000000000n + BigInt(index)) }));
-  const big = buildStatusEmbedForCheck({ client: { guilds: { cache: new Map() } } }, { id: USER, username: 'liam', displayAvatarURL: () => 'https://x/a.png' }, { ...status, assignments: lots }, 'en').toJSON();
-  const bigServers = big.fields.at(-1).value;
-  assert.ok(bigServers.length <= 1024, 'it fits in a field');
-  assert.match(bigServers, /\n\+\d+$/, 'the last line counts the ones left out');
+  const big = buildStatusCardForCheck({ client: { guilds: { cache: new Map() } } }, person, { ...status, assignments: lots }, 'en').toJSON();
+  const bigText = textsOf(big).find((each) => /Assigned servers/.test(each));
+  assert.ok(bigText.length <= 1100, 'the list is cut');
+  assert.match(bigText, /\n\+\d+$/, 'the last line counts the ones left out');
 
   // A new server goes to the Premium that has a free slot, even when the newest is full.
   upserts.length = 0;

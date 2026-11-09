@@ -786,10 +786,10 @@ const reset = () => { order.length = 0; dms.length = 0; channelSends.length = 0;
   const premiumAdmin = cmd('premiumadmin');
   assert.ok(premiumAdmin.prefixOnly && premiumAdmin.teamOnly && premiumAdmin.ownerOnly && premiumAdmin.hiddenEverywhere && premiumAdmin.hiddenFromHelp, '!premiumadmin is a hidden prefix-only tool of the owner');
   assert.deepEqual(premiumAdmin.data.toJSON().options.map((option) => option.name), ['grant', 'assign', 'unassign', 'revoke']);
-  assert.deepEqual(cmd('premium').data.toJSON().options.map((option) => option.name), ['status'], '/premium keeps only what members need');
+  assert.deepEqual(cmd('premium').data.toJSON().options.map((option) => option.name), ['status', 'add', 'remove', 'servers', 'info'], '/premium keeps only what members need (never the owner actions)');
   assert.ok(!collectCommandData().some((json) => json.name === 'premiumadmin'), '!premiumadmin is never registered');
   const botJson = collectCommandData().find((json) => json.name === 'bot');
-  assert.deepEqual(botJson.options.find((option) => option.name === 'premium').options.map((option) => option.name), ['status'], '/bot premium has only `status`');
+  assert.ok(!botJson.options.some((option) => option.name === 'premium'), '/premium is a command of its own: it is not in /bot twice (!bot premium keeps working with the prefix)');
   const USER_ID = '121212121212121212';
   const serverId = '131313131313131313';
   const actions = [

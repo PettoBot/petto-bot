@@ -37,7 +37,7 @@ const ESSENTIAL = [
   // The AI that answers questions: `/ai ask` and `/ai usage` (open to every member; the first one has a daily limit for free members).
   'ai',
   // The prefixes of the server (`/prefix`, which used to be a group of `/config`) and the umbrella of levels (`/levels rank`, `leaderboard`, the settings).
-  'prefix', 'quests', 'social',
+  'prefix', 'premium', 'quests', 'social',
   // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), each one a command of its own
   // (`/case remove-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
