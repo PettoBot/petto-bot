@@ -597,7 +597,8 @@ A captcha gate for new members: join → gated behind a role that can't see the 
 
 **`/verify setup enabled:<bool> verified_role:<role>?`** — turn the gate on/off; on enabling, provisions the Unverified role immediately (not lazily on next join) so channels are gated right away. `verified_role` is optional — a bonus role granted on success, separate from just losing the gate role.
 **`/verify status`** — shows whether it's enabled, the gate/bonus roles, and whether the env vars needed for links to actually work are set.
-**`/verify send user:<user>`** — manually (re)sends a link, e.g. if a member's DMs were closed on join; gates them too if they aren't already.
+**`/verify send user:<user>`** — manually (re)sends a link, e.g. if a member's DMs were closed on join; gates them too if they aren't already, and forgets that they passed before (a new check on purpose).
+**Verified is not only a role.** The passes are kept in `verification_redemptions` (`redeemed_at`). A member who passed after joining this server (`utils/verifyState.js`: the last pass is not older than `member.joinedTimestamp`, minus a minute for the clocks) and holds the gate role by mistake gets their roles back when they press the link or the letters button, with no new check. A pass of an earlier stay does not count (leaving and joining again verifies again), and a failure of the lookup never counts as verified.
 **`/logs add channel:<#channel> event:verification`** — route successful verifications to a channel, same webhook system as `sanctions` and the rest.
 
 Not built: an admin dashboard for the web side (it's a single-purpose captcha page, nothing to browse), and Discord OAuth2 login as an alternative identity method — the magic-link token already carries the identity, so there's nothing for OAuth to add here.

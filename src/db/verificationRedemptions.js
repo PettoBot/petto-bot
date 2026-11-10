@@ -30,4 +30,17 @@ async function hasEverVerified(guildId, userId) {
   return Boolean(data);
 }
 
-module.exports = { isRedeemed, claimRedemption, releaseRedemption, hasEverVerified };
+/** When this user last passed the verification in this guild (a Date), or null. It is what says "verified in this stay" (utils/verifyState.js). */
+async function lastVerifiedAt(guildId, userId) {
+  const { data, error } = await database.from('verification_redemptions').select('redeemed_at').eq('guild_id', guildId).eq('user_id', userId).order('redeemed_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  return data?.redeemed_at ? new Date(data.redeemed_at) : null;
+}
+
+/** Forgets that this user verified in this guild: the staff asked for a new check (`/verify send`). */
+async function forgetVerification(guildId, userId) {
+  const { error } = await database.from('verification_redemptions').delete().eq('guild_id', guildId).eq('user_id', userId);
+  if (error) throw error;
+}
+
+module.exports = { isRedeemed, claimRedemption, releaseRedemption, hasEverVerified, lastVerifiedAt, forgetVerification };

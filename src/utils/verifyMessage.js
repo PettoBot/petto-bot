@@ -1,4 +1,4 @@
-const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder } = require('discord.js');
+const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, SeparatorBuilder, SeparatorSpacingSize } = require('discord.js');
 const config = require('../config');
 const { MessageFlags } = require('discord.js');
 const { templatePayload } = require('./templatedMessage');
@@ -8,6 +8,7 @@ const { methodOf } = require('./verifyMethod');
 const { canDoLetters } = require('./verifyLink');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
 const { sendDm } = require('./dmOrigin');
+const { startButton, serverPicture, withPicture } = require('./verifyCards');
 const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
 const SUCCESS_COLOR = 0xa5ea7a;
 
@@ -17,44 +18,28 @@ function assetUrl(file) {
   return config.verifyBaseUrl ? `${config.verifyBaseUrl}/assets/${file}` : null;
 }
 
-/** Components V2 DM sent to a member who needs to verify — a small Petto thumbnail next to the welcome text + link. */
+/**
+ * The DM a member gets when they join a server that verifies (Components V2): the server's name and icon, and a row for each way the server
+ * allows with its button on its side (the link, and the letters inside Discord), like the panel of the channel. `link` is empty for a server
+ * that verifies only inside Discord.
+ */
 function buildVerifyDM({ guild, link, discordButton = false, lang = currentLanguage() }) {
-  const lines = [t(lang, 'verify.dm.welcome', { server: guild.name }), t(lang, 'verify.dm.human')];
-  if (link) lines.push(t(lang, 'verify.dm.link', { link }));
-  if (discordButton) lines.push(t(lang, link ? 'verify.dm.orHere' : 'verify.dm.pressButton'));
-  const text = new TextDisplayBuilder().setContent(lines.join('\n'));
-
-  const container = new ContainerBuilder();
-  const logo = assetUrl('favicon.png');
-
-  if (logo) {
-    container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text).setThumbnailAccessory(new ThumbnailBuilder().setURL(logo)));
-  } else {
-    container.addTextDisplayComponents(text);
-  }
-
+  const way = (key, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`))).setButtonAccessory(button);
+  const container = withPicture(new ContainerBuilder(), [t(lang, 'verify.dm.welcome', { server: guild.name }), t(lang, 'verify.dm.intro')].join('\n'), serverPicture(guild))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
   // The link as a button too: a link inside the text is easy to miss on a phone.
-  const row = new ActionRowBuilder();
-  if (link) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(link).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗'));
-  if (discordButton) row.addComponents(require('../interactions/verifyLetters').startButton(guild.id, lang));
-  if (row.components.length) container.addActionRowComponents(row);
-  return container;
+  if (link) container.addSectionComponents(way('link', new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(link).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗')));
+  if (discordButton) container.addSectionComponents(way('letters', startButton(guild.id, lang)));
+  return container
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.dm.footer')));
 }
 
-/** Components V2 DM confirming a member passed verification. */
+/** Components V2 DM confirming a member passed verification: the server's name and icon, and a button that opens the server. */
 function buildVerifiedDM({ guild, lang = currentLanguage() }) {
-  const text = new TextDisplayBuilder().setContent([t(lang, 'verify.dm.verifiedTitle'), t(lang, 'verify.dm.verifiedText', { server: guild.name })].join('\n'));
-
-  const container = new ContainerBuilder().setAccentColor(SUCCESS_COLOR);
-  const logo = assetUrl('favicon.png');
-
-  if (logo) {
-    container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text).setThumbnailAccessory(new ThumbnailBuilder().setURL(logo)));
-  } else {
-    container.addTextDisplayComponents(text);
-  }
-
-  return container;
+  const text = [t(lang, 'verify.dm.verifiedTitle'), t(lang, 'verify.dm.verifiedText', { server: guild.name })].join('\n');
+  return withPicture(new ContainerBuilder().setAccentColor(SUCCESS_COLOR), text, serverPicture(guild))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${guild.id}`).setLabel(t(lang, 'verify.dm.goToServer')).setEmoji('➡️')));
 }
 
 /**
@@ -70,7 +55,7 @@ async function sendVerifyDM(member, { guild, link, lang }) {
   if (custom) {
     const payload = { ...custom, allowedMentions: { parse: [] } };
     // A saved design does not know about the button, so it goes in a row of its own below it.
-    if (discordButton) payload.components = [...(payload.components ?? []), new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id, language))];
+    if (discordButton) payload.components = [...(payload.components ?? []), new ActionRowBuilder().addComponents(startButton(guild.id, language))];
     return sendDm(member, payload, { guild, kind: 'verify' });
   }
   return sendDm(member, { components: [buildVerifyDM({ guild, link, discordButton, lang: language })], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'verify' });

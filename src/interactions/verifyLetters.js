@@ -11,38 +11,16 @@ const { methodOf, usesLink } = require('../utils/verifyMethod');
 const config = require('../config');
 const { verifyLinkFor, baseUrl, lettersInstead, canDoLetters } = require('../utils/verifyLink');
 const { applyVerification } = require('../utils/verifyApply');
+const { restoreVerified } = require('../utils/verifyState');
 const { normalizeChecks, needsWebPage, evaluate } = require('../utils/verifyChecks');
 const logger = require('../utils/logger');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
 
-const PREFIX = 'vfy';
-const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}`, again: (guildId) => `${PREFIX}:again:${guildId}` };
+const { PREFIX, ids, startButton, serverPicture, withPicture } = require('../utils/verifyCards');
 const V2 = MessageFlags.IsComponentsV2;
 
 const tickets = new Map(); // `${guildId}:${userId}` -> { ticket, jti, until }
 const key = (guildId, userId) => `${guildId}:${userId}`;
-
-/** The button of the verification DM that starts the letters check. */
-function startButton(guildId, lang = currentLanguage()) {
-  return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel(t(lang, 'verify.letters.start.button')).setEmoji(EMOJI.SAFETY).setStyle(ButtonStyle.Primary);
-}
-
-
-/** The picture of the server for the cards (its icon), or Petto's when it has none, or null. */
-function serverPicture(guild) {
-  const icon = typeof guild?.iconURL === 'function' ? guild.iconURL({ size: 128, extension: 'png' }) : null;
-  if (icon) return icon;
-  const base = baseUrl();
-  return base ? `${base}/assets/favicon.png` : null;
-}
-
-/** Text with the picture of the server beside it when there is one. */
-function withPicture(container, text, picture) {
-  const display = new TextDisplayBuilder().setContent(text);
-  if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(display).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
-  else container.addTextDisplayComponents(display);
-  return container;
-}
 
 // In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
 const flagsFor = (interaction) => (interaction.inGuild?.() ? V2 | MessageFlags.Ephemeral : V2);
@@ -78,6 +56,9 @@ async function situation(client, guildId, userId, lang) {
   const member = await guild.members.fetch(userId).catch(() => null);
   if (!member) return { error: t(lang, 'verify.letters.notMember') };
   if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, userId).catch(() => false)) return { error: t(lang, 'verify.letters.already') };
+  // They passed in this stay and somebody gave them the gate role: nothing to check again, their roles come back (the answer says so; it is not a failure).
+  const back = await restoreVerified({ client, guild, member, settings, lang }).catch((err) => { logger.warn(`Could not give the roles back to ${userId} in ${guildId}: ${err.message}`); return null; });
+  if (back) return { error: t(lang, back.noRole ? 'verify.restoredNoRole' : 'verify.restored', { server: guild.name }) };
   // The checks that look at the connection or the email only exist on the page: when the server asks for them (and has a page), the letters inside Discord are not a way around them.
   if (usesLink(methodOf(settings)) && needsWebPage(normalizeChecks(settings.checks))) return { error: t(lang, 'verify.letters.usePage') };
   return { guild, member, settings };
@@ -151,6 +132,8 @@ async function sendLink(interaction, guildId, lang) {
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member) return say(interaction, t(lang, 'verify.letters.notMember'));
   if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, interaction.user.id).catch(() => false)) return say(interaction, t(lang, 'verify.letters.already'));
+  const back = await restoreVerified({ client: interaction.client, guild, member, settings, lang }).catch((err) => { logger.warn(`Could not give the roles back to ${interaction.user.id} in ${guildId}: ${err.message}`); return null; });
+  if (back) return say(interaction, t(lang, back.noRole ? 'verify.restoredNoRole' : 'verify.restored', { server: guild.name }));
   const made = verifyLinkFor(interaction.user.id, guildId);
   if (!made.url) {
     if (!config.verifyTokenSecret) return say(interaction, t(lang, 'verify.link.notSetUp'));
@@ -238,4 +221,4 @@ function isPanelMessage(message, guildId) {
   return (message?.components ?? []).some(walk);
 }
 
-module.exports = { PREFIX, startButton, buildPanel, panelImage, handleButton, handleModal, ids, canDoLetters, isPanelMessage };
+module.exports = { PREFIX, startButton, serverPicture, withPicture, buildPanel, panelImage, handleButton, handleModal, ids, canDoLetters, isPanelMessage };

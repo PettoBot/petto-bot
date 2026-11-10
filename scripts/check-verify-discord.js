@@ -11,11 +11,13 @@ const configPath = require.resolve(path.join(__dirname, '..', 'src/config.js'));
 require.cache[configPath] = { id: configPath, filename: configPath, loaded: true, exports: { verifyTokenSecret: 'secret-for-the-test', verifyBaseUrl: 'https://verify.example.com' } };
 let settings = { enabled: true, method: 'discord', unverified_role_id: 'role-un', verified_role_id: 'role-ok' };
 let everVerified = false;
+let lastPass = null; // when the member passed (a Date), for "verified in this stay"
+const restored = [];
 const applied = [];
 stub('src/db/verificationConfig.js', { getConfig: async () => settings });
-stub('src/db/verificationRedemptions.js', { hasEverVerified: async () => everVerified });
+stub('src/db/verificationRedemptions.js', { hasEverVerified: async () => everVerified, lastVerifiedAt: async () => lastPass });
 let applyBehaviour = async () => ({ ok: true });
-stub('src/utils/verifyApply.js', { applyVerification: async (options) => { applied.push(options.jti); return applyBehaviour(options); } });
+stub('src/utils/verifyApply.js', { applyVerification: async (options) => { applied.push(options.jti); return applyBehaviour(options); }, applyVerificationRoles: async (options) => { restored.push(options.member.id); options.member.roles.cache.delete('role-un'); return { noRole: false }; } });
 const errors = [];
 stub('src/utils/logger.js', { info() {}, warn() {}, error: (...args) => errors.push(args) });
 const captcha = require('../src/utils/verifyCaptcha');
@@ -155,6 +157,26 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
   assert.ok(text(replies.at(-1)).includes('already verified'));
   await verifyLetters.handleButton(interaction('vfy:start:not-a-server'));
+  // A member who passed in this stay and was given the gate role by mistake gets the roles back with no new check (the letters and the link buttons).
+  member.joinedTimestamp = Date.now() - 3_600_000;
+  lastPass = new Date(Date.now() - 600_000);
+  for (const button of ['start', 'link']) {
+    member.roles.cache.set('role-un', {}); restored.length = 0;
+    await verifyLetters.handleButton({ ...interaction(`vfy:${button}:${GUILD}`), inGuild: () => true });
+    assert.deepEqual([restored, text(replies.at(-1)).includes('no new check')], [[USER], true], `${button}: the roles come back with no new check`);
+  }
+  // A pass of an earlier stay (before they joined again) does not count, and neither does a member who is not gated.
+  member.roles.cache.set('role-un', {}); restored.length = 0;
+  lastPass = new Date(Date.now() - 7_200_000);
+  await verifyLetters.handleButton({ ...interaction(`vfy:start:${GUILD}`), inGuild: () => true });
+  assert.ok(restored.length === 0 && !text(replies.at(-1)).includes('no new check'), 'a pass of an earlier stay does not count: the member is asked again');
+  lastPass = null; member.joinedTimestamp = undefined; everVerified = false;
+  const state = require('../src/utils/verifyState');
+  assert.equal(await state.verifiedThisStay(GUILD, { id: USER, joinedTimestamp: 1_000_000 }, async () => new Date(1_000_000 - 30_000)), true, 'a little slack for the clocks');
+  assert.equal(await state.verifiedThisStay(GUILD, { id: USER, joinedTimestamp: 1_000_000 }, async () => new Date(1_000_000 - 120_000)), false);
+  assert.equal(await state.verifiedThisStay(GUILD, { id: USER, joinedTimestamp: 1_000_000 }, async () => { throw new Error('db'); }), false, 'when it cannot be known, the member is not taken for verified');
+  assert.equal(await state.restoreVerified({ client, guild, member: { id: USER, joinedTimestamp: 1, roles: { cache: new Map() } }, settings, lang: 'en' }), null, 'a member without the gate role has nothing to give back');
+  member.roles.cache.set('role-un', {});
   // The panel of a channel and its ephemeral answers.
   const panel = verifyLetters.buildPanel({ guild, method: 'letters' }).components[0].toJSON();
   const customIds = JSON.stringify(panel).match(/vfy:[a-z]+:\d+/g);
@@ -204,6 +226,17 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   config.verifyBaseUrl = 'verify.example.com/';
   await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
   assert.ok(JSON.stringify(replies.at(-1).components[0].toJSON()).includes('"https://verify.example.com/verify/'), 'cleaned address');
+
+  // The DM a member gets when they join: the server, a row for each way with its button on its side, and the note; the DM of the pass has a button to the server.
+  stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
+  stub('src/utils/dmOrigin.js', { sendDm: async () => {} });
+  const messages = require('../src/utils/verifyMessage');
+  const dmBoth = JSON.stringify(messages.buildVerifyDM({ guild, link: 'https://verify.example.com/verify/abc', discordButton: true, lang: 'en' }).toJSON());
+  assert.ok(dmBoth.includes('Welcome to Petto HQ!') && dmBoth.includes('With a link') && dmBoth.includes('Right here in Discord') && dmBoth.includes('https://verify.example.com/verify/abc') && dmBoth.includes(`vfy:start:${GUILD}`) && dmBoth.includes('only for you'), 'the DM has the server, both ways with their buttons and the note');
+  const dmLetters = JSON.stringify(messages.buildVerifyDM({ guild, link: null, discordButton: true, lang: 'es' }).toJSON());
+  assert.ok(!dmLetters.includes('With a link') && !dmLetters.includes('Con un enlace') && dmLetters.includes(`vfy:start:${GUILD}`) && dmLetters.includes('Bienvenido a Petto HQ'), 'a server that verifies only in Discord has the letters row only, in its language');
+  const dmDone = messages.buildVerifiedDM({ guild, lang: 'pt-BR' }).toJSON();
+  assert.ok(JSON.stringify(dmDone).includes('Você está verificado') && JSON.stringify(dmDone).includes(`https://discord.com/channels/${GUILD}`) && dmDone.accent_color === 0xa5ea7a, 'the DM of the pass: green, in its language, with the button to the server');
 
   // No address that opens: the panel and the button give the letters inside Discord instead, and the letters work for a Cloudflare server.
   config.verifyBaseUrl = 'http://localhost:3000';
