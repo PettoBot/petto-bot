@@ -14,7 +14,6 @@ const { t, languageOf } = require('../../i18n');
 
 const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
 const { normalizeChecks, applyChange, needsWebPage } = require('../../utils/verifyChecks');
-const resend = require('../../utils/resend');
 
 // How often the answer of `/verify setup` shows the channels done while a new gate role is set up (each edit is a request too).
 const PROGRESS_EVERY_MS = 3_000;
@@ -54,6 +53,7 @@ module.exports = {
       .addIntegerOption((o) => o.setName('min_age').setDescription('Discord account: minimum age in days (0 for none)').setMinValue(0).setMaxValue(365).setRequired(false))
       .addBooleanOption((o) => o.setName('avatar').setDescription('Discord account: ask for an avatar').setRequired(false))
       .addBooleanOption((o) => o.setName('flagged').setDescription('Discord account: refuse accounts flagged by Discord').setRequired(false))
+      .addBooleanOption((o) => o.setName('common').setDescription('Email: accept only well-known providers (Gmail, Outlook, Yahoo, iCloud, Proton...)').setRequired(false))
       .addBooleanOption((o) => o.setName('disposable').setDescription('Email: refuse throwaway emails').setRequired(false))
       .addStringOption((o) => o.setName('allow').setDescription('Email: accept only these domains, separated by commas (none to clear)').setRequired(false))
       .addStringOption((o) => o.setName('deny').setDescription('Email: never accept these domains, separated by commas (none to clear)').setRequired(false)))
@@ -80,8 +80,9 @@ function checksLines(current, lang, settings = {}) {
   if (current.account.no_avatar) details.push(t(lang, 'verify.checks.noAvatar'));
   if (current.account.flagged) details.push(t(lang, 'verify.checks.notFlagged'));
   const rules = [];
-  if (current.email.block_disposable && !current.email.allowed_domains.length) rules.push(t(lang, 'verify.checks.noDisposable'));
   if (current.email.allowed_domains.length) rules.push(t(lang, 'verify.checks.onlyDomains', { domains: current.email.allowed_domains.join(', ') }));
+  else if (current.email.common_only) rules.push(t(lang, 'verify.checks.commonOnly'));
+  else if (current.email.block_disposable) rules.push(t(lang, 'verify.checks.noDisposable'));
   if (current.email.blocked_domains.length) rules.push(t(lang, 'verify.checks.notDomains', { domains: current.email.blocked_domains.join(', ') }));
   const lines = [
     t(lang, 'verify.checks.title'),
@@ -91,7 +92,6 @@ function checksLines(current, lang, settings = {}) {
     t(lang, 'verify.checks.email', { value: t(lang, current.email.required ? 'verify.checks.emailOn' : 'verify.checks.emailOff') }),
   ];
   if (current.email.required) lines.push(t(lang, 'verify.checks.emailRules', { rules: rules.length ? rules.join(' · ') : t(lang, 'verify.checks.anyDomain') }));
-  if (current.email.required && !resend.configured()) lines.push(t(lang, 'verify.checks.resendMissing', { emoji: EMOJI.ALERT }));
   if (needsWebPage(current) && !usesLink(methodOf(settings))) lines.push(t(lang, 'verify.checks.needsPage', { emoji: EMOJI.ALERT }));
   return lines;
 }
@@ -111,6 +111,7 @@ async function checks(interaction, lang) {
       minAge: interaction.options.getInteger('min_age'),
       avatar: interaction.options.getBoolean('avatar'),
       flagged: interaction.options.getBoolean('flagged'),
+      common: interaction.options.getBoolean('common'),
       disposable: interaction.options.getBoolean('disposable'),
       allow: interaction.options.getString('allow'),
       deny: interaction.options.getString('deny'),

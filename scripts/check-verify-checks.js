@@ -54,11 +54,12 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
 (async () => {
   // --- the settings: anything wrong is "off", so an old row or a bad value never blocks anybody
   assert.deepEqual(normalizeChecks(undefined), normalizeChecks({}));
-  assert.deepEqual(normalizeChecks({ tor: 'nonsense', alt: 5, account: 'x', email: [] }), { tor: 'off', alt: 'off', account: { mode: 'off', min_age_days: 0, no_avatar: false, flagged: true }, email: { required: false, block_disposable: true, allowed_domains: [], blocked_domains: [] } });
+  assert.deepEqual(normalizeChecks({ tor: 'nonsense', alt: 5, account: 'x', email: [] }), { tor: 'off', alt: 'off', account: { mode: 'off', min_age_days: 0, no_avatar: false, flagged: true }, email: { required: false, common_only: true, block_disposable: true, allowed_domains: [], blocked_domains: [] } });
   const full = normalizeChecks({ tor: 'block', alt: 'warn', account: { mode: 'block', min_age_days: '400', no_avatar: true, flagged: false }, email: { required: true, block_disposable: false, allowed_domains: 'A.com, b.org\nhttps://c.net/path @d.io nonsense', blocked_domains: ['x.com', 'x.com'] } });
   assert.deepEqual([full.tor, full.alt, full.account.min_age_days, full.account.no_avatar, full.account.flagged], ['block', 'warn', 365, true, false], 'the age is capped');
   assert.deepEqual(full.email.allowed_domains, ['a.com', 'b.org', 'c.net', 'd.io']);
-  assert.deepEqual([full.email.required, full.email.block_disposable, full.email.blocked_domains], [true, false, ['x.com']]);
+  assert.deepEqual([full.email.required, full.email.common_only, full.email.block_disposable, full.email.blocked_domains], [true, true, false, ['x.com']]);
+  assert.equal(normalizeChecks({ email: { common_only: false } }).email.common_only, false);
   assert.equal(domainList(Array.from({ length: 80 }, (_, i) => `d${i}.com`)).length, 50, 'at most 50 domains');
   assert.equal(checksLib.anyCheck(normalizeChecks({})), false);
   assert.equal(checksLib.anyCheck(normalizeChecks({ account: { mode: 'warn' } })), true);
@@ -77,6 +78,7 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   assert.equal(c.account.min_age_days, 0);
   c = applyChange(c, { check: 'email', mode: 'on', allow: 'a.com, b.org', deny: 'x.com' }).checks;
   assert.deepEqual([c.email.required, c.email.allowed_domains, c.email.blocked_domains], [true, ['a.com', 'b.org'], ['x.com']]);
+  assert.equal(applyChange(c, { check: 'email', common: false }).checks.email.common_only, false);
   c = applyChange(c, { check: 'email', allow: 'none' }).checks;
   assert.deepEqual(c.email.allowed_domains, []);
   assert.equal(applyChange(c, { check: 'email', mode: 'block' }).ok, false);
@@ -112,20 +114,26 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   torList.setForTest(['203.0.113.7']);
 
   // --- emails
-  assert.deepEqual(disposable.parseEmail('  Jane.Doe+news@Gmail.com '), { ok: true, email: 'jane.doe+news@gmail.com', domain: 'gmail.com', canonical: 'janedoe@gmail.com' });
+  assert.deepEqual(disposable.parseEmail('  Jane.Doe+news@Gmail.com '), { ok: true, email: 'jane.doe+news@gmail.com', domain: 'gmail.com', canonical: 'janedoe@gmail.com', alias: true });
   assert.equal(disposable.parseEmail('janedoe@googlemail.com').canonical, 'janedoe@gmail.com', 'the same Gmail mailbox written two ways');
   assert.equal(disposable.parseEmail('a.b+x@outlook.com').canonical, 'a.b@outlook.com', 'dots are only ignored by Gmail');
   for (const bad of ['', 'x', 'a@b', 'a@@b.com', '@b.com', 'a b@c.com', 'a..b@c.com', '+x@c.com', `${'a'.repeat(250)}@b.com`]) assert.equal(disposable.parseEmail(bad).ok, false, `${bad.slice(0, 20)} is no email`);
   const rules = (extra = {}) => ({ block_disposable: true, allowed_domains: [], blocked_domains: [], ...extra });
   assert.equal(disposable.list().size > 5000, true, 'the list of throwaway domains is there');
-  assert.equal(disposable.emailRefusal('x@mailinator.com', rules()), 'disposable');
-  assert.equal(disposable.emailRefusal('x@sub.mailinator.com', rules()), 'disposable', 'a subdomain of one');
-  assert.equal(disposable.emailRefusal('x@mailinator.com', rules({ block_disposable: false })), null);
-  assert.equal(disposable.emailRefusal('x@gmail.com', rules()), null);
+  assert.equal(disposable.emailRefusal('x@mailinator.com', rules({ common_only: false })), 'disposable');
+  assert.equal(disposable.emailRefusal('x@sub.mailinator.com', rules({ common_only: false })), 'disposable', 'a subdomain of one');
+  assert.equal(disposable.emailRefusal('x@mailinator.com', rules({ common_only: false, block_disposable: false })), null);
+  assert.equal(disposable.emailRefusal('x@mailinator.com', rules()), 'custom', 'by default only the providers everybody knows: a throwaway domain is not one');
+  for (const ok of ['x@gmail.com', 'x@googlemail.com', 'x@outlook.com', 'x@hotmail.com', 'x@hotmail.es', 'x@outlook.com.br', 'x@live.com.mx', 'x@yahoo.co.uk', 'x@icloud.com', 'x@proton.me', 'x@protonmail.com', 'x@pm.me', 'x@aol.com', 'x@gmx.com', 'x.y@gmail.com']) assert.equal(disposable.emailRefusal(ok, rules()), null, `${ok} is accepted`);
+  for (const custom of ['liam@petto.sbs', 'x@example.com', 'x@mail.gmail.com', 'x@gmail.com.evil.org', 'x@mycompany.io', 'x@hotmail.evil.com', 'x@outlook.fake']) assert.equal(disposable.emailRefusal(custom, rules()), 'custom', `${custom} is a domain of somebody, not a provider`);
+  assert.equal(disposable.emailRefusal('liam@petto.sbs', rules({ common_only: false })), null, 'with "only well-known providers" off any domain that is not throwaway is accepted');
+  assert.equal(disposable.emailRefusal('jane+news@gmail.com', rules()), 'alias', 'a + is refused, not cleaned');
+  assert.equal(disposable.emailRefusal('jane+news@gmail.com', rules({ common_only: false })), 'alias');
+  assert.equal(disposable.emailRefusal('jane+news@school.edu', rules({ allowed_domains: ['school.edu'] })), 'alias', 'also for a domain the server allowed');
   assert.equal(disposable.emailRefusal('nonsense', rules()), 'invalid');
-  assert.equal(disposable.emailRefusal('x@evil.org', rules({ blocked_domains: ['evil.org'] })), 'blocked');
-  assert.equal(disposable.emailRefusal('x@mail.evil.org', rules({ blocked_domains: ['evil.org'] })), 'blocked');
-  assert.equal(disposable.emailRefusal('x@school.edu', rules({ allowed_domains: ['school.edu'] })), null);
+  assert.equal(disposable.emailRefusal('x@gmail.com', rules({ blocked_domains: ['gmail.com'] })), 'blocked');
+  assert.equal(disposable.emailRefusal('x@mail.evil.org', rules({ common_only: false, blocked_domains: ['evil.org'] })), 'blocked');
+  assert.equal(disposable.emailRefusal('x@school.edu', rules({ allowed_domains: ['school.edu'] })), null, 'the domains of the server replace the providers everybody knows');
   assert.equal(disposable.emailRefusal('x@gmail.com', rules({ allowed_domains: ['school.edu'] })), 'notAllowed');
 
   // --- the code
@@ -232,6 +240,8 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   const without = renderVerifyPage({ token: 't', siteKey: 'k', method: 'letters', guildName: 'Petto HQ', lang: 'en' });
   assert.ok(!without.includes('id="email-box"') && without.includes('const USE_EMAIL = false'), 'no email box when the server does not ask');
   assert.ok(renderVerifyPage({ token: 't', siteKey: 'k', method: 'letters', emailRequired: true, lang: 'pt-BR' }).includes('Confirme seu e-mail'));
+  assert.ok(withEmail.includes('Usa tu correo de Gmail, Outlook, Hotmail'), 'the page says which providers are accepted');
+  assert.ok(renderVerifyPage({ token: 't', siteKey: 'k', method: 'letters', emailRequired: true, emailDomains: ['school.edu'], lang: 'en' }).includes('This server accepts emails from: school.edu'), 'or which domains the server chose');
 
   // --- the command
   const { checksLines } = require('../src/commands/config/verify');
@@ -240,7 +250,10 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   assert.ok(text.includes('Verification checks') && text.includes('**Tor:** Off') && text.includes('**Email code:** Off') && !text.includes('Email domains'));
   resendOn = false;
   text = checksLines(normalizeChecks({ tor: 'block', alt: 'warn', account: { mode: 'warn', min_age_days: 7, no_avatar: true }, email: { required: true, allowed_domains: ['school.edu'] } }), 'es', { method: 'turnstile' }).join('\n');
-  assert.ok(text.includes('**Tor:** Bloquear') && text.includes('Avisar al staff') && text.includes('de al menos 7 día(s)') && text.includes('solo school.edu') && text.includes('Resend'), 'Spanish, and a warning that Resend is not set');
+  assert.ok(text.includes('**Tor:** Bloquear') && text.includes('Avisar al staff') && text.includes('de al menos 7 día(s)') && text.includes('solo school.edu'), 'Spanish');
+  assert.ok(!/resend/i.test(text), 'the admins are not told about the key of the email service: that is for whoever runs Petto');
+  text = checksLines(normalizeChecks({ email: { required: true } }), 'es', { method: 'turnstile' }).join('\n');
+  assert.ok(text.includes('solo proveedores conocidos (Gmail, Outlook'), 'by default only well-known providers');
   resendOn = true;
   text = checksLines(normalizeChecks({ tor: 'block' }), lang, { method: 'discord' }).join('\n');
   assert.ok(text.includes('verification page'), 'Tor with the letters inside Discord and no page is told');
@@ -286,16 +299,21 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   assert.deepEqual([res.status, res.json.code], [400, 'email'], 'not verified without the email');
   assert.equal(applied.length, 0);
   res = await call('POST', '/api/verify/email/send', { body: { token, email: 'x@mailinator.com' } });
-  assert.deepEqual([res.status, res.json.code], [400, 'disposable'], 'a throwaway email is refused');
+  assert.deepEqual([res.status, res.json.code], [400, 'custom'], 'a throwaway email is refused');
+  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'liam@petto.sbs' } });
+  assert.deepEqual([res.status, res.json.code], [400, 'custom'], 'an address of a personal domain is refused');
+  assert.ok(res.json.error.includes('Gmail') && res.json.error.includes('Outlook'), 'and the member is told which providers are accepted');
+  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe+x@gmail.com' } });
+  assert.deepEqual([res.status, res.json.code], [400, 'alias'], 'a + is refused');
   res = await call('POST', '/api/verify/email/send', { body: { token, email: 'nonsense' } });
   assert.equal(res.json.code, 'invalid');
   assert.equal(sent.length, 0, 'nothing was sent for those');
   res = await call('POST', '/api/verify/email/confirm', { body: { token, code: '123456' } });
   assert.equal(res.json.code, 'none', 'no code yet');
-  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe+x@gmail.com' } });
-  assert.deepEqual([res.status, res.json.ok, sent.length, sent[0].to], [200, true, 1, 'jane.doe+x@gmail.com']);
+  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe@Gmail.com' } });
+  assert.deepEqual([res.status, res.json.ok, sent.length, sent[0].to], [200, true, 1, 'jane.doe@gmail.com']);
   assert.match(sent[0].code, /^\d{6}$/);
-  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe+x@gmail.com' } });
+  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe@Gmail.com' } });
   assert.deepEqual([res.status, res.json.code], [429, 'cooldown'], 'a second code right away is refused');
   const wrongCode = sent[0].code === '000000' ? '111111' : '000000';
   res = await call('POST', '/api/verify/email/confirm', { body: { token, code: wrongCode } });

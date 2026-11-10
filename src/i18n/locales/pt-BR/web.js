@@ -287,4 +287,8 @@ module.exports = {
   'web.verifyApi.check.young': 'Sua conta do Discord é nova demais para este servidor. Tente quando ela tiver {min} dias.',
   'web.verifyApi.check.noAvatar': 'Este servidor pede uma foto de perfil na sua conta do Discord. Coloque uma e tente de novo.',
   'web.verifyApi.check.flagged': 'O Discord marcou a sua conta, então este servidor não pode verificá-la. Fale com um moderador.',
+  'web.verifyApi.email.alias': 'Endereços com um sinal + não são aceitos. Use o seu endereço principal, sem a parte do +.',
+  'web.verifyApi.email.custom': 'Use um e-mail de um provedor conhecido, como Gmail, Outlook, Hotmail, Yahoo, iCloud ou Proton. Endereços de um domínio pessoal ou de empresa não são aceitos.',
+  'web.verify.emailCommon': 'Use o seu e-mail do Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton ou outro provedor conhecido, sem sinal +.',
+  'web.verify.emailOnly': 'Este servidor aceita e-mails de: {domains}. Sem sinais +.',
 };

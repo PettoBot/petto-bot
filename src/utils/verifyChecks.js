@@ -3,7 +3,7 @@
 //   tor      the member connects through the Tor network (the public list of exit nodes, utils/torList.js)
 //   alt      the connection (IP) or the email was already used by another member of the server, or by one who was banned
 //   account  the Discord account is younger than N days, has no avatar, or is flagged by Discord (spammer, quarantined)
-//   email    a code sent to the member's email has to be typed (utils/emailCode.js, utils/resend.js); the domain can be refused
+//   email    a code sent to the member's email has to be typed (utils/emailCode.js, utils/resend.js); by default only the providers everybody knows (Gmail, Outlook, Yahoo, iCloud, Proton...) and no `+tag`; the server can allow or refuse domains
 // Each of the first three is `off`, `warn` (the member verifies and the staff is told in the verification log) or `block` (the member is not verified).
 // The email is `required` or not; a domain that is not accepted is told to the member, who can use another address.
 const crypto = require('node:crypto');
@@ -18,7 +18,7 @@ const DEFAULT_CHECKS = Object.freeze({
   tor: 'off',
   alt: 'off',
   account: Object.freeze({ mode: 'off', min_age_days: 0, no_avatar: false, flagged: true }),
-  email: Object.freeze({ required: false, block_disposable: true, allowed_domains: Object.freeze([]), blocked_domains: Object.freeze([]) }),
+  email: Object.freeze({ required: false, common_only: true, block_disposable: true, allowed_domains: Object.freeze([]), blocked_domains: Object.freeze([]) }),
 });
 
 const DOMAIN_RE = /^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -54,6 +54,7 @@ function normalizeChecks(raw) {
     },
     email: {
       required: email.required === true,
+      common_only: email.common_only !== false,
       block_disposable: email.block_disposable !== false,
       allowed_domains: domainList(email.allowed_domains),
       blocked_domains: domainList(email.blocked_domains),
@@ -146,7 +147,7 @@ async function evaluate({ checks, guild, member, ip = null, emailHash = null, de
 }
 
 /**
- * The checks after a change asked from the command (`!verify checks <check> <mode> ...`): `input` is `{ check, mode, minAge, avatar, flagged, disposable, allow, deny }`.
+ * The checks after a change asked from the command (`!verify checks <check> <mode> ...`): `input` is `{ check, mode, minAge, avatar, flagged, common, disposable, allow, deny }`.
  * `{ ok: true, checks }`, or `{ ok: false }` when the check or the mode is not valid for it. `allow` and `deny` are texts of domains, or `none` to empty the list.
  */
 function applyChange(current, input) {
@@ -169,6 +170,7 @@ function applyChange(current, input) {
     case 'email':
       if (mode && !['on', 'off'].includes(mode)) return { ok: false };
       if (mode) next.email.required = mode === 'on';
+      if (typeof input.common === 'boolean') next.email.common_only = input.common;
       if (typeof input.disposable === 'boolean') next.email.block_disposable = input.disposable;
       if (input.allow != null) next.email.allowed_domains = list(input.allow);
       if (input.deny != null) next.email.blocked_domains = list(input.deny);

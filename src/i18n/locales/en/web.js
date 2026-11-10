@@ -287,4 +287,8 @@ module.exports = {
   'web.verifyApi.check.young': 'Your Discord account is too new for this server. Try again when it is {min} days old.',
   'web.verifyApi.check.noAvatar': 'This server asks for a profile picture on your Discord account. Add one and try again.',
   'web.verifyApi.check.flagged': 'Discord flagged your account, so this server cannot verify it. Contact a moderator.',
+  'web.verifyApi.email.alias': 'Addresses with a + sign are not accepted. Use your main address, without the + part.',
+  'web.verifyApi.email.custom': 'Use an email from a well-known provider, such as Gmail, Outlook, Hotmail, Yahoo, iCloud or Proton. Addresses of a personal or company domain are not accepted.',
+  'web.verify.emailCommon': 'Use your email from Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton or another well-known provider, without a + sign.',
+  'web.verify.emailOnly': 'This server accepts emails from: {domains}. No + signs.',
 };

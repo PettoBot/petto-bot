@@ -1128,6 +1128,7 @@ function startServer(client) {
       guildIcon: guild?.iconURL?.({ size: 64, extension: 'png' }) ?? null,
       lang: requestLanguage(req, payload?.guildId),
       emailRequired: emailAsked(settings),
+      emailDomains: normalizeChecks(settings?.checks).email.allowed_domains,
     }));
   });
 

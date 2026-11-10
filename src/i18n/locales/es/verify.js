@@ -150,7 +150,7 @@ module.exports = {
   'verify.checks.anyDomain': 'cualquiera',
   'verify.checks.saved': '{emoji} Guardado.',
   'verify.checks.usage': '{emoji} Usa `!verify checks` para verlas, o `!verify checks tor|alt|account|email` con un modo (`off`, `warn`, `block`; `on` u `off` para el correo).',
-  'verify.checks.resendMissing': '{emoji} El código por correo necesita la llave de Resend de Petto (`RESEND_API_KEY` y `RESEND_FROM`) y no está puesta: a los miembros no se les pide el código hasta que lo esté.',
   'verify.checks.needsPage': '{emoji} Tor, las cuentas alternativas y el código por correo necesitan la página de verificación. Con "letras dentro de Discord, sin enlace" solo funciona la comprobación de la cuenta de Discord.',
   'verify.letters.usePage': 'Este servidor pide más comprobaciones que las letras: abre el enlace de verificación que se te envió (o usa el botón de enlace del panel).',
+  'verify.checks.commonOnly': 'solo proveedores conocidos (Gmail, Outlook, Yahoo, iCloud, Proton...)',
 };
