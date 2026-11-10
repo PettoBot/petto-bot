@@ -151,7 +151,7 @@ module.exports = {
   'cmd.utility.guilddebug.dm-owner.opt.guild_id.desc': 'ID del servidor cuyo dueño debe recibir el MD',
   'cmd.utility.guilddebug.dm-owner.opt.message.desc': 'Mensaje que enviar (las menciones están desactivadas)',
   'cmd.utility.guildsend.desc': 'Control privado de soporte: envía un aviso a un servidor.',
-  'cmd.utility.guildsend.opt.type.desc': 'Tipo: diagnostic, permissions, logs, policy, maintenance',
+  'cmd.utility.guildsend.opt.type.desc': 'Tipo: diagnostic, permissions, verifyRoles, logs, policy, maintenance',
   'cmd.utility.guildsend.opt.details.desc': 'Contexto del aviso (opcional).',
   'cmd.utility.help.desc': 'Explora los comandos, o busca uno directamente.',
   'cmd.utility.help.opt.command.desc': 'Un comando (y opcionalmente un subcomando) que buscar, p. ej. "ticket category add"',

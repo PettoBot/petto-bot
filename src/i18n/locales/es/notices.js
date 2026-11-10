@@ -6,6 +6,9 @@ module.exports = {
   'notices.permissions.title': 'Los permisos de Petto necesitan atención',
   'notices.permissions.body': 'Petto detectó permisos faltantes o insuficientes. Algunas funciones pueden no estar disponibles hasta que se restablezca el acceso.',
   'notices.permissions.action': 'Restablece **Ver canal**, **Enviar mensajes**, **Insertar enlaces** y **Leer el historial de mensajes** donde haga falta. Las funciones de registro también pueden necesitar **Gestionar webhooks** en el canal de registros configurado.',
+  'notices.verifyRoles.title': 'Petto no pudo dar el rol de verificación',
+  'notices.verifyRoles.body': 'Un miembro pasó la verificación, pero Petto no pudo cambiarle los roles (darle el de verificado o quitarle el de sin verificar). Se queda fuera hasta que esto se arregle.',
+  'notices.verifyRoles.action': 'Abre **Ajustes del servidor → Roles** y arrastra el rol de **Petto** por encima de los roles de verificado y sin verificar. Petto también necesita **Gestionar roles**. Después pide al miembro que verifique otra vez.',
   'notices.logs.title': 'La configuración de registros de Petto necesita atención',
   'notices.logs.body': 'Un destino de registros o un webhook configurado falta, no es accesible o ya no es válido.',
   'notices.logs.action': 'Revisa el canal de registros y sus permisos. Vuelve a configurar los registros si el webhook se borró o se reemplazó.',
@@ -24,5 +27,6 @@ module.exports = {
   'notices.help': '¿Necesitas ayuda? {url}',
   'notices.details.logs': '`[logEngine]` no pudo usar el webhook de registros configurado. Puede que el webhook se haya borrado, movido o que ya no sea accesible.',
   'notices.details.permissions': 'Petto recibió un error de permisos o de acceso de Discord al intentar usar una función configurada.',
+  'notices.details.verifyRoles': 'Discord se negó a cambiar los roles de un miembro que pasó la verificación: el rol de Petto está por debajo del rol que tiene que dar, o Petto no tiene Gestionar roles.',
   'notices.details.teamReview': 'El equipo de Petto pidió una revisión manual tras una señal automática sobre el servidor.',
 };

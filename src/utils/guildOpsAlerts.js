@@ -52,6 +52,7 @@ const template = (kind, severity) => ({
 const TEMPLATES = {
   diagnostic: template('diagnostic', 'warning'),
   permissions: template('permissions', 'warning'),
+  verifyRoles: template('verifyRoles', 'warning'),
   logs: template('logs', 'warning'),
   policy: template('policy', 'critical'),
   maintenance: template('maintenance', 'info'),
@@ -59,7 +60,7 @@ const TEMPLATES = {
 
 // Details Petto writes itself (the diagnostic classifier, the team review button): shown in the language of the server while
 // they are exactly the English text. Any other details come from Discord or the team and are shown as they are.
-const DETAIL_KEYS = ['notices.details.logs', 'notices.details.permissions', 'notices.details.teamReview'];
+const DETAIL_KEYS = ['notices.details.logs', 'notices.details.permissions', 'notices.details.verifyRoles', 'notices.details.teamReview'];
 function noticeDetails(details, lang) {
   for (const key of DETAIL_KEYS) {
     const shown = defaultText(lang, details, key);
@@ -388,6 +389,17 @@ function classifyDiagnostic(text) {
     };
   }
 
+  // A member passed the verification and Discord refused to change their roles (the role of Petto is below the one it gives, or it lacks Manage Roles): the notice says that,
+  // not the generic one about permissions. It is the same Discord error, so it is looked at first.
+  if (lower.includes('verification roles')
+      && (lower.includes('missing permission') || lower.includes('missing access') || /(?:code|discordapierror)\D*(?:50013|50001)/.test(lower))) {
+    return {
+      kind: 'verifyRoles',
+      details: t('en', 'notices.details.verifyRoles'),
+      teamAlert: false,
+    };
+  }
+
   if (lower.includes('missing permissions')
       || lower.includes('missing permission')
       || lower.includes('insufficient permissions')
@@ -431,6 +443,7 @@ async function reportGuildIncident(client, options) {
 module.exports = {
   TEMPLATES,
   renderNotice,
+  classifyDiagnostic,
   createGuildDiagnosticSink,
   reportGuildIncident,
   sendGuildNotice,
