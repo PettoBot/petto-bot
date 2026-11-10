@@ -291,4 +291,11 @@ module.exports = {
   'web.verifyApi.email.custom': 'Usa un correo de un proveedor conocido, como Gmail, Outlook, Hotmail, Yahoo, iCloud o Proton. No se aceptan direcciones de un dominio personal o de empresa.',
   'web.verify.emailCommon': 'Usa tu correo de Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton u otro proveedor conocido, sin signo +.',
   'web.verify.emailOnly': 'Este servidor acepta correos de: {domains}. Sin signos +.',
+  'web.verify.emailDiscord': 'Usar el correo de mi Discord',
+  'web.verify.emailOr': 'o escríbelo',
+  'web.verify.emailDiscordSent': 'Te enviamos un código a {to}, el correo de tu cuenta de Discord. Dura 10 minutos. Mira también el spam.',
+  'web.verifyApi.email.discordOther': 'Esa no es la cuenta de Discord para la que se hizo este enlace. Inicia sesión con la cuenta que abrió el enlace.',
+  'web.verifyApi.email.discordNoEmail': 'Tu cuenta de Discord no tiene un correo verificado. Verifícalo en Discord, o escribe otro correo.',
+  'web.verifyApi.email.discordDenied': 'No permitiste el inicio de sesión con Discord. Puedes intentarlo otra vez o escribir tu correo.',
+  'web.verifyApi.email.discordFailed': 'El inicio de sesión con Discord no funcionó. Inténtalo otra vez o escribe tu correo.',
 };

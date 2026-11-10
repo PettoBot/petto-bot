@@ -291,4 +291,11 @@ module.exports = {
   'web.verifyApi.email.custom': 'Use um e-mail de um provedor conhecido, como Gmail, Outlook, Hotmail, Yahoo, iCloud ou Proton. Endereços de um domínio pessoal ou de empresa não são aceitos.',
   'web.verify.emailCommon': 'Use o seu e-mail do Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton ou outro provedor conhecido, sem sinal +.',
   'web.verify.emailOnly': 'Este servidor aceita e-mails de: {domains}. Sem sinais +.',
+  'web.verify.emailDiscord': 'Usar o e-mail do meu Discord',
+  'web.verify.emailOr': 'ou digite',
+  'web.verify.emailDiscordSent': 'Enviamos um código para {to}, o e-mail da sua conta do Discord. Dura 10 minutos. Olhe também o spam.',
+  'web.verifyApi.email.discordOther': 'Essa não é a conta do Discord para a qual este link foi feito. Entre com a conta que abriu o link.',
+  'web.verifyApi.email.discordNoEmail': 'Sua conta do Discord não tem um e-mail verificado. Verifique no Discord ou digite outro e-mail.',
+  'web.verifyApi.email.discordDenied': 'Você não permitiu o login com o Discord. Pode tentar de novo ou digitar seu e-mail.',
+  'web.verifyApi.email.discordFailed': 'O login com o Discord não funcionou. Tente de novo ou digite seu e-mail.',
 };

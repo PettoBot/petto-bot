@@ -67,7 +67,15 @@ function confirmedEmail(jti, now = Date.now()) {
   return confirmed && confirmed.until >= now ? confirmed.email : null;
 }
 
+/** The address a code was sent to for this link, hidden (`j***@gmail.com`), to tell the member where to look. Null when none. */
+function maskedEmail(jti, now = Date.now()) {
+  const entry = entries.get(jti);
+  if (!entry?.email || entry.expires < now) return null;
+  const [name, domain] = entry.email.split('@');
+  return `${name.slice(0, 1)}***@${domain}`;
+}
+
 const forget = (jti) => { entries.delete(jti); };
 const reset = () => { entries.clear(); addresses.clear(); };
 
-module.exports = { issue, confirm, confirmedEmail, forget, reset, CODE_TTL_MS, COOLDOWN_MS, MAX_TRIES, MAX_SENDS, MAX_PER_ADDRESS };
+module.exports = { issue, confirm, confirmedEmail, maskedEmail, forget, reset, CODE_TTL_MS, COOLDOWN_MS, MAX_TRIES, MAX_SENDS, MAX_PER_ADDRESS };

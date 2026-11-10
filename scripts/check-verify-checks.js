@@ -173,6 +173,8 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
     for (const digit of '482913') assert.ok(mail.html.includes(`>${digit}</td>`), `${lang}: a box for each digit`);
     assert.ok(mail.html.includes('Casa &lt;b&gt;&amp;&quot;') && !mail.html.includes('Casa <b>'), `${lang}: the name of the server is escaped`);
     assert.ok(mail.html.includes(`<html lang="${lang}"`) && mail.html.includes('mascot-icon.png'));
+    assert.ok(mail.html.includes('/terms') && mail.html.includes('/privacy') && mail.html.includes('discord.gg/petto'), `${lang}: the footer has the links`);
+    assert.ok(!/aliases?|resend/i.test(mail.html.replace(/https?:[^"']*/g, '')), `${lang}: nothing technical in the email`);
     assert.ok(!/\{[a-z]+\}/.test(mail.html + mail.text + mail.subject), `${lang}: no placeholder left`);
   }
   assert.notEqual(resendReal.buildCodeEmail({ code: '111111', lang: 'es', guildName: 'x' }).subject, resendReal.buildCodeEmail({ code: '111111', lang: 'en', guildName: 'x' }).subject);
@@ -275,7 +277,7 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
     const data = body === undefined ? null : JSON.stringify(body);
     const request = http.request({ host: '127.0.0.1', port, method, path: url, headers: { ...(data ? { 'content-type': 'application/json' } : {}), ...headers } }, (res) => {
       let textBody = ''; res.setEncoding('utf8'); res.on('data', (chunk) => { textBody += chunk; });
-      res.on('end', () => { let json = null; try { json = JSON.parse(textBody); } catch { /* a page */ } resolve({ status: res.statusCode, text: textBody, json }); });
+      res.on('end', () => { let json = null; try { json = JSON.parse(textBody); } catch { /* a page */ } resolve({ status: res.statusCode, text: textBody, json, headers: res.headers }); });
     });
     request.on('error', reject); if (data) request.write(data); request.end();
   });
@@ -341,6 +343,70 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   assert.deepEqual([res.status, res.json.ok], [200, true], 'and nobody is locked out');
   assert.ok(warned.some((w) => w.includes('RESEND_API_KEY')), 'it is said once in the log');
   resendOn = true;
+
+  // "Use my Discord email": the login with Discord gives the address, the code goes to it, and nobody can use another account's email.
+  const discordEmailModule = require('../src/utils/discordEmail');
+  const realFetch = globalThis.fetch;
+  const discordCalls = [];
+  let discordUser = { id: USER, email: 'Jane.Doe@Gmail.com', verified: true };
+  globalThis.fetch = async (url, options = {}) => {
+    discordCalls.push({ url: String(url), options });
+    if (String(url).endsWith('/oauth2/token')) return { ok: options.body.includes('code=good'), json: async () => ({ access_token: 'acc' }) };
+    if (String(url).endsWith('/users/@me')) return { ok: true, json: async () => discordUser };
+    if (String(url).endsWith('/oauth2/token/revoke')) return { ok: true, json: async () => ({}) };
+    return realFetch(url, options);
+  };
+  settings = { ...settings, checks: { email: { required: true } } };
+  Object.assign(config, { clientId: '123456789012345678', discordClientSecret: null });
+  token = fresh();
+  res = await call('GET', `/verify/${token}`);
+  assert.ok(!res.text.includes('id="discord-email"'), 'without the secret of the application the page only offers to type the email');
+  assert.equal(discordEmailModule.configured(), false);
+  Object.assign(config, { discordClientSecret: 'app-secret' });
+  assert.equal(discordEmailModule.configured(), true);
+  res = await call('GET', `/verify/${token}`);
+  assert.ok(res.text.includes('id="discord-email"') && res.text.includes(`/api/verify/discord/start?token=${encodeURIComponent(token)}`) && res.text.includes('id="email-input"'), 'both ways: the Discord button and the box to type it');
+  res = await call('GET', `/api/verify/discord/start?token=${encodeURIComponent(token)}`);
+  const authorize = new URL(res.headers?.location ?? '', 'https://x');
+  assert.equal(res.status, 302);
+  assert.deepEqual([authorize.origin + authorize.pathname, authorize.searchParams.get('client_id'), authorize.searchParams.get('scope'), authorize.searchParams.get('state'), authorize.searchParams.get('redirect_uri')], ['https://discord.com/oauth2/authorize', '123456789012345678', 'identify email', token, 'https://verify.example/api/verify/discord/callback']);
+  res = await call('GET', '/api/verify/discord/start?token=nonsense');
+  assert.equal(res.status, 400, 'a bad link does not start a login');
+  const back = async (query) => { const r = await call('GET', `/api/verify/discord/callback?${query}`); return { status: r.status, to: r.headers?.location ?? '' }; };
+  let result = await back(`code=good&state=${encodeURIComponent(token)}`);
+  assert.deepEqual([result.status, result.to, sent.length, sent[0]?.to], [302, `/verify/${encodeURIComponent(token)}?m=sent`, 1, 'jane.doe@gmail.com'], 'the code goes to the email of the account');
+  assert.ok(discordCalls.some((c) => c.url.endsWith('/oauth2/token/revoke')), 'the access is revoked once the email is read');
+  assert.ok(discordCalls.find((c) => c.url.endsWith('/users/@me')).options.headers.Authorization === 'Bearer acc');
+  res = await call('GET', `/verify/${token}?m=sent`);
+  assert.ok(res.text.includes('j***@gmail.com') && !res.text.includes('jane.doe@gmail.com'), 'the page tells where the code went, with the address hidden');
+  res = await call('POST', '/api/verify/email/confirm', { body: { token, code: sent[0].code } });
+  assert.equal(res.json.ok, true);
+  res = await verify(token);
+  assert.deepEqual([res.status, res.json.ok, applied.length], [200, true, 1], 'with the Discord email confirmed the member verifies');
+  // Another account, no email, an email that is not accepted, a refusal and a failure.
+  token = fresh();
+  discordUser = { id: '999', email: 'someone@gmail.com', verified: true };
+  result = await back(`code=good&state=${encodeURIComponent(token)}`);
+  assert.deepEqual([result.to.endsWith('?m=discordOther'), sent.length], [true, 0], 'the account has to be the one the link was made for');
+  discordUser = { id: USER, email: 'jane@gmail.com', verified: false };
+  assert.ok((await back(`code=good&state=${encodeURIComponent(token)}`)).to.endsWith('?m=discordNoEmail'), 'Discord has not verified the email');
+  discordUser = { id: USER, email: null, verified: true };
+  assert.ok((await back(`code=good&state=${encodeURIComponent(token)}`)).to.endsWith('?m=discordNoEmail'), 'no email');
+  discordUser = { id: USER, email: 'liam@petto.sbs', verified: true };
+  assert.ok((await back(`code=good&state=${encodeURIComponent(token)}`)).to.endsWith('?m=custom'), 'the same rules as the typed email: a personal domain is refused');
+  res = await call('GET', `/verify/${token}?m=custom`);
+  assert.ok(res.text.includes('Gmail') && res.text.includes('"sent":false'), 'and the page says why');
+  assert.equal(sent.length, 0);
+  assert.ok((await back(`error=access_denied&state=${encodeURIComponent(token)}`)).to.endsWith('?m=discordDenied'), 'the member said no');
+  assert.ok((await back(`code=bad&state=${encodeURIComponent(token)}`)).to.endsWith('?m=discordFailed'), 'Discord refused the code');
+  assert.equal((await back('code=good&state=nonsense')).status, 400, 'a state that is not a signed link');
+  res = await call('GET', `/verify/${token}?m=%3Cscript%3E`);
+  assert.ok(!res.text.includes('<script>alert') && res.text.includes('const NOTICE = null'), 'only known notices are shown');
+  settings = { ...settings, checks: {} };
+  assert.ok((await back(`code=good&state=${encodeURIComponent(token)}`)).to.endsWith('?m=discordFailed'), 'a server that does not ask for the email');
+  settings = { ...settings, checks: { email: { required: true } } };
+  globalThis.fetch = realFetch;
+  Object.assign(config, { clientId: process.env.DISCORD_CLIENT_ID, discordClientSecret: null });
 
   // Tor: the visitor's address comes from X-Forwarded-For (one proxy is trusted).
   settings = { ...settings, checks: { tor: 'block' } };

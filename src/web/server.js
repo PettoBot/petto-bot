@@ -20,6 +20,7 @@ const { logVerification, logVerificationChecks } = require('../utils/verificatio
 const { normalizeChecks, clientIp, signalHash, evaluate } = require('../utils/verifyChecks');
 const emailCode = require('../utils/emailCode');
 const resend = require('../utils/resend');
+const discordEmail = require('../utils/discordEmail');
 const { parseEmail, emailRefusal } = require('../utils/disposableEmail');
 const verificationSignals = require('../db/verificationSignals');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
@@ -1114,6 +1115,16 @@ function startServer(client) {
     return false;
   }
 
+  // What the page says when the member comes back from the Discord login (`?m=`): `{ sent, text }`, or null. Only the codes below are accepted.
+  const NOTICE_CODES = new Set(['discordOther', 'discordNoEmail', 'discordDenied', 'discordFailed', 'alias', 'custom', 'blocked', 'notAllowed', 'disposable', 'invalid', 'cooldown', 'limit', 'unavailable']);
+  function emailNotice(m, payload, lang) {
+    if (m === 'sent') {
+      const to = emailCode.maskedEmail(payload.jti);
+      return to ? { sent: true, text: t(lang, 'web.verify.emailDiscordSent', { to }) } : null;
+    }
+    return NOTICE_CODES.has(m) ? { sent: false, text: t(lang, `web.verifyApi.email.${m}`) } : null;
+  }
+
   app.get('/verify/:token', verifyPageRateLimiter, async (req, res) => {
     // The page shows the check the server chose and its name, and speaks the language of the visitor.
     const payload = verifyToken(req.params.token);
@@ -1129,6 +1140,8 @@ function startServer(client) {
       lang: requestLanguage(req, payload?.guildId),
       emailRequired: emailAsked(settings),
       emailDomains: normalizeChecks(settings?.checks).email.allowed_domains,
+      discordEmail: emailAsked(settings) && discordEmail.configured(),
+      notice: payload ? emailNotice(req.query?.m, payload, requestLanguage(req, payload.guildId)) : null,
     }));
   });
 
@@ -1161,6 +1174,22 @@ function startServer(client) {
   // The email code (the server asks for it in its verification checks): a code is sent to the address the member types, and typing it confirms the address.
   const emailError = (res, status, lang, code) => res.status(status).json({ ok: false, code, error: t(lang, `web.verifyApi.email.${code}`) });
 
+  // Checks the address against the server's rules, makes a code and sends it: `{ ok: true }` or `{ ok: false, status, code }` (the code of web.verifyApi.email.*).
+  async function sendCode({ payload, settings, address, lang }) {
+    const refusal = emailRefusal(address, normalizeChecks(settings.checks).email);
+    if (refusal) return { ok: false, status: 400, code: refusal };
+    const to = parseEmail(address).email;
+    const issued = emailCode.issue(payload.jti, to);
+    if (!issued.ok) return { ok: false, status: 429, code: issued.reason, waitMs: issued.waitMs };
+    const guild = client.guilds.cache.get(payload.guildId);
+    const sent = await resend.sendCodeEmail({ to, code: issued.code, lang, guildName: guild?.name });
+    if (!sent.ok) {
+      logger.warn(`The verification email could not be sent (${sent.reason}${sent.status ? ` ${sent.status}` : ''}${sent.detail ? `: ${sent.detail}` : ''}).`);
+      return { ok: false, status: 502, code: 'unavailable' };
+    }
+    return { ok: true };
+  }
+
   app.post('/api/verify/email/send', verifyEmailRateLimiter, async (req, res) => {
     const payload = verifyToken(req.body?.token);
     const lang = requestLanguage(req, payload?.guildId);
@@ -1169,21 +1198,53 @@ function startServer(client) {
       const settings = await getConfig(payload.guildId);
       if (!emailAsked(settings)) return emailError(res, 400, lang, 'notAsked');
       if (await isRedeemed(payload.jti)) { res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.alreadyShort') }); return; }
-      const rules = normalizeChecks(settings.checks).email;
-      const refusal = emailRefusal(req.body?.email, rules);
-      if (refusal) return emailError(res, 400, lang, refusal);
-      const issued = emailCode.issue(payload.jti, parseEmail(req.body.email).email);
-      if (!issued.ok) { res.set('Retry-After', String(Math.ceil(issued.waitMs / 1000))); return emailError(res, 429, lang, issued.reason); }
-      const guild = client.guilds.cache.get(payload.guildId);
-      const sent = await resend.sendCodeEmail({ to: parseEmail(req.body.email).email, code: issued.code, lang, guildName: guild?.name });
-      if (!sent.ok) {
-        logger.warn(`The verification email could not be sent (${sent.reason}${sent.status ? ` ${sent.status}` : ''}${sent.detail ? `: ${sent.detail}` : ''}).`);
-        return emailError(res, 502, lang, 'unavailable');
-      }
+      const result = await sendCode({ payload, settings, address: req.body?.email, lang });
+      if (!result.ok) { if (result.waitMs) res.set('Retry-After', String(Math.ceil(result.waitMs / 1000))); return emailError(res, result.status, lang, result.code); }
       res.set('Cache-Control', 'no-store').json({ ok: true, cooldown: Math.ceil(emailCode.COOLDOWN_MS / 1000) });
     } catch (err) {
       logger.error('Failed to send the verification email:', err);
       res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
+    }
+  });
+
+  // "Use my Discord email": the member logs in with Discord and the code goes to the email Discord has (utils/discordEmail.js). The member comes back to the page
+  // of the link with `?m=<what happened>`; the page shows it (emailNotice) and never gets the address, only the hidden one.
+  const backToPage = (res, token, m) => res.redirect(302, `/verify/${encodeURIComponent(token)}?m=${m}`);
+  const verifyDiscordRateLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, handler: (_req, res) => { res.status(429).type('text/plain').send(t(requestLanguage(_req), 'web.limit.verifyPage')); } });
+
+  app.get('/api/verify/discord/start', verifyDiscordRateLimiter, async (req, res) => {
+    const token = String(req.query?.token ?? '');
+    const payload = verifyToken(token);
+    if (!payload) { res.status(400).type('text/plain').send(t(requestLanguage(req), 'web.verifyApi.invalidLink')); return; }
+    try {
+      const settings = await getConfig(payload.guildId);
+      if (!emailAsked(settings) || !discordEmail.configured() || await isRedeemed(payload.jti)) return backToPage(res, token, 'discordFailed');
+      res.set('Cache-Control', 'no-store').redirect(302, discordEmail.authorizeUrl(token));
+    } catch (err) {
+      logger.error('Failed to start the Discord login of the verification:', err);
+      backToPage(res, token, 'discordFailed');
+    }
+  });
+
+  app.get(discordEmail.CALLBACK_PATH, verifyDiscordRateLimiter, async (req, res) => {
+    const token = String(req.query?.state ?? '');
+    const payload = verifyToken(token);
+    if (!payload) { res.status(400).type('text/plain').send(t(requestLanguage(req), 'web.verifyApi.invalidLink')); return; }
+    const lang = requestLanguage(req, payload.guildId);
+    if (req.query?.error || !req.query?.code) return backToPage(res, token, 'discordDenied');
+    try {
+      const settings = await getConfig(payload.guildId);
+      if (!emailAsked(settings) || !discordEmail.configured() || await isRedeemed(payload.jti)) return backToPage(res, token, 'discordFailed');
+      const who = await discordEmail.identityFromCode(req.query.code);
+      if (!who.ok) { logger.warn(`The Discord login of the verification failed (${who.reason}${who.detail ? `: ${who.detail}` : ''}).`); return backToPage(res, token, 'discordFailed'); }
+      // The account has to be the one the link was made for: nobody can confirm with the email of another account.
+      if (who.id !== payload.userId) return backToPage(res, token, 'discordOther');
+      if (!who.email || !who.verified) return backToPage(res, token, 'discordNoEmail');
+      const result = await sendCode({ payload, settings, address: who.email, lang });
+      backToPage(res, token, result.ok ? 'sent' : result.code);
+    } catch (err) {
+      logger.error('Failed to use the Discord email of the verification:', err);
+      backToPage(res, token, 'discordFailed');
     }
   });
 

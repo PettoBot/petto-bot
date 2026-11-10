@@ -9,35 +9,53 @@ const LOGO = () => `${config.siteUrl}/assets/mascot-icon.png`;
 const configured = () => Boolean(config.resendApiKey && config.resendFrom);
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/** The email with a code: `{ subject, html, text }`, in a language. `guildName` is the server the member verifies for. */
+const SUPPORT = 'https://discord.gg/petto';
+const FONT = '-apple-system,Segoe UI,Roboto,sans-serif';
+const pagePath = (lang, page) => `${config.siteUrl}${String(lang).startsWith('es') ? '/es' : String(lang).startsWith('pt') ? '/pt-br' : ''}/${page}`;
+
+/**
+ * The email with a code: `{ subject, html, text }`, in a language. `guildName` is the server the member verifies for.
+ * Laid out like a welcome email: a banner with the mascot, a big title, the code where a button would be, a short "stay safe" part,
+ * and a footer with the links (website, support server, Terms and Privacy) and the notice.
+ */
 function buildCodeEmail({ code, lang, guildName, minutes = 10 }) {
   const server = String(guildName || 'Discord').slice(0, 100);
   const copy = (key) => t(lang, `verify.email.${key}`, { server, minutes, code });
-  const bold = (key) => escapeHtml(t(lang, `verify.email.${key}`, { server: '\u0001', minutes, code })).replace('\u0001', `<b style="color:#f3f1ea">${escapeHtml(server)}</b>`);
-  const digits = [...code].map((digit) => `<td style="width:46px;height:58px;border:1px solid #2f3340;border-radius:12px;background:#1b1d23;color:#ffffff;font:700 28px/58px -apple-system,Segoe UI,Roboto,sans-serif;text-align:center">${digit}</td>`).join('<td style="width:8px"></td>');
+  const bold = (key) => escapeHtml(t(lang, `verify.email.${key}`, { server: '\u0001', minutes, code })).replace('\u0001', `<b style="color:#f3f1ea">${escapeHtml(server)}</b>`).replace(/\n/g, '<br>');
+  const year = new Date().getFullYear();
+  const digits = [...code].map((digit) => `<td style="width:46px;height:58px;border:1px solid #3a3f78;border-radius:12px;background:#1d2040;color:#ffffff;font:700 28px/58px ${FONT};text-align:center">${digit}</td>`).join('<td style="width:8px"></td>');
+  const label = (text) => `<div style="font:600 12px/1.4 ${FONT};letter-spacing:.14em;text-transform:uppercase;color:#cfcbc0">- ${escapeHtml(text)} -</div>`;
+  const pill = (href, text) => `<a href="${escapeHtml(href)}" style="display:inline-block;margin:0 4px;padding:9px 16px;border-radius:10px;background:#2a2d4f;color:#aebbff;font:600 13px/1 ${FONT};text-decoration:none">${escapeHtml(text)}</a>`;
+  const link = (href, text) => `<a href="${escapeHtml(href)}" style="color:#cfcbc0;text-decoration:underline">${escapeHtml(text)}</a>`;
   const html = `<!doctype html>
 <html lang="${escapeHtml(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><title>${escapeHtml(copy('subject'))}</title></head>
-<body style="margin:0;padding:0;background:#0f1013">
+<body style="margin:0;padding:0;background:#0b0c0f">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(copy('preheader'))}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f1013"><tr><td align="center" style="padding:32px 14px">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#15171b;border:1px solid #2a2d35;border-radius:20px">
-    <tr><td style="padding:30px 30px 6px" align="left">
-      <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-        <td style="width:46px"><img src="${escapeHtml(LOGO())}" width="40" height="40" alt="Petto" style="display:block;border-radius:12px"></td>
-        <td style="font:700 18px -apple-system,Segoe UI,Roboto,sans-serif;color:#f3f1ea;letter-spacing:-.02em">Petto</td>
-      </tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0c0f"><tr><td align="center" style="padding:26px 12px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#121317;border:1px solid #23262d;border-radius:18px;overflow:hidden">
+    <tr><td align="center" style="padding:30px 20px 26px;background:#181a2b;background-image:linear-gradient(180deg,#1f2340 0%,#121317 100%)">
+      <img src="${escapeHtml(LOGO())}" width="76" height="76" alt="Petto" style="display:block;border-radius:20px">
     </td></tr>
-    <tr><td style="padding:14px 30px 0;font:700 26px/1.15 -apple-system,Segoe UI,Roboto,sans-serif;color:#f3f1ea;letter-spacing:-.03em">${escapeHtml(copy('heading'))}</td></tr>
-    <tr><td style="padding:10px 30px 0;font:15px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;color:#9c968a">${bold('body')}</td></tr>
-    <tr><td align="center" style="padding:24px 30px 6px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>${digits}</tr></table></td></tr>
-    <tr><td align="center" style="padding:10px 30px 0;font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#8399ff">${escapeHtml(copy('expires'))}</td></tr>
-    <tr><td style="padding:24px 30px 0"><div style="height:1px;background:#262930"></div></td></tr>
-    <tr><td style="padding:16px 30px 0;font:13px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;color:#6f6a62">${escapeHtml(copy('never'))}<br>${escapeHtml(copy('ignore'))}</td></tr>
-    <tr><td style="padding:18px 30px 28px;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#55524c">${bold('footer')}</td></tr>
+    <tr><td align="center" style="padding:30px 30px 0;font:800 34px/1.1 ${FONT};letter-spacing:-.02em;text-transform:uppercase;color:#8399ff">${escapeHtml(copy('heading'))}</td></tr>
+    <tr><td align="center" style="padding:16px 30px 0;font:700 17px/1.4 ${FONT};color:#f3f1ea">${escapeHtml(copy('sub'))}</td></tr>
+    <tr><td align="center" style="padding:12px 34px 0;font:15px/1.6 ${FONT};color:#c9c4b8">${bold('body')}</td></tr>
+    <tr><td align="center" style="padding:24px 30px 0"><table role="presentation" cellpadding="0" cellspacing="0"><tr>${digits}</tr></table></td></tr>
+    <tr><td align="center" style="padding:12px 30px 0;font:13px/1.5 ${FONT};color:#8d887d">${escapeHtml(copy('expires'))}</td></tr>
+    <tr><td align="center" style="padding:30px 34px 0">${label(copy('safeTitle'))}</td></tr>
+    <tr><td align="center" style="padding:10px 34px 0;font:14px/1.6 ${FONT};color:#c9c4b8">${escapeHtml(copy('never'))}<br>${escapeHtml(copy('ignore'))}</td></tr>
+    <tr><td align="center" style="padding:28px 34px 28px;font:15px/1.6 ${FONT};color:#f3f1ea">${bold('signoff')}</td></tr>
+    <tr><td style="padding:0 18px 18px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#181a1f;border:1px solid #23262d;border-radius:14px"><tr><td align="center" style="padding:24px 18px 22px">
+        <img src="${escapeHtml(LOGO())}" width="44" height="44" alt="" style="display:block;border-radius:12px;margin:0 auto 16px">
+        <div style="margin:0 0 16px">${pill(config.siteUrl, copy('website'))}${pill(SUPPORT, 'Discord')}</div>
+        <div style="font:13px/1.8 ${FONT};color:#8d887d">${link(pagePath(lang, 'terms'), copy('terms'))} &nbsp;|&nbsp; ${link(pagePath(lang, 'privacy'), copy('privacy'))}</div>
+        <div style="padding-top:14px;font:12px/1.6 ${FONT};color:#6f6a62">${year} &copy; Petto &middot; ${escapeHtml(copy('rights'))}<br>${escapeHtml(copy('notAffiliated'))}<br>${bold('footer')}</div>
+      </td></tr></table>
+    </td></tr>
   </table>
 </td></tr></table>
 </body></html>`;
-  const text = [copy('heading'), '', copy('body'), '', `    ${code}`, '', copy('expires'), '', copy('never'), copy('ignore'), '', copy('footer')].join('\n');
+  const text = [copy('heading'), copy('sub'), '', copy('body'), '', `    ${code}`, '', copy('expires'), '', copy('never'), copy('ignore'), '', copy('signoff'), '', `${pagePath(lang, 'terms')}  |  ${pagePath(lang, 'privacy')}`, copy('footer')].join('\n');
   return { subject: copy('subject'), html, text };
 }
 
