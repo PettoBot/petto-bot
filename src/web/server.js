@@ -16,7 +16,12 @@ const { verifyTranscriptToken } = require('../utils/transcriptToken');
 const { getConfig } = require('../db/verificationConfig');
 const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verificationRedemptions');
 const { getTicketById, getTicketByNumber } = require('../db/tickets');
-const { logVerification } = require('../utils/verificationLog');
+const { logVerification, logVerificationChecks } = require('../utils/verificationLog');
+const { normalizeChecks, clientIp, signalHash, evaluate } = require('../utils/verifyChecks');
+const emailCode = require('../utils/emailCode');
+const resend = require('../utils/resend');
+const { parseEmail, emailRefusal } = require('../utils/disposableEmail');
+const verificationSignals = require('../db/verificationSignals');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { applyVerificationRoles } = require('../utils/verifyApply');
 const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, vault } = require('../db/backups');
@@ -103,6 +108,17 @@ const verifyCaptchaRateLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({ ok: false, error: t(requestLanguage(req), 'web.limit.captcha') });
+  },
+});
+
+// The email of the verification (a code is an email that costs): a visitor can ask and try a few times a minute.
+const verifyEmailRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 8,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
   },
 });
 
@@ -1089,6 +1105,15 @@ function startServer(client) {
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size, lang: requestLanguage(req) })); // i18n-ignore: HTTP header
   });
 
+  // Whether a server's members are asked for the email code: it is on, and Petto can send it (without the key of Resend nobody could verify, so it is not asked).
+  let warnedNoResend = false;
+  function emailAsked(settings) {
+    if (!normalizeChecks(settings?.checks).email.required) return false;
+    if (resend.configured()) return true;
+    if (!warnedNoResend) { warnedNoResend = true; logger.warn('A server asks for the email code of the verification but RESEND_API_KEY and RESEND_FROM are not set: its members are not asked for it.'); }
+    return false;
+  }
+
   app.get('/verify/:token', verifyPageRateLimiter, async (req, res) => {
     // The page shows the check the server chose and its name, and speaks the language of the visitor.
     const payload = verifyToken(req.params.token);
@@ -1102,6 +1127,7 @@ function startServer(client) {
       guildName: guild?.name ?? null,
       guildIcon: guild?.iconURL?.({ size: 64, extension: 'png' }) ?? null,
       lang: requestLanguage(req, payload?.guildId),
+      emailRequired: emailAsked(settings),
     }));
   });
 
@@ -1129,6 +1155,44 @@ function startServer(client) {
       logger.error('Failed to make a verification picture:', err);
       res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
     }
+  });
+
+  // The email code (the server asks for it in its verification checks): a code is sent to the address the member types, and typing it confirms the address.
+  const emailError = (res, status, lang, code) => res.status(status).json({ ok: false, code, error: t(lang, `web.verifyApi.email.${code}`) });
+
+  app.post('/api/verify/email/send', verifyEmailRateLimiter, async (req, res) => {
+    const payload = verifyToken(req.body?.token);
+    const lang = requestLanguage(req, payload?.guildId);
+    if (!payload) { res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.invalidLink') }); return; }
+    try {
+      const settings = await getConfig(payload.guildId);
+      if (!emailAsked(settings)) return emailError(res, 400, lang, 'notAsked');
+      if (await isRedeemed(payload.jti)) { res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.alreadyShort') }); return; }
+      const rules = normalizeChecks(settings.checks).email;
+      const refusal = emailRefusal(req.body?.email, rules);
+      if (refusal) return emailError(res, 400, lang, refusal);
+      const issued = emailCode.issue(payload.jti, parseEmail(req.body.email).email);
+      if (!issued.ok) { res.set('Retry-After', String(Math.ceil(issued.waitMs / 1000))); return emailError(res, 429, lang, issued.reason); }
+      const guild = client.guilds.cache.get(payload.guildId);
+      const sent = await resend.sendCodeEmail({ to: parseEmail(req.body.email).email, code: issued.code, lang, guildName: guild?.name });
+      if (!sent.ok) {
+        logger.warn(`The verification email could not be sent (${sent.reason}${sent.status ? ` ${sent.status}` : ''}${sent.detail ? `: ${sent.detail}` : ''}).`);
+        return emailError(res, 502, lang, 'unavailable');
+      }
+      res.set('Cache-Control', 'no-store').json({ ok: true, cooldown: Math.ceil(emailCode.COOLDOWN_MS / 1000) });
+    } catch (err) {
+      logger.error('Failed to send the verification email:', err);
+      res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
+    }
+  });
+
+  app.post('/api/verify/email/confirm', verifyEmailRateLimiter, async (req, res) => {
+    const payload = verifyToken(req.body?.token);
+    const lang = requestLanguage(req, payload?.guildId);
+    if (!payload) { res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.invalidLink') }); return; }
+    const result = emailCode.confirm(payload.jti, req.body?.code);
+    if (!result.ok) return emailError(res, 400, lang, result.reason);
+    res.set('Cache-Control', 'no-store').json({ ok: true });
   });
 
   app.post('/api/verify', verifyRateLimiter, async (req, res) => {
@@ -1202,6 +1266,24 @@ function startServer(client) {
       const member = await guild.members.fetch(payload.userId);
       const verifyConfig = await getConfig(payload.guildId);
 
+      // The checks of the server on top of the captcha (utils/verifyChecks.js): the email code that was confirmed, Tor, alt accounts and the Discord account.
+      // One that is on `block` stops the member here, before anything is claimed or changed (they can try again); one on `warn` goes to the staff once they are in.
+      const checks = normalizeChecks(verifyConfig?.checks);
+      const ip = clientIp(req);
+      let email = null;
+      if (emailAsked(verifyConfig)) {
+        email = emailCode.confirmedEmail(payload.jti);
+        if (!email) { res.status(400).json({ ok: false, code: 'email', error: t(lang, 'web.verifyApi.email.required') }); return; }
+      }
+      const emailHash = email ? signalHash(guild.id, 'email', parseEmail(email).canonical) : null;
+      const outcome = await evaluate({ checks, guild, member, ip, emailHash });
+      if (outcome.block.length) {
+        const first = outcome.block[0];
+        await logVerificationChecks(client, guild, member.user, { blocked: true, reasons: outcome.block }, peekGuildLanguage(guild.id)).catch((err) => logger.error('Failed to log a blocked verification:', err));
+        res.status(400).json({ ok: false, code: 'blocked', error: t(lang, `web.verifyApi.check.${first.code}`, { min: first.min }) });
+        return;
+      }
+
       // The initial read above is only a fast path. Claim immediately before
       // mutating Discord so two concurrent submissions cannot both verify the
       // same token.
@@ -1227,6 +1309,10 @@ function startServer(client) {
       // Best-effort follow-up work, the member's already verified at this point,
       // so none of this should turn a real success into an error response.
       await logVerification(client, guild, member.user).catch((err) => logger.error('Failed to log verification:', err));
+      if (outcome.warn.length) await logVerificationChecks(client, guild, member.user, { blocked: false, reasons: outcome.warn }, serverLang).catch((err) => logger.error('Failed to log the warnings of a verification:', err));
+      // What the alt check compares in the next verifications (keyed hashes, kept 90 days); only when that check is on.
+      if (checks.alt !== 'off') await verificationSignals.record({ guildId: guild.id, userId: member.id, ipHash: signalHash(guild.id, 'ip', ip), emailHash }).catch((err) => logger.error('Failed to keep the signals of a verification:', err));
+      emailCode.forget(payload.jti);
       if (!noRole) {
         await sendVerifiedDM(member, { guild })
           .catch(() => logger.warn(`Could not DM verified confirmation to ${member.id} in guild ${guild.id}.`));

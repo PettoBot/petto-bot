@@ -13,6 +13,8 @@ const logger = require('../../utils/logger');
 const { t, languageOf } = require('../../i18n');
 
 const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
+const { normalizeChecks, applyChange, needsWebPage } = require('../../utils/verifyChecks');
+const resend = require('../../utils/resend');
 
 // How often the answer of `/verify setup` shows the channels done while a new gate role is set up (each edit is a request too).
 const PROGRESS_EVERY_MS = 3_000;
@@ -27,6 +29,7 @@ const TURNSTILE_CONFIGURED = () => Boolean(config.turnstileSiteKey && config.tur
 const ENV_CONFIGURED = (method = 'turnstile') => (usesLink(method) ? LINK_CONFIGURED() : SECRET_CONFIGURED()) && (!usesTurnstile(method) || TURNSTILE_CONFIGURED());
 
 module.exports = {
+  checksLines,
   aliases: ['vf'],
   data: new SlashCommandBuilder()
     .setName('verify')
@@ -45,6 +48,15 @@ module.exports = {
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
       .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none. Leave it empty to see what is in use').setRequired(false)))
     .addSubcommand((s) => s.setName('channel').setDescription('Post the verification panel in a channel, so members can verify there too.').addChannelOption((o) => o.setName('channel').setDescription('The channel for the panel').addChannelTypes(ChannelType.GuildText).setRequired(true)))
+    .addSubcommand((s) => s.setName('checks').setDescription('See or change the extra checks: Tor, alt accounts, the Discord account and the email code.')
+      .addStringOption((o) => o.setName('check').setDescription('Which check to change (leave it empty to see them all)').setRequired(false).addChoices({ name: 'Tor', value: 'tor' }, { name: 'Alt accounts', value: 'alt' }, { name: 'Discord account', value: 'account' }, { name: 'Email code', value: 'email' }))
+      .addStringOption((o) => o.setName('mode').setDescription('off, warn or block; for the email code, on or off').setRequired(false).addChoices({ name: 'off', value: 'off' }, { name: 'warn', value: 'warn' }, { name: 'block', value: 'block' }, { name: 'on', value: 'on' }))
+      .addIntegerOption((o) => o.setName('min_age').setDescription('Discord account: minimum age in days (0 for none)').setMinValue(0).setMaxValue(365).setRequired(false))
+      .addBooleanOption((o) => o.setName('avatar').setDescription('Discord account: ask for an avatar').setRequired(false))
+      .addBooleanOption((o) => o.setName('flagged').setDescription('Discord account: refuse accounts flagged by Discord').setRequired(false))
+      .addBooleanOption((o) => o.setName('disposable').setDescription('Email: refuse throwaway emails').setRequired(false))
+      .addStringOption((o) => o.setName('allow').setDescription('Email: accept only these domains, separated by commas (none to clear)').setRequired(false))
+      .addStringOption((o) => o.setName('deny').setDescription('Email: never accept these domains, separated by commas (none to clear)').setRequired(false)))
     .addSubcommand((s) => s.setName('status').setDescription('Show the current verification setup.'))
     .addSubcommand((s) => s.setName('send').setDescription('Manually (re)send a verification link to a member.').addUserOption((o) => o.setName('user').setDescription('The member to send a link to').setRequired(true))),
 
@@ -55,9 +67,63 @@ module.exports = {
     if (sub === 'status') return status(interaction, lang);
     if (sub === 'template') return setTemplate(interaction, lang);
     if (sub === 'channel') return panel(interaction, lang);
+    if (sub === 'checks') return checks(interaction, lang);
     return send(interaction, lang);
   },
 };
+
+/** The lines that tell the checks of a server, in a language. */
+function checksLines(current, lang, settings = {}) {
+  const mode = (value) => t(lang, `verify.checks.mode.${value}`);
+  const details = [];
+  if (current.account.min_age_days > 0) details.push(t(lang, 'verify.checks.minAge', { days: current.account.min_age_days }));
+  if (current.account.no_avatar) details.push(t(lang, 'verify.checks.noAvatar'));
+  if (current.account.flagged) details.push(t(lang, 'verify.checks.notFlagged'));
+  const rules = [];
+  if (current.email.block_disposable && !current.email.allowed_domains.length) rules.push(t(lang, 'verify.checks.noDisposable'));
+  if (current.email.allowed_domains.length) rules.push(t(lang, 'verify.checks.onlyDomains', { domains: current.email.allowed_domains.join(', ') }));
+  if (current.email.blocked_domains.length) rules.push(t(lang, 'verify.checks.notDomains', { domains: current.email.blocked_domains.join(', ') }));
+  const lines = [
+    t(lang, 'verify.checks.title'),
+    t(lang, 'verify.checks.tor', { mode: mode(current.tor) }),
+    t(lang, 'verify.checks.alt', { mode: mode(current.alt) }),
+    t(lang, 'verify.checks.account', { mode: mode(current.account.mode), details: current.account.mode !== 'off' && details.length ? ` · ${details.join(' · ')}` : '' }),
+    t(lang, 'verify.checks.email', { value: t(lang, current.email.required ? 'verify.checks.emailOn' : 'verify.checks.emailOff') }),
+  ];
+  if (current.email.required) lines.push(t(lang, 'verify.checks.emailRules', { rules: rules.length ? rules.join(' · ') : t(lang, 'verify.checks.anyDomain') }));
+  if (current.email.required && !resend.configured()) lines.push(t(lang, 'verify.checks.resendMissing', { emoji: EMOJI.ALERT }));
+  if (needsWebPage(current) && !usesLink(methodOf(settings))) lines.push(t(lang, 'verify.checks.needsPage', { emoji: EMOJI.ALERT }));
+  return lines;
+}
+
+/** `!verify checks`: shows the extra checks of the verification, or changes one. */
+async function checks(interaction, lang) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const settings = (await getConfig(interaction.guild.id)) ?? {};
+  let current = normalizeChecks(settings.checks);
+  const which = interaction.options.getString('check');
+  let saved = false;
+  if (which) {
+    const changed = applyChange(current, {
+      check: which,
+      mode: interaction.options.getString('mode'),
+      minAge: interaction.options.getInteger('min_age'),
+      avatar: interaction.options.getBoolean('avatar'),
+      flagged: interaction.options.getBoolean('flagged'),
+      disposable: interaction.options.getBoolean('disposable'),
+      allow: interaction.options.getString('allow'),
+      deny: interaction.options.getString('deny'),
+    });
+    if (!changed.ok) return interaction.editReply({ components: [textCard(t(lang, 'verify.checks.usage', { emoji: EMOJI.DENY }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    current = changed.checks;
+    await upsertConfig(interaction.guild.id, { checks: current });
+    saved = true;
+  }
+  const lines = checksLines(current, lang, settings);
+  if (saved) lines.unshift(t(lang, 'verify.checks.saved', { emoji: EMOJI.APPROVE }));
+  return interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
+}
 
 async function panel(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);

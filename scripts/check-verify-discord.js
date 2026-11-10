@@ -85,6 +85,33 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.equal(applied.length, 1);
   assert.ok(applied[0].startsWith('dc'), 'a single-use pass is claimed');
 
+  // The extra checks of the server (utils/verifyChecks.js): Tor, alt accounts and the email need the page, so with a link the letters inside Discord are not a way around them.
+  const keep = { settings, user: member.user };
+  settings = { ...settings, method: 'letters', checks: { tor: 'block' } };
+  const asked = replies.length;
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  assert.ok(text(replies.at(-1)).includes('asks for more checks than the letters') && replies.length === asked + 1, 'a server that checks Tor sends the member to the link');
+  settings = { ...settings, checks: { email: { required: true } } };
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  assert.ok(text(replies.at(-1)).includes('asks for more checks than the letters'), 'and one that asks for the email too');
+  // With no link (letters inside Discord only) the checks of the Discord account still run: a new account is stopped before anything is given.
+  member.user = { id: USER, username: 'newbie', avatar: 'av', createdTimestamp: Date.now() - 86_400_000, fetchFlags: async () => null };
+  settings = { ...settings, method: 'discord', checks: { account: { mode: 'block', min_age_days: 7 } } };
+  captcha.createChallenge = (id) => known(id);
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  captcha.createChallenge = original;
+  const doneBefore = applied.length;
+  await verifyLetters.handleModal(interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }));
+  assert.ok(text(replies.at(-1)).includes('too new for this server') && text(replies.at(-1)).includes('7 days'), 'the new account is told why');
+  assert.equal(applied.length, doneBefore, 'and nothing was given');
+  settings = { ...settings, checks: { account: { mode: 'warn', min_age_days: 7 } } };
+  captcha.createChallenge = (id) => known(id);
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  captcha.createChallenge = original;
+  await verifyLetters.handleModal(interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }));
+  assert.equal(applied.length, doneBefore + 1, 'warn: the member is let in (the staff is told)');
+  settings = keep.settings; member.user = keep.user;
+
   // After a right answer the picture that was answered keeps its picture but its buttons are off.
   captcha.createChallenge = (id) => known(id);
   await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
