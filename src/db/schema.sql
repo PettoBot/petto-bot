@@ -2813,6 +2813,21 @@ alter table giveaway_config add column if not exists no_entries_embed_template t
 -- Saved embeds (embed_templates names) for verification and bump messages.
 alter table verification_config add column if not exists prompt_embed_template text;
 alter table verification_config add column if not exists verified_embed_template text;
+-- The checks a server asks on top of the captcha (Tor, alt accounts, the Discord account, the email code): see utils/verifyChecks.js for the shape. Empty means none.
+alter table verification_config add column if not exists checks jsonb not null default '{}'::jsonb;
+-- What the alt check compares: keyed hashes of the connection and of the email of each member who verified (never the IP or the email), kept 90 days.
+create table if not exists verification_signals (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  ip_hash    text,
+  email_hash text,
+  seen_at    timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+create index if not exists verification_signals_ip_idx on verification_signals (guild_id, ip_hash) where ip_hash is not null;
+create index if not exists verification_signals_email_idx on verification_signals (guild_id, email_hash) where email_hash is not null;
+create index if not exists verification_signals_seen_idx on verification_signals (seen_at);
+alter table verification_signals enable row level security;
 alter table bump_reminders add column if not exists thankyou_embed_template text;
 alter table bump_reminders add column if not exists reminder_embed_template text;
 -- Leveling v2: rank card, anti-abuse rules, XP events, daily bonus and streaks, weekly and monthly rankings.

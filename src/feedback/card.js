@@ -10,7 +10,8 @@ const EMOJI = {
   dislike: { id: '1464274177996357653', name: 'dislike' },
   author: '<:suggeuser:1464283727386640585>',
   comments: { id: '1450677529118642372', name: 'pe_notas' },
-  open: { id: '1529270176070107187', name: '41' },
+  // The link icon of Petto's flat grey set (`pe_Link`, EMOJI.LINK): the blue arrow the old `feed` bot used (`41`) is of the glossy set that was taken out.
+  open: { id: '1566302127381282829', name: 'pe_Link' },
   kind: {
     idea: '<:pe_ticket_claim:1562517641703456868>',
     feedback: '<:pe_razon:1450677650933940347>',

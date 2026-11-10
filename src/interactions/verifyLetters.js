@@ -11,6 +11,7 @@ const { methodOf, usesLink } = require('../utils/verifyMethod');
 const config = require('../config');
 const { verifyLinkFor, baseUrl, lettersInstead, canDoLetters } = require('../utils/verifyLink');
 const { applyVerification } = require('../utils/verifyApply');
+const { normalizeChecks, needsWebPage, evaluate } = require('../utils/verifyChecks');
 const logger = require('../utils/logger');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
 
@@ -77,6 +78,8 @@ async function situation(client, guildId, userId, lang) {
   const member = await guild.members.fetch(userId).catch(() => null);
   if (!member) return { error: t(lang, 'verify.letters.notMember') };
   if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, userId).catch(() => false)) return { error: t(lang, 'verify.letters.already') };
+  // The checks that look at the connection or the email only exist on the page: when the server asks for them (and has a page), the letters inside Discord are not a way around them.
+  if (usesLink(methodOf(settings)) && needsWebPage(normalizeChecks(settings.checks))) return { error: t(lang, 'verify.letters.usePage') };
   return { guild, member, settings };
 }
 
@@ -181,6 +184,15 @@ async function handleButton(interaction) {
   return undefined;
 }
 
+/** Tells the staff, in the verification log, what the checks found (the log is only loaded when there is something to say). */
+async function tellStaff(client, guild, user, info, lang) {
+  try {
+    await require('../utils/verificationLog').logVerificationChecks(client, guild, user, info, lang);
+  } catch (err) {
+    logger.warn(`The verification log could not be written: ${err.message}`);
+  }
+}
+
 async function handleModal(interaction) {
   const guildId = interaction.customId.split(':')[2];
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
@@ -196,10 +208,17 @@ async function handleModal(interaction) {
     return say(interaction, t(lang, 'verify.letters.wrong'));
   }
   tickets.delete(key(guildId, interaction.user.id));
+  // The checks of the Discord account (age, avatar, flagged) also apply here: there is no connection or email to look at. One on `block` stops the member; one on `warn` goes to the staff.
+  const outcome = await evaluate({ checks: normalizeChecks(state.settings.checks), guild: state.guild, member: state.member }).catch((err) => { logger.error('The verification checks failed (letters in Discord):', err); return { block: [], warn: [] }; });
+  if (outcome.block.length) {
+    await tellStaff(interaction.client, state.guild, state.member.user, { blocked: true, reasons: outcome.block }, lang);
+    return say(interaction, t(lang, `web.verifyApi.check.${outcome.block[0].code}`, { min: outcome.block[0].min }));
+  }
   try {
     const applied = await applyVerification({ client: interaction.client, guild: state.guild, member: state.member, settings: state.settings, jti: `dc${Date.now().toString(36)}${state.member.id}` });
     // The picture that was answered stops being usable: its buttons are locked, so nobody asks for another one once verified.
     await lockPicture(interaction);
+    if (applied.ok && outcome.warn.length) await tellStaff(interaction.client, state.guild, state.member.user, { blocked: false, reasons: outcome.warn }, lang);
     return say(interaction, !applied.ok ? t(lang, 'verify.letters.already') : t(lang, applied.noRole ? 'verify.letters.doneNoRole' : 'verify.letters.done', { server: state.guild.name }));
   } catch (err) {
     // Pressed in a DM there is no server on the interaction: the server being verified for is named here, so the error says which one it was.

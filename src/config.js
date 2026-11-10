@@ -278,6 +278,12 @@ module.exports = {
   turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || null,
   turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY || null,
   verifyTokenSecret: process.env.VERIFY_TOKEN_SECRET || null,
+  // "Use my Discord email" of the verification (utils/discordEmail.js): the secret of the Discord application (DISCORD_CLIENT_ID is the other half). Without it the page only offers to type the email.
+  discordClientSecret: process.env.DISCORD_CLIENT_SECRET?.trim() || null,
+  // The email code of the verification (utils/resend.js): the key of Resend and the sender, an address of a domain verified in Resend ("Petto <verify@petto.sbs>").
+  // Without both, a server that asks for the email code is not asked (members would not be able to verify).
+  resendApiKey: process.env.RESEND_API_KEY?.trim() || null,
+  resendFrom: process.env.RESEND_FROM?.trim() || null,
   webPort: Number(process.env.WEB_PORT) || 8787,
   // Optional: keys of the services the lookup commands (/github, /lastfm, /steam, /twitch, /youtube, /tmdb) call. Each command that needs one answers
   // "not set up" until it is set; /minecraft and /roblox need none. A key is never logged or shown.
