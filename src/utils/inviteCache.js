@@ -65,6 +65,8 @@ function noteFetchError(guildId, error, now = Date.now()) {
 async function fetchInvites(guild) {
   if (!guild.members?.me?.permissions?.has('ManageGuild')) { cache.delete(guild.id); return null; }
   if (isBackedOff(guild.id)) { cache.delete(guild.id); return null; }
+  // Discord said to wait a long time on the invites of this server: a request now would only sit in the REST client until it is aborted.
+  if (require('./perf').routeBlockedMs('GET', `/guilds/${guild.id}/invites`, guild.id) > 0) { cache.delete(guild.id); return null; }
   try {
     return await guild.invites.fetch();
   } catch (error) {

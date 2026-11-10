@@ -272,6 +272,14 @@ const clock = (start = 1_000_000) => { let at = start; return { now: () => at, t
     assert.equal(exhausted.action, 'hold', 'never a restart loop: past 3 restarts an hour it stays critical');
     assert.match(exhausted.reason, /3 restarts already/);
     assert.equal(watchdog.decide({ ...base, level: 'critical', criticalForMs: 190_000, restartsLastHour: 2 }, limits).action, 'exit', 'the third restart is still allowed');
+    // Critical only because Discord does not answer: the first restart is allowed, the next ones are not (they would not give Discord back); anything else keeps its restarts.
+    const slowDiscord = { ...base, level: 'critical', criticalForMs: 190_000, discordOnly: true };
+    assert.equal(watchdog.decide(slowDiscord, limits).action, 'exit', 'the first restart for a Discord that does not answer');
+    const held = watchdog.decide({ ...slowDiscord, restartsLastHour: 1 }, limits);
+    assert.equal(held.action, 'hold', 'a second restart for the same cause would not help');
+    assert.ok(held.reason.includes('Discord is not answering'));
+    assert.equal(watchdog.decide({ ...slowDiscord, discordOnly: false, restartsLastHour: 1 }, limits).action, 'exit', 'a critical level with a busy loop or memory still restarts');
+    assert.equal(watchdog.decide({ ...slowDiscord, blockedForMs: 61_000, restartsLastHour: 1 }, limits).action, 'exit', 'a blocked loop still restarts');
     // The restarts of the last hour come from the database and the file, and old ones are forgotten.
     const now = 10_000_000;
     const fakeDb = { getSetting: async () => JSON.stringify([now - 4_000_000, now - 600_000, now - 100_000]), setSetting: async () => {} };

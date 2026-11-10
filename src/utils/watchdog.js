@@ -16,7 +16,7 @@ const SETTING_KEY = 'watchdog_restarts';
 const FILE = path.join(os.tmpdir(), 'petto-watchdog.json');
 
 /**
- * What to do with the numbers of this moment. Pure: `state` is `{ level, criticalForMs, blockedForMs, rssMb, cachesDropped, restartsLastHour }` and
+ * What to do with the numbers of this moment. Pure: `state` is `{ level, criticalForMs, blockedForMs, rssMb, cachesDropped, restartsLastHour, discordOnly }` and
  * `limits` is `{ criticalMs, blockedMs, rssLimitMb, maxRestarts }`. Answers `{ action, reason }` where action is 'none', 'drop-caches', 'exit' or 'hold'
  * (a reason to exit with no restarts left: stay critical).
  */
@@ -30,6 +30,11 @@ function decide(state, limits) {
   }
   if (!reason) return { action: 'none', reason: null };
   if (state.restartsLastHour >= limits.maxRestarts) return { action: 'hold', reason: `${reason}, but ${state.restartsLastHour} restarts already happened in the last hour` };
+  // Critical only because Discord does not answer (the loop and the memory are fine): a restart does not give Discord back, so once one happened in the last hour that did not help,
+  // the bot stays as it is and tells the team instead of using the other restarts on the same cause.
+  if (state.discordOnly && state.level === 'critical' && !(state.blockedForMs >= limits.blockedMs) && state.restartsLastHour >= 1) {
+    return { action: 'hold', reason: `${reason}, only because Discord is not answering (the loop and the memory are fine) and a restart already happened in the last hour` };
+  }
   return { action: 'exit', reason };
 }
 
@@ -105,10 +110,15 @@ async function start({ exit, config = require('../config'), loadGuard = require(
     state.heartbeatLagMs = Math.max(0, lag);
     if (beat) { beat[0] = Date.now(); beat[1] = recent(state.restarts, current).length; }
     const level = loadGuard.level();
+    let discordOnly = false;
+    try {
+      const numbers = loadGuard.readMetrics();
+      discordOnly = numbers.loopP99Ms < config.guardLoopDegradedMs && numbers.rssPercent < 80 && numbers.restWaitMs >= config.guardRestWaitCriticalMs;
+    } catch { /* without the numbers it is any other cause */ }
     state.criticalSince = level === 'critical' ? (state.criticalSince ?? current) : null;
     const decision = decide({
       level, criticalForMs: state.criticalSince ? current - state.criticalSince : 0, blockedForMs: Math.max(0, lag), rssMb: process.memoryUsage().rss / 1048576,
-      cachesDropped: state.cachesDroppedAt > 0 && current - state.cachesDroppedAt < 10 * 60_000, restartsLastHour: recent(state.restarts, current).length,
+      discordOnly, cachesDropped: state.cachesDroppedAt > 0 && current - state.cachesDroppedAt < 10 * 60_000, restartsLastHour: recent(state.restarts, current).length,
     }, limits());
     state.lastDecision = { at: current, ...decision };
     state.lastCheckAt = current;

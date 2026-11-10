@@ -55,6 +55,8 @@ const vanityUses = new Map(); // guildId -> uses of the vanity URL the last time
 /** True when the join came through the server's vanity URL (its use count went up). Remembers the count for the next join. */
 async function wasVanityJoin(guild) {
   if (!guild.vanityURLCode || inviteCache.isBackedOff(guild.id)) return false;
+  // Discord said to wait a long time on the vanity URL of this server (45 minutes in a busy one): asking at every join would only fill the places for requests.
+  if (require('./perf').routeBlockedMs('GET', `/guilds/${guild.id}/vanity-url`, guild.id) > 0) return false;
   const data = await guild.fetchVanityData().catch((error) => { inviteCache.noteFetchError(guild.id, error); return null; });
   if (!data) return false;
   const before = vanityUses.get(guild.id);
