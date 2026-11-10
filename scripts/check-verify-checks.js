@@ -172,7 +172,7 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
     assert.ok(mail.subject.includes('482913') && mail.text.includes('482913'), `${lang}: the code is in the subject and the text`);
     for (const digit of '482913') assert.ok(mail.html.includes(`>${digit}</td>`), `${lang}: a box for each digit`);
     assert.ok(mail.html.includes('Casa &lt;b&gt;&amp;&quot;') && !mail.html.includes('Casa <b>'), `${lang}: the name of the server is escaped`);
-    assert.ok(mail.html.includes(`<html lang="${lang}"`) && mail.html.includes('mascot-icon.png'));
+    assert.ok(mail.html.includes(`<html lang="${lang}"`) && mail.html.includes('mascot-icon.png') && mail.html.includes('/assets/mail-banner.jpg'));
     assert.ok(mail.html.includes('/terms') && mail.html.includes('/privacy') && mail.html.includes('discord.gg/petto'), `${lang}: the footer has the links`);
     assert.ok(!/aliases?|resend/i.test(mail.html.replace(/https?:[^"']*/g, '')), `${lang}: nothing technical in the email`);
     assert.ok(!/\{[a-z]+\}/.test(mail.html + mail.text + mail.subject), `${lang}: no placeholder left`);
