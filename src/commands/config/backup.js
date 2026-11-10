@@ -25,6 +25,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
+const { isObfuscatedChannel, countObfuscated } = require('../../utils/hiddenChannels');
 const { backupsUnderMaintenance } = require('../../utils/maintenance');
 const { t, currentLanguage, languageOf, defaultText } = require('../../i18n');
 const { sendDm } = require('../../utils/dmOrigin');
@@ -91,6 +92,7 @@ async function createBackupForInteraction(interaction, label = null) {
   await beginOperation(interaction, t(lang, 'backup.loading.create'), lang);
   await fetchSnapshotResources(interaction.guild);
   const snapshot = await buildFullSnapshot(interaction.guild);
+  const hidden = countObfuscated([...interaction.guild.channels.cache.values()].filter((channel) => !channel.isThread?.()));
   const saved = await createBackup(interaction.guild.id, interaction.user.id, label, snapshot);
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_created', saved.backup_number, { source: saved.source || 'manual', label: saved.label });
 
@@ -98,6 +100,7 @@ async function createBackupForInteraction(interaction, label = null) {
     t(lang, 'backup.created.saved', { emoji: EMOJI.APPROVE, number: publicBackupNumber(saved) }),
     t(lang, 'backup.created.label', { label: backupLabel(saved, lang) }),
     t(lang, 'backup.created.captured', { roles: snapshot.roles.length, channels: snapshot.channels.length, emojis: snapshot.emojis.length }),
+    ...(hidden ? [t(lang, 'backup.created.hidden', { count: hidden })] : []),
     t(lang, 'backup.created.note'),
   ].join('\n'), COLORS.GREEN, interaction, lang));
 }
@@ -578,7 +581,7 @@ function buildSnapshot(guild) {
       .sort((a, b) => a.position - b.position)
       .map((role) => ({ id: role.id, name: role.name, color: role.color, hoist: role.hoist, mentionable: role.mentionable, position: role.position, permissions: role.permissions.bitfield.toString(), unicodeEmoji: role.unicodeEmoji ?? null, iconURL: role.icon ? role.iconURL({ extension: 'png', size: 128 }) : null })),
     channels: [...guild.channels.cache.values()]
-      .filter((channel) => !channel.isThread?.())
+      .filter((channel) => !channel.isThread?.() && !isObfuscatedChannel(channel)) // the channels Discord hides from the bot would be saved as `___hidden___`
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
       .map((channel) => ({
         id: channel.id,

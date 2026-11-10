@@ -16,6 +16,7 @@ module.exports = {
   'backup.created.saved': '{emoji} Backup **#{number}** saved successfully.',
   'backup.created.label': '**Label:** {label}',
   'backup.created.captured': '**Captured:** {roles} roles · {channels} channels · {emojis} emojis',
+  'backup.created.hidden': '**Not saved:** {count} channels that Discord hides from Petto (it cannot view them). Give Petto View Channel there, or Administrator, and make the backup again.',
   'backup.created.note': 'Configuration only is stored. Petto never stores bot tokens, passwords, or secrets in a backup.',
   'backup.notFound': 'Backup **#{number}** was not found in this server.',
   'backup.noneYet': 'No backups have been saved yet. Use `!backup create` first.',

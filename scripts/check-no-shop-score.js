@@ -26,7 +26,7 @@ for (const file of sources) {
 
 // The notices a server can get by hand, and the alerts of the team: no `shop` kind, and nothing classifies a log line as a commerce signal.
 const alerts = require('../src/utils/guildOpsAlerts');
-assert.deepEqual(Object.keys(alerts.TEMPLATES).sort(), ['diagnostic', 'logs', 'maintenance', 'permissions', 'policy']);
+assert.deepEqual(Object.keys(alerts.TEMPLATES).sort(), ['diagnostic', 'logs', 'maintenance', 'permissions', 'policy', 'verifyRoles']);
 for (const lang of ['en', 'es', 'pt-BR']) {
   const catalog = require(`../src/i18n/locales/${lang}/notices.js`);
   assert.ok(!Object.keys(catalog).some((key) => key.startsWith('notices.shop.')), `${lang}: no notice about shops`);

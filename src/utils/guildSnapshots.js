@@ -3,6 +3,7 @@ const { PermissionFlagsBits, ChannelType } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 const { forEachWithConcurrency } = require('./concurrency');
+const { isObfuscatedChannel } = require('./hiddenChannels');
 const snapshotsDb = require('../db/guildSnapshots');
 const redis = require('./redis');
 const perf = require('./perf');
@@ -59,7 +60,7 @@ const snapshotKey = (guildId) => `snap:${guildId}`;
 function buildSnapshot(guild, { notes = null } = {}) {
   const me = guild.members?.me ?? null;
   const channels = [...guild.channels.cache.values()]
-    .filter((channel) => !channel.isThread?.())
+    .filter((channel) => !channel.isThread?.() && !isObfuscatedChannel(channel)) // Discord shows the channels the bot cannot view as `___hidden___`: not in the pickers
     .map((channel) => {
       const access = botAccess(channel, me);
       if (access.send === false) notes?.push({ id: String(channel.id), name: channel.name, missing: access.missing });

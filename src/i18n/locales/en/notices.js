@@ -6,6 +6,9 @@ module.exports = {
   'notices.permissions.title': 'Petto permissions need attention',
   'notices.permissions.body': 'Petto detected missing or insufficient permissions. Some features may be unavailable until access is restored.',
   'notices.permissions.action': 'Restore **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** where needed. Logging features may also require **Manage Webhooks** in the configured log channel.',
+  'notices.verifyRoles.title': 'Petto could not give the verification role',
+  'notices.verifyRoles.body': 'A member passed the verification, but Petto could not change their roles (give the verified role or take away the unverified one). They stay locked out until this is fixed.',
+  'notices.verifyRoles.action': 'Open **Server Settings → Roles** and drag the **Petto** role above the verified and unverified roles. Petto also needs **Manage Roles**. Then ask the member to verify again.',
   'notices.logs.title': 'Petto logging configuration needs attention',
   'notices.logs.body': 'A configured log destination or webhook is missing, inaccessible, or no longer valid.',
   'notices.logs.action': 'Check the log channel and its permissions. Reconfigure logging if the webhook was deleted or replaced.',
@@ -24,5 +27,6 @@ module.exports = {
   'notices.help': 'Need help? {url}',
   'notices.details.logs': '`[logEngine]` could not use the configured logging webhook. The webhook may have been deleted, moved, or become inaccessible.',
   'notices.details.permissions': 'Petto received a Discord permissions/access error while trying to use a configured feature.',
+  'notices.details.verifyRoles': 'Discord refused to change the roles of a member who passed the verification: the role of Petto is below the role it has to give, or Petto lacks Manage Roles.',
   'notices.details.teamReview': 'The Petto team requested a manual review after an automated guild signal.',
 };

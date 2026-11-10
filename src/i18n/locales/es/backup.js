@@ -16,6 +16,7 @@ module.exports = {
   'backup.created.saved': '{emoji} Copia **#{number}** guardada correctamente.',
   'backup.created.label': '**Nombre:** {label}',
   'backup.created.captured': '**Guardado:** {roles} roles · {channels} canales · {emojis} emojis',
+  'backup.created.hidden': '**No guardados:** {count} canales que Discord le oculta a Petto (no puede verlos). Dale a Petto Ver canal ahí, o Administrador, y haz la copia otra vez.',
   'backup.created.note': 'Solo se guarda la configuración. Petto nunca guarda tokens de bots, contraseñas ni secretos en una copia.',
   'backup.notFound': 'No se encontró la copia **#{number}** en este servidor.',
   'backup.noneYet': 'Todavía no hay copias guardadas. Usa `!backup create` primero.',

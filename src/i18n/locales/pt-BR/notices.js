@@ -6,6 +6,9 @@ module.exports = {
   'notices.permissions.title': 'As permissões do Petto precisam de atenção',
   'notices.permissions.body': 'O Petto detectou permissões ausentes ou insuficientes. Alguns recursos podem ficar indisponíveis até que o acesso seja restaurado.',
   'notices.permissions.action': 'Restaure **Ver canal**, **Enviar mensagens**, **Inserir links** e **Ver histórico de mensagens** onde precisar. Os recursos de registro também podem exigir **Gerenciar webhooks** no canal de registros configurado.',
+  'notices.verifyRoles.title': 'O Petto não conseguiu dar o cargo de verificação',
+  'notices.verifyRoles.body': 'Um membro passou na verificação, mas o Petto não conseguiu mudar os cargos dele (dar o de verificado ou tirar o de não verificado). Ele fica de fora até isso ser corrigido.',
+  'notices.verifyRoles.action': 'Abra **Configurações do servidor → Cargos** e arraste o cargo do **Petto** para cima dos cargos de verificado e não verificado. O Petto também precisa de **Gerenciar cargos**. Depois peça ao membro para verificar de novo.',
   'notices.logs.title': 'A configuração de registros do Petto precisa de atenção',
   'notices.logs.body': 'Um destino de registros ou webhook configurado está ausente, inacessível ou não é mais válido.',
   'notices.logs.action': 'Verifique o canal de registros e as permissões dele. Configure os registros de novo se o webhook foi apagado ou substituído.',
@@ -24,5 +27,6 @@ module.exports = {
   'notices.help': 'Precisa de ajuda? {url}',
   'notices.details.logs': '`[logEngine]` não conseguiu usar o webhook de registros configurado. O webhook pode ter sido apagado, movido ou ficado inacessível.',
   'notices.details.permissions': 'O Petto recebeu um erro de permissões ou de acesso do Discord ao tentar usar um recurso configurado.',
+  'notices.details.verifyRoles': 'O Discord se recusou a mudar os cargos de um membro que passou na verificação: o cargo do Petto está abaixo do cargo que ele precisa dar, ou o Petto não tem Gerenciar cargos.',
   'notices.details.teamReview': 'A equipe do Petto pediu uma revisão manual depois de um sinal automático sobre o servidor.',
 };
