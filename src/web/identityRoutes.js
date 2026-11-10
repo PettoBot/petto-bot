@@ -11,6 +11,7 @@ const { LOG_EVENTS } = require('../utils/identity/emit');
 const { VANITY_SOURCES, COMPARISONS, CONDITIONS, ACTIONS } = require('../utils/identity/compare');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const logger = require('../utils/logger');
+const { isObfuscatedChannel } = require('../utils/hiddenChannels');
 const { t, currentLanguage, requestLanguage } = require('../i18n');
 
 const limiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
@@ -50,7 +51,7 @@ async function overview(guild, lang = 'en') {
       const problem = rules.roleProblem(guild, role.id);
       return { id: role.id, name: role.name, color: role.color, position: role.position, assignable: !problem, ...(problem ? { reason: problem.code === 'role_managed' ? 'managed' : 'above_bot' } : {}) };
     }),
-    channels: [...guild.channels.cache.values()].filter(isTextChannel).sort((a, b) => a.rawPosition - b.rawPosition).map((channel) => ({ id: channel.id, name: channel.name, position: channel.rawPosition })),
+    channels: [...guild.channels.cache.values()].filter((channel) => isTextChannel(channel) && !isObfuscatedChannel(channel)).sort((a, b) => a.rawPosition - b.rawPosition).map((channel) => ({ id: channel.id, name: channel.name, position: channel.rawPosition })),
     options: { vanity_sources: VANITY_SOURCES, comparisons: COMPARISONS, conditions: CONDITIONS, actions: ACTIONS, log_events: LOG_EVENTS, ping_modes: ['user', 'none'], offline_modes: db.OFFLINE_MODES },
   };
 }

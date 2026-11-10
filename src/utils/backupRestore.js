@@ -1,4 +1,5 @@
 const { ChannelType } = require('discord.js');
+const { isObfuscatedChannel } = require('./hiddenChannels');
 
 const RESTORABLE_CHANNEL_TYPES = new Set([
   ChannelType.GuildCategory,
@@ -21,7 +22,8 @@ function bitfield(value) {
 }
 
 function isRestorableChannel(channel) {
-  return !channel.isThread?.() && RESTORABLE_CHANNEL_TYPES.has(channel.type);
+  // A channel Discord hides from the bot (`___hidden___`) is neither matched with one of the backup nor deleted by a restore.
+  return !channel.isThread?.() && !isObfuscatedChannel(channel) && RESTORABLE_CHANNEL_TYPES.has(channel.type);
 }
 
 function findChannel(guild, data) {

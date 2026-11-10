@@ -13,6 +13,7 @@ const config = require('../utils/forumConfig');
 const actions = require('../utils/forumActions');
 const cards = require('../utils/forumCards');
 const logger = require('../utils/logger');
+const { isObfuscatedChannel } = require('../utils/hiddenChannels');
 const { t, requestLanguage } = require('../i18n');
 
 const VERSION = 1;
@@ -39,7 +40,7 @@ function registerForumRoutes(app, { authorize, limiter = null }) {
   });
 
   route('channels', { page: 'forums', edit: false }, async (req, res, { guild }) => {
-    const forums = [...guild.channels.cache.values()].filter((channel) => channel.type === ChannelType.GuildForum).sort((a, b) => a.position - b.position).map((forum) => {
+    const forums = [...guild.channels.cache.values()].filter((channel) => channel.type === ChannelType.GuildForum && !isObfuscatedChannel(channel)).sort((a, b) => a.position - b.position).map((forum) => {
       const missing = config.missingPermissions(forum, guild.members.me);
       return {
         id: forum.id, name: forum.name, can_post: missing.length === 0, missing,
