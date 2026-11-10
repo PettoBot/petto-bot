@@ -352,7 +352,7 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   resendOn = true;
   token = fresh();
   res = await call('GET', `/verify/${token}`);
-  assert.ok(res.text.includes('id="email-box"') && res.text.includes('email-only') && !res.text.includes('class="cf-turnstile"') && !res.text.includes('id="letters-input"'), 'the page is only the email step');
+  assert.ok(res.text.includes('id="email-box"') && res.text.includes('email-only') && !res.text.includes('class="cf-turnstile"') && !res.text.includes('id="letters-input"') && res.text.includes('Let&#39;s confirm your email') && !res.text.includes('confirm you&#39;re human'), 'the page is only the email step, and does not say human');
   res = await verify(token);
   assert.deepEqual([res.status, res.json.code, applied.length], [400, 'email', 0], 'not verified without the code');
   res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe@Gmail.com' } });

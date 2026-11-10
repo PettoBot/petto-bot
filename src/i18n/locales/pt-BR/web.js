@@ -300,4 +300,7 @@ module.exports = {
   'web.verifyApi.email.discordFailed': 'O login com o Discord não funcionou. Tente de novo ou digite seu e-mail.',
   'web.verify.emailAgain': 'Enviar de novo',
   'web.verify.emailOther': 'Usar outro e-mail',
+  'web.verify.headingEmail': 'Vamos confirmar seu e-mail',
+  'web.verify.subEmail': 'Confirme seu e-mail com um código e o Petto vai liberar o acesso ao resto do servidor.',
+  'web.verify.s1dEmail': 'Confirme seu e-mail',
 };

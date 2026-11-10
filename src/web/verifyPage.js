@@ -9,7 +9,7 @@ const COPY_FIELDS = [
   'title', 'eyebrow', 'heading', 'sub', 'forServer', 's1', 's1d', 's2', 's2d', 's3', 's3d', 'checkTitle', 'checkTitleTwo', 'turnstile',
   'lettersTitle', 'lettersHint', 'refresh', 'lettersLabel', 'button', 'verifying', 'done', 'cfLoad', 'cfExpired', 'wrong', 'locked', 'expired',
   'network', 'failed', 'loadPic', 'privacy', 'handled', 'rolesIn', 'footer', 'service',
-  'emailTitle', 'emailCopy', 'emailLabel', 'emailPlaceholder', 'emailSend', 'emailSending', 'emailSent', 'codeLabel', 'codeConfirm', 'codeResend', 'emailOk', 'emailNeed', 'emailDiscord', 'emailOr', 'emailAgain', 'emailOther',
+  'emailTitle', 'emailCopy', 'emailLabel', 'emailPlaceholder', 'emailSend', 'emailSending', 'emailSent', 'codeLabel', 'codeConfirm', 'codeResend', 'emailOk', 'emailNeed', 'emailDiscord', 'emailOr', 'emailAgain', 'emailOther', 'headingEmail', 'subEmail', 's1dEmail',
 ];
 
 /** The short language code (`es`, `pt` or `en`) of an Accept-Language header. The route itself uses requestLanguage() of src/i18n. */
@@ -98,8 +98,8 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
   <div class="shell">
     <header class="topbar"><a class="brand" href="/" aria-label="${escapeHtml(t(language, 'web.verify.homeLabel'))}"><img src="/assets/favicon.png" alt=""> <span>Petto</span></a><div class="service"><span class="service-dot" aria-hidden="true"></span>${escapeHtml(copy.service)}</div></header>
     <main class="main"><section class="card" aria-labelledby="page-title">
-      <div class="intro"><div class="logo"><img src="/assets/favicon.png" alt="Petto"></div><div><div class="eyebrow">${escapeHtml(copy.eyebrow)}</div><h1 id="page-title">${escapeHtml(copy.heading)}</h1><p class="sub">${escapeHtml(copy.sub)}</p>${server}</div></div>
-      <div class="steps" aria-label="${escapeHtml(t(language, 'web.verify.progressLabel'))}"><div class="step active"><b>${escapeHtml(copy.s1)}</b>${escapeHtml(copy.s1d)}</div><div class="step"><b>${escapeHtml(copy.s2)}</b>${escapeHtml(copy.s2d)}</div><div class="step"><b>${escapeHtml(copy.s3)}</b>${escapeHtml(copy.s3d)}</div></div>
+      <div class="intro"><div class="logo"><img src="/assets/favicon.png" alt="Petto"></div><div><div class="eyebrow">${escapeHtml(copy.eyebrow)}</div><h1 id="page-title">${escapeHtml(emailOnly ? copy.headingEmail : copy.heading)}</h1><p class="sub">${escapeHtml(emailOnly ? copy.subEmail : copy.sub)}</p>${server}</div></div>
+      <div class="steps" aria-label="${escapeHtml(t(language, 'web.verify.progressLabel'))}"><div class="step active"><b>${escapeHtml(copy.s1)}</b>${escapeHtml(emailOnly ? copy.s1dEmail : copy.s1d)}</div><div class="step"><b>${escapeHtml(copy.s2)}</b>${escapeHtml(copy.s2d)}</div><div class="step"><b>${escapeHtml(copy.s3)}</b>${escapeHtml(copy.s3d)}</div></div>
       <div class="check">${checkTitle}${turnstileBlock}${lettersBlock}${emailBlock}<button id="continue-btn" disabled>${escapeHtml(copy.button)}</button></div>
       <div class="status success" id="status-success" role="status" aria-live="polite"><img src="/assets/icon-approve.png" alt=""><span id="status-success-text">${escapeHtml(copy.done)}</span></div>
       <div class="status error" id="status-error" role="alert"><img src="/assets/icon-deny.png" alt=""><span id="status-error-text"></span></div>

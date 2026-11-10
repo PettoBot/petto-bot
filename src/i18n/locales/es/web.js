@@ -300,4 +300,7 @@ module.exports = {
   'web.verifyApi.email.discordFailed': 'El inicio de sesión con Discord no funcionó. Inténtalo otra vez o escribe tu correo.',
   'web.verify.emailAgain': 'Enviarlo otra vez',
   'web.verify.emailOther': 'Usar otro correo',
+  'web.verify.headingEmail': 'Confirma tu correo',
+  'web.verify.subEmail': 'Confirma tu correo con un código y Petto te dará acceso al resto del servidor.',
+  'web.verify.s1dEmail': 'Confirma tu correo',
 };
