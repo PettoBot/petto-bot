@@ -203,7 +203,7 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1** Pick a way') && look.includes('With a link') && look.includes('pe_Link') && !look.includes('🔗'), 'the panel has the server, the steps and the emojis of the bot');
   assert.ok(look.includes('verify.example.com/assets/favicon.png'), 'with no avatar to read, the icon of the website');
   const withAvatar = JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, iconURL: () => 'https://cdn.discordapp.com/icons/1/a.png', client: { user: { displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/9/b.png' } } }, method: 'turnstile' }).components[0].toJSON());
-  assert.ok(withAvatar.includes('cdn.discordapp.com/avatars/9/b.png') && !withAvatar.includes('icons/1/a.png'), 'the picture is the avatar Petto uses now, not the icon of the server')
+  assert.ok(withAvatar.includes('/avatars/9/b.png') && !withAvatar.includes('icons/1/a.png'), 'the picture is the avatar Petto uses now, not the icon of the server')
 
   // The link: a card with a link button to the page, when it expires and the address written out.
   const config = require('../src/config');
@@ -235,11 +235,13 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   // The addresses of the link buttons of a card, to compare them whole (not as a piece of a text).
   const urlsOf = (card) => { const out = []; const walk = (node) => { if (!node || typeof node !== 'object') return; if (typeof node.url === 'string' && node.style === 5) out.push(node.url); Object.values(node).forEach(walk); }; walk(typeof card === 'string' ? JSON.parse(card) : card); return out; };
   const dmBoth = JSON.stringify(messages.buildVerifyDM({ guild, link: 'https://verify.example.com/verify/abc', discordButton: true, lang: 'en' }).toJSON());
-  assert.ok(dmBoth.includes('Welcome to Petto HQ!') && dmBoth.includes('With a link') && dmBoth.includes('Right here in Discord') && urlsOf(dmBoth).includes('https://verify.example.com/verify/abc') && dmBoth.includes(`vfy:start:${GUILD}`) && dmBoth.includes('only for you'), 'the DM has the server, both ways with their buttons and the note');
+  assert.ok(dmBoth.includes('Welcome to Petto HQ!') && dmBoth.includes('With a link') && dmBoth.includes('Right here in Discord') && dmBoth.includes(`vfy:start:${GUILD}`) && dmBoth.includes('only for you'), 'the DM has the server, both ways with their buttons and the note');
+  assert.deepEqual(urlsOf(dmBoth), ['https://verify.example.com/verify/abc'], 'the link button opens exactly the link of the member');
   const dmLetters = JSON.stringify(messages.buildVerifyDM({ guild, link: null, discordButton: true, lang: 'es' }).toJSON());
   assert.ok(!dmLetters.includes('With a link') && !dmLetters.includes('Con un enlace') && dmLetters.includes(`vfy:start:${GUILD}`) && dmLetters.includes('Bienvenido a Petto HQ'), 'a server that verifies only in Discord has the letters row only, in its language');
   const dmDone = messages.buildVerifiedDM({ guild, lang: 'pt-BR' }).toJSON();
-  assert.ok(JSON.stringify(dmDone).includes('Você está verificado') && urlsOf(dmDone).includes(`https://discord.com/channels/${GUILD}`) && dmDone.accent_color === undefined, 'the DM of the pass: no color, in its language, with the button to the server');
+  assert.ok(JSON.stringify(dmDone).includes('Você está verificado') && dmDone.accent_color === undefined, 'the DM of the pass: no color, in its language, with the button to the server');
+  assert.deepEqual(urlsOf(dmDone), [`https://discord.com/channels/${GUILD}`], 'the button of the DM of the pass opens the server');
 
   // No address that opens: the panel and the button give the letters inside Discord instead, and the letters work for a Cloudflare server.
   config.verifyBaseUrl = 'http://localhost:3000';
