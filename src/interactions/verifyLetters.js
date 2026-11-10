@@ -11,38 +11,16 @@ const { methodOf, usesLink } = require('../utils/verifyMethod');
 const config = require('../config');
 const { verifyLinkFor, baseUrl, lettersInstead, canDoLetters } = require('../utils/verifyLink');
 const { applyVerification } = require('../utils/verifyApply');
+const { restoreVerified } = require('../utils/verifyState');
 const { normalizeChecks, needsWebPage, evaluate } = require('../utils/verifyChecks');
 const logger = require('../utils/logger');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
 
-const PREFIX = 'vfy';
-const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}`, again: (guildId) => `${PREFIX}:again:${guildId}` };
+const { PREFIX, ids, startButton, serverPicture, withPicture } = require('../utils/verifyCards');
 const V2 = MessageFlags.IsComponentsV2;
 
 const tickets = new Map(); // `${guildId}:${userId}` -> { ticket, jti, until }
 const key = (guildId, userId) => `${guildId}:${userId}`;
-
-/** The button of the verification DM that starts the letters check. */
-function startButton(guildId, lang = currentLanguage()) {
-  return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel(t(lang, 'verify.letters.start.button')).setEmoji(EMOJI.SAFETY).setStyle(ButtonStyle.Primary);
-}
-
-
-/** The picture of the server for the cards (its icon), or Petto's when it has none, or null. */
-function serverPicture(guild) {
-  const icon = typeof guild?.iconURL === 'function' ? guild.iconURL({ size: 128, extension: 'png' }) : null;
-  if (icon) return icon;
-  const base = baseUrl();
-  return base ? `${base}/assets/favicon.png` : null;
-}
-
-/** Text with the picture of the server beside it when there is one. */
-function withPicture(container, text, picture) {
-  const display = new TextDisplayBuilder().setContent(text);
-  if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(display).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
-  else container.addTextDisplayComponents(display);
-  return container;
-}
 
 // In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
 const flagsFor = (interaction) => (interaction.inGuild?.() ? V2 | MessageFlags.Ephemeral : V2);
@@ -78,6 +56,9 @@ async function situation(client, guildId, userId, lang) {
   const member = await guild.members.fetch(userId).catch(() => null);
   if (!member) return { error: t(lang, 'verify.letters.notMember') };
   if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, userId).catch(() => false)) return { error: t(lang, 'verify.letters.already') };
+  // They passed in this stay and somebody gave them the gate role: nothing to check again, their roles come back (the answer says so; it is not a failure).
+  const back = await restoreVerified({ client, guild, member, settings, lang }).catch((err) => { logger.warn(`Could not give the roles back to ${userId} in ${guildId}: ${err.message}`); return null; });
+  if (back) return { error: t(lang, back.noRole ? 'verify.restoredNoRole' : 'verify.restored', { server: guild.name }) };
   // The checks that look at the connection or the email only exist on the page: when the server asks for them (and has a page), the letters inside Discord are not a way around them.
   if (usesLink(methodOf(settings)) && needsWebPage(normalizeChecks(settings.checks))) return { error: t(lang, 'verify.letters.usePage') };
   return { guild, member, settings };
@@ -119,24 +100,23 @@ function panelImage(value) {
 }
 
 /**
- * The panel of a channel: what to do to get in, with a button for each way the server allows. The server's name and icon on top, three
- * short steps, the buttons (with an emoji) and a note at the bottom. When the link cannot be given, the letters inside Discord take its place.
+ * The panel of a channel (Components V2): Petto's picture and the server's name on top, a line with the three steps, and a row for each way the
+ * server allows, with its button on the right (the link, and the letters inside Discord). When the link cannot be given, the letters
+ * inside Discord take its place. The picture the server chose goes on top as a media gallery.
  */
 function buildPanel({ guild, method, lang = currentLanguage(), imageUrl = null }) {
   const letters = canDoLetters(method);
   const link = usesLink(method) && !lettersInstead(method);
-  const row = new ActionRowBuilder();
-  if (link || !letters) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setEmoji('🔗').setStyle(letters ? ButtonStyle.Secondary : ButtonStyle.Primary));
-  if (letters) row.addComponents(startButton(guild.id, lang));
-  const steps = link && letters ? 'both' : letters ? 'letters' : 'link';
-  const text = [t(lang, 'verify.panel.title'), t(lang, 'verify.panel.welcome', { server: guild.name }), '', t(lang, `verify.panel.steps.${steps}`)].join('\n');
-  // The picture the server chose goes on top as a media gallery; with none, the panel is what it always was.
+  const way = (key, emoji, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`, { emoji }))).setButtonAccessory(button);
   const container = new ContainerBuilder();
   const banner = panelImage(imageUrl);
   if (banner) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(banner)));
-  withPicture(container, text, serverPicture(guild))
+  withPicture(container, [t(lang, 'verify.panel.heading', { emoji: EMOJI.SAFETY }), t(lang, 'verify.panel.intro', { server: guild.name }), t(lang, 'verify.panel.stepsLine')].join('\n'), serverPicture(guild))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
+  if (link || !letters) container.addSectionComponents(way('link', EMOJI.LINK, new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setEmoji(EMOJI.LINK).setStyle(letters ? ButtonStyle.Secondary : ButtonStyle.Primary)));
+  if (letters) container.addSectionComponents(way('letters', EMOJI.SPEECH, startButton(guild.id, lang)));
+  container
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
-    .addActionRowComponents(row)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.panel.footer')));
   return { components: [container], flags: V2 };
 }
@@ -152,6 +132,8 @@ async function sendLink(interaction, guildId, lang) {
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member) return say(interaction, t(lang, 'verify.letters.notMember'));
   if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, interaction.user.id).catch(() => false)) return say(interaction, t(lang, 'verify.letters.already'));
+  const back = await restoreVerified({ client: interaction.client, guild, member, settings, lang }).catch((err) => { logger.warn(`Could not give the roles back to ${interaction.user.id} in ${guildId}: ${err.message}`); return null; });
+  if (back) return say(interaction, t(lang, back.noRole ? 'verify.restoredNoRole' : 'verify.restored', { server: guild.name }));
   const made = verifyLinkFor(interaction.user.id, guildId);
   if (!made.url) {
     if (!config.verifyTokenSecret) return say(interaction, t(lang, 'verify.link.notSetUp'));
@@ -160,9 +142,9 @@ async function sendLink(interaction, guildId, lang) {
       .addActionRowComponents(new ActionRowBuilder().addComponents(startButton(guildId, lang)));
     return reply(interaction, container);
   }
-  const text = [t(lang, 'verify.link.title'), t(lang, 'verify.link.body', { server: guild.name, expires: `<t:${made.expiresAt}:R>` })].join('\n');
+  const text = [t(lang, 'verify.link.title', { emoji: EMOJI.LINK }), t(lang, 'verify.link.body', { server: guild.name, expires: `<t:${made.expiresAt}:R>` })].join('\n');
   const container = withPicture(new ContainerBuilder(), text, serverPicture(guild))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(made.url).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗')))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(made.url).setLabel(t(lang, 'verify.link.open')).setEmoji(EMOJI.LINK)))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.link.fallback', { link: made.url })));
   return reply(interaction, container);
@@ -234,9 +216,9 @@ function isPanelMessage(message, guildId) {
     if (!node) return false;
     const data = node.toJSON?.() ?? node.data ?? node;
     if (wanted.has(data.custom_id ?? data.customId)) return true;
-    return (node.components ?? data.components ?? []).some(walk);
+    return (node.components ?? data.components ?? []).some(walk) || walk(data.accessory);
   };
   return (message?.components ?? []).some(walk);
 }
 
-module.exports = { PREFIX, startButton, buildPanel, panelImage, handleButton, handleModal, ids, canDoLetters, isPanelMessage };
+module.exports = { PREFIX, startButton, serverPicture, withPicture, buildPanel, panelImage, handleButton, handleModal, ids, canDoLetters, isPanelMessage };

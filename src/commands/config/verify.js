@@ -263,6 +263,8 @@ async function send(interaction, lang) {
   const verifyConfig = (await getConfig(interaction.guild.id)) ?? {};
 
   if (verifyConfig.enabled) {
+    // A new check asked by the staff: what the member passed before no longer counts (utils/verifyState.js), or the gate role would be taken off with no check.
+    await require('../../db/verificationRedemptions').forgetVerification(interaction.guild.id, targetMember.id).catch((err) => logger.warn(`Could not forget the verification of ${targetMember.id}: ${err.message}`));
     const role = await ensureUnverifiedRole(interaction.guild, verifyConfig);
     if (!targetMember.roles.cache.has(role.id)) {
       await targetMember.roles.add(role, t(lang, 'verify.reason.resent')).catch((err) => logger.warn('Could not add gate role:', err.message));

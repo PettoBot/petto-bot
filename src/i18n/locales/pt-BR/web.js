@@ -298,4 +298,6 @@ module.exports = {
   'web.verifyApi.email.discordNoEmail': 'Sua conta do Discord não tem um e-mail verificado. Verifique no Discord ou digite outro e-mail.',
   'web.verifyApi.email.discordDenied': 'Você não permitiu o login com o Discord. Pode tentar de novo ou digitar seu e-mail.',
   'web.verifyApi.email.discordFailed': 'O login com o Discord não funcionou. Tente de novo ou digite seu e-mail.',
+  'web.verify.emailAgain': 'Enviar de novo',
+  'web.verify.emailOther': 'Usar outro e-mail',
 };
