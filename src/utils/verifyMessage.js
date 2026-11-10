@@ -1,5 +1,4 @@
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, SeparatorBuilder, SeparatorSpacingSize } = require('discord.js');
-const config = require('../config');
 const { MessageFlags } = require('discord.js');
 const { templatePayload } = require('./templatedMessage');
 const { getConfig } = require('../db/verificationConfig');
@@ -8,38 +7,32 @@ const { methodOf } = require('./verifyMethod');
 const { canDoLetters } = require('./verifyLink');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
 const { sendDm } = require('./dmOrigin');
+const { EMOJI } = require('./emojis');
 const { startButton, serverPicture, withPicture } = require('./verifyCards');
-const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
-const SUCCESS_COLOR = 0xa5ea7a;
 
-
-/** Public URL for a file in src/web/public, or null if the web server has no public base URL configured. */
-function assetUrl(file) {
-  return config.verifyBaseUrl ? `${config.verifyBaseUrl}/assets/${file}` : null;
-}
 
 /**
- * The DM a member gets when they join a server that verifies (Components V2): the server's name and icon, and a row for each way the server
+ * The DM a member gets when they join a server that verifies (Components V2): Petto's picture, the server's name, and a row for each way the server
  * allows with its button on its side (the link, and the letters inside Discord), like the panel of the channel. `link` is empty for a server
  * that verifies only inside Discord.
  */
 function buildVerifyDM({ guild, link, discordButton = false, lang = currentLanguage() }) {
-  const way = (key, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`))).setButtonAccessory(button);
+  const way = (key, emoji, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`, { emoji }))).setButtonAccessory(button);
   const container = withPicture(new ContainerBuilder(), [t(lang, 'verify.dm.welcome', { server: guild.name }), t(lang, 'verify.dm.intro')].join('\n'), serverPicture(guild))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
   // The link as a button too: a link inside the text is easy to miss on a phone.
-  if (link) container.addSectionComponents(way('link', new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(link).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗')));
-  if (discordButton) container.addSectionComponents(way('letters', startButton(guild.id, lang)));
+  if (link) container.addSectionComponents(way('link', EMOJI.LINK, new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(link).setLabel(t(lang, 'verify.link.open')).setEmoji(EMOJI.LINK)));
+  if (discordButton) container.addSectionComponents(way('letters', EMOJI.SPEECH, startButton(guild.id, lang)));
   return container
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.dm.footer')));
 }
 
-/** Components V2 DM confirming a member passed verification: the server's name and icon, and a button that opens the server. */
+/** Components V2 DM confirming a member passed verification: no color, Petto's picture, and a button that opens the server. */
 function buildVerifiedDM({ guild, lang = currentLanguage() }) {
-  const text = [t(lang, 'verify.dm.verifiedTitle'), t(lang, 'verify.dm.verifiedText', { server: guild.name })].join('\n');
-  return withPicture(new ContainerBuilder().setAccentColor(SUCCESS_COLOR), text, serverPicture(guild))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${guild.id}`).setLabel(t(lang, 'verify.dm.goToServer')).setEmoji('➡️')));
+  const text = [t(lang, 'verify.dm.verifiedTitle', { emoji: EMOJI.APPROVE }), t(lang, 'verify.dm.verifiedText', { server: guild.name })].join('\n');
+  return withPicture(new ContainerBuilder(), text, serverPicture(guild))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${guild.id}`).setLabel(t(lang, 'verify.dm.goToServer')).setEmoji(EMOJI.NEXT)));
 }
 
 /**

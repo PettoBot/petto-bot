@@ -100,21 +100,21 @@ function panelImage(value) {
 }
 
 /**
- * The panel of a channel (Components V2): the server's name and icon on top, a line with the three steps, and a row for each way the
+ * The panel of a channel (Components V2): Petto's picture and the server's name on top, a line with the three steps, and a row for each way the
  * server allows, with its button on the right (the link, and the letters inside Discord). When the link cannot be given, the letters
  * inside Discord take its place. The picture the server chose goes on top as a media gallery.
  */
 function buildPanel({ guild, method, lang = currentLanguage(), imageUrl = null }) {
   const letters = canDoLetters(method);
   const link = usesLink(method) && !lettersInstead(method);
-  const way = (key, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`))).setButtonAccessory(button);
+  const way = (key, emoji, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`, { emoji }))).setButtonAccessory(button);
   const container = new ContainerBuilder();
   const banner = panelImage(imageUrl);
   if (banner) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(banner)));
-  withPicture(container, [t(lang, 'verify.panel.heading'), t(lang, 'verify.panel.intro', { server: guild.name }), t(lang, 'verify.panel.stepsLine')].join('\n'), serverPicture(guild))
+  withPicture(container, [t(lang, 'verify.panel.heading', { emoji: EMOJI.SAFETY }), t(lang, 'verify.panel.intro', { server: guild.name }), t(lang, 'verify.panel.stepsLine')].join('\n'), serverPicture(guild))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
-  if (link || !letters) container.addSectionComponents(way('link', new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setEmoji('🔗').setStyle(letters ? ButtonStyle.Secondary : ButtonStyle.Primary)));
-  if (letters) container.addSectionComponents(way('letters', startButton(guild.id, lang)));
+  if (link || !letters) container.addSectionComponents(way('link', EMOJI.LINK, new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setEmoji(EMOJI.LINK).setStyle(letters ? ButtonStyle.Secondary : ButtonStyle.Primary)));
+  if (letters) container.addSectionComponents(way('letters', EMOJI.SPEECH, startButton(guild.id, lang)));
   container
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.panel.footer')));
@@ -142,9 +142,9 @@ async function sendLink(interaction, guildId, lang) {
       .addActionRowComponents(new ActionRowBuilder().addComponents(startButton(guildId, lang)));
     return reply(interaction, container);
   }
-  const text = [t(lang, 'verify.link.title'), t(lang, 'verify.link.body', { server: guild.name, expires: `<t:${made.expiresAt}:R>` })].join('\n');
+  const text = [t(lang, 'verify.link.title', { emoji: EMOJI.LINK }), t(lang, 'verify.link.body', { server: guild.name, expires: `<t:${made.expiresAt}:R>` })].join('\n');
   const container = withPicture(new ContainerBuilder(), text, serverPicture(guild))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(made.url).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗')))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(made.url).setLabel(t(lang, 'verify.link.open')).setEmoji(EMOJI.LINK)))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.link.fallback', { link: made.url })));
   return reply(interaction, container);

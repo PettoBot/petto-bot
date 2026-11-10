@@ -13,10 +13,10 @@ function startButton(guildId, lang = currentLanguage()) {
 }
 
 
-/** The picture of the server for the cards (its icon), or Petto's when it has none, or null. */
+/** The picture on the cards: the avatar Petto uses now (what a member knows the app by), or the icon of the website when it cannot be read. Null when there is neither. */
 function serverPicture(guild) {
-  const icon = typeof guild?.iconURL === 'function' ? guild.iconURL({ size: 128, extension: 'png' }) : null;
-  if (icon) return icon;
+  const avatar = guild?.client?.user?.displayAvatarURL?.({ extension: 'png', size: 128 });
+  if (avatar) return avatar;
   const base = baseUrl();
   return base ? `${base}/assets/favicon.png` : null;
 }

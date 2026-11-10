@@ -200,9 +200,10 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
 
   // The panel: the server's name, the steps and the buttons with an emoji.
   const look = JSON.stringify(verifyLetters.buildPanel({ guild, method: 'turnstile' }).components[0].toJSON());
-  assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1** Pick a way') && look.includes('With a link') && look.includes('🔗'), 'the panel has the server, the steps and the emoji');
-  assert.ok(look.includes('verify.example.com/assets/favicon.png'), 'a server without an icon gets Petto\'s picture');
-  assert.ok(JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, iconURL: () => 'https://cdn.discordapp.com/icons/1/a.png' }, method: 'turnstile' }).components[0].toJSON()).includes('cdn.discordapp.com/icons/1/a.png'), 'or its own icon');
+  assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1** Pick a way') && look.includes('With a link') && look.includes('pe_Link') && !look.includes('🔗'), 'the panel has the server, the steps and the emojis of the bot');
+  assert.ok(look.includes('verify.example.com/assets/favicon.png'), 'with no avatar to read, the icon of the website');
+  const withAvatar = JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, iconURL: () => 'https://cdn.discordapp.com/icons/1/a.png', client: { user: { displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/9/b.png' } } }, method: 'turnstile' }).components[0].toJSON());
+  assert.ok(withAvatar.includes('cdn.discordapp.com/avatars/9/b.png') && !withAvatar.includes('icons/1/a.png'), 'the picture is the avatar Petto uses now, not the icon of the server')
 
   // The link: a card with a link button to the page, when it expires and the address written out.
   const config = require('../src/config');
@@ -236,7 +237,7 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   const dmLetters = JSON.stringify(messages.buildVerifyDM({ guild, link: null, discordButton: true, lang: 'es' }).toJSON());
   assert.ok(!dmLetters.includes('With a link') && !dmLetters.includes('Con un enlace') && dmLetters.includes(`vfy:start:${GUILD}`) && dmLetters.includes('Bienvenido a Petto HQ'), 'a server that verifies only in Discord has the letters row only, in its language');
   const dmDone = messages.buildVerifiedDM({ guild, lang: 'pt-BR' }).toJSON();
-  assert.ok(JSON.stringify(dmDone).includes('Você está verificado') && JSON.stringify(dmDone).includes(`https://discord.com/channels/${GUILD}`) && dmDone.accent_color === 0xa5ea7a, 'the DM of the pass: green, in its language, with the button to the server');
+  assert.ok(JSON.stringify(dmDone).includes('Você está verificado') && JSON.stringify(dmDone).includes(`https://discord.com/channels/${GUILD}`) && dmDone.accent_color === undefined, 'the DM of the pass: no color, in its language, with the button to the server');
 
   // No address that opens: the panel and the button give the letters inside Discord instead, and the letters work for a Cloudflare server.
   config.verifyBaseUrl = 'http://localhost:3000';
