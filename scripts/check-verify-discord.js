@@ -203,7 +203,13 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1** Pick a way') && look.includes('With a link') && look.includes('pe_Link') && !look.includes('🔗'), 'the panel has the server, the steps and the emojis of the bot');
   assert.ok(look.includes('verify.example.com/assets/favicon.png'), 'with no avatar to read, the icon of the website');
   const withAvatar = JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, iconURL: () => 'https://cdn.discordapp.com/icons/1/a.png', client: { user: { displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/9/b.png' } } }, method: 'turnstile' }).components[0].toJSON());
-  assert.ok(withAvatar.includes('/avatars/9/b.png') && !withAvatar.includes('icons/1/a.png'), 'the picture is the avatar Petto uses now, not the icon of the server')
+  assert.ok(withAvatar.includes('/avatars/9/b.png') && !withAvatar.includes('icons/1/a.png'), 'the picture is the avatar Petto uses now, not the icon of the server');
+  // The avatar Petto has in this server (one of its own, given by the server) wins over the one it uses everywhere; with none of its own, the usual one.
+  const pictureOf = (me) => JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, members: { me }, client: { user: { displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/9/b.png' } } }, method: 'turnstile' }).components[0].toJSON());
+  const ownAvatar = pictureOf({ displayAvatarURL: () => 'https://cdn.discordapp.com/guilds/1/users/9/avatars/own.png' });
+  assert.ok(ownAvatar.includes('/guilds/1/users/9/avatars/own.png') && !ownAvatar.includes('/avatars/9/b.png'), 'the avatar of Petto in the server, when it has one');
+  const sameAvatar = pictureOf(undefined);
+  assert.ok(sameAvatar.includes('/avatars/9/b.png') && !sameAvatar.includes('/avatars/own.png'), 'with none of its own, the avatar Petto uses everywhere');
 
   // The link: a card with a link button to the page, when it expires and the address written out.
   const config = require('../src/config');
