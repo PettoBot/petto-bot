@@ -30,16 +30,16 @@ const activeUnbans = new Map(); // guildId -> { abort: boolean }
 const LIST_LIMIT = 40;
 
 module.exports = {
-  // The duration is read by the prefix (`!ban @x 7d`) but is not an option of `/ban user`: the temporary ban is `/tempban`.
-  prefixOnlyOptions: { user: ['duration'] },
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
   // `/ban` takes the options of its `user` subcommand directly (no `/ban user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
   slashFlatten: 'user',
+  // The prefix reads the options in the order of the builder (the reason is the last one and takes the rest of the line); the menu shows them as people say it: user, time, reason.
+  slashOptionOrder: ['user', 'duration', 'reason', 'delete_message_days'],
   aliases: ['b'],
   prefixSubcommandAliases: { recent: 'list', kill: 'cancel' },
   prefixDefaultSubcommand: 'user',
-  // A ban becomes temporary by giving a duration (`/ban user duration:3d`, `!ban @member 3d`): `temp` is not in the `/` menu, and `!ban temp` still works.
+  // A ban becomes temporary by giving a duration (`/ban user duration:3d`, `!ban @member 3d`); without one it is permanent. `temp` is not in the `/` menu, and `!ban temp` (`!tempban`) still works.
   prefixOnlySubcommands: ['temp'],
   slashHiddenSubcommands: ['users'],
   // `users`... are in the menu as `/massban`, `/masskick`...; the words stay for the prefix and the umbrellas.
@@ -54,7 +54,7 @@ module.exports = {
         .setDescription('Ban a single member.')
         .addUserOption((opt) => opt.setName('user').setDescription('The user to ban').setRequired(true))
         .addIntegerOption((opt) => opt.setName('delete_message_days').setDescription("Delete this many days of the user's recent messages (0-7)").setMinValue(0).setMaxValue(7).setRequired(false))
-        .addStringOption((opt) => opt.setName('duration').setDescription('Make it temporary: e.g. 3d, 2w').setRequired(false))
+        .addStringOption((opt) => opt.setName('duration').setDescription('Leave empty for a permanent ban, or e.g. 3d, 2w').setRequired(false))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the ban').setRequired(false)),
     )
     .addSubcommand((sub) =>

@@ -561,8 +561,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 91, '91 commands registered with Discord (88 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 88, '88 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 89, '89 commands registered with Discord (86 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 86, '86 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   assert.ok(!registered.some((each) => each.name === 'mod'), '/mod is not registered with Discord: it is a prefix command only (`!mod ban @x`)');
   // `/ban`, `/kick` and `/warn` are still registered with their own permissions (each has subcommands that /mod does not wrap, and /mod is at 25).
@@ -583,16 +583,16 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.ok(json, `/${name} is a slash command`);
     assert.equal(json.default_member_permissions, String(bit), `/${name} asks for ${bit}`);
   }
-  // A ban or a mute that ends is `/tempban` and `/tempmute`: `/ban user` and `/mute user` have no duration in the menu (the prefix still reads it: `!ban @x 7d`), and `/mod`
-  // keeps none of the actions that have a command of their own.
-  for (const name of ['tempban', 'tempmute']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
+  // A ban or a mute that ends is `/ban` and `/mute` with the optional `duration` (no time: permanent): `/tempban` and `/tempmute` are not in the menu (the prefix keeps them),
+  // and `/mod` keeps none of the actions that have a command of their own.
+  for (const name of ['tempban', 'tempmute']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not a slash command`);
   // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`): the rest is `/unban`, `/banlist`, `/unmute`...
   const optionNames = (command) => chat.find((each) => each.name === command).options.map((option) => option.name);
-  assert.deepEqual(optionNames('ban'), ['user', 'delete_message_days', 'reason'], '/ban takes the member directly');
-  assert.ok(!optionNames('ban').includes('duration') && !optionNames('mute').includes('duration'), '/ban and /mute have no duration option in the menu');
+  assert.deepEqual(optionNames('ban'), ['user', 'duration', 'reason', 'delete_message_days'], '/ban takes the member, the time and the reason');
+  assert.deepEqual(optionNames('mute'), ['user', 'duration', 'reason'], '/mute takes the member, the time and the reason');
+  for (const name of ['ban', 'mute']) assert.equal(chat.find((each) => each.name === name).options.find((option) => option.name === 'duration').required, false, `the duration of /${name} is optional`);
   for (const name of ['ban', 'kick', 'mute', 'warn', 'jail']) assert.ok(chat.find((each) => each.name === name).options.every((option) => option.type !== 1 && option.type !== 2), `/${name} has no subcommands`);
   for (const name of ['unban', 'unmute', 'unjail']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
-  assert.ok(client.commands.get('ban').data.toJSON().options.find((option) => option.name === 'user').options.some((option) => option.name === 'duration'), 'but the prefix still reads it');
   // The jail, the notes, the cases and the lockdown are slash commands of their own (they used to be groups of `/modtools`).
   for (const name of ['jail', 'note', 'case', 'lockdown']) assert.ok(chat.some((each) => each.name === name), `/${name} is a slash command`);
 
@@ -608,7 +608,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     }
     for (const child of node.options ?? []) walk(child, `${trail} ${child.name}`);
   };
-  for (const name of ['softban', 'hardban', 'history', 'stripstaff', 'clearinvites', 'pauseinvites', 'purge', 'tempban', 'tempmute']) {
+  for (const name of ['softban', 'hardban', 'history', 'stripstaff', 'clearinvites', 'pauseinvites', 'purge']) {
     const json = chat.find((each) => each.name === name);
     walk(json, `/${name}`);
     assert.notEqual(json.description_localizations['es-ES'], json.description, `/${name} is translated into Spanish`);

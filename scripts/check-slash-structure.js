@@ -25,9 +25,9 @@ const chat = registered.filter((json) => (json.type ?? 1) === 1);
 const menus = registered.filter((json) => (json.type ?? 1) !== 1);
 
 // ---------------------------------------------------------------- 1. no loose command
-// A slash command without subcommands is a command of its own (`/help`, `/poll`, `/setup`, and what used to be a subcommand of an umbrella: `/avatar`, `/softban`, `/tempban`...). The
+// A slash command without subcommands is a command of its own (`/help`, `/poll`, `/setup`, and what used to be a subcommand of an umbrella: `/avatar`, `/softban`...). The
 // ones that must be there are listed; the rest is any command that is registered on purpose (`registerSlash`).
-const STANDALONE = ['help', 'poll', 'setup', 'tempban', 'tempmute', 'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites'];
+const STANDALONE = ['help', 'poll', 'setup', 'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites'];
 const loose = chat.filter((json) => !(json.options ?? []).some((option) => option.type === SUBCOMMAND || option.type === GROUP)).map((json) => json.name);
 assert.ok(STANDALONE.every((name) => loose.includes(name)), `these slash commands must be commands of their own: ${STANDALONE.filter((name) => !loose.includes(name)).join(', ')}`);
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');
@@ -181,7 +181,9 @@ for (const command of all.values()) {
 }
 // What is left out on purpose, with the reason.
 const LEFT_OUT = {
-  timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/tempmute` is the same)',
+  timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/mute` with a duration is the same)',
+  tempban: 'the slash form is `/ban` with its optional duration (no command is in the menu twice)',
+  tempmute: 'the slash form is `/mute` with its optional duration (no command is in the menu twice)',
   servericon: 'the slash form is `/server icon` (a subcommand of its own, not a wrapped command)',
   serverbanner: 'the slash form is `/server banner` (a subcommand of its own)',
   serversplash: 'the slash form is `/server splash` (a subcommand of its own)',

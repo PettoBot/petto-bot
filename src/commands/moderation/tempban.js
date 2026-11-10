@@ -3,8 +3,8 @@ const ban = require('./ban');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
-  // A slash command of its own (`/tempban user duration`): a ban or a mute that ends is named that way, not `/ban temp`.
-  registerSlash: true,
+  // Not a slash command any more: `/ban` takes an optional `duration` (without it the ban is permanent). `!tempban` (and its aliases) keep working with the prefix, and `/mod tempban` too.
+  registerSlash: false,
   aliases: ['tban'],
   data: new SlashCommandBuilder()
     .setName('tempban')
