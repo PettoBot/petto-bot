@@ -54,6 +54,7 @@ function wrapMakeRequest(rest) {
           const html = /text\/html/i.test(String(header(response, 'content-type') ?? ''));
           perf.recordRateLimit({
             family,
+            major: perf.majorOf(url),
             waitMs: (Number(header(response, 'retry-after')) || 0) * 1000,
             global: header(response, 'x-ratelimit-global') === 'true',
             // A 429 with a web page and not JSON does not come from the API of Discord: it is the protection in front of it (Cloudflare).
@@ -80,7 +81,7 @@ function attachSharedRestLimit(rest, perSecond) {
   wrapMakeRequest(rest);
   try {
     if (typeof rest.on === 'function') {
-      rest.on('rateLimited', (info = {}) => perf.recordRateLimit({ family: perf.routeFamily(info.method, info.route ?? info.url), waitMs: Number(info.timeToReset ?? info.retryAfter) || 0, global: Boolean(info.global), scope: info.scope ?? 'route', source: 'client' }));
+      rest.on('rateLimited', (info = {}) => perf.recordRateLimit({ family: perf.routeFamily(info.method, info.route ?? info.url), major: info.majorParameter ?? perf.majorOf(info.url), waitMs: Number(info.timeToReset ?? info.retryAfter) || 0, global: Boolean(info.global), scope: info.scope ?? 'route', source: 'client' }));
       rest.on('invalidRequestWarning', (info = {}) => perf.recordInvalidWarning(info.count));
       if (rest.options && !rest.options.invalidRequestWarningInterval) rest.options.invalidRequestWarningInterval = 100;
     }

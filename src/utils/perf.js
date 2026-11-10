@@ -304,7 +304,27 @@ function recordResponse({ family, status, dateHeader, receivedAt = Date.now() })
   }
 }
 
-function recordRateLimit({ family, waitMs, global = false, scope = 'route', source = 'client' }) {
+// The routes Discord told us to wait a long time on (`GET /guilds/:id/vanity-url` of one server: 45 minutes). A request sent there only waits inside the REST client until it
+// is aborted and keeps one of the places Petto has for requests, so what is not needed asks `routeBlockedMs` first and does not ask while the wait lasts.
+const ROUTE_BLOCK_MIN_MS = 30_000;
+const ROUTE_BLOCK_MAX = 500;
+const routeBlocks = new Map(); // `${family}|${major id}` -> until (ms since the epoch)
+const majorOf = (url) => /\/(?:guilds|channels|webhooks)\/(\d{15,25})/.exec(String(url ?? ''))?.[1] ?? null;
+
+/** How long Discord still says to wait on this route for this server or channel (0 when it did not say, or it is over). */
+function routeBlockedMs(method, path, major, now = Date.now()) {
+  const key = `${routeFamily(method, path)}|${major ?? ''}`;
+  const until = routeBlocks.get(key);
+  if (until === undefined) return 0;
+  if (until <= now) { routeBlocks.delete(key); return 0; }
+  return until - now;
+}
+
+function recordRateLimit({ family, waitMs, global = false, scope = 'route', source = 'client', major = null }) {
+  if (!global && major && scope !== 'cloudflare' && waitMs >= ROUTE_BLOCK_MIN_MS) {
+    routeBlocks.set(`${family}|${major}`, Date.now() + waitMs);
+    while (routeBlocks.size > ROUTE_BLOCK_MAX) routeBlocks.delete(routeBlocks.keys().next().value);
+  }
   const entry = familyEntry(family);
   entry.rateLimited += 1;
   rateLimitEvents.push({ at: Date.now(), family, waitMs: Math.round(waitMs), global, scope, source });
@@ -635,7 +655,7 @@ module.exports = {
   requestStore,
   recordDb, databaseStats, setPoolReader,
   recordRedis,
-  routeFamily, recordRest, recordResponse, recordRateLimit, recordInvalidWarning, restStarted, restEnded, setGateReader, restStats,
+  routeFamily, majorOf, routeBlockedMs, recordRest, recordResponse, recordRateLimit, recordInvalidWarning, restStarted, restEnded, setGateReader, restStats,
   startSampler, stopSampler, takeSample, loopStats,
   listenerEntry, countEvent, measureListener, listenerStats,
   trackIntervals, trackJob, jobStats, runJob, jobEntry, jobNameFromStack,
