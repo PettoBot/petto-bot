@@ -378,6 +378,7 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   assert.ok(discordCalls.some((c) => c.url.endsWith('/oauth2/token/revoke')), 'the access is revoked once the email is read');
   assert.ok(discordCalls.find((c) => c.url.endsWith('/users/@me')).options.headers.Authorization === 'Bearer acc');
   res = await call('GET', `/verify/${token}?m=sent`);
+  assert.ok(res.text.includes('id="email-after"') && res.text.includes(`href="/verify/${encodeURIComponent(token)}"`), 'with the code sent there is a way to send it again or to pick another email');
   assert.ok(res.text.includes('j***@gmail.com') && !res.text.includes('jane.doe@gmail.com'), 'the page tells where the code went, with the address hidden');
   res = await call('POST', '/api/verify/email/confirm', { body: { token, code: sent[0].code } });
   assert.equal(res.json.ok, true);

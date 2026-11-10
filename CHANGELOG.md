@@ -57,6 +57,10 @@ All notable changes to Petto are documented here.
 - **Reminders show no numbers, and `/remind cancel` is a menu.** Why: the number in "Reminder #7" was the database's, shared by everybody, so it meant nothing to the member, and the card was one plain line. The confirmation is now a card with the channel, the moment (in each person's own clock, with "in 9 minutes") and the message; `/remind list` shows each reminder with its moment and message, and a menu under it cancels the one picked (only the member who asked can use it, and it only deletes their own). The reminder that rings quotes the message.
 - **`/backup export` (and the "Download latest" button) gives the file to download.** Why: the card said "ready to download" but the JSON was attached to a message made of components, where an attachment is not shown unless a file component points at it, so there was nothing to tap. The card now holds the file; the backup is a JSON file named `petto-backup-<server>-<number>.json`.
 
+### Changed
+- **The verification panel is redesigned (Components V2).** Why: the old panel was a wall of text with two buttons under it. What: the server's name and icon on top with a one-line "1 Pick a way · 2 Pass the quick check · 3 The channels open", then a row for each way the server allows with its button on its side ("With a link", "Right here in Discord") and a short note at the bottom; the picture the server chose still goes on top. The buttons keep their ids, so panels already posted keep working until they are posted again. English, Spanish and Portuguese.
+- **"Use my Discord email" takes the box to type away.** Why: once the code went to the email of the Discord account there is nothing to type, and two ways at once confused people. What: after the login the page hides the box and the button, says where the code went and offers "Send it again" and "Use another email".
+
 ## [0.7.10] — 2026-11-05 · Cupcake
 
 ### Added

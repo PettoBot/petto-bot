@@ -119,24 +119,23 @@ function panelImage(value) {
 }
 
 /**
- * The panel of a channel: what to do to get in, with a button for each way the server allows. The server's name and icon on top, three
- * short steps, the buttons (with an emoji) and a note at the bottom. When the link cannot be given, the letters inside Discord take its place.
+ * The panel of a channel (Components V2): the server's name and icon on top, a line with the three steps, and a row for each way the
+ * server allows, with its button on the right (the link, and the letters inside Discord). When the link cannot be given, the letters
+ * inside Discord take its place. The picture the server chose goes on top as a media gallery.
  */
 function buildPanel({ guild, method, lang = currentLanguage(), imageUrl = null }) {
   const letters = canDoLetters(method);
   const link = usesLink(method) && !lettersInstead(method);
-  const row = new ActionRowBuilder();
-  if (link || !letters) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setEmoji('🔗').setStyle(letters ? ButtonStyle.Secondary : ButtonStyle.Primary));
-  if (letters) row.addComponents(startButton(guild.id, lang));
-  const steps = link && letters ? 'both' : letters ? 'letters' : 'link';
-  const text = [t(lang, 'verify.panel.title'), t(lang, 'verify.panel.welcome', { server: guild.name }), '', t(lang, `verify.panel.steps.${steps}`)].join('\n');
-  // The picture the server chose goes on top as a media gallery; with none, the panel is what it always was.
+  const way = (key, button) => new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, `verify.panel.way.${key}`))).setButtonAccessory(button);
   const container = new ContainerBuilder();
   const banner = panelImage(imageUrl);
   if (banner) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(banner)));
-  withPicture(container, text, serverPicture(guild))
+  withPicture(container, [t(lang, 'verify.panel.heading'), t(lang, 'verify.panel.intro', { server: guild.name }), t(lang, 'verify.panel.stepsLine')].join('\n'), serverPicture(guild))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
+  if (link || !letters) container.addSectionComponents(way('link', new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setEmoji('🔗').setStyle(letters ? ButtonStyle.Secondary : ButtonStyle.Primary)));
+  if (letters) container.addSectionComponents(way('letters', startButton(guild.id, lang)));
+  container
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
-    .addActionRowComponents(row)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.panel.footer')));
   return { components: [container], flags: V2 };
 }
@@ -234,7 +233,7 @@ function isPanelMessage(message, guildId) {
     if (!node) return false;
     const data = node.toJSON?.() ?? node.data ?? node;
     if (wanted.has(data.custom_id ?? data.customId)) return true;
-    return (node.components ?? data.components ?? []).some(walk);
+    return (node.components ?? data.components ?? []).some(walk) || walk(data.accessory);
   };
   return (message?.components ?? []).some(walk);
 }

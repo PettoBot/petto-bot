@@ -9,7 +9,7 @@ const COPY_FIELDS = [
   'title', 'eyebrow', 'heading', 'sub', 'forServer', 's1', 's1d', 's2', 's2d', 's3', 's3d', 'checkTitle', 'checkTitleTwo', 'turnstile',
   'lettersTitle', 'lettersHint', 'refresh', 'lettersLabel', 'button', 'verifying', 'done', 'cfLoad', 'cfExpired', 'wrong', 'locked', 'expired',
   'network', 'failed', 'loadPic', 'privacy', 'handled', 'rolesIn', 'footer', 'service',
-  'emailTitle', 'emailCopy', 'emailLabel', 'emailPlaceholder', 'emailSend', 'emailSending', 'emailSent', 'codeLabel', 'codeConfirm', 'codeResend', 'emailOk', 'emailNeed', 'emailDiscord', 'emailOr',
+  'emailTitle', 'emailCopy', 'emailLabel', 'emailPlaceholder', 'emailSend', 'emailSending', 'emailSent', 'codeLabel', 'codeConfirm', 'codeResend', 'emailOk', 'emailNeed', 'emailDiscord', 'emailOr', 'emailAgain', 'emailOther',
 ];
 
 /** The short language code (`es`, `pt` or `en`) of an Accept-Language header. The route itself uses requestLanguage() of src/i18n. */
@@ -35,7 +35,7 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
   const lettersBlock = useLetters ? `<div class="letters"><p class="check-title">${escapeHtml(copy.lettersTitle)}</p><img class="letters-img" id="letters-img" width="260" height="96" alt="" hidden><div class="letters-row"><input id="letters-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" aria-label="${escapeHtml(copy.lettersLabel)}"><button type="button" id="letters-new">${escapeHtml(copy.refresh)}</button></div><p class="letters-hint">${escapeHtml(copy.lettersHint)}</p></div>` : '';
   const emailRule = emailDomains.length ? t(language, 'web.verify.emailOnly', { domains: emailDomains.slice(0, 6).join(', ') }) : t(language, 'web.verify.emailCommon');
   // i18n-ignore: markup
-  const discordBlock = discordEmail ? `<a class="discord-email" id="discord-email" href="/api/verify/discord/start?token=${encodeURIComponent(token)}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.2.5a18 18 0 0 0-6.4 0L8.6 3a19.8 19.8 0 0 0-4.9 1.4C.6 9 0 13.5.3 18a20 20 0 0 0 6 3l1.3-2.1-2-.9.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4-2 1 1.3 2a20 20 0 0 0 6-3c.4-5.200-.6-9.700-3.800-13.600ZM8.500 15.300c-1.200 0-2.200-1.100-2.200-2.400 0-1.400 1-2.400 2.200-2.400s2.200 1.100 2.200 2.400c0 1.300-1 2.400-2.200 2.400Zm7 0c-1.200 0-2.200-1.100-2.200-2.400 0-1.400 1-2.400 2.200-2.400s2.200 1.100 2.200 2.400c0 1.300-1 2.400-2.200 2.400Z"/></svg><span>${escapeHtml(copy.emailDiscord)}</span></a><p class="email-or" id="email-or"><span>${escapeHtml(copy.emailOr)}</span></p>` : '';
+  const discordBlock = discordEmail ? `<a class="discord-email" id="discord-email" href="/api/verify/discord/start?token=${encodeURIComponent(token)}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.2.5a18 18 0 0 0-6.4 0L8.6 3a19.8 19.8 0 0 0-4.9 1.4C.6 9 0 13.5.3 18a20 20 0 0 0 6 3l1.3-2.1-2-.9.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4-2 1 1.3 2a20 20 0 0 0 6-3c.4-5.200-.6-9.700-3.800-13.600ZM8.500 15.300c-1.200 0-2.200-1.100-2.200-2.400 0-1.400 1-2.400 2.200-2.400s2.200 1.100 2.200 2.400c0 1.300-1 2.400-2.200 2.400Zm7 0c-1.200 0-2.200-1.100-2.200-2.400 0-1.400 1-2.400 2.200-2.400s2.200 1.100 2.200 2.400c0 1.300-1 2.400-2.200 2.400Z"/></svg><span>${escapeHtml(copy.emailDiscord)}</span></a><p class="email-or" id="email-or"><span>${escapeHtml(copy.emailOr)}</span></p><p class="email-after" id="email-after" hidden><a href="/api/verify/discord/start?token=${encodeURIComponent(token)}">${escapeHtml(copy.emailAgain)}</a> &middot; <a href="/verify/${encodeURIComponent(token)}">${escapeHtml(copy.emailOther)}</a></p>` : '';
   // i18n-ignore: markup; the texts in it come from the catalogs
   const emailBlock = emailRequired ? `<div class="email" id="email-box"><p class="check-title">${escapeHtml(copy.emailTitle)}</p><p class="check-copy">${escapeHtml(copy.emailCopy)} ${escapeHtml(emailRule)}</p>${discordBlock}<div class="email-row"><input id="email-input" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="${escapeHtml(copy.emailPlaceholder)}" aria-label="${escapeHtml(copy.emailLabel)}"><button type="button" id="email-send">${escapeHtml(copy.emailSend)}</button></div><div class="code-row" id="code-row" hidden><input id="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label="${escapeHtml(copy.codeLabel)}"><button type="button" id="code-confirm">${escapeHtml(copy.codeConfirm)}</button></div><p class="email-note" id="email-note" role="status" aria-live="polite"></p><div class="email-ok" id="email-ok" hidden><img src="/assets/icon-approve.png" alt=""><span>${escapeHtml(copy.emailOk)}</span></div></div>` : '';
   // i18n-ignore: markup and a product name
@@ -82,6 +82,7 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
   .email-row button,.code-row button { flex:0 0 auto; padding:0 15px; border:1px solid var(--border); border-radius:11px; background:var(--surface-2); color:var(--text); font:600 13px var(--font); cursor:pointer; white-space:nowrap; } .email-row button:hover:not(:disabled),.code-row button:hover:not(:disabled) { border-color:var(--accent); background:var(--accent-soft); } .email-row button:disabled,.code-row button:disabled { cursor:not-allowed; opacity:.5; }
   .discord-email { display:flex; align-items:center; justify-content:center; gap:9px; padding:12px 16px; border:1px solid rgba(131,153,255,.45); border-radius:11px; background:var(--accent-soft); color:var(--text); font:600 14px var(--font); text-decoration:none; } .discord-email:hover { background:rgba(131,153,255,.22); border-color:var(--accent); } .discord-email svg { color:var(--accent); }
   .email-or { display:flex; align-items:center; gap:12px; margin:12px 0; color:var(--dim); font-size:12px; } .email-or::before,.email-or::after { content:""; flex:1; height:1px; background:var(--border-soft); } .discord-email[hidden],.email-or[hidden] { display:none; }
+  .email-after { margin:10px 0 0; font-size:12px; color:var(--dim); } .email-after a { color:var(--muted); } .email-after a:hover { color:var(--text); } .email-after[hidden] { display:none; }
   .email-row[hidden],.code-row[hidden],.email-note[hidden] { display:none; }
   .email-note { margin:9px 0 0; color:var(--muted); font-size:12px; min-height:0; } .email-note:empty { display:none; } .email-note.bad { color:var(--red); }
   .email-ok { display:flex; align-items:center; gap:9px; padding:11px 13px; border-radius:10px; background:var(--green-soft); color:var(--green); font-size:13px; font-weight:600; } .email-ok[hidden] { display:none; } .email-ok img { width:18px; height:18px; }
@@ -172,7 +173,7 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
         try {
           const { response, data } = await post('/api/verify/email/confirm', { code });
           if (!response.ok || !data.ok) { codeConfirm.disabled = false; codeInput.select(); say(data.error || T.failed, true); return; }
-          emailConfirmed = true; clearInterval(timer); emailInput.closest('.email-row').hidden = true; const dBtn = document.getElementById('discord-email'); if (dBtn) dBtn.hidden = true; const dOr = document.getElementById('email-or'); if (dOr) dOr.hidden = true; codeRow.hidden = true; note.hidden = true; okBox.hidden = false; refreshButton();
+          emailConfirmed = true; clearInterval(timer); emailInput.closest('.email-row').hidden = true; const dBtn = document.getElementById('discord-email'); if (dBtn) dBtn.hidden = true; const dOr = document.getElementById('email-or'); if (dOr) dOr.hidden = true; const dAfter = document.getElementById('email-after'); if (dAfter) dAfter.hidden = true; codeRow.hidden = true; note.hidden = true; okBox.hidden = false; refreshButton();
         } catch (error) { codeConfirm.disabled = false; say(T.network, true); }
       }
       codeConfirm.addEventListener('click', confirmCode);
@@ -181,7 +182,14 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
       // Back from the login with Discord: the page says where the code went (or why it did not), and drops the ?m= from the address.
       if (NOTICE) {
         say(NOTICE.text, !NOTICE.sent);
-        if (NOTICE.sent) { codeRow.hidden = false; codeInput.focus(); }
+        if (NOTICE.sent) {
+          // The code went to the email of the Discord account: there is nothing to type, so the box (and the button that brought it here) go away, and the member can send it again or pick another way.
+          codeRow.hidden = false; codeInput.focus();
+          const dBtn = document.getElementById('discord-email'); if (dBtn) dBtn.hidden = true;
+          const dOr = document.getElementById('email-or'); if (dOr) dOr.hidden = true;
+          emailInput.closest('.email-row').hidden = true;
+          const after = document.getElementById('email-after'); if (after) after.hidden = false;
+        }
         try { history.replaceState(null, '', location.pathname); } catch (e) {}
       }
     }

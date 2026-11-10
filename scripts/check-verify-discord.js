@@ -178,7 +178,7 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
 
   // The panel: the server's name, the steps and the buttons with an emoji.
   const look = JSON.stringify(verifyLetters.buildPanel({ guild, method: 'turnstile' }).components[0].toJSON());
-  assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1.**') && look.includes('🔗'), 'the panel has the server, the steps and the emoji');
+  assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1** Pick a way') && look.includes('With a link') && look.includes('🔗'), 'the panel has the server, the steps and the emoji');
   assert.ok(look.includes('verify.example.com/assets/favicon.png'), 'a server without an icon gets Petto\'s picture');
   assert.ok(JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, iconURL: () => 'https://cdn.discordapp.com/icons/1/a.png' }, method: 'turnstile' }).components[0].toJSON()).includes('cdn.discordapp.com/icons/1/a.png'), 'or its own icon');
 
