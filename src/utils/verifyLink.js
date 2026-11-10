@@ -64,7 +64,8 @@ function verifyLinkFor(userId, guildId, lang = null) {
  * The letters inside Discord stand in for the link when the link cannot be given (VERIFY_BASE_URL missing or not a public address) and
  * the secret that signs the pictures is there: the member can still get in.
  */
-const lettersInstead = (method) => usesLink(method) && Boolean(linkProblem()) && Boolean(config.verifyTokenSecret);
+// The email code has no letters to take its place: with no link nobody can do it.
+const lettersInstead = (method) => usesLink(method) && method !== 'email' && Boolean(linkProblem()) && Boolean(config.verifyTokenSecret);
 /** Whether the member can do the letters inside Discord in this server (its method, or in place of a link that cannot be given). */
 const canDoLetters = (method) => inDiscord(method) || lettersInstead(method);
 

@@ -12,7 +12,7 @@ const config = require('../../config');
 const logger = require('../../utils/logger');
 const { t, languageOf } = require('../../i18n');
 
-const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
+const { methodOf, usesTurnstile, usesLink, sendsJoinDm } = require('../../utils/verifyMethod');
 const { normalizeChecks, applyChange, needsWebPage } = require('../../utils/verifyChecks');
 
 // How often the answer of `/verify setup` shows the channels done while a new gate role is set up (each edit is a request too).
@@ -41,7 +41,8 @@ module.exports = {
         .setDescription('Enable/disable verification and set the optional bonus role.')
         .addBooleanOption((o) => o.setName('enabled').setDescription('Turn verification on/off').setRequired(true))
         .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false))
-        .addStringOption((o) => o.setName('method').setDescription('How members prove they are human').setRequired(false).addChoices({ name: 'Cloudflare check', value: 'turnstile' }, { name: 'Letters in a picture', value: 'letters' }, { name: 'Both', value: 'both' }, { name: 'Letters inside Discord (no link)', value: 'discord' })),
+        .addStringOption((o) => o.setName('method').setDescription('How members prove they are human').setRequired(false).addChoices({ name: 'Cloudflare check', value: 'turnstile' }, { name: 'Letters in a picture', value: 'letters' }, { name: 'Both', value: 'both' }, { name: 'Letters inside Discord (no link)', value: 'discord' }, { name: 'Email code (no captcha)', value: 'email' }))
+        .addBooleanOption((o) => o.setName('dm').setDescription('Send the DM with the way to verify when a member joins (off needs a panel in a channel)').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
@@ -187,6 +188,13 @@ async function setup(interaction, lang) {
   const patch = { enabled };
   if (verifiedRole) patch.verified_role_id = verifiedRole.id;
   if (chosenMethod) patch.method = chosenMethod;
+  // The DM when a member joins can be turned off only when there is a panel in a channel: with neither nobody could verify.
+  const chosenDm = interaction.options.getBoolean('dm');
+  let dmLine = '';
+  if (chosenDm !== null) {
+    if (chosenDm === false && !existing.panel_channel_id) dmLine = t(lang, 'verify.setup.dmNeedsPanel', { emoji: EMOJI.ALERT });
+    else patch.dm_on_join = chosenDm;
+  }
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   let roleLine = '';
@@ -216,6 +224,7 @@ async function setup(interaction, lang) {
     roleLine,
     verifiedRole ? t(lang, 'verify.bonusRole', { role: `${verifiedRole}` }) : '',
     t(lang, 'verify.check', { method: methodLabel(lang, method) }),
+    dmLine,
     envLine,
   ].filter(Boolean).join('\n');
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
@@ -236,6 +245,7 @@ async function status(interaction, lang) {
     t(lang, 'verify.status.gateRole', { role: verifyConfig.unverified_role_id ? `<@&${verifyConfig.unverified_role_id}>` : t(lang, 'verify.status.notCreated') }),
     t(lang, 'verify.bonusRole', { role: verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : t(lang, 'verify.status.none') }),
     t(lang, 'verify.check', { method: methodLabel(lang, methodOf(verifyConfig)) }),
+    t(lang, 'verify.status.joinDm', { value: sendsJoinDm(verifyConfig) ? t(lang, 'verify.status.yes', { emoji: EMOJI.APPROVE }) : t(lang, 'verify.status.no', { emoji: EMOJI.DENY }) }),
     t(lang, 'verify.status.panelChannel', { channel: verifyConfig.panel_channel_id ? `<#${verifyConfig.panel_channel_id}>` : t(lang, 'verify.status.noPanel') }),
     t(lang, 'verify.status.env', { value: ENV_CONFIGURED(methodOf(verifyConfig)) ? t(lang, 'verify.status.configured', { emoji: EMOJI.APPROVE }) : t(lang, 'verify.status.missing', { emoji: EMOJI.DENY }) }),
   ];
