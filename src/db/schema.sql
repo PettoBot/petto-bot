@@ -3750,7 +3750,9 @@ alter table identity_history_optout enable row level security;
 -- How a server verifies new members: the Cloudflare check, the letters of a picture, or both.
 alter table verification_config add column if not exists method text not null default 'turnstile';
 alter table verification_config drop constraint if exists verification_config_method_check;
-alter table verification_config add constraint verification_config_method_check check (method in ('turnstile', 'letters', 'both', 'discord'));
+alter table verification_config add constraint verification_config_method_check check (method in ('turnstile', 'letters', 'both', 'discord', 'email'));
+-- Whether the DM with the way to verify goes to a member who joins (off only counts when the server has a panel in a channel: utils/verifyMethod.js, sendsJoinDm).
+alter table verification_config add column if not exists dm_on_join boolean not null default true;
 
 -- The verification panel: a message with the buttons to verify, in a channel the unverified role can see.
 alter table verification_config add column if not exists panel_channel_id text;

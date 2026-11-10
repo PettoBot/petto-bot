@@ -31,7 +31,7 @@ const backupJobs = require('../utils/backupJobs');
 const { buildFullSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
-const { methodOf, usesTurnstile, usesLetters } = require('../utils/verifyMethod');
+const { methodOf, usesTurnstile, usesLetters, usesEmail } = require('../utils/verifyMethod');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const guildPrefixes = require('../utils/guildPrefixes');
@@ -1109,7 +1109,7 @@ function startServer(client) {
   // Whether a server's members are asked for the email code: it is on, and Petto can send it (without the key of Resend nobody could verify, so it is not asked).
   let warnedNoResend = false;
   function emailAsked(settings) {
-    if (!normalizeChecks(settings?.checks).email.required) return false;
+    if (!usesEmail(methodOf(settings)) && !normalizeChecks(settings?.checks).email.required) return false;
     if (resend.configured()) return true;
     if (!warnedNoResend) { warnedNoResend = true; logger.warn('A server asks for the email code of the verification but RESEND_API_KEY and RESEND_FROM are not set: its members are not asked for it.'); }
     return false;
@@ -1286,6 +1286,12 @@ function startServer(client) {
     } catch (err) {
       logger.error('Failed to read the verification settings:', err);
       res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
+      return;
+    }
+
+    // The email code is the whole check of this method: without a way to send it nobody can pass, and nobody is let in with nothing checked.
+    if (usesEmail(method) && !resend.configured()) {
+      res.status(503).json({ ok: false, error: t(lang, 'web.verifyApi.email.unavailable') });
       return;
     }
 

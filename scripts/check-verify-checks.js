@@ -344,6 +344,29 @@ const { normalizeChecks, domainList, applyChange, normalizeIp, clientIp, signalH
   assert.ok(warned.some((w) => w.includes('RESEND_API_KEY')), 'it is said once in the log');
   resendOn = true;
 
+  // The email code as the method (no captcha): the page is only the email step, nobody passes without the code, and nobody passes with nothing checked when Petto cannot send it.
+  const methods = require('../src/utils/verifyMethod');
+  assert.deepEqual([methods.methodOf({ method: 'email' }), methods.usesLink('email'), methods.usesTurnstile('email'), methods.usesLetters('email'), methods.inDiscord('email'), methods.usesEmail('email'), methods.usesEmail('both')], ['email', true, false, false, false, true, false], 'the email method');
+  assert.deepEqual([methods.sendsJoinDm({}), methods.sendsJoinDm({ dm_on_join: false }), methods.sendsJoinDm({ dm_on_join: false, panel_channel_id: '5' }), methods.sendsJoinDm({ dm_on_join: true, panel_channel_id: '5' })], [true, true, false, true], 'the DM is only off when there is a panel');
+  settings = { method: 'email', unverified_role_id: 'un', verified_role_id: 'ok', checks: {} };
+  resendOn = true;
+  token = fresh();
+  res = await call('GET', `/verify/${token}`);
+  assert.ok(res.text.includes('id="email-box"') && res.text.includes('email-only') && !res.text.includes('class="cf-turnstile"') && !res.text.includes('id="letters-input"') && res.text.includes('Let&#39;s confirm your email') && !res.text.includes('confirm you&#39;re human'), 'the page is only the email step, and does not say human');
+  res = await verify(token);
+  assert.deepEqual([res.status, res.json.code, applied.length], [400, 'email', 0], 'not verified without the code');
+  res = await call('POST', '/api/verify/email/send', { body: { token, email: 'Jane.Doe@Gmail.com' } });
+  assert.equal(res.status, 200);
+  res = await call('POST', '/api/verify/email/confirm', { body: { token, code: sent[0].code } });
+  res = await verify(token);
+  assert.deepEqual([res.status, res.json.ok, applied.length], [200, true, 1], 'with the code the member is in');
+  resendOn = false;
+  token = fresh();
+  res = await verify(token);
+  assert.deepEqual([res.status, applied.length], [503, 0], 'with no way to send the code nobody is let in with nothing checked');
+  resendOn = true;
+  settings = { method: 'letters', unverified_role_id: 'un', verified_role_id: 'ok', checks: { email: { required: true } } };
+
   // "Use my Discord email": the login with Discord gives the address, the code goes to it, and nobody can use another account's email.
   const discordEmailModule = require('../src/utils/discordEmail');
   const realFetch = globalThis.fetch;

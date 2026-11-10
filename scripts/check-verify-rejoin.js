@@ -44,6 +44,33 @@ const makeMember = (id) => {
   assert.deepEqual(free.added, [], 'a server without verification gates nobody');
   verifyConfig = { ...verifyConfig, enabled: true };
 
+  // --- the DM can be turned off, but only when the server has a panel in a channel (with neither nobody could verify)
+  verifyConfig = { ...verifyConfig, dm_on_join: false, panel_channel_id: '555555555555555555' };
+  dms.length = 0;
+  const quiet = makeMember('444444444444444444');
+  await joinEvent.execute(quiet);
+  assert.deepEqual([quiet.added, dms], [['role-un'], []], 'with the DM off and a panel, the member is gated and gets no DM');
+  verifyConfig = { ...verifyConfig, panel_channel_id: null };
+  const noPanel = makeMember('555555555555555555');
+  await joinEvent.execute(noPanel);
+  assert.deepEqual([noPanel.added, dms], [['role-un'], ['555555555555555555']], 'with the DM off and no panel it is sent anyway');
+  verifyConfig = { ...verifyConfig, dm_on_join: true };
+
+  // --- the email code as the method: with no way to send the email nobody is gated (nobody could verify)
+  const appConfig = require('../src/config');
+  verifyConfig = { ...verifyConfig, method: 'email' };
+  dms.length = 0;
+  Object.assign(appConfig, { resendApiKey: null, resendFrom: null });
+  const stuck = makeMember('666666666666666666');
+  await joinEvent.execute(stuck);
+  assert.deepEqual([stuck.added, dms], [[], []], 'the email code without Resend: nobody is gated');
+  Object.assign(appConfig, { resendApiKey: 're_check', resendFrom: 'Petto <verify@example.com>' });
+  const gated = makeMember('777777777777777777');
+  await joinEvent.execute(gated);
+  assert.deepEqual([gated.added, dms], [['role-un'], ['777777777777777777']], 'with a way to send it the member is gated and gets the DM');
+  Object.assign(appConfig, { resendApiKey: null, resendFrom: null });
+  verifyConfig = { ...verifyConfig, method: 'letters' };
+
   // --- the sticky roles do not give the verified role back
   const restored = [];
   stub('src/db/stickyRoles.js', { getConfig: async () => ({ enabled: true }), takeSnapshot: async () => ({ left_at: new Date().toISOString(), role_ids: ['role-ok', 'role-member', 'role-un'] }) });

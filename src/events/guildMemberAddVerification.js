@@ -5,7 +5,8 @@ const { ensureUnverifiedRole } = require('../utils/verifyRole');
 const { verifyLinkFor } = require('../utils/verifyLink');
 const { sendVerifyDM } = require('../utils/verifyMessage');
 const config = require('../config');
-const { methodOf, usesLink } = require('../utils/verifyMethod');
+const { methodOf, usesLink, usesEmail, sendsJoinDm } = require('../utils/verifyMethod');
+const resend = require('../utils/resend');
 const logger = require('../utils/logger');
 const { t, peekGuildLanguage } = require('../i18n');
 
@@ -26,6 +27,11 @@ module.exports = {
       const method = methodOf(verifyConfig);
       // Without a link that opens (VERIFY_BASE_URL missing or not public), the letters inside Discord take its place when they can.
       const made = usesLink(method) ? verifyLinkFor(member.id, member.guild.id) : null;
+      // The email code needs the link and a way to send the email: with either missing nobody could verify, so nobody is gated (said once in the log).
+      if (usesEmail(method) && (made?.problem || !resend.configured())) {
+        logger.warn(`Verification by email is enabled in guild ${member.guild.id} but it cannot work (${made?.problem ?? 'no way to send the email'}) — skipping gate.`);
+        return;
+      }
       if (made?.problem && !config.verifyTokenSecret) {
         logger.warn(`Verification is enabled in guild ${member.guild.id} but no verification link can be given (${made.problem}) — skipping gate.`);
         return;
@@ -37,6 +43,8 @@ module.exports = {
       // A server that verifies only inside Discord has no link: the DM has the button.
       const link = made?.url ?? null;
 
+      // The DM can be turned off from the dashboard (the member then verifies from the panel of the server).
+      if (!sendsJoinDm(verifyConfig)) return;
       await sendVerifyDM(member, { guild: member.guild, link, lang })
         .catch(() => logger.warn(`Could not DM verification link to ${member.id} in guild ${member.guild.id} — they may have DMs closed.`));
     } catch (err) {

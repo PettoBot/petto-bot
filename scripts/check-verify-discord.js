@@ -247,6 +247,8 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   config.verifyBaseUrl = 'http://localhost:3000';
   const fallbackPanel = JSON.stringify(verifyLetters.buildPanel({ guild, method: 'turnstile' }).components[0].toJSON());
   assert.ok(fallbackPanel.includes(`vfy:start:${GUILD}`) && !fallbackPanel.includes(`vfy:link:${GUILD}`), 'the panel offers the letters');
+  const emailPanel = JSON.stringify(verifyLetters.buildPanel({ guild, method: 'email' }).components[0].toJSON());
+  assert.ok(!emailPanel.includes(`vfy:start:${GUILD}`), 'the email code has no letters to take the place of its link, even with no address that opens');
   await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
   assert.ok(text(replies.at(-1)).includes('not available right now') && text(replies.at(-1)).includes(`vfy:start:${GUILD}`), 'an old panel button says so and offers the letters');
   await verifyLetters.handleButton({ ...interaction(`vfy:start:${GUILD}`), inGuild: () => true });
