@@ -14,7 +14,7 @@ function slashJson(command, { withPrefixOptions = false } = {}) {
   // umbrellas that wrap the command (`!modtools mute users`) keep them, so they are dropped only when the menu is being built.
   const dropped = new Set([...(command.prefixOnlySubcommands ?? []), ...(withPrefixOptions ? [] : (command.slashHiddenSubcommands ?? []))]);
   // `prefixOnlyOptions` ({ 'user': ['duration'] }: the options of a subcommand that only the prefix reads): `!ban @x 7d` still takes the duration, `/ban user` does not
-  // show it (the temporary ban is `/tempban`). The builder keeps them so the prefix reads them in the same order.
+  // show it (an option the menu leaves out, if a command declares one). The builder keeps them so the prefix reads them in the same order.
   // An umbrella that wraps the command reads the options for the prefix too (`!mod ban @x 7d`), so it asks for them (`withPrefixOptions`).
   const hidden = withPrefixOptions ? {} : (command.prefixOnlyOptions ?? {});
   if (!dropped.size && !Object.keys(hidden).length) return json;
@@ -42,7 +42,12 @@ function flattenSlash(command, json) {
   const name = command.slashFlatten;
   if (!name) return json;
   const own = (json.options ?? []).find((option) => option.type === SUBCOMMAND && option.name === name);
-  return own ? { ...json, options: own.options ?? [] } : json;
+  if (!own) return json;
+  // `slashOptionOrder`: the order of the menu when it is not the one of the builder (the prefix reads the builder's order). Options it does not name keep their place after the named ones.
+  const order = command.slashOptionOrder ?? [];
+  const rank = (option) => { const at = order.indexOf(option.name); return at === -1 ? order.length : at; };
+  const options = order.length ? [...(own.options ?? [])].sort((a, b) => rank(a) - rank(b)) : (own.options ?? []);
+  return { ...json, options };
 }
 
 module.exports = { slashJson, flattenSlash };

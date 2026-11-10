@@ -20,15 +20,13 @@ const { sendDm } = require('../../utils/dmOrigin');
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
 module.exports = {
-  // The duration is read by the prefix (`!mute @x 3d`) but is not an option of `/mute user`: the temporary mute is `/tempmute`.
-  prefixOnlyOptions: { user: ['duration'] },
   // A direct slash command of its own (`/case`, `/note`...), global. When the 100 global slots run out, adding `guildScoped: true` moves a command to the second set (registered in each server).
   registerSlash: true,
   // `/mute` takes the options of its `user` subcommand directly (no `/mute user`): the rest is served by commands of their own (utils/slashJson.js `flattenSlash`).
   slashFlatten: 'user',
   aliases: ['m'],
   prefixDefaultSubcommand: 'user',
-  // A mute becomes temporary by giving a duration (`/mod mute duration:3d`, `!mute @member 3d`): `temp` is not in the `/` menu, and `!mute temp` still works.
+  // A mute becomes temporary by giving a duration (`/mute duration:3d`, `!mute @member 3d`); without one it lasts until unmuted. `temp` is not in the `/` menu, and `!mute temp` (`!tempmute`) still works.
   prefixOnlySubcommands: ['temp'],
   slashHiddenSubcommands: ['users', 'remove-users'],
   // `users`... are in the menu as `/massban`, `/masskick`...; the words stay for the prefix and the umbrellas.
@@ -42,7 +40,7 @@ module.exports = {
         .setName('user')
         .setDescription('Mute a single member, until unmuted or for the length of time given.')
         .addUserOption((opt) => opt.setName('user').setDescription('The user to mute').setRequired(true))
-        .addStringOption((opt) => opt.setName('duration').setDescription('Make it temporary: e.g. 3d, 12h (max 28d)').setRequired(false))
+        .addStringOption((opt) => opt.setName('duration').setDescription('Leave empty for no end, or e.g. 3d, 12h (max 28d)').setRequired(false))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the mute').setRequired(false)),
     )
     .addSubcommand((sub) =>

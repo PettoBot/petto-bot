@@ -69,7 +69,7 @@ module.exports = {
   // The mute, note, case, jail, nickname and lockdown actions are not in the menu either: each is a slash command of its own (`/mute`, `/note`, `/case`, `/jail`,
   // `/nickname`, `/lockdown`), so no command is there twice. The words keep working with the prefix (`!mod mute @x`, `!mod note @x text`).
   // Nor are `ban`, `kick`, `warn`, `lock`, `unlock` and `slowmode`: `/ban`, `/kick`, `/warn` and `/channel` are the commands people use, so none is in the menu twice, and
-  // `/tempban` and `/tempmute` are slash commands of their own for the temporary ones.
+  // the temporary ones are the `duration` option of `/ban` and `/mute`.
   prefixOnlySubcommands: ['tempmute', 'tempban', 'ban', 'kick', 'mute', 'warn', 'note', 'case', 'jail', 'nickname', 'lockdown', 'unlockdown', 'lock', 'unlock', 'slowmode'],
   // `!mod` alone lists the subcommands instead of saying something is wrong.
   listSubcommandsWhenEmpty: true,

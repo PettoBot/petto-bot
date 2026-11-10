@@ -10,7 +10,7 @@ const { flattenSlash, slashJson } = require('../src/utils/slashJson');
 const all = [...collectCommandData(), ...collectGuildCommandData()];
 const json = (name) => all.find((each) => each.name === name);
 const OPTIONS = {
-  ban: ['user', 'delete_message_days', 'reason'], kick: ['user', 'reason'], mute: ['user', 'reason'], warn: ['user', 'reason'], jail: ['user', 'duration', 'reason'],
+  ban: ['user', 'duration', 'reason', 'delete_message_days'], kick: ['user', 'reason'], mute: ['user', 'duration', 'reason'], warn: ['user', 'reason'], jail: ['user', 'duration', 'reason'],
   imagemute: ['user', 'reason'], reactionmute: ['user', 'reason'],
 };
 for (const [name, options] of Object.entries(OPTIONS)) {
