@@ -1085,6 +1085,8 @@ Prefix only (`!forum`, alias `!forums`; `!forumconfig` shows the module card). O
 ## Load protection
 
 Files: `utils/restGate.js` (the two lanes to Discord), `utils/sharedRestLimit.js` (the gate on `client.rest`, measurements), `utils/rateLimits.js` (prefix buckets and the cap of commands running), `utils/loadGuard.js` (the levels and what each sheds), `utils/watchdog.js`, `utils/processGuards.js`, `utils/perf.js` (measurements), `commands/utility/perf.js` (`!perf`). Checks: `scripts/check-load-protection.js`, `scripts/check-perf.js`; `scripts/bench-rest-limit.js` times the old and the new queue with a fake network.
+`!perf cpu [seconds]` (team only, `utils/cpuProfile.js`) profiles the running process for 3 to 30 seconds (10 by default) with the inspector built into Node (`Profiler.start`/`stop`, one sample per millisecond, only while it runs) and shows the functions and files that used the most processor by self time, plus idle, garbage collector and Node itself. One profile at a time; refused when the load level is critical. Check in `scripts/check-cpu-profile.js`.
+
 
 | Variable | Default | What it does |
 | --- | --- | --- |
