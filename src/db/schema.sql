@@ -4688,6 +4688,9 @@ create table if not exists feeds (
   unique (guild_id, platform, account_id, channel_id)
 );
 
+-- What went wrong in a line for the Petto team (the dashboard in Support mode, the log): the server only sees a plain reason built from `last_error`.
+alter table feeds add column if not exists last_error_detail text;
+
 create index if not exists idx_feeds_guild on feeds(guild_id);
 create index if not exists idx_feeds_account on feeds(platform, account_id) where enabled;
 

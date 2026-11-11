@@ -22,6 +22,8 @@ const KICK_PICTURE = () => fallbackPicture('kick-live');
 let kickRepaired = false; // the notices of Kick that are open are repaired once, at the first pass after the bot starts
 const schedule = new Map(); // `${platform}:${accountId}` -> { at, fails }
 
+const { describeError, sendKindOf } = require('./errorDetail');
+
 const keyOf = (platform, accountId) => `${platform}:${accountId}`;
 
 // What was seen is also kept in memory (until the bot restarts): when the database cannot write it, nothing already looked at is posted again by this process.
@@ -78,16 +80,29 @@ function passes(feed, item) {
 }
 
 async function recordSuccess(feed) {
-  await feedsDb.update(feed.guild_id, feed.id, { last_sent_at: new Date().toISOString(), failures: 0, last_error: null, last_error_at: null });
+  await feedsDb.update(feed.guild_id, feed.id, { last_sent_at: new Date().toISOString(), failures: 0, last_error: null, last_error_at: null, last_error_detail: null });
 }
 
 /** A failure to post: it is written down, and a feed that has failed five times in a row is turned off so it stops trying for ever. */
-async function recordFailure(feed, kind) {
+async function recordFailure(feed, kind, error = null) {
   const failures = (feed.failures ?? 0) + 1;
   feed.failures = failures;
-  const patch = { failures, last_error: kind, last_error_at: new Date().toISOString() };
+  const detail = describeError(error);
+  const patch = { failures, last_error: kind, last_error_at: new Date().toISOString(), last_error_detail: detail };
+  noteForTeam(feed, kind, detail);
   if (failures >= FAILURES_TO_STOP) patch.enabled = false;
   await feedsDb.update(feed.guild_id, feed.id, patch).catch((error) => logger.warn(`Feed ${feed.id}: could not write its failure: ${error.message}`));
+}
+
+// The log says what failed once for each feed and each reason (not at every failure), with the line the dashboard shows to the team.
+const told = new Map(); // feed id -> `${kind}|${detail}`
+function noteForTeam(feed, kind, detail) {
+  const key = `${kind}|${detail ?? ''}`;
+  if (told.get(feed.id) === key) return;
+  if (told.size >= 5_000) told.delete(told.keys().next().value);
+  told.set(feed.id, key);
+  // i18n-ignore: a line of the log, with ids only (no context object: a Discord permission error here is not a notice to the server)
+  logger.warn(`Feed ${feed.id} (${feed.platform} ${String(feed.account_name ?? '').slice(0, 60)}, guild ${feed.guild_id}): ${kind}${detail ? ` - ${detail}` : ''}`);
 }
 
 const POLL_ERROR_AFTER = 3; // failed looks in a row (each one later than the last) before the feed shows the error
@@ -95,12 +110,15 @@ const POLL_ERROR_AFTER = 3; // failed looks in a row (each one later than the la
 const POLL_ERRORS = new Set(['noFeed', 'rateLimited', 'blocked', 'unavailable']);
 const pollErrorOf = (kind) => (POLL_ERRORS.has(kind) ? kind : 'unavailable');
 
-async function notePollError(feeds, kind, now) {
+async function notePollError(feeds, kind, now, error = null) {
   const label = pollErrorOf(kind);
+  const detail = describeError(error) ?? (label === kind ? null : describeError(String(kind)));
   for (const feed of feeds) {
-    if (feed.last_error === label) continue;
+    if (feed.last_error === label && (feed.last_error_detail ?? null) === (detail ?? null)) continue;
     feed.last_error = label;
-    await feedsDb.update(feed.guild_id, feed.id, { last_error: label, last_error_at: new Date(now).toISOString() }).catch((error) => logger.warn(`Feed ${feed.id}: could not write its error: ${error.message}`));
+    feed.last_error_detail = detail;
+    noteForTeam(feed, label, detail);
+    await feedsDb.update(feed.guild_id, feed.id, { last_error: label, last_error_at: new Date(now).toISOString(), last_error_detail: detail }).catch((error) => logger.warn(`Feed ${feed.id}: could not write its error: ${error.message}`));
   }
 }
 
@@ -109,7 +127,8 @@ async function clearPollError(feeds) {
   for (const feed of feeds) {
     if (!POLL_ERRORS.has(feed.last_error)) continue;
     feed.last_error = null;
-    await feedsDb.update(feed.guild_id, feed.id, { last_error: null, last_error_at: null }).catch(() => {});
+    feed.last_error_detail = null;
+    await feedsDb.update(feed.guild_id, feed.id, { last_error: null, last_error_at: null, last_error_detail: null }).catch(() => {});
   }
 }
 
@@ -183,7 +202,8 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
     const channel = guild.channels.cache.get(feed.channel_id);
     const problem = channelProblem(guild, channel);
     if (problem) {
-      await recordFailure(feed, problem === 'permission' ? 'permission' : 'channelGone');
+      // i18n-ignore: the detail goes to the Petto team only
+      await recordFailure(feed, problem === 'permission' ? 'permission' : 'channelGone', `the channel ${problem === 'permission' ? 'cannot be used: Petto lacks a permission there' : 'is gone or Petto cannot see it'}`);
     } else {
       for (const item of toPost) {
         try {
@@ -193,7 +213,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
           if (item.type === 'live' && item.publishedAt) noteLateLive(feed, item, now);
           if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item }).catch((error) => logger.warn(`Feed ${feed.id}: could not save its live message: ${error.message}`)); // the notice is out: this is not a failure to post
         } catch (error) {
-          await recordFailure(feed, error?.code === 10003 ? 'channelGone' : error?.code === 50001 || error?.code === 50013 ? 'permission' : 'send');
+          await recordFailure(feed, sendKindOf(error), error);
           break;
         }
       }
@@ -317,10 +337,11 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
         const previous = schedule.get(keyOf(platform, id))?.fails ?? 0;
         if (result.error) {
           schedule.set(keyOf(platform, id), { at: now + Math.max(Math.min(backoffCap, provider.interval * 2 ** Math.min(previous + 1, 5)), result.retryAfter ?? 0), fails: previous + 1 }); // `retryAfter`: what the service asked for (Reddit)
-          if (result.error === 'notFound' && previous + 1 >= 6) for (const feed of list) await recordFailure(feed, 'accountGone');
+          // i18n-ignore: the detail goes to the Petto team only
+          if (result.error === 'notFound' && previous + 1 >= 6) for (const feed of list) await recordFailure(feed, 'accountGone', 'the service answered "not found" 6 times in a row');
           // An account that cannot be read time after time is shown in the list of feeds (`!feed list`, the dashboard) with why, instead of
           // staying "on" and silent. It is not turned off: it posts again by itself when the account answers.
-          else if (previous + 1 >= POLL_ERROR_AFTER) await notePollError(list, result.error, now);
+          else if (previous + 1 >= POLL_ERROR_AFTER) await notePollError(list, result.error, now, result.detail);
           continue;
         }
         await clearPollError(list);

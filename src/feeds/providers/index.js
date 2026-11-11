@@ -103,7 +103,7 @@ async function restoreYoutubeState() {
 const listPoll = (read, concurrency = 3) => async function poll(accounts, _tracked, { now = Date.now() } = {}) {
   const results = new Map();
   await forEachWithConcurrency(accounts, async (account) => {
-    try { results.set(account.id, { items: (await read(account, now)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+    try { results.set(account.id, { items: (await read(account, now)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
   }, concurrency);
   return results;
 };
@@ -168,7 +168,7 @@ const picturesFeed = {
         const item = await pictures.pictureOf(pictures.tagsOf(account.id), `${minutes}:${slot}`, schedule.slotStart(slot, minutes));
         if (!item) logger.warn(`Pictures: no picture passed the check for "${pictures.tagsOf(account.id).join(' ')}" (slot ${slot} of ${minutes} minutes); the next look tries again.`);
         results.set(account.id, { items: item ? [item] : [] });
-      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
     }
     return results;
   },
@@ -194,7 +194,7 @@ const randomMusicFeed = {
       try {
         const item = await music.randomSong(`${minutes}:${slot}`, schedule.slotStart(slot, minutes));
         results.set(account.id, { items: item ? [item] : [] });
-      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
     }
     return results;
   },
@@ -254,7 +254,7 @@ const PROVIDERS = {
           // What YouTube pushed is added to what the feed shows: the feed can take minutes to show a new video, the push does not.
           const known = new Set(fromFeed.map((entry) => entry.videoId));
           entries.set(account.id, [...websub.pushedFor(account.id).filter((entry) => !known.has(entry.videoId)), ...fromFeed]);
-        } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
 
       // One call (a unit for up to 50 videos) says which new videos are live or about to be, and whether the streams being followed are still on.
@@ -346,7 +346,7 @@ const PROVIDERS = {
       const results = new Map();
       for (const account of accounts) {
         // An account that could not be read is not offline: its notice stays open and the look is told as a failure (with the wait Kick asked for).
-        if (failed[account.id]) { results.set(account.id, { items: [], error: failed[account.id].kind ?? 'unavailable', retryAfter: failed[account.id].retryAfterMs }); continue; }
+        if (failed[account.id]) { results.set(account.id, { items: [], error: failed[account.id].kind ?? 'unavailable', detail: failed[account.id].message, retryAfter: failed[account.id].retryAfterMs }); continue; }
         const channel = live[account.id];
         let item = channel ? kick.toItem(channel, account) : null;
         // The preview of a Kick stream is made a few minutes after it starts, and even when its address answers Discord can fail to draw it (a broken picture
@@ -371,7 +371,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: (await bluesky.fetchPosts(account.id, 15)).map(bluesky.toItem).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: (await bluesky.fetchPosts(account.id, 15)).map(bluesky.toItem).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -394,7 +394,7 @@ const PROVIDERS = {
           if (newKind) { results.set(account.id, { items: (await modrinth.fetchNewProjects(newKind)).filter((item) => fresh(item, now)) }); return; }
           const project = await modrinth.resolveProject(account.id);
           results.set(account.id, { items: (await modrinth.fetchVersions(account.id, 6)).map((version) => modrinth.toItem(project, version)).filter((item) => fresh(item, now)) });
-        } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -408,7 +408,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: stamped('rss', account, (await rss.readRss(account.id, 15)).entries.map((entry) => rss.toItem('rss', 'post', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: stamped('rss', account, (await rss.readRss(account.id, 15)).entries.map((entry) => rss.toItem('rss', 'post', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -446,7 +446,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: stamped('pinterest', account, (await rss.readPinterest(account.id)).entries.map((entry) => rss.toItem('pinterest', 'pin', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: stamped('pinterest', account, (await rss.readPinterest(account.id)).entries.map((entry) => rss.toItem('pinterest', 'pin', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -460,7 +460,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: (await github.fetchReleases(account.id)).map((release) => github.toItem(account, release)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: (await github.fetchReleases(account.id)).map((release) => github.toItem(account, release)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -478,7 +478,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: [packages.toItem('npm', account, await packages.npmLatest(account.id), now)] }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: [packages.toItem('npm', account, await packages.npmLatest(account.id), now)] }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -496,7 +496,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: [packages.toItem('pypi', account, await packages.pypiLatest(account.id), now)].filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: [packages.toItem('pypi', account, await packages.pypiLatest(account.id), now)].filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
@@ -511,8 +511,8 @@ const PROVIDERS = {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
         const list = steam.parseStore(account.id);
-        if (list) { try { results.set(account.id, { items: await steam.fetchStoreList(list, now) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); } return; }
-        try { results.set(account.id, { items: (await steam.fetchNews(account.id)).map((entry) => steam.toItem(account, entry)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        if (list) { try { results.set(account.id, { items: await steam.fetchStoreList(list, now) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); } return; }
+        try { results.set(account.id, { items: (await steam.fetchNews(account.id)).map((entry) => steam.toItem(account, entry)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', detail: error.message }); }
       }, this.concurrency);
       return results;
     },
