@@ -1,5 +1,5 @@
 // Closes the periods of the role quotas that are over (utils/roleQuotas.js `runDueRules`): judges the members, takes the role from who reached the strikes and tells them.
-const { runDueRules, flush } = require('../utils/roleQuotas');
+const { runDueRules, runReminders, flush } = require('../utils/roleQuotas');
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
 
@@ -8,6 +8,7 @@ const POLL_INTERVAL_MS = 5 * 60_000;
 function startRoleQuotaJob(client) {
   const run = exclusiveTask(async () => {
     await flush(); // what was counted a moment ago is in the database before a period is closed
+    await runReminders(client).catch((err) => logger.warn(`Role quota reminders error: ${err.message}`)); // before the periods close: a period that is over has nothing left to remind
     await runDueRules(client);
   });
   setTimeout(() => run().catch((err) => logger.error('Role quota job error:', err)), 90_000).unref?.();

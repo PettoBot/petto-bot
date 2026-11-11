@@ -14,10 +14,10 @@ function listRules(guildId) {
   });
 }
 
-async function upsertRule(guildId, { roleId, periodDays, minMessages, maxStrikes, notifyDm = true, reportChannelId = null }) {
+async function upsertRule(guildId, { roleId, periodDays, minMessages, maxStrikes, notifyDm = true, reportChannelId = null, channelMode, channelIds, remindHours }) {
   const { data, error } = await database
     .from('role_quotas')
-    .upsert({ guild_id: guildId, role_id: roleId, period_days: periodDays, min_messages: minMessages, max_strikes: maxStrikes, notify_dm: notifyDm, report_channel_id: reportChannelId, period_started_at: new Date().toISOString() }, { onConflict: 'guild_id,role_id' })
+    .upsert({ guild_id: guildId, role_id: roleId, period_days: periodDays, min_messages: minMessages, max_strikes: maxStrikes, notify_dm: notifyDm, report_channel_id: reportChannelId, period_started_at: new Date().toISOString(), ...(channelMode ? { channel_mode: channelMode, channel_ids: channelIds ?? [] } : {}), ...(remindHours !== undefined ? { remind_hours: remindHours } : {}) }, { onConflict: 'guild_id,role_id' })
     .select('*')
     .single();
   rulesCache.delete(String(guildId));
@@ -25,6 +25,35 @@ async function upsertRule(guildId, { roleId, periodDays, minMessages, maxStrikes
   // A new quota starts a new period: what was counted for the old one does not count for it (the strikes stay).
   await database.from('role_quota_members').update({ messages: 0 }).eq('guild_id', guildId).eq('role_id', roleId);
   return data;
+}
+
+/** Changes where the messages count (without starting a new period). */
+async function setChannels(guildId, roleId, mode, channelIds) {
+  const { data, error } = await database.from('role_quotas').update({ channel_mode: mode, channel_ids: channelIds }).eq('guild_id', guildId).eq('role_id', roleId).select('role_id');
+  rulesCache.delete(String(guildId));
+  if (error) throw error;
+  return data.length > 0;
+}
+
+/** Changes the reminder (0 turns it off) without starting a new period. */
+async function setReminder(guildId, roleId, hours) {
+  const { data, error } = await database.from('role_quotas').update({ remind_hours: hours }).eq('guild_id', guildId).eq('role_id', roleId).select('role_id');
+  rulesCache.delete(String(guildId));
+  if (error) throw error;
+  return data.length > 0;
+}
+
+/** The reminder of this period was sent. */
+async function markReminded(rule) {
+  const { error } = await database.from('role_quotas').update({ reminded_period: rule.period_started_at }).eq('guild_id', rule.guild_id).eq('role_id', rule.role_id);
+  rulesCache.delete(String(rule.guild_id));
+  if (error) throw error;
+}
+
+/** The rules that ask for a reminder and have not sent it in this period (the job looks at the hour). */
+async function listRemindable() {
+  const { rows } = await getPrimaryPool().query("select * from role_quotas where remind_hours > 0 and (reminded_period is null or reminded_period <> period_started_at) and period_started_at + make_interval(days => period_days) - make_interval(hours => remind_hours) <= now() and period_started_at + make_interval(days => period_days) > now() limit 200");
+  return rows;
 }
 
 async function removeRule(guildId, roleId) {
@@ -116,4 +145,4 @@ async function setExcuse(guildId, roleIds, userId, until) {
   return roleIds.length;
 }
 
-module.exports = { listRules, upsertRule, removeRule, listDueRules, listMembers, listMembersOfUser, addMessages, markNewHolder, forgetHolder, saveResults, forgetMembers, closePeriod, setExcuse };
+module.exports = { listRules, upsertRule, setChannels, setReminder, markReminded, listRemindable, removeRule, listDueRules, listMembers, listMembersOfUser, addMessages, markNewHolder, forgetHolder, saveResults, forgetMembers, closePeriod, setExcuse };
