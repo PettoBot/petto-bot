@@ -16,32 +16,28 @@ const caseCard = require('../src/utils/caseCard');
 const infoCard = require('../src/utils/infoCard');
 const { plainCard } = require('../src/utils/plainCard');
 
-// The rule: green, red and the yellow of the warnings only.
-assert.equal(semanticColor(COLORS.GREEN), COLORS.GREEN);
-assert.equal(semanticColor(COLORS.RED), COLORS.RED);
-assert.equal(semanticColor(COLORS.YELLOW), COLORS.YELLOW);
-for (const other of [COLORS.DEFAULT, 0x5865f2, 0xf0a88f, 0x8c7cff, null, undefined, 'x']) assert.equal(semanticColor(other), null, `${other} is not a color of a card`);
-assert.equal(colorFromText(`${EMOJI.APPROVE} Done`), COLORS.GREEN);
-assert.equal(colorFromText(`${EMOJI.DENY} No`), COLORS.RED);
-assert.equal(colorFromText(`${EMOJI.WARNING} Careful`), COLORS.YELLOW, 'a warning is yellow, not red');
-assert.equal(colorFromText(`Something ${EMOJI.APPROVE} in the middle`), null, 'only the icon that starts the text counts');
-assert.equal(colorFromText('Plain text'), null);
+// The rule: a status card (a confirmation, a refusal, a warning, an answer) has no color on its side; the icon at the start says what it is. Only the sanction cards keep theirs.
+for (const color of [COLORS.GREEN, COLORS.RED, COLORS.YELLOW, COLORS.DEFAULT, 0x5865f2, 0xf0a88f, 0x8c7cff, null, undefined, 'x']) assert.equal(semanticColor(color), null, `${color} is not a color of a card`);
+for (const text of [`${EMOJI.APPROVE} Done`, `${EMOJI.DENY} No`, `${EMOJI.WARNING} Careful`, 'Plain text']) assert.equal(colorFromText(text), null, 'the icon does not color the card');
 
 const accentOf = (container) => container.toJSON().accent_color ?? null;
 assert.equal(accentOf(caseCard.textCard('Plain', 0x4b4f59)), null, 'a grey card has no color');
-assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`, null)), null, 'null is a card with no color, whatever the text');
-assert.equal(accentOf(caseCard.textCard('Plain', 0xffd563)), null, 'a card of another yellow has no color');
-assert.equal(accentOf(caseCard.textCard(`${EMOJI.WARNING} Unknown command`)), COLORS.YELLOW, 'the unknown command card is the yellow of the warnings');
-assert.equal(accentOf(caseCard.textCard('Plain', COLORS.GREEN)), COLORS.GREEN);
-assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`)), COLORS.GREEN, 'a confirmation is green');
-assert.equal(accentOf(caseCard.textCard(`${EMOJI.DENY} Refused`)), COLORS.RED, 'a refusal is red');
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`, null)), null);
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.WARNING} Unknown command`)), null, 'a warning has no color');
+assert.equal(accentOf(caseCard.textCard('Plain', COLORS.GREEN)), null, 'a green asked for is not drawn');
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`)), null, 'a confirmation has no color');
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.DENY} Refused`)), null, 'a refusal has no color');
 assert.equal(accentOf(caseCard.textCard('Warned 3 people', 0xfed53c, { keep: true })), COLORS.YELLOW, 'a sanction card keeps its color');
 assert.equal(accentOf(infoCard.buildInfoCard({ title: 'x' })), null, 'an info card has no color');
 assert.equal(accentOf(infoCard.buildInfoCard({ title: 'x', accent: 0x8c7cff })), null);
-assert.equal(accentOf(infoCard.buildInfoCard({ title: 'x', accent: COLORS.RED })), COLORS.RED);
+assert.equal(accentOf(infoCard.buildInfoCard({ title: 'x', accent: COLORS.RED })), null);
 assert.equal(accentOf(plainCard('Plain', 0xffd563).components[0]), null);
-assert.equal(accentOf(plainCard(`${EMOJI.APPROVE} ok`).components[0]), COLORS.GREEN);
+assert.equal(accentOf(plainCard(`${EMOJI.APPROVE} ok`).components[0]), null);
 assert.equal(accentOf(infoCard.noticePayload('Nothing here').components[0]), null);
+const { unknownSubcommandCard } = require('../src/utils/usageCard');
+const { SlashCommandBuilder } = require('discord.js');
+const sample = { data: new SlashCommandBuilder().setName('sample').setDescription('Sample.').addSubcommand((sub) => sub.setName('create').setDescription('Create it.')).addSubcommand((sub) => sub.setName('remove').setDescription('Remove it.')) };
+assert.equal(unknownSubcommandCard({ command: sample, prefix: ',', name: 'sample', typed: 'list', lang: 'en' }).components[0].toJSON().accent_color ?? null, null, 'the card of a subcommand that does not exist has no color');
 
 // No decorative color is written in the code: a hex literal given to a card must be one of the greens and reds (or the yellow of a sanction).
 const allowed = new Set(['0xa5ea7a', '0xfe6465', '0xff6b6b', '0xff2d2d', '0xfed53c']);
@@ -93,14 +89,14 @@ assert.deepEqual(parts, [10, 14, 10], 'two titles of a text are told apart by a 
 const ops = read('src/utils/discordOps.js');
 assert.match(ops, /STATE_COLORS = \{ online: 0xa5ea7a, idle: 0xfed53c, outage: 0xfe6465, offline: 0xfe6465 \}/, 'a degraded service is yellow');
 assert.match(ops, /LEVEL_COLORS = \{ error: 0xfe6465, warn: 0xfed53c, info: null \}/, 'a warning of the host log is yellow');
-// The alerts and refusals keep their colors: the usage card, the help that finds nothing, the counting alerts, the partner replies and the ping.
+// The alerts and refusals have no color either: the usage card, the help that finds nothing, the counting alerts and the partner replies.
 const usage = require('../src/utils/usageCard');
 const usageCommand = { data: { toJSON: () => ({ options: [{ type: 1, name: 'add', description: 'x', options: [] }] }) } };
-assert.equal(accentOf(usage.unknownSubcommandCard({ command: usageCommand, prefix: ',', name: 'autoresponder', typed: '--previous', lang: 'en' }).components[0]), COLORS.YELLOW, 'a subcommand that does not exist is a warning');
-assert.equal(accentOf(usage.missingOptionCard({ command: usageCommand, prefix: ',', name: 'autoresponder', argText: '', lang: 'en' }).components[0]), COLORS.YELLOW, 'a missing option is a warning');
+assert.equal(accentOf(usage.unknownSubcommandCard({ command: usageCommand, prefix: ',', name: 'autoresponder', typed: '--previous', lang: 'en' }).components[0]), null, 'a subcommand that does not exist has no color');
+assert.equal(accentOf(usage.missingOptionCard({ command: usageCommand, prefix: ',', name: 'autoresponder', argText: '', lang: 'en' }).components[0]), null, 'a missing option has no color');
 const { TONES } = require('../src/utils/plainCard');
 assert.equal(TONES.yellow, COLORS.YELLOW); assert.equal(TONES.orange, COLORS.YELLOW);
-assert.equal(accentOf(plainCard('Wait', TONES.yellow).components[0]), COLORS.YELLOW, 'a yellow tone is the yellow of the warnings');
-for (const [icon, color] of [['✅', COLORS.GREEN], ['❌', COLORS.RED], ['⚠️', COLORS.YELLOW]]) assert.equal(colorFromText(`${icon} Text`), color, `${icon} at the start of a text gives its color`);
+assert.equal(accentOf(plainCard('Wait', TONES.yellow).components[0]), null, 'a yellow tone is drawn with no color');
+for (const icon of ['✅', '❌', '⚠️']) assert.equal(colorFromText(`${icon} Text`), null, `${icon} at the start of a text does not color the card`);
 assert.match(read('src/commands/info/ping.js'), /const YELLOW = 0xfed53c;/, 'a slow ping is yellow');
 console.log('Checked the colors and titles of the cards, and that every sanction type has its parts.');

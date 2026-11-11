@@ -433,11 +433,11 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.equal(alone.sent.length, 1);
     for (const [name] of TABLES[umbrella]) assert.ok(alone.sent[0].includes(`!${umbrella} ${name}\``), `the list of !${umbrella} names ${name}`);
     assert.match(alone.sent[0], /has these ways to use it/);
-    assert.ok(!/is not part of/.test(alone.sent[0]), `!${umbrella} alone is not a mistake`);
+    assert.ok(!/I could not find/.test(alone.sent[0]), `!${umbrella} alone is not a mistake`);
     assert.equal((await send(`,${umbrella}`)).sent.length, 1);
     const wrong = await send(`!${umbrella} banana`);
     assert.equal(wrong.called.length, 0);
-    assert.match(wrong.sent[0], /is not part of/, 'a word that is not a subcommand is told');
+    assert.match(wrong.sent[0], /I could not find/, 'a word that is not a subcommand is told');
   }
   assert.ok((await send('!game')).sent[0].includes('Ask the magic 8-ball'), 'with what each one does');
   assert.ok((await send('!staff')).sent[0].includes('Server-mute a member in voice.'));

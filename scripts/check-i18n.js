@@ -491,8 +491,8 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
     const missing = JSON.stringify(missingOptionCard({ command: fakeCommand, prefix: '!', name: 'demo', argText: 'create', missing: 'name', lang }).components.map(json));
     assert.ok(missing.includes(t(lang, 'core.usage.type.text')), `${lang}: the type of the option`);
   }
-  assert.match(JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate', lang: 'es' }).components.map(json)), /Quisiste decir/);
-  assert.match(JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate' }).components.map(json)), /Did you mean/, 'English by default');
+  assert.match(JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate', lang: 'es' }).components.map(json)), /Quizá querías/);
+  assert.match(JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate' }).components.map(json)), /Maybe you meant/, 'English by default');
   assert.equal(tn('pt-BR', 'core.pager.entries', 1), '1 item');
   assert.equal(tn('es', 'core.pager.entries', 1200), '1,200 entradas');
   assert.equal(formatList('pt-BR', ['a', 'b', 'c']), 'a, b e c');

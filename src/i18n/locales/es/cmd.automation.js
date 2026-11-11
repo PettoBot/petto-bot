@@ -319,7 +319,7 @@ module.exports = {
   'cmd.automation.customcommand.vars.desc': 'Muestra los argumentos, las variables y los flags de respuesta de los comandos personalizados.',
   'cmd.automation.customcommand.show.desc': 'Muestra un comando personalizado sin activarlo.',
   'cmd.automation.customcommand.show.opt.name.desc': 'Nombre del comando',
-  'cmd.automation.disablecommand.desc': 'Desactiva comandos en todo el servidor o en algunos canales.',
+  'cmd.automation.disablecommand.desc': 'Desactiva comandos en todo el servidor, en algunos canales o en una categoría.',
   'cmd.automation.disablecommand.disable.desc': 'Desactiva uno o más comandos (sirven los alias y category:<nombre>).',
   'cmd.automation.disablecommand.disable.opt.command.desc': 'Comandos sin el prefijo, varios a la vez: "suggest rank 8ball" o "category:fun"',
   'cmd.automation.disablecommand.disable.opt.channel.desc': 'Solo en este canal (por defecto: todo el servidor)',

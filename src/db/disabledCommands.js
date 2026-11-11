@@ -120,11 +120,17 @@ function invalidateCache(guildId) {
   cache.delete(guildId);
 }
 
-/** Same result as `find()`, from the server's cached rules. A server-wide rule wins over a channel rule. */
-async function findCached(guildId, command, channelId) {
+/**
+ * Same result as `find()`, from the server's cached rules. A server-wide rule wins over a rule of the channel, and that over a rule of its category.
+ * `parentIds` are the category of the channel (and, for a thread, the category of the channel it is in): a rule saved for a category stops the command in every
+ * channel inside it.
+ */
+async function findCached(guildId, command, channelId, parentIds = []) {
   const rows = await listForGuildCached(guildId);
+  const parents = new Set((parentIds ?? []).filter(Boolean).map(String));
   return rows.find((r) => r.command === command && r.channel_id === null)
     ?? rows.find((r) => r.command === command && channelId && r.channel_id === String(channelId))
+    ?? (parents.size ? rows.find((r) => r.command === command && r.channel_id && parents.has(String(r.channel_id))) : null)
     ?? null;
 }
 

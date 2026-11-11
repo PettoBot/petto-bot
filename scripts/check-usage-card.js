@@ -39,9 +39,9 @@ assert.deepEqual(suggest(listPaths(command), ''), []);
 
 let card = unknownSubcommandCard({ command, prefix: ',', name: 'boosterrole', typed: 'list' });
 let out = strip(card);
-assert.match(out, /`list` is not part of `,boosterrole`/);
-assert.match(out, /Did you mean `,boosterrole admin list`\?/);
-assert.match(out, /`,help boosterrole` shows everything it can do/);
+assert.match(out, /I could not find `list` in `,boosterrole`/);
+assert.match(out, /Maybe you meant `,boosterrole admin list`\?/);
+assert.match(out, /`,help boosterrole` shows what it can do/);
 assert.ok(!out.includes('admin set'), 'a hidden way is not shown');
 assert.ok(out.split('\n').length <= 3, 'the card is three lines at most');
 assert.ok(out.length < 220, 'and short');
@@ -49,13 +49,13 @@ assert.equal(card.flags, 1 << 15); assert.deepEqual(card.allowedMentions, { repl
 assert.equal(card.components.length, 1, 'one block, with no extra dividers');
 card = unknownSubcommandCard({ command, prefix: '!', name: 'boosterrole', typed: 'zzzzz' });
 out = strip(card);
-assert.ok(!out.includes('Did you mean'), 'no guess when nothing is close');
-assert.match(out, /Try `create` `remove` `admin`/, 'the first words of the ways to use it, without repeats');
+assert.ok(!out.includes('Maybe you meant'), 'no guess when nothing is close');
+assert.match(out, /You can use `create` `remove` `admin`/, 'the first words of the ways to use it, without repeats');
 card = unknownSubcommandCard({ command, prefix: '!', name: 'boosterrole', typed: '' });
-assert.match(strip(card), /`\(nothing\)` is not part of/);
+assert.match(strip(card), /I could not find `\(nothing\)` in/);
 // Two guesses are told in one line.
 const two = { data: new SlashCommandBuilder().setName('two').setDescription('x').addSubcommandGroup((g) => g.setName('a').setDescription('x').addSubcommand((s) => s.setName('list').setDescription('x'))).addSubcommandGroup((g) => g.setName('b').setDescription('x').addSubcommand((s) => s.setName('list').setDescription('x'))) };
-assert.match(strip(unknownSubcommandCard({ command: two, prefix: ',', name: 'two', typed: 'list' })), /Did you mean `,two a list` or `,two b list`\?/);
+assert.match(strip(unknownSubcommandCard({ command: two, prefix: ',', name: 'two', typed: 'list' })), /Maybe you meant `,two a list` or `,two b list`\?/);
 
 // A long command stays short: the first words and how many more.
 const big = { data: new SlashCommandBuilder().setName('big').setDescription('x') };

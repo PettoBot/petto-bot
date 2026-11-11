@@ -242,7 +242,7 @@ module.exports = {
   guildScoped: true,
   data: new SlashCommandBuilder()
     .setName('disablecommand')
-    .setDescription('Turn commands off for the whole server or in some channels.')
+    .setDescription('Turn commands off for the whole server, some channels or a category.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('disable').setDescription('Turn one or more commands off (aliases and category:<name> work).').addStringOption((o) => o.setName('command').setDescription('Commands without the prefix, several at once: "suggest rank 8ball" or "category:fun"').setRequired(true)).addChannelOption(channelOption('Only in this channel (default: the whole server)')))

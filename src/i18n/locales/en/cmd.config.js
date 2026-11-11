@@ -172,7 +172,7 @@ module.exports = {
   'cmd.config.config.commandroles.remove.opt.role.desc': 'The role (empty: every role of the command)',
   'cmd.config.config.commandroles.list.desc': 'See every restricted command and its roles.',
   'cmd.config.config.commandroles.reset.desc': 'Open every restricted command again.',
-  'cmd.config.config.disabledcommands.desc': 'Turn commands off for the whole server or in some channels.',
+  'cmd.config.config.disabledcommands.desc': 'Turn commands off for the whole server, some channels or a category.',
   'cmd.config.config.disabledcommands.disable.desc': 'Turn one or more commands off (aliases and category:<name> work).',
   'cmd.config.config.disabledcommands.disable.opt.command.desc': 'Commands without the prefix, several at once: "suggest rank 8ball" or "category:fun"',
   'cmd.config.config.disabledcommands.disable.opt.channel.desc': 'Only in this channel (default: the whole server)',

@@ -96,7 +96,7 @@ const text = (payload) => fakes.textOf(payload.components);
   // ── the cards of the tools
   const done = cards.buildDone('locked', { actor: '5', thread: '9' });
   assert.match(text(done), /<@5>: Successfully locked <#9>/); assert.deepEqual(done.allowedMentions, { parse: [], repliedUser: false }, 'the mention is quiet');
-  assert.equal(done.components[0].toJSON().accent_color, 0xa5ea7a, 'a green card');
+  assert.equal(done.components[0].toJSON().accent_color ?? null, null, 'a card with no color');
   assert.match(text(cards.buildDone('locked', { actor: '5', thread: '9', reason: 'spam' })), /Reason: spam/);
 
   // ── the alias, and no new slash command

@@ -414,7 +414,7 @@ module.exports = {
   'cmd.automation.customcommand.vars.desc': 'Show custom-command arguments, variables, and reply flags.',
   'cmd.automation.customcommand.show.desc': 'Show a custom command without triggering it.',
   'cmd.automation.customcommand.show.opt.name.desc': 'Command name',
-  'cmd.automation.disablecommand.desc': 'Turn commands off for the whole server or in some channels.',
+  'cmd.automation.disablecommand.desc': 'Turn commands off for the whole server, some channels or a category.',
   'cmd.automation.disablecommand.disable.desc': 'Turn one or more commands off (aliases and category:<name> work).',
   'cmd.automation.disablecommand.disable.opt.command.desc': 'Commands without the prefix, several at once: "suggest rank 8ball" or "category:fun"',
   'cmd.automation.disablecommand.disable.opt.channel.desc': 'Only in this channel (default: the whole server)',

@@ -142,7 +142,7 @@ const typed = async (command, text) => {
   out = await ask(github, { sub: 'contributors', strings: { repository: 'PettoBot/petto-bot' } });
   assert.match(out.text, /\*\*1\.\*\* \[liam\].*321 commits/); assert.match(out.text, /1 commit[^s]/);
   out = await ask(github, { sub: 'issues', strings: { repository: 'a/empty' } });
-  assert.match(out.text, /No open issues/); assert.equal(out.card.accent_color, 0xa5ea7a, 'good news is green');
+  assert.match(out.text, /No open issues/); assert.equal(out.card.accent_color, undefined, 'good news has no color');
   out = await ask(github, { sub: 'pulls', strings: { repository: 'a/empty' } });
   assert.match(out.text, /No open pull requests/);
   out = await ask(github, { sub: 'contributors', strings: { repository: 'a/empty' } });

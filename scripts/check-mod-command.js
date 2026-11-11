@@ -448,12 +448,12 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.equal(alone.sent.length, 1);
   for (const sub of Object.keys(RUNS)) assert.ok(alone.sent[0].includes(`!mod ${sub}\``), `the list names ${sub}`);
   assert.match(alone.sent[0], /has these ways to use it/);
-  assert.ok(!/is not part of/.test(alone.sent[0]), '`!mod` alone is not a mistake');
+  assert.ok(!/I could not find/.test(alone.sent[0]), '`!mod` alone is not a mistake');
   assert.ok(alone.sent[0].includes('Ban a single member.'), 'with what each one does');
   assert.equal((await send(',mod')).sent.length, 1);
   const wrong = await send('!mod banana');
   assert.equal(wrong.called.length, 0);
-  assert.match(wrong.sent[0], /is not part of/, 'a word that is not a subcommand is told');
+  assert.match(wrong.sent[0], /I could not find/, 'a word that is not a subcommand is told');
   assert.match(wrong.sent[0], /!mod ban/, 'with what was probably meant');
   assert.equal((await send('!mod ban')).called.length, 1, 'a missing option is the old command\'s to ask for (it reads it as required)');
 

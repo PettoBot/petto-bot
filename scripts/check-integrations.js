@@ -157,7 +157,7 @@ const red = (text) => /16671844|0xfe6465/i.test(text) || text.includes('"accent_
   out = await answerOf(minecraft, { sub: 'user', strings: { player: MC_ID } });
   assert.match(out.text, /Notch/, 'a UUID works too');
   out = await answerOf(minecraft, { sub: 'user', strings: { player: 'Nobodyhere' } });
-  assert.match(out.text, /Nothing found on Minecraft/); assert.ok(out.text.includes('16671844') || out.text.includes('16671845') || /accent_color/.test(out.text), 'red');
+  assert.match(out.text, /Nothing found on Minecraft/); assert.ok(!/accent_color/.test(out.text), 'no color');
   out = await answerOf(minecraft, { sub: 'user', strings: { player: 'bad name!' } });
   assert.match(out.text, /does not look right/);
 
