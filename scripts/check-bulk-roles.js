@@ -37,7 +37,7 @@ stub('src/db/guilds.js', { ensureGuild: async () => {}, findGuildLanguage: async
 stub('src/db/joinRoles.js', { listRoles: async () => joinRows, removeRole: async () => true, addRole: async () => ({}), clearRoles: async () => 0 });
 const warnings = [];
 stub('src/utils/logger.js', { info() {}, warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) });
-stub('src/utils/caseCard.js', { textCard: (text, color) => ({ text, color }) });
+stub('src/utils/caseCard.js', { textCard: (text, color) => ({ text, color, rows: [], addActionRowComponents(row) { this.rows.push(row); return this; } }) }); // like the real card, which takes a row of buttons
 
 const plan = require('../src/utils/bulkRolePlan');
 const { processBulkRoleJob } = require('../src/utils/bulkRoleEngine');

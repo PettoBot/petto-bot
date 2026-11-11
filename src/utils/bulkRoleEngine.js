@@ -3,6 +3,7 @@ const bulkRoleJobsDb = require('../db/bulkRoleJobs');
 const tempRolesDb = require('../db/tempRoles');
 const logger = require('./logger');
 const { textCard } = require('./caseCard');
+const { withButtons } = require('./bulkRoleButtons');
 const { t, tn, guildLanguage } = require('../i18n');
 const { ERROR_CODES, CHANGES_PER_SECOND, checkTargetRole, classifyMember, matchesFilters, buildCardText, dangerousBits } = require('./bulkRolePlan');
 const activity = require('./bulkRoleActivity');
@@ -78,9 +79,10 @@ async function countPlan(guild, job, after = '0') {
 async function showCard(client, job, lang, patch, dangerous) {
   if (!job.progress_channel_id || !job.progress_message_id) return;
   try {
-    const { text, color } = buildCardText(lang, { ...job, ...patch }, { dangerous });
+    const merged = { ...job, ...patch };
+    const { text, color } = buildCardText(lang, merged, { dangerous });
     const channel = await client.channels.fetch(job.progress_channel_id);
-    await channel.messages.edit(job.progress_message_id, { components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+    await channel.messages.edit(job.progress_message_id, { components: [withButtons(textCard(text, color), merged, lang)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
   } catch (error) {
     logger.warn(`Bulk role job #${job.id}: the progress message could not be edited: ${error.message}`);
   }
