@@ -234,6 +234,40 @@ const baseJob = (extra = {}) => ({
   assert.equal(jobs.get(1).status, 'cancelled');
   assert.ok(jobs.get(1).processed_members < 40, 'it stops soon after the cancel');
 
+  // The progress message is not edited at every save: Discord limits the edits of a message and makes the job wait. Start, pause, cancel and end always edit it.
+  const editsOf = async (members, { jobExtra = {}, clock = null } = {}) => {
+    jobs.clear();
+    const edits = [];
+    const job = baseJob({ progress_channel_id: '777', progress_message_id: '888', ...jobExtra });
+    jobs.set(job.id, { ...job });
+    const client = clientOf(makeGuild(members));
+    client.channels = { fetch: async () => ({ messages: { edit: async (_id, payload) => { edits.push(JSON.stringify(payload.components)); } } }) };
+    const realNow = Date.now;
+    if (clock) { let at = realNow(); Date.now = () => { at += clock; return at; }; }
+    try { await processBulkRoleJob(client, { ...job }); } finally { Date.now = realNow; }
+    return { edits, status: jobs.get(job.id).status };
+  };
+  const crowdOf200 = () => Array.from({ length: 200 }, (_, index) => member(String(3000 + index)));
+  const quick = await editsOf(crowdOf200());
+  assert.equal(quick.status, 'completed');
+  assert.ok(quick.edits.length <= 4, `a job that takes a moment edits the message only at the start and the end (it edited ${quick.edits.length} times)`);
+  assert.ok(quick.edits.length >= 3 && /completed|Done|Changed/i.test(quick.edits.at(-1)), 'the last edit is the end of the job');
+  const slow = await editsOf(crowdOf200(), { clock: 20000 });
+  assert.ok(slow.edits.length > quick.edits.length, `when time passes the progress is shown again (edited ${slow.edits.length} times)`);
+  const cancelledEdits = await (async () => {
+    jobs.clear();
+    const edits = [];
+    const job = baseJob({ progress_channel_id: '777', progress_message_id: '888' });
+    jobs.set(1, { ...job });
+    const group = crowdOf200();
+    group[15].roles.add = async () => { jobs.get(1).status = 'cancelled'; };
+    const client = clientOf(makeGuild(group));
+    client.channels = { fetch: async () => ({ messages: { edit: async (_id, payload) => { edits.push(JSON.stringify(payload.components)); } } }) };
+    await processBulkRoleJob(client, { ...job });
+    return edits;
+  })();
+  assert.ok(/cancel/i.test(cancelledEdits.at(-1)), 'a cancel is shown at once, whatever the time');
+
   // ---- the commands --------------------------------------------------------------------------------------------------------
   const role = require('../src/commands/moderation/role.js');
   const json = role.data.toJSON();

@@ -10,6 +10,7 @@ const activity = require('./bulkRoleActivity');
 const PAGE_SIZE = 1000; // members Discord gives in one request when the list is read page by page
 const SAVE_EVERY = 25; // members between two saves of the progress...
 const SAVE_EVERY_MS = 5000; // ...or this long
+const CARD_EVERY_MS = 15000; // the progress message is edited at most this often (Discord limits edits of a message and makes the job wait); start, pause, cancel and end always edit it
 const CONTROL_EVERY = 10; // members between two looks at the row (cancel, pause)
 const CONTROL_EVERY_MS = 2500;
 const PAUSE_POLL_MS = 3000;
@@ -133,6 +134,7 @@ async function runBulkRoleJob(client, job) {
   }
   state.changes_started_at = new Date().toISOString();
   await showCard(client, job, lang, state, dangerous);
+  let lastCard = Date.now();
 
   let cursor = job.cursor_id ?? '0';
   let lastSave = Date.now();
@@ -147,7 +149,11 @@ async function runBulkRoleJob(client, job) {
     lastSave = Date.now();
     const patch = { processed_members: state.processed_members, success_count: state.success_count, skipped_count: state.skipped_count, error_count: state.error_count, cursor_id: cursor, ...extra };
     await bulkRoleJobsDb.updateJob(job.id, patch);
-    await showCard(client, job, lang, { ...state, ...extra }, dangerous);
+    // The numbers are saved every time, but the message is not edited more than once in CARD_EVERY_MS unless the status changes (cancelled...).
+    if (extra.status || Date.now() - lastCard >= CARD_EVERY_MS) {
+      lastCard = Date.now();
+      await showCard(client, job, lang, { ...state, ...extra }, dangerous);
+    }
   };
 
   /** Looks at the row: `cancelled`, or waits while it is paused. */
