@@ -167,7 +167,7 @@ module.exports = {
   'cmd.utility.guilddebug.dm-owner.opt.message.desc': 'Message to send (mentions are disabled)',
   'cmd.utility.guildsend.desc': 'Private support control: send a notice to a server.',
   'cmd.utility.guildsend.opt.server.desc': 'Server ID, its exact name (in quotes if it has spaces), or here.',
-  'cmd.utility.guildsend.opt.type.desc': 'Type: diagnostic, permissions, verifyRoles, logs, policy, maintenance',
+  'cmd.utility.guildsend.opt.type.desc': 'Type: diagnostic, permissions, verifyRoles, feedOff, logs, policy, maintenance',
   'cmd.utility.guildsend.opt.details.desc': 'Optional notice context.',
   'cmd.utility.help.desc': 'Browse commands, or look one up directly.',
   'cmd.utility.help.opt.command.desc': 'A command (and optionally subcommand) to look up, e.g. "ticket category add"',

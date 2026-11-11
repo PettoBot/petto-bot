@@ -1,6 +1,11 @@
 // Checks what is kept when a feed fails: a line for the Petto team without keys or tokens, and the plain kind that a server sees (so "the last notice could not be sent"
 // says which: Discord refused it, Discord did not answer, Petto cannot post there, the channel is gone).
+process.env.DISCORD_TOKEN ||= 'check-only';
+process.env.DISCORD_CLIENT_ID ||= '1';
+process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { describeError, sendKindOf, redact } = require('../src/feeds/errorDetail');
 
 // ---- the line for the team
@@ -36,4 +41,19 @@ assert.equal(sendKindOf(err({ name: 'TimeoutError' })), 'sendBusy');
 assert.equal(sendKindOf(err({ message: 'The bot is under pressure and this background request to Discord was not sent.' })), 'sendBusy');
 assert.equal(sendKindOf(err({ message: 'something nobody expected', code: 12345 })), 'send');
 assert.equal(sendKindOf(null), 'send');
+
+// ---- a feed that turns itself off is told to the server, in its language, with a plain reason
+const { renderNotice, TEMPLATES } = require('../src/utils/guildOpsAlerts');
+const { t } = require('../src/i18n');
+assert.ok(TEMPLATES.feedOff, 'the kind exists (the team can also send it with !guildsend)');
+for (const [lang, title, resume] of [['en', 'Petto turned off a feed', 'Resume'], ['es', 'Petto apagó un feed', 'Reanudar'], ['pt-BR', 'O Petto desligou um feed', 'Retomar']]) {
+  const details = t(lang, 'feeds.off.details', { account: 'Discord Developers', platform: 'youtube', count: 5, reason: t(lang, 'feeds.off.reason.sendRejected') });
+  const card = renderNotice({ kind: 'feedOff', details, lang });
+  assert.ok(card.includes(title) && card.includes(resume) && card.includes('Discord Developers') && card.includes('5'), `${lang}: the notice says which feed, how many times and what to press`);
+  for (const reason of ['permission', 'channelGone', 'sendRejected', 'sendBusy', 'send', 'accountGone', 'blocked', 'rateLimited', 'noFeed', 'unavailable', 'unknown']) {
+    assert.ok(t(lang, `feeds.off.reason.${reason}`) && !t(lang, `feeds.off.reason.${reason}`).startsWith('feeds.off.'), `${lang}: a plain reason for ${reason}`);
+  }
+}
+const engine = fs.readFileSync(path.join(__dirname, '..', 'src/feeds/engine.js'), 'utf8');
+assert.ok(/turnedOff = failures >= FAILURES_TO_STOP && feed\.enabled !== false/.test(engine) && /tellFeedOff\(feed, kind\)/.test(engine), 'it is told once, when the feed goes from on to off');
 console.log('Feed error detail checks passed (the line for the team, no secrets, the reason a server sees).');

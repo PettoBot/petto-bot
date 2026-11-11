@@ -24,6 +24,8 @@ const schedule = new Map(); // `${platform}:${accountId}` -> { at, fails }
 
 const { describeError, sendKindOf } = require('./errorDetail');
 
+let activeClient = null; // the client of the pass that is running, to tell a server that one of its feeds was turned off
+
 const keyOf = (platform, accountId) => `${platform}:${accountId}`;
 
 // What was seen is also kept in memory (until the bot restarts): when the database cannot write it, nothing already looked at is posted again by this process.
@@ -90,8 +92,11 @@ async function recordFailure(feed, kind, error = null) {
   const detail = describeError(error);
   const patch = { failures, last_error: kind, last_error_at: new Date().toISOString(), last_error_detail: detail };
   noteForTeam(feed, kind, detail);
+  const turnedOff = failures >= FAILURES_TO_STOP && feed.enabled !== false;
   if (failures >= FAILURES_TO_STOP) patch.enabled = false;
-  await feedsDb.update(feed.guild_id, feed.id, patch).catch((error) => logger.warn(`Feed ${feed.id}: could not write its failure: ${error.message}`));
+  const written = await feedsDb.update(feed.guild_id, feed.id, patch).then(() => true).catch((error) => { logger.warn(`Feed ${feed.id}: could not write its failure: ${error.message}`); return false; });
+  // A feed that stops by itself is told to the server once (the staff channel, or the owner): before, it went quiet and nobody knew why.
+  if (turnedOff && written) tellFeedOff(feed, kind).catch((error) => logger.warn(`Feed ${feed.id}: could not tell the server that it was turned off: ${error.message}`));
 }
 
 // The log says what failed once for each feed and each reason (not at every failure), with the line the dashboard shows to the team.
@@ -170,7 +175,19 @@ function noteLateLive(feed, item, now) {
 }
 
 /** Posts the new notices of one feed (and closes its streams that ended). */
+/** The server is told, in its language, that a feed was turned off after failing in a row, with the plain reason and what to do. */
+async function tellFeedOff(feed, kind) {
+  if (!activeClient) return;
+  const { sendGuildNotice } = require('../utils/guildOpsAlerts');
+  const lang = peekGuildLanguage(feed.guild_id);
+  const known = ['permission', 'channelGone', 'sendRejected', 'sendBusy', 'send', 'accountGone', 'blocked', 'rateLimited', 'noFeed', 'unavailable'];
+  const reason = t(lang, `feeds.off.reason.${known.includes(kind) ? kind : 'unknown'}`);
+  const account = String(feed.account_name ?? '').slice(0, 80);
+  await sendGuildNotice(activeClient, { guildId: feed.guild_id, kind: 'feedOff', details: t(lang, 'feeds.off.details', { account, platform: feed.platform, count: FAILURES_TO_STOP, reason }), source: 'feeds', force: true }); // i18n-ignore: internal source label
+}
+
 async function processFeed(client, feed, result, liveRows, seen, now) {
+  activeClient = client;
   const guild = client.guilds.cache.get(feed.guild_id);
   if (!guild) return; // Petto is not in that server (now): nothing to post, and nothing is lost
   const lang = peekGuildLanguage(guild.id);
@@ -277,6 +294,7 @@ async function repairKickPictures(client, feeds, liveByFeed) {
  * `passMs`: how often the job makes a pass; the `perTick` of a provider is what it can be asked in a minute, so a shorter pass takes a smaller share of it.
  */
 async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 60_000 } = {}) {
+  activeClient = client;
   const feeds = await feedsDb.listEnabled({ now });
   if (!feeds.length) return 0;
   const liveByFeed = new Map();
