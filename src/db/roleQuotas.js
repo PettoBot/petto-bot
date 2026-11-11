@@ -17,11 +17,13 @@ function listRules(guildId) {
 async function upsertRule(guildId, { roleId, periodDays, minMessages, maxStrikes, notifyDm = true, reportChannelId = null }) {
   const { data, error } = await database
     .from('role_quotas')
-    .upsert({ guild_id: guildId, role_id: roleId, period_days: periodDays, min_messages: minMessages, max_strikes: maxStrikes, notify_dm: notifyDm, report_channel_id: reportChannelId }, { onConflict: 'guild_id,role_id' })
+    .upsert({ guild_id: guildId, role_id: roleId, period_days: periodDays, min_messages: minMessages, max_strikes: maxStrikes, notify_dm: notifyDm, report_channel_id: reportChannelId, period_started_at: new Date().toISOString() }, { onConflict: 'guild_id,role_id' })
     .select('*')
     .single();
   rulesCache.delete(String(guildId));
   if (error) throw error;
+  // A new quota starts a new period: what was counted for the old one does not count for it (the strikes stay).
+  await database.from('role_quota_members').update({ messages: 0 }).eq('guild_id', guildId).eq('role_id', roleId);
   return data;
 }
 
