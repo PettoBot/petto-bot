@@ -37,7 +37,7 @@ const job = (extra = {}) => ({
   // ---- how they look
   const row = rowsOf(buttons.withButtons(textCard('x'), job({ status: 'completed', dry_run: true }), 'en'))[0];
   assert.deepEqual(row.components.map((button) => button.custom_id), ['bulkrole:start:41', 'bulkrole:discard:41']);
-  assert.deepEqual(row.components.map((button) => button.label), ['Start for real', 'Discard']);
+  assert.deepEqual(row.components.map((button) => button.label), ['Apply', 'Discard']);
   assert.equal(row.components[0].style, ButtonStyle.Success);
   assert.ok(String(icons.PLAY).includes(row.components[0].emoji.id), 'start uses the play of the music icons');
   assert.ok(String(EMOJI.DELETE).includes(row.components[1].emoji.id), 'discard uses the trash can');
