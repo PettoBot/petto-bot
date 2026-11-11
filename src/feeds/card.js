@@ -117,7 +117,9 @@ function imageFirstCard(item, { platform, options, lang, top }) {
   // The post's own title; when it is the name of the account again (a pin without words, a post without a title) it is not repeated.
   const titleText = plainText(item.title, 200);
   const showTitle = titleText && titleText !== sourceText;
-  const titleLine = showTitle ? `**${url ? `[${linkText(item.title)}](${url})` : linkText(item.title)}**` : '';
+  // Discord does not draw a link whose words hold an emoji, so the link has the words without them; a title that is only emojis (nothing left to link), or a post with no link, goes as plain bold words.
+  const titleWords = linkText(item.title);
+  const titleLine = showTitle ? `**${url && titleWords ? `[${titleWords}](${url})` : titleText}**` : '';
 
   // The first words of the post as a quote, unless they are the title again (or a clipped copy of it); a pin shows its picture, not its caption.
   const wanted = pin ? '' : plainText(item.description, MAX_QUOTE);
@@ -133,7 +135,7 @@ function imageFirstCard(item, { platform, options, lang, top }) {
     : null;
 
   // A text that would not fit loses its quote first, then the link of its title: the picture and the button are what stays.
-  const text = (withQuote, withTitleLink) => [...head, withTitleLink || !url ? titleLine : (showTitle ? `**${linkText(item.title)}**` : ''), withQuote ? quote : ''].filter(Boolean).join('\n');
+  const text = (withQuote, withTitleLink) => [...head, withTitleLink || !url ? titleLine : (showTitle ? `**${titleText}**` : ''), withQuote ? quote : ''].filter(Boolean).join('\n');
   let body = text(true, true);
   if (top.length + body.length + byline.length > MAX_CARD_TEXT) body = text(false, true);
   if (top.length + body.length + byline.length > MAX_CARD_TEXT) body = text(false, false);
