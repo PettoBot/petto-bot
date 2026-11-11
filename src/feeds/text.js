@@ -3,8 +3,8 @@ const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 220;
 const MAX_TOP = 1500;
 
-// Emojis: the pictographs with their joiners and variation marks, flags, keycaps and the custom ones (`<:name:id>`).
-const EMOJI = /<a?:\w+:\d+>|[\p{Extended_Pictographic}\p{Regional_Indicator}\u200D\uFE0F\u20E3\u{E0020}-\u{E007F}]/gu;
+// Emojis: the pictographs with their joiners and variation marks, skin tones (alone they are drawn as little squares), flags, keycaps and the custom ones (`<:name:id>`).
+const EMOJI = /<a?:\w+:\d+>|[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200D\uFE0E\uFE0F\u20E3\u{E0020}-\u{E007F}]/gu;
 
 const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ' };
 
