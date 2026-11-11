@@ -6,6 +6,7 @@ const bulkRoleJobsDb = require('../db/bulkRoleJobs');
 const { ensureGuild } = require('../db/guilds');
 const { runJob } = require('../jobs/bulkRoleJob');
 const { textCard } = require('./caseCard');
+const { withButtons } = require('./bulkRoleButtons');
 const { EMOJI } = require('./emojis');
 const { buildCardText, checkTargetRole, dangerousBits, parseJoinedInput } = require('./bulkRolePlan');
 const { t, languageOf } = require('../i18n');
@@ -63,7 +64,7 @@ async function startMassJob(interaction, options) {
 
   const dangerous = dangerousBits(options.role);
   const { text, color } = buildCardText(lang, job, { dangerous });
-  const message = await interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  const message = await interaction.editReply({ components: [withButtons(textCard(text, color), job, lang)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
   if (message?.id) await bulkRoleJobsDb.updateJob(job.id, { progress_channel_id: message.channelId ?? interaction.channelId, progress_message_id: message.id });
   runJob(interaction.client, { ...job, progress_channel_id: message?.channelId ?? interaction.channelId, progress_message_id: message?.id ?? null });
   return job;
@@ -91,7 +92,7 @@ async function showJob(interaction) {
   const { text, color } = buildCardText(lang, jobs[0], { dangerous: jobs[0].action === 'add' ? dangerousBits(role) : 0n });
   const history = jobs.slice(1).map((job) => historyLine(lang, job));
   const body = history.length ? `${text}\n\n${t(lang, 'moderation.bulkRole.history.title')}\n${history.join('\n')}` : text;
-  await interaction.editReply({ components: [textCard(body.slice(0, 3900), color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [withButtons(textCard(body.slice(0, 3900), color), jobs[0], lang)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 /** `pause`, `resume` or `cancel` the job of the server that is pending or running. Answers in private. */

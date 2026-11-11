@@ -51,6 +51,7 @@ const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleM
 const { PREFIX: FEEDBACK_PREFIX, handleButton: handleFeedbackButton } = require('../interactions/feedbackVotes');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
+const { BULK_ROLE_BUTTON_PREFIX, handleBulkRoleButton } = require('../utils/bulkRoleButtons');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { maybeHintLanguage } = require('../utils/languageHint');
 const { PREFIX: LANGUAGE_CHOICE_PREFIX, handleButton: handleLanguageChoice } = require('../interactions/languageChoice');
@@ -112,6 +113,12 @@ module.exports = {
     // The buttons of `!stats privacy` and the confirmation of `!statsconfig delete`.
     if (interaction.isButton() && interaction.customId.startsWith(`${STATS_PREFIX}:`)) {
       try { await handleStatsButton(interaction); } catch (err) { reportInteractionError(interaction, 'Error handling a statistics button:', err); }
+      return;
+    }
+
+    // The buttons under the card of a mass role job (start a preview for real, discard it, pause, continue, cancel).
+    if (interaction.isButton() && interaction.customId.startsWith(`${BULK_ROLE_BUTTON_PREFIX}:`)) {
+      try { await handleBulkRoleButton(interaction); } catch (err) { logger.error('Error handling a mass role button:', err); }
       return;
     }
 
