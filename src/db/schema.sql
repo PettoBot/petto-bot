@@ -1008,6 +1008,14 @@ create table if not exists role_quotas (
   primary key (guild_id, role_id)
 );
 
+-- Where the messages count and the reminder before a period ends. `channel_mode` 'all' counts every channel Petto can see, 'only' counts only `channel_ids`, 'except' counts
+-- every channel but `channel_ids` (a channel id may also be a category, or the channel of a thread). `remind_hours` 0 is no reminder; otherwise members who are below the
+-- quota are told that many hours before the period ends, once (`reminded_period` is the period that was already reminded).
+alter table role_quotas add column if not exists channel_mode text not null default 'all' check (channel_mode in ('all', 'only', 'except'));
+alter table role_quotas add column if not exists channel_ids text[] not null default '{}';
+alter table role_quotas add column if not exists remind_hours integer not null default 0 check (remind_hours between 0 and 72);
+alter table role_quotas add column if not exists reminded_period timestamptz;
+
 alter table role_quotas enable row level security;
 
 -- The count of each member who holds a role with a quota: the messages of the period that is running, the periods in a row below the quota, since when they
@@ -4687,6 +4695,9 @@ create table if not exists feeds (
   created_at     timestamptz not null default now(),
   unique (guild_id, platform, account_id, channel_id)
 );
+
+-- What went wrong in a line for the Petto team (the dashboard in Support mode, the log): the server only sees a plain reason built from `last_error`.
+alter table feeds add column if not exists last_error_detail text;
 
 create index if not exists idx_feeds_guild on feeds(guild_id);
 create index if not exists idx_feeds_account on feeds(platform, account_id) where enabled;

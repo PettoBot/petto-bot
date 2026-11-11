@@ -1,7 +1,7 @@
 const database = require('./database');
 const { ensureGuild } = require('./guilds');
 
-const COLUMNS = 'id,number,guild_id,platform,account_id,account_name,account_avatar,account_url,channel_id,types,message,ping_roles,ping_everyone,options,filters,enabled,ready,failures,last_sent_at,last_error,last_error_at,created_by,created_at';
+const COLUMNS = 'id,number,guild_id,platform,account_id,account_name,account_avatar,account_url,channel_id,types,message,ping_roles,ping_everyone,options,filters,enabled,ready,failures,last_sent_at,last_error,last_error_at,last_error_detail,created_by,created_at';
 const SEEN_KEEP_DAYS = 60;
 
 async function listForGuild(guildId) {

@@ -21,7 +21,7 @@ const DAY = 86_400_000;
   // ---- validation
   const role = { id: ROLE, managed: false };
   const good = quotas.validateRule({ role, guildId: GUILD, messages: 50 });
-  assert.deepEqual(good, { ok: true, rule: { roleId: ROLE, periodDays: 7, minMessages: 50, maxStrikes: 3, notifyDm: true, reportChannelId: null } }, 'the defaults: a week, 3 in a row, DMs on');
+  assert.deepEqual(good, { ok: true, rule: { roleId: ROLE, periodDays: 7, minMessages: 50, maxStrikes: 3, notifyDm: true, reportChannelId: null, channelMode: 'all', channelIds: [], remindHours: 0 } }, 'the defaults: a week, 3 in a row, DMs on, every channel, no reminder');
   const bad = (extra) => quotas.validateRule({ role, guildId: GUILD, messages: 50, ...extra });
   assert.equal(quotas.validateRule({ role: null, guildId: GUILD, messages: 5 }).error, 'noRole');
   assert.equal(quotas.validateRule({ role: { id: GUILD, managed: false }, guildId: GUILD, messages: 5 }).error, 'everyone');
@@ -35,6 +35,29 @@ const DAY = 86_400_000;
   assert.equal(bad({ reportChannelId: 'general' }).error, 'badChannel');
   assert.equal(bad({ existingRoleIds: Array.from({ length: 25 }, (_, i) => String(i)) }).error, 'tooMany', 'at most 25 quotas');
   assert.equal(bad({ existingRoleIds: [ROLE, ...Array.from({ length: 24 }, (_, i) => String(i))] }).ok, true, 'changing one that exists is not a new one');
+
+  // ---- where the messages count
+  const CH = '444444444444444444', CAT = '555555555555555555', OTHER = '666666666666666666';
+  assert.equal(bad({ channelMode: 'sideways' }).error, 'badChannelMode');
+  assert.equal(bad({ channelMode: 'only' }).error, 'noChannels', '"only" needs channels');
+  assert.equal(bad({ channelMode: 'only', channelIds: ['general'] }).error, 'badChannel');
+  assert.equal(bad({ channelMode: 'except', channelIds: Array.from({ length: 26 }, (_, i) => String(100000000000000 + i)) }).error, 'tooManyChannels');
+  assert.deepEqual(bad({ channelMode: 'all', channelIds: [CH] }).rule.channelIds, [], '"all" keeps no list');
+  assert.deepEqual(bad({ channelMode: 'except', channelIds: [CH, CH] }).rule.channelIds, [CH], 'no repeats');
+  assert.equal(bad({ remindHours: -1 }).error, 'badRemind');
+  assert.equal(bad({ remindHours: 73 }).error, 'badRemind');
+  assert.equal(bad({ remindHours: 1.5 }).error, 'badRemind');
+  assert.equal(bad({ remindHours: 24 }).rule.remindHours, 24);
+  assert.equal(quotas.countsIn({}, { id: CH }), true, 'a rule from before this: every channel');
+  assert.equal(quotas.countsIn({ channel_mode: 'all' }, { id: CH }), true);
+  assert.equal(quotas.countsIn({ channel_mode: 'only', channel_ids: [CH] }, { id: CH }), true);
+  assert.equal(quotas.countsIn({ channel_mode: 'only', channel_ids: [CH] }, { id: OTHER }), false);
+  assert.equal(quotas.countsIn({ channel_mode: 'only', channel_ids: [CAT] }, { id: OTHER, parentId: CAT }), true, 'a category lists its channels');
+  assert.equal(quotas.countsIn({ channel_mode: 'only', channel_ids: [CAT] }, { id: 'thread', parentId: CH, parent: { parentId: CAT } }), true, 'a thread follows its channel and its category');
+  assert.equal(quotas.countsIn({ channel_mode: 'except', channel_ids: [CH] }, { id: CH }), false);
+  assert.equal(quotas.countsIn({ channel_mode: 'except', channel_ids: [CH] }, { id: OTHER }), true);
+  assert.equal(quotas.countsIn({ channel_mode: 'except', channel_ids: [CAT] }, { id: OTHER, parentId: CAT }), false);
+  assert.equal(quotas.countsIn({ channel_mode: 'except', channel_ids: [] }, { id: CH }), true, 'an empty "all but" counts everything');
 
   // ---- judging
   const rule = { min_messages: 10, max_strikes: 3 };
@@ -105,6 +128,24 @@ const DAY = 86_400_000;
   assert.equal(calls.saved.find((row) => row.userId === 'miss3').strikes, 3, 'kept at the limit');
   assert.ok(posted[0].includes('<@miss3>') && posted[0].includes('could not take the role away'), 'the report says Petto could not');
 
+  // Who is below the quota now (progress) and the reminder before the end.
+  guild.members.me.roles.highest.comparePositionTo = () => 1;
+  dmEntries.length = 0;
+  const below = await quotas.membersBelow(guild, dueRule, { now });
+  assert.deepEqual(below.below.map((entry) => [entry.member.id, entry.messages, entry.strikes]), [['newcomer', 0, 0], ['miss3', 1, 2], ['miss1', 3, 0]], 'the ones below, the fewest messages first (met, excused and new are not)');
+  assert.deepEqual([below.total, below.excused, below.fresh], [6, 1, 1]);
+  assert.equal((await quotas.membersBelow({ ...guild, roles: { cache: new Map() } }, dueRule)).role, null, 'a role that no longer exists');
+  const remindedWith = [];
+  quotasDb.markReminded = async (rule) => { remindedWith.push(rule.role_id); };
+  const told = await quotas.remindRule(client, dueRule, { now: new Date(now), sleep: async () => {} });
+  assert.equal(told, 3);
+  assert.deepEqual([...dmEntries].sort(), ['miss1', 'miss3', 'newcomer'], 'only who is below is reminded');
+  assert.deepEqual(remindedWith, [ROLE], 'the period is marked as reminded');
+  quotasDb.listRemindable = async () => [dueRule, { ...dueRule, guild_id: '999999999999999999', role_id: 'other' }];
+  dmEntries.length = 0; remindedWith.length = 0;
+  assert.equal(await quotas.runReminders(client, { now: new Date(now), sleep: async () => {} }), 2, 'a server that is not reachable does not stop the rest');
+  assert.deepEqual(remindedWith, [ROLE]);
+
   // A server that is not reachable now: nothing is judged and the period stays open.
   assert.equal(await quotas.closeRule({ guilds: { cache: new Map() } }, dueRule), null);
 
@@ -114,5 +155,5 @@ const DAY = 86_400_000;
   assert.ok(/role_quotas/.test(read('src/db/schema.sql')) && /role_quota_members/.test(read('src/db/schema.sql')), 'the tables');
   assert.ok(/startRoleQuotaJob\(client\)/.test(read('index.js')), 'the job starts');
   assert.ok(!/content/.test(read('src/db/roleQuotas.js').replace(/content-type/g, '')), 'nothing about what was said is kept');
-  console.log('Role quota checks passed (rules, judging, strikes, closing a period, the report).');
+  console.log('Role quota checks passed (rules, channels, judging, strikes, closing a period, the report, progress, reminders).');
 })().catch((err) => { console.error(err); process.exit(1); });

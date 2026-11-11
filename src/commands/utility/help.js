@@ -279,30 +279,28 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
 }
 
 /**
- * The first page of a command with subcommands (in the style of the help of Bleed): "Group: ban", what it does, who can use it, its syntax and the list of its
- * subcommands with what each one does, then "Page 1/5 (4 entries) · Module". The pages after it are the entries one by one; the menu jumps to any of them.
+ * The first page of a command with subcommands (in the style of the help of Bleed): "Group: ban", what it does, who can use it, its syntax and the first words of its
+ * subcommands (the menu opens each one), then "Page 1/5 (4 entries) · Module". The pages after it are the entries one by one; the menu jumps to any of them.
  */
-const GROUP_LINES_MAX = 14;
+const GROUP_WORDS_MAX = 6;
 function groupOverviewText(prefix, command, entries, lang) {
   const json = command.data.toJSON();
   const commandPrefix = command.slashOnly ? '/' : prefix;
   const description = commandDescription(lang, command, [], null, json.description) || t(lang, 'help.noDescription');
   const needed = json.default_member_permissions;
   const permission = needed == null ? t(lang, 'help.detail.anyone') : `${EMOJI.WARNING} ${describePermissions(String(needed), lang)}`;
-  const shown = entries.slice(0, GROUP_LINES_MAX).map((entry) => {
-    const text = optionDescription(commandDescription(lang, command, entry.path, null, entry.description), t(lang, 'help.noDescription'));
-    return `\`${commandPrefix}${[json.name, ...entry.path].join(' ')}\`: ${text}`;
-  });
-  if (entries.length > shown.length) shown.push(t(lang, 'help.group.more', { count: entries.length - shown.length }));
+  // Only the first words of the group, not every way to use it (a group can have twenty): the menu below the card opens each one.
+  const words = [...new Set(entries.map((entry) => entry.path[0]))];
+  const wordsShown = words.slice(0, GROUP_WORDS_MAX).map((word) => `\`${word}\``).join(' ');
+  const wordsLine = `${wordsShown}${words.length > GROUP_WORDS_MAX ? ` ${t(lang, 'help.group.more', { count: words.length - GROUP_WORDS_MAX })}` : ''}`;
   return {
     head: [t(lang, 'help.group.title', { title: json.name }), `> ${description}`].join('\n'),
     body: [
       `**${t(lang, 'help.group.permission')}:** ${permission}`,
-      '',
       `**${t(lang, 'help.group.syntax')}:** \`${commandPrefix}${json.name} <${t(lang, 'help.group.subcommand')}>\``,
+      `**${t(lang, 'help.group.subcommands')}:** ${wordsLine}`,
       '',
-      `**${t(lang, 'help.group.subcommands')}**`,
-      ...shown,
+      t(lang, 'help.group.menuHint'),
     ].join('\n'),
   };
 }

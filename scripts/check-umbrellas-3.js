@@ -499,11 +499,11 @@ function tailOf(node) {
     for (const name of [...Object.keys(UMBRELLAS[umbrella].groups), ...Object.keys(UMBRELLAS[umbrella].flat)]) assert.ok(alone.sent[0].includes(`!${umbrella} ${name}\``), `the list of !${umbrella} names ${name}`);
     assert.match(alone.sent[0], /has these ways to use it/);
     assert.ok(alone.sent[0].length < 4000, `the list of !${umbrella} fits in a message (${alone.sent[0].length})`);
-    assert.ok(!/is not part of/.test(alone.sent[0]), `!${umbrella} alone is not a mistake`);
+    assert.ok(!/I could not find/.test(alone.sent[0]), `!${umbrella} alone is not a mistake`);
     assert.equal((await send(`,${umbrella}`)).sent.length, 1);
     const wrong = await send(`!${umbrella} banana`);
     assert.equal(wrong.called.length, 0);
-    assert.match(wrong.sent[0], /is not part of/, 'a word that is not a group or subcommand is told');
+    assert.match(wrong.sent[0], /I could not find/, 'a word that is not a group or subcommand is told');
   }
   assert.ok((await send('!protect')).sent[0].includes('add, remove, panel'), 'a group lists the subcommands it holds');
 

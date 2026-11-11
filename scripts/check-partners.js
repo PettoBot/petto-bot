@@ -127,9 +127,9 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   // The replies: the default, a changed text, a missing saved embed.
   const partnerCtx = (extra = {}) => ({ user: fakeUser('7', 'Mia'), member: { id: '7', user: fakeUser('7', 'Mia'), roles: { cache: new Collection() }, displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000 }, guild: fakeGuild('mine'), partner: messages.partnerContext({ name: 'Partner', members: 1234, managerId: '7', counts: { day: 1, week: 2, total: 3 }, config: rules, ...extra }) });
   let payload = await messages.responsePayload('mine', { messages: {} }, 'completed', partnerCtx());
-  assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.equal(accentOf(payload), 0xa5ea7a, 'a partnership that counts is a green card'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
-  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'invalid_invite', partnerCtx())), 0xff6b6b, 'a no is a red card');
-  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'cooldown', partnerCtx())), 0xfed53c, 'a wait is a yellow card');
+  assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.equal(accentOf(payload) ?? null, null, 'a partnership that counts has no color'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
+  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'invalid_invite', partnerCtx())) ?? null, null, 'a no has no color');
+  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'cooldown', partnerCtx())) ?? null, null, 'a wait has no color');
   payload = await messages.responsePayload('mine', { messages: { member_requirement: { text: 'Too small: {partner.members}/{partner.min_members}' } } }, 'member_requirement', partnerCtx());
   assert.match(textOf(payload), /Too small: 1,234\/100/);
   payload = await messages.responsePayload('mine', { messages: { completed: { template: 'gone' } } }, 'completed', partnerCtx());

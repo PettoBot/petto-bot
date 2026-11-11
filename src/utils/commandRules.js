@@ -73,9 +73,9 @@ function groupOfText(command, argText) {
 }
 
 /** The first rule that turns the command off here: `{ name, row }` (the name it was saved under, the rule), or null. */
-async function disabledFor(guildId, names, channelId, store = disabledDb) {
+async function disabledFor(guildId, names, channelId, store = disabledDb, parentIds = []) {
   for (const name of names) {
-    const row = await store.findCached(guildId, name, channelId).catch(() => null);
+    const row = await store.findCached(guildId, name, channelId, parentIds).catch(() => null);
     if (row) return { name, row };
   }
   return null;
@@ -90,4 +90,9 @@ async function restrictedForNames(guildId, names, member, check = restrictedFor)
   return null;
 }
 
-module.exports = { ruleNames, permissionNames, subcommandOfText, groupOfText, disabledFor, restrictedForNames };
+/** The categories a channel is in (a thread: the one of its channel), for the rules saved for a category. */
+function categoriesOf(channel) {
+  return [channel?.parentId, channel?.parent?.parentId].filter(Boolean).map(String);
+}
+
+module.exports = { categoriesOf, ruleNames, permissionNames, subcommandOfText, groupOfText, disabledFor, restrictedForNames };

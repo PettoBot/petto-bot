@@ -5,11 +5,12 @@ const { isPettoOperator } = require('../../utils/autoModControl');
 const { textCard } = require('../../utils/caseCard');
 const perf = require('../../utils/perf');
 const loadGuard = require('../../utils/loadGuard');
+const cpuProfile = require('../../utils/cpuProfile');
 const watchdog = require('../../utils/watchdog');
 const processGuards = require('../../utils/processGuards');
 const { commandLimiter } = require('../../utils/rateLimits');
 
-const SECTIONS = ['summary', 'rest', 'slow', 'jobs', 'listeners', 'limits', 'level', 'probe'];
+const SECTIONS = ['summary', 'rest', 'slow', 'jobs', 'listeners', 'limits', 'level', 'probe', 'cpu'];
 const ms = (value) => (Number.isFinite(value) ? `${Math.round(value)} ms` : 'n/a');
 const mb = (bytes) => `${Math.round(bytes / 1048576)} MB`;
 const pad = (value, length) => String(value).slice(0, length).padEnd(length);
@@ -72,7 +73,7 @@ function summary(client, probe) {
   lines.push('**Slowest commands (1 h)**');
   const slow = snapshot.slowest.slice(0, 5);
   lines.push(...(slow.length ? slow.map((row) => `  ${pad(row.name, 22)} ${ms(row.total)} (first answer ${ms(row.ack)}) db ${row.db.n}q ${ms(row.db.ms)} · rest ${row.rest.n}req ${ms(row.rest.ms)} (queue ${ms(row.rest.gate)}, net ${ms(row.rest.net)})`) : ['  none yet']));
-  lines.push('-# `!perf rest`, `slow`, `jobs`, `listeners`, `limits`, `probe`, `level <normal|degraded|critical|auto>`');
+  lines.push('-# `!perf rest`, `slow`, `jobs`, `listeners`, `limits`, `probe`, `cpu [seconds]`, `level <normal|degraded|critical|auto>`');
   return lines.join('\n');
 }
 
@@ -129,11 +130,11 @@ module.exports = {
   hiddenFromHelp: true,
   teamOnly: true,
   team: {
-    summary: 'Shows how the bot is doing: database and Discord REST latency, event loop lag, memory, the slowest commands, the rate limits, the load level and the watchdog. It can also time Discord right now and force a load level to test it.',
-    usage: ['!perf', '!perf rest|slow|jobs|listeners|limits|probe', '!perf level normal|degraded|critical|auto'],
+    summary: 'Shows how the bot is doing: database and Discord REST latency, event loop lag, memory, the slowest commands, the rate limits, the load level and the watchdog. It can also time Discord right now, profile the processor for a few seconds (which functions and files use it) and force a load level to test it.',
+    usage: ['!perf', '!perf rest|slow|jobs|listeners|limits|probe', '!perf cpu [seconds]', '!perf level normal|degraded|critical|auto'],
     who: 'owner and developers (forcing a level: the owner)',
     area: 'bot',
-    examples: ['!perf', '!perf rest', '!perf probe', '!perf level auto'],
+    examples: ['!perf', '!perf rest', '!perf probe', '!perf cpu 15', '!perf level auto'],
     answers: 'a card with the numbers of the process',
     dangers: 'Forcing a level sheds work on purpose: use `!perf level auto` to give it back to the numbers.',
   },
@@ -143,8 +144,8 @@ module.exports = {
     .setName('perf')
     .setDescription('Private tool: how the bot is doing (latency, rate limits, load level).')
     .setDMPermission(false)
-    .addStringOption((option) => option.setName('section').setDescription('rest, slow, jobs, listeners, limits, probe or level').setRequired(false))
-    .addStringOption((option) => option.setName('value').setDescription('For level: normal, degraded, critical or auto').setRequired(false)),
+    .addStringOption((option) => option.setName('section').setDescription('rest, slow, jobs, listeners, limits, probe, cpu or level').setRequired(false))
+    .addStringOption((option) => option.setName('value').setDescription('For level: normal, degraded, critical or auto. For cpu: seconds (3 to 30)').setRequired(false)),
 
   async execute(interaction) {
     if (!isPettoOperator(interaction.user?.id)) return undefined;
@@ -157,6 +158,14 @@ module.exports = {
       else if (String(interaction.user.id) !== String(config.ownerId)) text = 'Only the owner forces a level.';
       else if (!['normal', 'degraded', 'critical', 'auto'].includes(value)) text = 'Use normal, degraded, critical or auto.';
       else { loadGuard.force(value); text = `The level is ${loadGuard.level()}${value === 'auto' ? ' (given back to the numbers)' : ' (forced: `!perf level auto` gives it back)'}.`; }
+    } else if (section === 'cpu') {
+      const seconds = cpuProfile.parseSeconds(value);
+      if (loadGuard.level() === 'critical') text = 'The bot is at the critical level: a profile would add load. Try again when it is lower, or use `!perf listeners`.';
+      else if (cpuProfile.isRunning()) text = 'A CPU profile is already running. Wait for it to end.';
+      else {
+        await interaction.editReply({ components: [textCard(`Profiling the processor for ${seconds} s...`)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
+        text = await cpuProfile.capture(seconds).then((result) => cpuProfile.describe(result, seconds)).catch((err) => `The profile could not run: ${String(err.message ?? err).slice(0, 120)}.`);
+      }
     } else if (section === 'rest') text = restSection();
     else if (section === 'slow') text = slowSection();
     else if (section === 'jobs') text = jobsSection();

@@ -251,7 +251,7 @@ async function askFollowUp(message, mainPrefix) {
   const command = route ? message.client.commands?.get(route.command) : null;
   if (!command || await serverUsesWord(message.guild.id, 'ask')) return null;
   const names = commandRules.ruleNames(command, { route, subcommand: 'ask' });
-  if (await commandRules.disabledFor(message.guild.id, names, message.channel.id)) return null;
+  if (await commandRules.disabledFor(message.guild.id, names, message.channel.id, undefined, commandRules.categoriesOf(message.channel))) return null;
   if (await commandRules.restrictedForNames(message.guild.id, names, message.member).catch(() => ({}))) return null;
   for (const name of commandRules.permissionNames(command, { subcommand: 'ask' })) {
     if (!await permissionsDb.hasCommandPermission(message.guild.id, name, message.member).catch(() => false)) return null;
@@ -409,7 +409,7 @@ module.exports = {
     // turning off the whole command (`!disablecommand act`, or its category) turns off every action too. The slash command asks
     // the same function (utils/commandRules.js).
     const ruleNames = commandRules.ruleNames(command, { route: prefixRoute, subcommand: commandRules.subcommandOfText(command, argText), group: commandRules.groupOfText(command, argText), via: viaUmbrella });
-    const found = hiddenAutomodControl ? null : await commandRules.disabledFor(message.guild.id, ruleNames, message.channel.id);
+    const found = hiddenAutomodControl ? null : await commandRules.disabledFor(message.guild.id, ruleNames, message.channel.id, undefined, commandRules.categoriesOf(message.channel));
     const disabled = found?.row ?? null;
     const disableName = found?.name ?? canonicalName;
     if (disabled) {

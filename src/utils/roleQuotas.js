@@ -15,6 +15,9 @@ const MAX_PERIOD_DAYS = 90;
 const MAX_MESSAGES = 100_000;
 const MAX_STRIKES = 20;
 const MAX_EXCUSE_DAYS = 90;
+const MAX_CHANNELS = 25;
+const MAX_REMIND_HOURS = 72;
+const CHANNEL_MODES = ['all', 'only', 'except'];
 const DAY_MS = 86_400_000;
 const FLUSH_MS = 10_000;
 const DM_LIMIT = 100; // notices by direct message in one period closing of one rule; the report says how many were left out
@@ -26,7 +29,7 @@ const DM_GAP_MS = 1_000;
  * Validates what `set` was given. `role` has `id` and `managed`, `guildId` is the server, `existingRoleIds` are the roles that already have a quota.
  * Returns `{ ok: true, rule }` or `{ ok: false, error }` (the last part of `automation.rolequota.error.<error>`).
  */
-function validateRule({ role, guildId, messages, periodDays = 7, strikes = 3, notifyDm = true, reportChannelId = null, existingRoleIds = [] }) {
+function validateRule({ role, guildId, messages, periodDays = 7, strikes = 3, notifyDm = true, reportChannelId = null, channelMode = 'all', channelIds = [], remindHours = 0, existingRoleIds = [] }) {
   if (!role) return { ok: false, error: 'noRole' };
   if (role.id === guildId) return { ok: false, error: 'everyone' };
   if (role.managed) return { ok: false, error: 'managed' };
@@ -39,7 +42,35 @@ function validateRule({ role, guildId, messages, periodDays = 7, strikes = 3, no
   if (!existingRoleIds.includes(role.id) && existingRoleIds.length >= MAX_RULES) return { ok: false, error: 'tooMany' };
   const channel = reportChannelId ? String(reportChannelId) : null;
   if (channel && !/^\d{15,25}$/.test(channel)) return { ok: false, error: 'badChannel' };
-  return { ok: true, rule: { roleId: role.id, periodDays: days, minMessages: min, maxStrikes: max, notifyDm: Boolean(notifyDm), reportChannelId: channel } };
+  const where = validateChannels(channelMode, channelIds);
+  if (!where.ok) return where;
+  const remind = Number(remindHours);
+  if (!Number.isInteger(remind) || remind < 0 || remind > MAX_REMIND_HOURS) return { ok: false, error: 'badRemind' };
+  return { ok: true, rule: { roleId: role.id, periodDays: days, minMessages: min, maxStrikes: max, notifyDm: Boolean(notifyDm), reportChannelId: channel, channelMode: where.mode, channelIds: where.ids, remindHours: remind } };
+}
+
+/** The mode and the channels of a rule, checked: `all` has none, `only` needs at least one, and at most 25 ids. Returns `{ ok, mode, ids }` or `{ ok: false, error }`. */
+function validateChannels(mode = 'all', ids = []) {
+  if (!CHANNEL_MODES.includes(mode)) return { ok: false, error: 'badChannelMode' };
+  const list = [...new Set((ids ?? []).map(String))];
+  if (list.some((id) => !/^\d{15,25}$/.test(id))) return { ok: false, error: 'badChannel' };
+  if (list.length > MAX_CHANNELS) return { ok: false, error: 'tooManyChannels' };
+  if (mode === 'only' && !list.length) return { ok: false, error: 'noChannels' };
+  return { ok: true, mode, ids: mode === 'all' ? [] : list };
+}
+
+/**
+ * Whether a message in this channel counts for the rule. `all` counts every channel; `only` the listed ones; `except` every one but the listed. A listed id can be the
+ * channel, its category, or (for a thread) the channel it is in or that channel's category.
+ */
+function countsIn(rule, channel) {
+  const mode = rule.channel_mode ?? 'all';
+  if (mode === 'all') return true;
+  const ids = new Set((rule.channel_ids ?? []).map(String));
+  if (!ids.size) return mode === 'except';
+  const places = [channel?.id, channel?.parentId, channel?.parent?.parentId].filter(Boolean).map(String);
+  const listed = places.some((id) => ids.has(id));
+  return mode === 'only' ? listed : !listed;
 }
 
 // ---- Judging ---------------------------------------------------------------------------------------------------------------------
@@ -92,7 +123,7 @@ async function noteMessage(message) {
   const rules = await quotasDb.listRules(message.guild.id);
   if (!rules.length) return;
   for (const rule of rules) {
-    if (!message.member.roles.cache.has(rule.role_id)) continue;
+    if (!message.member.roles.cache.has(rule.role_id) || !countsIn(rule, message.channel)) continue;
     const key = `${message.guild.id}|${rule.role_id}|${message.author.id}`;
     pending.set(key, (pending.get(key) ?? 0) + 1);
   }
@@ -231,7 +262,61 @@ async function runDueRules(client, options = {}) {
   return due.length;
 }
 
+// ---- Reminder before the end and who is below now ------------------------------------------------------------------------------
+
+/** The members who hold the role and are below the quota right now, from the counts: `[{ member, messages, strikes }]` (excused and new members are not below, they are not judged). */
+async function membersBelow(guild, rule, { now = Date.now() } = {}) {
+  const role = guild.roles.cache.get(rule.role_id);
+  if (!role) return { role: null, below: [], excused: 0, fresh: 0, total: 0 };
+  await guild.members.fetch().catch(() => null);
+  const holders = [...role.members.values()].filter((member) => !member.user.bot);
+  const rows = new Map((await quotasDb.listMembers(guild.id, rule.role_id)).map((row) => [row.user_id, row]));
+  const result = { role, below: [], excused: 0, fresh: 0, total: holders.length };
+  for (const member of holders) {
+    const row = rows.get(member.id) ?? null;
+    const verdict = judge(row, rule, rule.period_started_at, now);
+    if (verdict === 'excused') result.excused += 1;
+    else if (verdict === 'new') result.fresh += 1;
+    else if (verdict === 'missed') result.below.push({ member, messages: Number(row?.messages ?? 0), strikes: Number(row?.strikes ?? 0) });
+  }
+  result.below.sort((a, b) => a.messages - b.messages);
+  return result;
+}
+
+/** Tells the members who are below the quota that the period ends soon (`remind_hours` before), once for each period. Returns how many were told. */
+async function remindRule(client, rule, { now = new Date(), sleep = wait } = {}) {
+  const guild = client.guilds.cache.get(rule.guild_id);
+  if (!guild) return null;
+  const lang = await guildLanguage(guild.id);
+  const { role, below } = await membersBelow(guild, rule, { now: now.getTime() });
+  await quotasDb.markReminded(rule); // once for each period, whatever happens next
+  if (!role || !below.length) return 0;
+  const endsAt = Math.floor((new Date(rule.period_started_at).getTime() + rule.period_days * DAY_MS) / 1000);
+  let sent = 0;
+  for (const entry of below) {
+    if (sent >= DM_LIMIT) break;
+    const text = t(lang, 'automation.rolequota.dm.remind', { emoji: EMOJI.ALERT, server: guild.name, role: role.name, messages: entry.messages, min: rule.min_messages, left: Math.max(0, rule.min_messages - entry.messages), end: `<t:${endsAt}:R>`, strikes: entry.strikes, max: rule.max_strikes });
+    await sendDm(entry.member, { components: [textCard(text)], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'rolequota' }).then(() => { sent += 1; }).catch(() => {});
+    await sleep(DM_GAP_MS);
+  }
+  return sent;
+}
+
+/** Sends the reminders that are due (any server this bot is in). One rule failing never stops the others. */
+async function runReminders(client, options = {}) {
+  const due = await quotasDb.listRemindable();
+  for (const rule of due) {
+    try {
+      await remindRule(client, rule, options);
+    } catch (err) {
+      logger.warn(`Role quotas: could not send the reminders of role ${rule.role_id} in guild ${rule.guild_id}: ${err.message}`);
+    }
+  }
+  return due.length;
+}
+
 module.exports = {
   MAX_RULES, MAX_PERIOD_DAYS, MAX_MESSAGES, MAX_STRIKES, MAX_EXCUSE_DAYS, DAY_MS,
-  validateRule, judge, applyResult, noteMessage, handleMemberUpdate, closeRule, runDueRules, flush,
+  MAX_CHANNELS, MAX_REMIND_HOURS, CHANNEL_MODES,
+  validateRule, validateChannels, countsIn, judge, applyResult, noteMessage, handleMemberUpdate, closeRule, runDueRules, membersBelow, remindRule, runReminders, flush,
 };

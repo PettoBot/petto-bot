@@ -53,6 +53,7 @@ const TEMPLATES = {
   diagnostic: template('diagnostic', 'warning'),
   permissions: template('permissions', 'warning'),
   verifyRoles: template('verifyRoles', 'warning'),
+  feedOff: template('feedOff', 'warning'),
   logs: template('logs', 'warning'),
   policy: template('policy', 'critical'),
   maintenance: template('maintenance', 'info'),

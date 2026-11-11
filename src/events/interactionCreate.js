@@ -601,7 +601,7 @@ module.exports = {
       ? Promise.allSettled(commandRules.permissionNames(command, { subcommand, group }).map((name) => permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)))
       : null;
     const restrictedCheck = inGuild ? commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null) : null;
-    const disabledCheck = interaction.guildId && interaction.channelId ? commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb) : null;
+    const disabledCheck = interaction.guildId && interaction.channelId ? commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb, commandRules.categoriesOf(interaction.channel)) : null;
     // A member with a role chosen for this moderation command passes its permission check, the same as with the prefix (Discord only
     // shows the command to them when the server allows it in Integrations).
     const roleCheck = command.category === 'moderation' && inGuild ? moderationPermissions.hasConfiguredRole(interaction.guildId, command.data.name, interaction.member).catch(() => false) : null;

@@ -494,7 +494,7 @@ module.exports = {
   'cmd.config.config.commandroles.remove.opt.role.desc': 'O cargo (vazio: todos os cargos do comando)',
   'cmd.config.config.commandroles.list.desc': 'Veja cada comando restrito e seus cargos.',
   'cmd.config.config.commandroles.reset.desc': 'Abre de novo todos os comandos restritos.',
-  'cmd.config.config.disabledcommands.desc': 'Desativa comandos no servidor inteiro ou em alguns canais.',
+  'cmd.config.config.disabledcommands.desc': 'Desativa comandos no servidor inteiro, em alguns canais ou em uma categoria.',
   'cmd.config.config.disabledcommands.disable.desc': 'Desativa um ou mais comandos (aliases e category:<nome> funcionam).',
   'cmd.config.config.disabledcommands.disable.opt.command.desc': 'Comandos sem o prefixo, vários de uma vez: "suggest rank 8ball" ou "category:fun"',
   'cmd.config.config.disabledcommands.disable.opt.channel.desc': 'Só neste canal (padrão: o servidor inteiro)',
