@@ -18,6 +18,7 @@ const { startAutoMessageJob } = require('./src/jobs/autoMessageJob');
 const { startVerifyPanelJob } = require('./src/jobs/verifyPanelJob');
 const { startBirthdayJob } = require('./src/jobs/birthdayJob');
 const { startCountingRoleJob } = require('./src/jobs/countingRoleJob');
+const { startRoleQuotaJob } = require('./src/jobs/roleQuotaJob');
 const { startStatusHeartbeatJob } = require('./src/jobs/statusHeartbeatJob');
 const { startStatusProbeJob } = require('./src/jobs/statusProbeJob');
 const { startBulkRoleJob } = require('./src/jobs/bulkRoleJob');
@@ -201,6 +202,7 @@ async function main() {
   startAutoMessageJob(client);
   startBirthdayJob(client);
   startCountingRoleJob(client);
+  startRoleQuotaJob(client);
   startVerifyPanelJob(client);
   startStatusHeartbeatJob(client);
   startStatusProbeJob(client);
