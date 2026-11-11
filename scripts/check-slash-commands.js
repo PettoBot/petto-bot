@@ -41,6 +41,8 @@ const ESSENTIAL = [
   // The rest of the moderation commands that `/mod` and `/staff` do not hold (cases, notes, jail, mutes, nicknames, threads, snipe, lockdown), each one a command of its own
   // (`/case remove-all`, `/note add`...; they used to be groups of `/modtools`, which is a prefix command only now).
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
+  // The quota of messages of a role (`/rolequota set`, `status`, `excuse`...): any member looks at their own count, the rest is for administrators.
+  'rolequota',
   // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`); what else they held is a command of its own: `/unban`, `/unmute`, `/unjail`.
   'unban', 'unmute', 'unjail',
   // Registered before for their own reasons.

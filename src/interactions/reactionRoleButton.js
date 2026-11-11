@@ -9,6 +9,8 @@ const {
 const rrDb = require('../db/reactionRoles');
 const { isUnknownRole, reportDeadRoles } = require('../utils/deadRoles');
 const { t, languageOf, currentLanguage } = require('../i18n');
+const { textCard } = require('../utils/caseCard');
+const { EMOJI } = require('../utils/emojis');
 
 const BUTTON_PREFIX = 'rr:';
 const MAX_BUTTONS = 25;
@@ -89,8 +91,11 @@ async function syncMessageButtons(message, rows, lang = currentLanguage()) {
   await message.edit({ components: buildButtonRows(rows, message.guild, lang) });
 }
 
-async function reply(interaction, content) {
-  const payload = { content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
+/** The answer only the member sees. `done` (a role given or taken away) is a card with the check mark and the role as a mention, so a role with a name that says little is still recognized. */
+async function reply(interaction, content, { done = false } = {}) {
+  const payload = done
+    ? { components: [textCard(`${EMOJI.APPROVE} ${content}`)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }
+    : { content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
   if (interaction.replied || interaction.deferred) return interaction.followUp(payload);
   return interaction.reply(payload);
 }
@@ -119,17 +124,17 @@ async function handleButton(interaction) {
 
   const member = await interaction.guild.members.fetch(interaction.user.id);
   const hasRole = member.roles.cache.has(role.id);
-  if (row.mode === 'add' && hasRole) return reply(interaction, t(lang, 'automation.reactionrole.button.alreadyHave', { role: role.name }));
-  if (row.mode === 'remove' && !hasRole) return reply(interaction, t(lang, 'automation.reactionrole.button.doNotHave', { role: role.name }));
+  if (row.mode === 'add' && hasRole) return reply(interaction, t(lang, 'automation.reactionrole.button.alreadyHave', { role: `<@&${role.id}>` }));
+  if (row.mode === 'remove' && !hasRole) return reply(interaction, t(lang, 'automation.reactionrole.button.doNotHave', { role: `<@&${role.id}>` }));
 
   try {
     if (row.mode === 'remove' || (row.mode === 'toggle' && hasRole)) {
       await member.roles.remove(role, t(lang, 'automation.reactionrole.button.auditReason'));
-      return reply(interaction, t(lang, 'automation.reactionrole.button.removed', { role: role.name }));
+      return reply(interaction, t(lang, 'automation.reactionrole.button.removed', { role: `<@&${role.id}>` }), { done: true });
     }
 
     await member.roles.add(role, t(lang, 'automation.reactionrole.button.auditReason'));
-    return reply(interaction, t(lang, 'automation.reactionrole.button.added', { role: role.name }));
+    return reply(interaction, t(lang, 'automation.reactionrole.button.added', { role: `<@&${role.id}>` }), { done: true });
   } catch (error) {
     if (isUnknownRole(error)) return roleGone(); // deleted a moment ago, before the bot's list of roles knew it
     throw error;

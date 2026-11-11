@@ -988,6 +988,45 @@ create table if not exists role_trigger_settings (
 
 alter table role_trigger_settings enable row level security;
 
+-- role_quotas: "a member who holds this role must send at least `min_messages` messages in each period of `period_days` days; after `max_strikes` periods
+-- in a row below it, the role is taken away". Only a number per member and period is kept (never what was said), and only for members who hold a role with a
+-- quota; the row of a member is deleted when they lose the role. Set with `!rolequota` or from the dashboard; the job at jobs/roleQuotaJob.js closes each period.
+create table if not exists role_quotas (
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  role_id           text not null,
+  period_days       integer not null default 7 check (period_days between 1 and 90),
+  min_messages      integer not null check (min_messages between 1 and 100000),
+  max_strikes       integer not null default 3 check (max_strikes between 1 and 20),
+  notify_dm         boolean not null default true,
+  report_channel_id text,
+  period_started_at timestamptz not null default now(),
+  last_run_at       timestamptz,
+  last_met          integer,
+  last_missed       integer,
+  last_removed      integer,
+  created_at        timestamptz not null default now(),
+  primary key (guild_id, role_id)
+);
+
+alter table role_quotas enable row level security;
+
+-- The count of each member who holds a role with a quota: the messages of the period that is running, the periods in a row below the quota, since when they
+-- hold the role (null: from before Petto looked; a member who got the role during the period is not judged for it) and until when they are excused.
+create table if not exists role_quota_members (
+  guild_id      text not null,
+  role_id       text not null,
+  user_id       text not null,
+  messages      integer not null default 0,
+  strikes       integer not null default 0,
+  since         timestamptz,
+  excused_until timestamptz,
+  last_result   text check (last_result in ('met', 'missed', 'excused', 'new')),
+  primary key (guild_id, role_id, user_id),
+  foreign key (guild_id, role_id) references role_quotas(guild_id, role_id) on delete cascade
+);
+
+alter table role_quota_members enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- report_config: destination channel for member-submitted reports (both the
 -- /report slash command and the "Report Message" context-menu command).
