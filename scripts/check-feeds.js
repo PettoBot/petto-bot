@@ -116,6 +116,21 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(text.linkText('Zbros\u{1F3FD}\u{1F3FD}'), 'Zbros', 'skin tones alone are drawn as squares and Discord would not draw the link either');
   assert.equal(text.linkText('ok \u{1F44D}\u{1F3FB} nice'), 'ok nice', 'a hand with its skin tone');
   assert.equal(text.linkText('Hi \u2764\uFE0E there'), 'Hi there', 'the text form of an emoji too');
+  // A link must never break: every emoji of Unicode is out of its words (the digits, # and * stay, they are plain characters), and so is a character that no list has yet.
+  const leftOver = [];
+  for (let codePoint = 0; codePoint <= 0x10ffff; codePoint += 1) {
+    const char = String.fromCodePoint(codePoint);
+    if (!/\p{Emoji}/u.test(char) || /[#*0-9]/.test(char)) continue;
+    if (text.linkText(`a${char}b`) !== 'ab') leftOver.push(codePoint.toString(16));
+  }
+  assert.deepEqual(leftOver, [], 'no emoji of Unicode stays in the words of a link');
+  assert.equal(text.linkText('a\u{1FAFF}b'), 'ab', 'a code point that is not assigned yet (an emoji of a newer Unicode) is out too');
+  assert.equal(text.linkText('a\u{1F7EB}\u{1F3FD}\u2122\u00A9\u2194b'), 'ab', 'squares, skin tones and symbols');
+  assert.equal(text.linkText('Café — niño 東京 Привет $5 + 3 = 8 (ok) #1 "q" 50%'), 'Café — niño 東京 Привет $5 + 3 = 8 (ok) #1 "q" 50%', 'the words of any language, numbers and punctuation are kept');
+  assert.equal(text.linkText('हिन्दी ไทย العربية'), 'हिन्दी ไทย العربية', 'letters with their marks (Hindi, Thai, Arabic) are kept');
+  assert.ok(!text.linkText('@everyone @here').includes('@everyone') && !text.linkText('@everyone @here').includes('@here'), 'the invisible space that stops a mention stays in a link');
+  assert.ok(text.linkText('hi <@123456789012345678 there').includes('\u200B'), 'and the one that breaks an open user mention');
+  assert.ok(!text.linkText('<@123456789012345678>').includes('<@'), 'a whole mention is gone before it reaches the link');
   // The same words in the card of a site (Reddit) and of a video or stream: the link has no emoji left, and a title with nothing but emojis is not a link without words.
   const linkOf = (item) => JSON.stringify(json(card.buildFeedMessage({ message: '', options: {} }, { ...base, ...item }, { lang: 'en' }).components));
   const post = 'https://www.reddit.com/r/Bondedpairs/comments/1xtq7zg/zbros/';
