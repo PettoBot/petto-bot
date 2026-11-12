@@ -5,7 +5,8 @@ const levelConfigDb = require('../../db/levelConfig');
 const levelUsersDb = require('../../db/levelUsers');
 const levelRewardsDb = require('../../db/levelRewards');
 const levelMultipliersDb = require('../../db/levelMultipliers');
-const { stripRewardRoles, syncRewardRoles, notifyLevelUp } = require('../../utils/levelActions');
+const { stripRewardRoles, notifyLevelUp } = require('../../utils/levelActions');
+const { runSync, kindsOf } = require('../../utils/levelSync');
 const { totalXpForLevel, levelForXp } = require('../../utils/levelCurve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -190,7 +191,20 @@ module.exports = {
             .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
             .addIntegerOption((o) => o.setName('amount').setDescription('Level amount').setRequired(true).setMinValue(0)),
         )
-        .addSubcommand((s) => s.setName('sync').setDescription('Give every member the reward roles their levels have earned, for example after adding rewards.')),
+        .addSubcommand((s) => s
+          .setName('sync')
+          .setDescription('Put leveling in order: reward roles, voice roles, levels from XP, message counters, or all.')
+          .addStringOption((o) => o
+            .setName('type')
+            .setDescription('What to sync (default: roles)')
+            .setRequired(false)
+            .addChoices(
+              { name: 'Roles: the reward roles of the levels of the messages', value: 'roles' },
+              { name: 'Voice roles: the reward roles of the voice levels', value: 'voice-roles' },
+              { name: 'Levels: calculate them again from the XP', value: 'levels' },
+              { name: 'Messages: raise the counters to the statistics', value: 'messages' },
+              { name: 'Everything', value: 'all' },
+            ))),
     ),
 
   async execute(interaction) {
@@ -934,33 +948,29 @@ async function multiplierCmd(interaction, sub, lang) {
   await reply(interaction, t(lang, 'leveling.multiplier.set', { emoji: EMOJI.APPROVE, target: targetMention, value }));
 }
 
-const SYNC_LIMIT = 2000;
+/** The words of a sync: what was done, with the numbers, and what could not be done. */
+function syncText(lang, result) {
+  const kinds = result.kinds;
+  const what = kinds.length > 1 ? t(lang, 'leveling.sync.what.all') : t(lang, `leveling.sync.what.${kinds[0] === 'voice-roles' ? 'voiceRoles' : kinds[0]}`);
+  const needsRows = kinds.some((kind) => kind !== 'messages');
+  const header = needsRows
+    ? t(lang, 'leveling.sync.header', { emoji: EMOJI.APPROVE, what, members: tn(lang, 'leveling.sync.members', result.checked, { count: result.checked }) })
+    : t(lang, 'leveling.sync.headerNone', { emoji: EMOJI.APPROVE, what });
+  const lines = [];
+  if (kinds.includes('levels')) lines.push(tn(lang, 'leveling.sync.line.levels', result.levels, { count: result.levels }));
+  if (kinds.includes('roles')) lines.push(tn(lang, 'leveling.sync.line.roles', result.roles, { count: result.roles }));
+  if (kinds.includes('voice-roles')) lines.push(tn(lang, 'leveling.sync.line.voiceRoles', result.voiceRoles, { count: result.voiceRoles }));
+  if (kinds.includes('messages')) lines.push(result.skipped.messages ? t(lang, `leveling.sync.skipped.${result.skipped.messages}`) : tn(lang, 'leveling.sync.line.messages', result.messages, { count: result.messages }));
+  const limit = result.limited ? t(lang, 'leveling.sync.limit', { limit: result.checked }) : '';
+  const note = kinds.some((kind) => kind !== 'messages') ? `\n${t(lang, 'leveling.sync.note')}` : '';
+  return `${header}${limit}\n${lines.join('\n')}${note}`;
+}
 
-/** Checks the reward roles of the members who have a level: the ones they earned and do not have yet are given. */
 async function syncCmd(interaction, lang) {
   await defer(interaction);
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
-  let checked = 0;
-  let given = 0;
-  for (let offset = 0; checked < SYNC_LIMIT; offset += 100) {
-    const page = await levelUsersDb.listWithLevels(interaction.guild.id, { offset, limit: 100 });
-    if (!page.length) break;
-    const members = await interaction.guild.members.fetch({ user: page.map((row) => row.user_id) }).catch(() => null);
-    for (const row of page) {
-      const member = members?.get(row.user_id);
-      if (!member) continue;
-      checked += 1;
-      given += await syncRewardRoles(interaction.guild, member, row, config);
-      if (given && given % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-    if (page.length < 100) break;
-  }
-  const done = t(lang, 'leveling.sync.done', {
-    emoji: EMOJI.APPROVE,
-    members: tn(lang, 'leveling.sync.members', checked, { count: checked }),
-    roles: tn(lang, 'leveling.sync.roles', given, { count: given }),
-  });
-  await reply(interaction, `${done}${checked >= SYNC_LIMIT ? t(lang, 'leveling.sync.limit', { limit: SYNC_LIMIT }) : ''}`);
+  const result = await runSync(interaction.guild, config, kindsOf(interaction.options.getString('type')));
+  await reply(interaction, syncText(lang, result));
 }
 
 async function manageCmd(interaction, sub, lang) {
