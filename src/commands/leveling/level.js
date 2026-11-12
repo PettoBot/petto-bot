@@ -717,7 +717,8 @@ async function rulesCmd(interaction, lang) {
 }
 
 function rulesSummary(config, lang) {
-  const keepRoles = config.restore_roles !== false;
+  // Reward roles are given back from the level that is kept: a server that wipes the XP of who leaves has nothing to give back.
+  const keepRoles = config.restore_roles !== false && !config.reset_on_leave;
   return [
     config.min_message_chars > 0 ? tn(lang, 'leveling.rules.minLength', config.min_message_chars, { count: config.min_message_chars }) : t(lang, 'leveling.rules.minLengthOff'),
     t(lang, config.anti_repeat ? 'leveling.rules.antiRepeatOn' : 'leveling.rules.antiRepeatOff'),

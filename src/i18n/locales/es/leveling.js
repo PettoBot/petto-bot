@@ -131,7 +131,6 @@ module.exports = {
   'leveling.rules.leaveKeep': '**Miembros que se van:** conservan su XP',
   'leveling.rules.leaveKeepRestore': '**Miembros que se van:** conservan su XP y recuperan sus roles de recompensa al volver',
   'leveling.rules.leaveWipe': '**Miembros que se van:** pierden su XP',
-  'leveling.rules.leaveWipeRestore': '**Miembros que se van:** pierden su XP y recuperan sus roles de recompensa al volver',
   'leveling.rules.multipliers': '**Multiplicadores:** base ×{base}, varios roles: {mode}, nunca más de ×{cap}',
   'leveling.rules.voteBoostOn': '**Bonus por voto:** activado, +{percent}% de XP para quienes votaron por Petto',
   'leveling.rules.voteBoostOff': '**Bonus por voto:** desactivado',
