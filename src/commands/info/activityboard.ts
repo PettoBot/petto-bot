@@ -98,9 +98,9 @@ const command = {
       const lines = rows.map((row) => {
         const when = row.last_refreshed_at ? ` · ${t(lang, 'leaderboards.status.updated', { when: `<t:${Math.floor(new Date(row.last_refreshed_at).getTime() / 1000)}:R>` })}` : ` · ${t(lang, 'leaderboards.status.waiting')}`;
         const problem = row.last_error ? ` · ${reasonPlain(row.last_error as Reason)}` : '';
-        return `${t(lang, 'leaderboards.status.line', { kind: kindName(row.kind), channel: `<#${row.channel_id}>` })}${when}${problem}`;
+        return `${t(lang, 'leaderboards.status.line', { kind: kindName(row.kind), channel: `<#${row.channel_id}>` })}\n-#${when.replace(' ·', '')}${problem}`;
       });
-      await show(lines.join('\n'));
+      await show([t(lang, 'leaderboards.status.title'), ...lines].join('\n'));
       return;
     }
 
@@ -135,9 +135,9 @@ const command = {
       const lines = rows.map((row) => {
         const holder = row.holder_id ? t(lang, 'leaderboards.role.status.holder', { user: `<@${row.holder_id}>` }) : t(lang, 'leaderboards.role.status.nobody');
         const problem = row.last_error ? ` · ${roleReasonPlain(row.last_error as RoleReason)}` : '';
-        return `${t(lang, 'leaderboards.role.status.line', { kind: kindName(row.kind), role: `<@&${row.role_id}>` })} · ${holder}${problem}`;
+        return `${t(lang, 'leaderboards.role.status.line', { kind: kindName(row.kind), role: `<@&${row.role_id}>` })}\n-# ${holder}${problem}`;
       });
-      await show(lines.join('\n'));
+      await show([t(lang, 'leaderboards.role.status.title'), ...lines].join('\n'));
       return;
     }
 

@@ -48,35 +48,36 @@ function leavesOf(node, path = []) {
         return [{ path, node }];
     return branches.flatMap((branch) => leavesOf(branch, [...path, branch.name]));
 }
-/** One flag as a line: its names, how it is written, what it does and an example. */
+/** One flag: its names (and that it takes a value) on a line, and under it, small, what it does and an example. */
 function flagLine(lang, prefix, entry) {
     const names = entry.flags.map((name) => `\`${name}\``).join(' / ');
     const takes = entry.takes === 'word' ? ` ${t(lang, 'variables.takesValue')}` : '';
-    return `${names}${takes} — ${t(lang, `variables.flag.${entry.id}`)} \`${prefix}${entry.example}\``;
+    return `${names}${takes}\n-# ${t(lang, `variables.flag.${entry.id}`)} \`${prefix}${entry.example}\``;
 }
-/** `!variables flags`: the options that are only written in the text, by command. */
+/** `!variables flags`: the options that are only written in the text, one block for each command. */
 function flagsText(lang, prefix, self) {
     const byCommand = new Map();
     for (const entry of commandFlags_1.SPECIAL_FLAGS)
         byCommand.set(entry.command, [...(byCommand.get(entry.command) ?? []), entry]);
-    const blocks = [...byCommand.entries()].map(([name, entries]) => [`**${prefix}${name}**`, ...entries.map((entry) => flagLine(lang, prefix, entry))].join('\n'));
-    return [t(lang, 'variables.flags.intro', { prefix: self }), '', ...blocks.flatMap((block) => [block, '']), t(lang, 'variables.footer', { prefix: self })].join('\n');
+    const blocks = [...byCommand.entries()].map(([name, entries]) => [`### ${prefix}${name}`, ...entries.map((entry) => flagLine(lang, prefix, entry))].join('\n'));
+    return [t(lang, 'variables.flags.intro', { prefix: self }), ...blocks, t(lang, 'variables.footer', { prefix: self })].join('\n\n');
 }
-/** The options of a command or of the subcommand that its words reach. */
+/** The options of a command or of the subcommand that its words reach: a block for the command, one for its options and one for what is written in the text. */
 function commandText(lang, prefix, self, command, node, path) {
     const name = command.data?.name ?? '';
     const shown = [name, ...path].join(' ');
     const description = commandDescription(lang, command, path, null, node.description ?? '');
-    const heading = `**${prefix}${shown}**${description ? ` — ${description}` : ''}`;
+    const heading = `### ${prefix}${shown}${description ? `\n${description}` : ''}`;
     const branches = (node.options ?? []).filter(isBranch);
     const extra = (path.length ? (0, commandFlags_1.flagsFor)(name, path) : commandFlags_1.SPECIAL_FLAGS.filter((entry) => entry.command === name)).map((entry) => flagLine(lang, prefix, entry));
+    const written = extra.length ? [`${t(lang, 'variables.command.flags')}\n${extra.join('\n')}`] : [];
     if (branches.length) {
         // The commands inside, to ask for one of them.
         const all = leavesOf(node, path);
         const leaves = all.slice(0, MAX_PARTS);
         const total = all.length;
-        const lines = leaves.map((leaf) => `\`${self}variables ${[name, ...leaf.path].join(' ')}\` — ${commandDescription(lang, command, leaf.path, null, leaf.node.description ?? '')}`);
-        return [heading, '', t(lang, 'variables.command.parts'), ...lines, ...(total > leaves.length ? [t(lang, 'variables.more', { count: total - leaves.length })] : []), ...(extra.length ? ['', t(lang, 'variables.command.flags'), ...extra] : [])].join('\n');
+        const lines = leaves.map((leaf) => `\`${self}variables ${[name, ...leaf.path].join(' ')}\`\n-# ${commandDescription(lang, command, leaf.path, null, leaf.node.description ?? '')}`);
+        return [heading, [t(lang, 'variables.command.parts'), ...lines, ...(total > leaves.length ? [t(lang, 'variables.more', { count: total - leaves.length })] : [])].join('\n'), ...written].join('\n\n');
     }
     const options = (node.options ?? []).filter((option) => !isBranch(option));
     const lines = options.map((option) => {
@@ -84,31 +85,24 @@ function commandText(lang, prefix, self, command, node, path) {
         const required = option.required ? ` · ${t(lang, 'variables.required')}` : '';
         const choices = option.choices?.length ? ` (${option.choices.map((choice) => `\`${choice.value}\``).join(', ')})` : '';
         const text = commandDescription(lang, command, path, option.name, option.description ?? '');
-        return `\`--${option.name}\` (${kind}${required}) — ${text}${choices}`;
+        return `\`--${option.name}\` · ${kind}${required}\n-# ${text}${choices}`;
     });
-    return [
-        heading,
-        '',
-        ...(lines.length ? lines.slice(0, MAX_LINES) : [t(lang, 'variables.command.none', { path: `${prefix}${shown}` })]),
-        ...(lines.length > MAX_LINES ? [t(lang, 'variables.more', { count: lines.length - MAX_LINES })] : []),
-        ...(extra.length ? ['', t(lang, 'variables.command.flags'), ...extra] : []),
-        '',
-        t(lang, 'variables.footer', { prefix: self }),
-    ].join('\n');
+    const optionBlock = lines.length
+        ? [t(lang, 'variables.command.options'), ...lines.slice(0, MAX_LINES), ...(lines.length > MAX_LINES ? [t(lang, 'variables.more', { count: lines.length - MAX_LINES })] : [])].join('\n')
+        : t(lang, 'variables.command.none', { path: `${prefix}${shown}` });
+    return [heading, optionBlock, ...written, t(lang, 'variables.footer', { prefix: self })].join('\n\n');
 }
-/** Where an option is used (`!variables duration`): the commands that have it, and the flags that are written in the text with that name. */
+/** Where an option is used (`!variables duration`): a block for the commands that have it, and one for the flags that are written in the text with that name. */
 function optionText(lang, prefix, self, name, used, special) {
     const kinds = new Set(used.map((entry) => entry.option.type ?? 3));
-    const kindText = kinds.size === 1 ? ` (${t(lang, `variables.type.${TYPE_NAMES[[...kinds][0] ?? 3] ?? 'string'}`)})` : '';
-    const lines = used.slice(0, MAX_LINES).map((entry) => `\`${prefix}${entry.path.join(' ')} --${entry.option.name}\` — ${commandDescription(lang, entry.command, entry.path.slice(1), entry.option.name, entry.option.description ?? '')}`);
+    const kindText = kinds.size === 1 ? ` · ${t(lang, `variables.type.${TYPE_NAMES[[...kinds][0] ?? 3] ?? 'string'}`)}` : '';
+    const lines = used.slice(0, MAX_LINES).map((entry) => `\`${prefix}${entry.path.join(' ')} --${entry.option.name}\`\n-# ${commandDescription(lang, entry.command, entry.path.slice(1), entry.option.name, entry.option.description ?? '')}`);
     return [
         t(lang, 'variables.option.title', { name, kind: kindText }),
-        ...(special.length ? ['', t(lang, 'variables.command.flags'), ...special.map((entry) => flagLine(lang, prefix, entry))] : []),
-        ...(lines.length ? ['', t(lang, 'variables.option.used', { count: used.length }), ...lines] : []),
-        ...(used.length > MAX_LINES ? [t(lang, 'variables.more', { count: used.length - MAX_LINES })] : []),
-        '',
+        ...(special.length ? [`${t(lang, 'variables.command.flags')}\n${special.map((entry) => flagLine(lang, prefix, entry)).join('\n')}`] : []),
+        ...(lines.length ? [[t(lang, 'variables.option.used', { count: used.length }), ...lines, ...(used.length > MAX_LINES ? [t(lang, 'variables.more', { count: used.length - MAX_LINES })] : [])].join('\n')] : []),
         t(lang, 'variables.footer', { prefix: self }),
-    ].join('\n');
+    ].join('\n\n');
 }
 module.exports = {
     // A slash command of its own, and the prefix works as well (`!variables`, `!vars`).
