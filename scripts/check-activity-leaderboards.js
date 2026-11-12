@@ -89,14 +89,14 @@ const HOUR = 3_600_000;
   await realFlush([]);
   assert.equal(queries.length, before, 'nothing asked, nothing sent to the database');
   await realFlush([
-    { guildId: '1', kind: 'chat', ids: { daily: 'd', weekly: null, monthly: 'm' }, state: { daily: { h: 'abc', at: 1 } } },
-    { guildId: '2', kind: 'voice', ids: { daily: null, weekly: null, monthly: null }, state: null },
+    { guildId: '1', kind: 'chat', messageId: 'one', clearOld: true, state: { h: 'abc', at: 1 } },
+    { guildId: '2', kind: 'voice', messageId: null, clearOld: false, state: null },
   ]);
   query = queries.at(-1);
-  assert.ok(/unnest\(\$1::text\[\], \$2::text\[\], \$3::text\[\], \$4::text\[\], \$5::text\[\], \$6::text\[\]\)/.test(query.sql) && queries.length === before + 1, 'any number of boards in one statement');
-  assert.deepEqual(query.params.slice(0, 5), [['1', '2'], ['chat', 'voice'], ['d', ''], ['', ''], ['m', '']], 'the messages go with their board (nothing is the empty text)');
-  assert.deepEqual(query.params[5], ['{"daily":{"h":"abc","at":1}}', ''], 'a board whose cards were not written keeps the memory it had');
-  assert.ok(/last_refreshed_at = now\(\), last_error = null/.test(query.sql), 'and every one counts as looked at');
+  assert.ok(/unnest\(\$1::text\[\], \$2::text\[\], \$3::text\[\], \$4::text\[\], \$5::text\[\]\)/.test(query.sql) && queries.length === before + 1, 'any number of boards in one statement');
+  assert.deepEqual(query.params.slice(0, 4), [['1', '2'], ['chat', 'voice'], ['one', ''], ['true', 'false']], 'the message goes with its board (nothing is the empty text), and which ones had their older messages deleted');
+  assert.deepEqual(query.params[4], ['{"h":"abc","at":1}', ''], 'a board whose message was not written keeps the memory it had');
+  assert.ok(/last_refreshed_at = now\(\), last_error = null/.test(query.sql) && /daily_message_id = case when v\.clear = 'true' then null else b\.daily_message_id end/.test(query.sql), 'every one counts as looked at, and the ids of the older way are forgotten only when they were deleted');
 
   // ---- a server with its channel, its members and what the messages do
   const me = { id: 'bot' };
@@ -137,103 +137,132 @@ const HOUR = 3_600_000;
   db.readTops = async (_guild, _kind, periods) => { asked.push(periods); return { daily: [], weekly: [], monthly: [], ...topsOf(periods) }; };
   db.flushRefreshed = async (entries) => { flushCalls.push(entries.length); flushed.push(...entries); };
   db.markError = async (_guild, _kind, code) => { saved.errors.push(code); };
-  const row = (extra = {}) => ({ guild_id: GUILD, kind: 'chat', channel_id: CHANNEL, daily_message_id: null, weekly_message_id: null, monthly_message_id: null, card_state: null, last_refreshed_at: null, last_error: null, ...extra });
+  const row = (extra = {}) => ({ guild_id: GUILD, kind: 'chat', channel_id: CHANNEL, message_id: null, daily_message_id: null, weekly_message_id: null, monthly_message_id: null, card_state: null, last_refreshed_at: null, last_error: null, ...extra });
   const reset = () => { calls.sent.length = 0; calls.edited.length = 0; calls.deleted.length = 0; calls.fetched.length = 0; flushed.length = 0; flushCalls.length = 0; saved.errors.length = 0; asked.length = 0; };
   const lastEntry = () => flushed.at(-1);
   const when = new Date('2026-11-12T03:00:00Z');
   statsRules.setForTests({ configs: new Map(), optedOut: new Set(['m4']) });
 
-  // The first time: the three messages are posted in order and remembered, with what each said.
+  // The first time: ONE message with the three cards, one under the other, and what it said is remembered.
   let result = await board.refreshBoard(client, row(), { now: when });
-  assert.deepEqual(result, { ok: true, wrote: true, edits: 3 });
-  assert.equal(calls.sent.length, 3, 'three messages');
-  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Monthly', 'Weekly', 'Daily'], 'the month first, the day last');
-  assert.deepEqual(lastEntry().ids, { daily: 'msg3', weekly: 'msg2', monthly: 'msg1' });
+  assert.deepEqual(result, { ok: true, wrote: true, edits: 1 });
+  assert.equal(calls.sent.length, 1, 'one message, not three');
+  assert.equal(calls.sent[0][1].components.length, 3, 'with a card for each period');
+  const first = JSON.stringify(calls.sent[0][1].components.map((card) => card.toJSON()));
+  assert.deepEqual([...first.matchAll(/Leaderboard \[(\w+)\]/g)].map((match) => match[1]), ['Monthly', 'Weekly', 'Daily'], 'the month first, the day last');
+  assert.deepEqual([lastEntry().messageId, lastEntry().clearOld], ['msg1', false]);
   assert.equal(flushed.length, 1, 'saved once');
   assert.equal(asked.length, 1, 'the three tops are read in one trip');
   assert.deepEqual(asked[0].map((each) => each.startDay), ['2026-11-01', '2026-11-09', '2026-11-11'], 'each card reads from the start of its period');
-  assert.ok(calls.sent.every(([, payload]) => payload.flags === MessageFlags.IsComponentsV2 && payload.allowedMentions.parse.length === 0), 'a Components V2 message that mentions nobody');
-  const cardText = text(calls.sent[0][1]);
-  assert.ok(cardText.includes('`name_m1`') && cardText.includes('`name_m2`'), 'members are shown by their username');
-  assert.ok(!cardText.includes('name_m3') && !cardText.includes('name_m4') && !cardText.includes('gone'), 'a bot, who asked not to be counted and who left the server are not in the top');
-  assert.equal((cardText.match(/`name_m\d+`/g) ?? []).length, 10, 'and the card is still full: the next ones take their place, up to ten');
-  assert.ok(cardText.includes('`name_m12`'), 'the tenth is the twelfth of the list, after leaving out a bot, one who asked not to be counted and one who left');
+  assert.ok(calls.sent[0][1].flags === MessageFlags.IsComponentsV2 && calls.sent[0][1].allowedMentions.parse.length === 0, 'a Components V2 message that mentions nobody');
+  assert.ok(first.includes('`name_m1`') && first.includes('`name_m2`'), 'members are shown by their username');
+  assert.ok(!first.includes('name_m3') && !first.includes('name_m4') && !first.includes('gone'), 'a bot, who asked not to be counted and who left the server are not in the top');
+  assert.equal((first.match(/`name_m\d+`/g) ?? []).length, 30, 'and each card is still full: the next ones take their place, up to ten in each');
+  assert.ok(first.includes('`name_m12`'), 'the tenth is the twelfth of the list, after leaving out a bot, one who asked not to be counted and one who left');
   assert.deepEqual(calls.fetched.flat(), ['gone', 'gone', 'gone'], 'the ones that are not in the cache are asked for (once for each card)');
   const memory = lastEntry().state;
-  assert.deepEqual(Object.keys(memory).sort(), ['daily', 'monthly', 'weekly'], 'what each card said is remembered');
-  assert.ok(Object.values(memory).every((card) => /^[0-9a-f]{16}$/.test(card.h) && card.at === when.getTime()), 'as a short hash and the moment');
+  assert.deepEqual(Object.keys(memory).sort(), ['at', 'h'], 'what the message said is remembered');
+  assert.ok(/^[0-9a-f]{16}$/.test(memory.h) && memory.at === when.getTime(), 'as a short hash and the moment');
 
-  // The next times: a card that says the same is not edited again (a quiet server costs Discord nothing), one that changed is edited, and so is every one after hours.
-  const messages = { daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' };
-  const remembered = (extra = {}) => row({ ...messages, card_state: memory, ...extra });
+  // The next times: a message that says the same is not edited again (a quiet server costs Discord nothing), one that changed is edited, and so is every one after hours.
+  const single = { message_id: 'one' };
+  const remembered = (extra = {}) => row({ ...single, card_state: memory, ...extra });
   reset();
   result = await board.refreshBoard(client, remembered(), { now: when });
   assert.deepEqual([result, calls.sent.length, calls.edited.length], [{ ok: true, wrote: false, edits: 0 }, 0, 0], 'nothing new: nothing is written at Discord');
-  assert.deepEqual([flushed.length, lastEntry().state, lastEntry().ids], [1, null, { daily: 'd', weekly: 'w', monthly: 'm' }], 'but it counts as looked at, and there is nothing new to remember');
+  assert.deepEqual([flushed.length, lastEntry().state, lastEntry().messageId], [1, null, 'one'], 'but it counts as looked at, and there is nothing new to remember');
   reset();
   result = await board.refreshBoard(client, remembered(), { now: when, force: true });
-  assert.deepEqual([calls.sent.length, calls.edited.map(([id]) => id)], [0, ['m', 'w', 'd']], 'a command writes them anyway: three edits, in order');
+  assert.deepEqual([calls.sent.length, calls.edited.map(([id]) => id), result.edits], [0, ['one'], 1], 'a command writes it anyway: one edit');
   reset();
   topsOf = (periods) => Object.fromEntries(periods.map(({ period }) => [period, period === 'daily' ? [{ user_id: 'm1', amount: 99 }] : top]));
   result = await board.refreshBoard(client, remembered(), { now: when });
-  assert.deepEqual([result.wrote, calls.edited.map(([id]) => id)], [true, ['d']], 'only the card that changed is edited');
-  assert.deepEqual([Object.keys(lastEntry().state), lastEntry().state.daily.h === memory.daily.h, lastEntry().state.weekly.h === memory.weekly.h], [['monthly', 'weekly', 'daily'].filter((period) => period in lastEntry().state), false, true], 'and it remembers the new text of that one');
+  assert.deepEqual([result.wrote, calls.edited.map(([id]) => id)], [true, ['one']], 'when any card changed the message is edited, once');
+  assert.ok(lastEntry().state.h !== memory.h, 'and it remembers the new text');
   topsOf = same;
   // (from the middle of the day, so that the day itself does not change in the hours that pass)
   const noon = new Date('2026-11-12T15:00:00Z');
   reset();
-  await board.refreshBoard(client, row(messages), { now: noon, force: true });
+  await board.refreshBoard(client, row(single), { now: noon, force: true });
   const noonMemory = lastEntry().state;
   reset();
   result = await board.refreshBoard(client, remembered({ card_state: noonMemory }), { now: new Date(noon.getTime() + 5 * HOUR) });
-  assert.equal(calls.edited.length, 0, 'after five hours with the same text they are still left alone');
+  assert.equal(calls.edited.length, 0, 'after five hours with the same text it is still left alone');
   reset();
   result = await board.refreshBoard(client, remembered({ card_state: noonMemory }), { now: new Date(noon.getTime() + 6 * HOUR + 60_000) });
-  assert.deepEqual(calls.edited.map(([id]) => id), ['m', 'w', 'd'], 'after six hours they are edited anyway, which is how a deleted one is found when nobody has said anything');
+  assert.deepEqual(calls.edited.map(([id]) => id), ['one'], 'after six hours it is edited anyway, which is how a deleted one is found when nobody has said anything');
 
-  // A board older than the memory is not written, it only starts remembering, at a time spread over the hours (a restart or an update never edits every card at once).
+  // A board older than the memory (or with the memory of the older way, one for each card) is not written, it only starts remembering, at a time spread over the hours (a restart
+  // or an update never edits every board at once).
   reset();
-  result = await board.refreshBoard(client, row(messages), { now: when });
+  result = await board.refreshBoard(client, row(single), { now: when });
   assert.deepEqual([result, calls.sent.length, calls.edited.length], [{ ok: true, wrote: false, edits: 0 }, 0, 0], 'nothing is written');
-  assert.deepEqual(Object.keys(lastEntry().state).sort(), ['daily', 'monthly', 'weekly'], 'but the cards are remembered');
-  assert.ok(Object.entries(lastEntry().state).every(([period, card]) => card.at <= when.getTime() && card.at > when.getTime() - 6 * HOUR && card.h === memory[period].h), 'with the hash of today and a time somewhere in the last six hours');
+  assert.ok(lastEntry().state.h === memory.h && lastEntry().state.at <= when.getTime() && lastEntry().state.at > when.getTime() - 6 * HOUR, 'but it is remembered, with the hash of today and a time somewhere in the last six hours');
   reset();
-  result = await board.refreshBoard(client, row(messages), { now: when, force: true });
-  assert.deepEqual(calls.edited.map(([id]) => id), ['m', 'w', 'd'], 'a command still writes them');
+  result = await board.refreshBoard(client, row({ ...single, card_state: { daily: { h: 'x', at: 1 }, weekly: { h: 'y', at: 1 } } }), { now: when });
+  assert.deepEqual([calls.edited.length, typeof lastEntry().state.h], [0, 'string'], 'the memory of the older way is not used: it is replaced');
+  reset();
+  result = await board.refreshBoard(client, row(single), { now: when, force: true });
+  assert.deepEqual(calls.edited.map(([id]) => id), ['one'], 'a command still writes it');
 
-  // Someone deleted one: the rest go and all three are posted again, so they stay in order.
+  // Someone deleted it: it is posted again.
   reset();
   const gone = Object.assign(new Error('Unknown Message'), { code: 10008 });
-  currentChannel = channel({ editError: (id) => (id === 'w' ? gone : null) });
+  currentChannel = channel({ editError: () => gone });
   result = await board.refreshBoard(client, remembered(), { now: when, force: true });
   assert.equal(result.ok, true);
-  assert.deepEqual([...calls.deleted].sort(), ['d', 'm', 'w'], 'the old ones are deleted');
-  assert.equal(calls.sent.length, 3, 'and three new ones are posted');
-  assert.deepEqual(lastEntry().ids, { daily: 'msg6', weekly: 'msg5', monthly: 'msg4' });
-  assert.deepEqual(Object.keys(lastEntry().state).sort(), ['daily', 'monthly', 'weekly'], 'and remembered');
-
-  // The periods a server chose: only those cards are read and written.
+  assert.deepEqual([calls.deleted.length, calls.sent.length, lastEntry().messageId], [0, 1, 'msg2'], 'a new message is posted (the old one is gone: nothing to delete)');
+  assert.deepEqual(Object.keys(lastEntry().state).sort(), ['at', 'h'], 'and remembered');
   currentChannel = channel();
+
+  // The boards written the older way (a message for each period) become one: the new message is posted first, the old ones are deleted after, and their ids are forgotten.
+  reset();
+  const older = { daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' };
+  result = await board.refreshBoard(client, row(older), { now: when });
+  assert.deepEqual([calls.sent.length, [...calls.deleted], result.edits], [1, ['m', 'w', 'd'], 4], 'one message posted, three deleted');
+  assert.deepEqual([lastEntry().messageId, lastEntry().clearOld, typeof lastEntry().state.h], ['msg3', true, 'string'], 'saved with the new message and the old ids forgotten');
+  reset();
+  result = await board.refreshBoard(client, row({ ...single, ...older, card_state: memory }), { now: when });
+  assert.deepEqual([calls.sent.length, calls.edited.length, [...calls.deleted], lastEntry().clearOld], [0, 0, ['m', 'w', 'd'], true], 'a board that has both (a migration that stopped half way) only deletes the old ones');
+  // The order matters when the new message cannot be posted: the old ones stay, so there is never a moment with nothing.
+  reset();
+  currentChannel = channel({ sendError: new Error('boom') });
+  result = await board.refreshBoard(client, row(older), { now: when });
+  assert.deepEqual([result.ok, calls.deleted.length, flushed.length], [false, 0, 0], 'if the new message fails, the old ones are not touched');
+  currentChannel = channel();
+
+  // The periods a server chose: only those cards are in the message.
   reset();
   result = await board.refreshBoard(client, row({ periods: ['weekly'] }), { now: when });
-  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Weekly'], 'only the week is posted');
+  assert.deepEqual([calls.sent.length, calls.sent[0][1].components.length], [1, 1], 'one message with one card');
+  assert.deepEqual([...JSON.stringify(calls.sent[0][1].components.map((card) => card.toJSON())).matchAll(/Leaderboard \[(\w+)\]/g)].map((match) => match[1]), ['Weekly'], 'the week');
   assert.deepEqual(asked[0].map((each) => each.period), ['weekly'], 'and only the week is read');
-  assert.deepEqual(lastEntry().ids, { daily: null, weekly: 'msg7', monthly: null }, 'the other two have no message');
   reset();
-  result = await board.refreshBoard(client, remembered({ periods: ['weekly'] }), { now: when, force: true });
-  assert.deepEqual([...calls.deleted], ['m', 'd'], 'a period that was taken away loses its message');
-  assert.deepEqual([calls.sent.length, calls.edited.map(([id]) => id)], [0, ['w']], 'the one that stays is edited where it is');
-  assert.deepEqual(lastEntry().ids, { daily: null, weekly: 'w', monthly: null });
-  assert.deepEqual(Object.keys(lastEntry().state), ['weekly'], 'and the memory of the cards that are gone goes too');
-  reset();
-  result = await board.refreshBoard(client, row({ periods: ['weekly', 'daily'], weekly_message_id: 'w' }), { now: when });
-  assert.deepEqual([...calls.deleted], ['w'], 'a period that was added: the card that was there is deleted');
-  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Weekly', 'Daily'], 'and they are posted again in order');
+  result = await board.refreshBoard(client, remembered({ periods: ['weekly', 'daily'] }), { now: when });
+  assert.deepEqual([calls.sent.length, calls.deleted.length, calls.edited.map(([id]) => id)], [0, 0, ['one']], 'a period that was taken away or added only changes the message: it is edited, nothing is posted or deleted');
+  assert.equal(calls.edited[0][1].components.length, 2, 'now with two cards');
   reset();
   result = await board.refreshBoard(client, row({ periods: ['monthly', 'daily'] }), { now: when });
-  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Monthly', 'Daily'], 'the month and the day, without the week');
+  assert.deepEqual([...JSON.stringify(calls.sent[0][1].components.map((card) => card.toJSON())).matchAll(/Leaderboard \[(\w+)\]/g)].map((match) => match[1]), ['Monthly', 'Daily'], 'the month and the day, without the week');
   assert.deepEqual(db.cleanPeriods(['daily', 'nothing', 'monthly', 'daily']), ['monthly', 'daily'], 'the periods are kept in order, once each, and only real ones');
   assert.deepEqual([db.cleanPeriods([]), db.cleanPeriods(undefined), db.cleanPeriods('weekly'), db.cleanPeriods(['x'])], [['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily']], 'a list with none of them is all of them');
+
+  // The text of a message of components cannot pass 4000 characters in all: when the three cards do not fit, every one shows one place less.
+  const longNames = Array.from({ length: 12 }, (_, index) => ({ user_id: `l${index}`, amount: 1_234_567 - index }));
+  for (const member of longNames) members.set(member.user_id, { id: member.user_id, user: { id: member.user_id, username: `${'x'.repeat(30)}${String(member.user_id).slice(1).padStart(2, '0')}`, bot: false } });
+  topsOf = (periods) => Object.fromEntries(periods.map(({ period }) => [period, longNames]));
+  reset();
+  result = await board.refreshBoard(client, row(), { now: when });
+  const widest = calls.sent[0][1].components.map((card) => JSON.stringify(card.toJSON()));
+  const characters = calls.sent[0][1].components.map((card) => card.toJSON().components.map((part) => part.content ?? '').join('')).join('').length;
+  assert.ok(characters <= board.TEXT_LIMIT, `three full cards of long names fit in the message (${characters} characters)`);
+  const places = Math.max(...widest.map((card) => (card.match(/`x{30}\d{2}`/g) ?? []).length));
+  assert.ok(places < 10 && places >= board.MIN_PLACES, `with the longest names every card shows ${places} places instead of ten, and never fewer than ${board.MIN_PLACES}`);
+  topsOf = same;
+  reset();
+  await board.refreshBoard(client, row(), { now: when });
+  assert.equal((JSON.stringify(calls.sent[0][1].components.map((card) => card.toJSON())).match(/`name_m\d+`/g) ?? []).length, 30, 'with ordinary names all ten places stay');
+  assert.ok(board.TEXT_LIMIT <= 4000 && board.TEXT_LIMIT >= 3500, 'the limit is under the 4000 of Discord, with a margin');
 
   // The reasons a board cannot be written are saved, and nothing throws.
   currentChannel = channel();
@@ -263,9 +292,9 @@ const HOUR = 3_600_000;
   assert.equal(flushed.length, 0, 'and is not counted as written');
   currentChannel = channel();
   reset();
-  assert.deepEqual(await board.refreshBoard({ guilds: { cache: new Map() } }, row(messages), { now: when }), { ok: false, reason: 'error' });
+  assert.deepEqual(await board.refreshBoard({ guilds: { cache: new Map() } }, row(single), { now: when }), { ok: false, reason: 'error' });
   assert.deepEqual(saved.errors, [], 'a server that is not reachable now is not blamed');
-  assert.deepEqual([flushed.length, lastEntry().state, lastEntry().ids], [1, null, { daily: 'd', weekly: 'w', monthly: 'm' }], 'but it counts as looked at, so it goes to the back of the line and never holds back the boards behind it');
+  assert.deepEqual([flushed.length, lastEntry().state, lastEntry().messageId, lastEntry().clearOld], [1, null, 'one', false], 'but it counts as looked at, so it goes to the back of the line and never holds back the boards behind it');
 
   // ---- what boards may write to Discord: a bucket that fills with time
   statsRules.setForTests({ configs: new Map(), optedOut: new Set(['m4']) }); // as at the beginning: m4 asked not to be counted, so the cards say what they said
@@ -281,20 +310,29 @@ const HOUR = 3_600_000;
   // A board that needs more writes than the bucket has is not touched, and stays due.
   reset();
   const poor = board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 });
-  poor.take(10);
+  poor.take(12);
   const pending = [];
   result = await board.refreshBoard(client, row(), { now: when, budget: poor, pending });
-  assert.deepEqual(result, { ok: false, deferred: true }, 'three posts, two writes left: it waits');
-  assert.deepEqual([calls.sent.length, pending.length, flushed.length, poor.available()], [0, 0, 0, 2], 'nothing was written, nothing saved (so it is still the first in line) and the budget is not spent');
+  assert.deepEqual(result, { ok: false, deferred: true }, 'a post, no writes left: it waits');
+  assert.deepEqual([calls.sent.length, pending.length, flushed.length, poor.available()], [0, 0, 0, 0], 'nothing was written, nothing saved (so it is still the first in line) and the budget is not spent');
   result = await board.refreshBoard(client, remembered(), { now: when, budget: poor, pending });
-  assert.deepEqual([result.wrote, pending.length, flushed.length], [false, 1, 0], 'a card with nothing new costs no writes, so it needs no budget; what it found waits in the list of the round');
+  assert.deepEqual([result.wrote, pending.length, flushed.length], [false, 1, 0], 'a message with nothing new costs no writes, so it needs no budget; what it found waits in the list of the round');
   result = await board.refreshBoard(client, remembered(), { now: when, force: true, budget: poor, pending: [] });
-  assert.deepEqual([result.deferred, calls.edited.length], [true, 0], 'three edits, two writes left: it waits');
-  poor.take(0);
-  const richer = board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 });
-  richer.take(9);
-  result = await board.refreshBoard(client, remembered(), { now: when, force: true, budget: richer, pending: [] });
-  assert.deepEqual([result.edits, richer.available()], [3, 0], 'three edits, three writes: it goes and spends them');
+  assert.deepEqual([result.deferred, calls.edited.length], [true, 0], 'an edit, no writes left: it waits');
+  // A board of the older way costs one post and three deletes: four writes.
+  const four = board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 });
+  four.take(9);
+  result = await board.refreshBoard(client, row(older), { now: when, budget: four, pending: [] });
+  assert.deepEqual([result.deferred, calls.sent.length, four.available()], [true, 0, 3], 'three writes left: the migration waits, and touches nothing');
+  four.take(0);
+  const five = board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 });
+  five.take(8);
+  result = await board.refreshBoard(client, row(older), { now: when, budget: five, pending: [] });
+  assert.deepEqual([result.edits, five.available()], [4, 0], 'four writes: it goes and spends them');
+  const one = board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 });
+  one.take(11);
+  result = await board.refreshBoard(client, remembered(), { now: when, force: true, budget: one, pending: [] });
+  assert.deepEqual([result.edits, one.available()], [1, 0], 'a board of one message needs one write where three needed three');
 
   // ---- the job: the boards that are due, in batches, and one that fails does not stop the others
   reset();
@@ -303,16 +341,16 @@ const HOUR = 3_600_000;
   let ran = await board.runDueBoards(client, { budget: BIG() });
   assert.equal(ran, 3);
   assert.deepEqual(flushCalls, [3], 'the three are saved in one statement');
-  assert.equal(calls.sent.length, 6, 'the two that can be reached were written, the third (another server) only counted as looked at');
+  assert.equal(calls.sent.length, 2, 'the two that can be reached were written (a message each), the third (another server) only counted as looked at');
   assert.deepEqual(flushed.map((entry) => `${entry.guildId.slice(0, 3)}:${entry.kind}`).sort(), ['111:chat', '111:voice', '999:voice']);
 
   // Thousands of boards: it asks again while there are more due, a batch at a time, and a board is looked at once.
   const ids = Array.from({ length: 7 }, (_, index) => `3000000000000000${String(index).padStart(2, '0')}`);
   const many = clientOf(ids);
   reset();
-  await board.refreshBoard(client, row(messages), { now: new Date(), force: true }); // what the cards say today (the job asks for the clock of now)
+  await board.refreshBoard(client, row(single), { now: new Date(), force: true }); // what the cards say today (the job asks for the clock of now)
   const liveMemory = lastEntry().state;
-  const everyone = ids.map((id) => row({ ...messages, guild_id: id, card_state: liveMemory }));
+  const everyone = ids.map((id) => row({ ...single, guild_id: id, card_state: liveMemory }));
   const done = new Set();
   db.listDue = async (limit) => everyone.filter((each) => !done.has(each.guild_id)).slice(0, limit);
   db.flushRefreshed = async (entries) => { flushCalls.push(entries.length); for (const entry of entries) done.add(entry.guildId); };
@@ -326,18 +364,20 @@ const HOUR = 3_600_000;
   ran = await board.runDueBoards(many, { limit: 3, budgetMs: 5, now: () => { clockTick += 2; return clockTick; }, budget: BIG() });
   assert.ok(ran < 7, 'a round stops when its time is spent, and the boards that are left are the first at the next look');
 
-  // When there are more cards to write than the budget allows, the round ends and the boards left wait, still due, oldest first.
-  const newOnes = ids.map((id) => row({ guild_id: id }));
+  // When there are more writes to make than the budget allows, the round ends and the boards left wait, still due, oldest first. (Here, boards of the older way: four writes each.
+  // This is what happens when the bot starts after this change: every board is made into one message, a few at a time, and a board is never left without its message.)
+  const toMigrate = ids.map((id) => row({ guild_id: id, ...older }));
   const finished = new Set();
-  db.listDue = async (limit) => newOnes.filter((each) => !finished.has(each.guild_id)).slice(0, limit);
+  db.listDue = async (limit) => toMigrate.filter((each) => !finished.has(each.guild_id)).slice(0, limit);
   db.flushRefreshed = async (entries) => { flushCalls.push(entries.length); for (const entry of entries) finished.add(entry.guildId); };
   reset();
   const twelve = board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 });
   ran = await board.runDueBoards(many, { budget: twelve });
-  assert.deepEqual([ran, calls.sent.length, finished.size, twelve.available()], [4, 12, 4, 0], 'twelve writes are four boards of three; the three that are left were not touched');
-  assert.equal(calls.fetched.length >= 0 && [...finished].length, 4, 'and only those four were saved as looked at');
+  assert.deepEqual([ran, calls.sent.length, calls.deleted.length, finished.size, twelve.available()], [3, 3, 9, 3, 0], 'twelve writes are three boards of four; the four that are left were not touched');
   ran = await board.runDueBoards(many, { budget: board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 }) });
-  assert.deepEqual([ran, finished.size], [3, 7], 'at the next look the three that waited are written');
+  assert.deepEqual([ran, finished.size], [3, 6], 'at the next look three more');
+  ran = await board.runDueBoards(many, { budget: board.createEditBudget({ perSecond: 1, capacity: 12, now: () => 0 }) });
+  assert.deepEqual([ran, finished.size], [1, 7], 'and the last one: all of them are one message now');
 
   // A board that cannot be looked at is counted as looked at, so it does not come back at once and the others are not held back.
   reset();
@@ -353,7 +393,7 @@ const HOUR = 3_600_000;
   db.readTops = async (_guild, _kind, periods) => { asked.push(periods); return { daily: [], weekly: [], monthly: [], ...topsOf(periods) }; };
 
   // The team is told when the promise of every 5 minutes is not being kept (a board that waited more than twice that), and not more than every 10 minutes.
-  const late = row({ ...messages, card_state: memory, last_refreshed_at: new Date(Date.now() - 12 * 60_000).toISOString() });
+  const late = row({ ...single, card_state: memory, last_refreshed_at: new Date(Date.now() - 12 * 60_000).toISOString() });
   db.listDue = async () => [late];
   warned.length = 0;
   await board.runDueBoards(client, { budget: BIG() });
@@ -362,7 +402,7 @@ const HOUR = 3_600_000;
   await board.runDueBoards(client, { budget: BIG() });
   assert.equal(warned.length, count, 'but not again at the next look');
   warned.length = 0;
-  db.listDue = async () => [row({ ...messages, card_state: memory, last_refreshed_at: new Date(Date.now() - 4 * 60_000).toISOString() })];
+  db.listDue = async () => [row({ ...single, card_state: memory, last_refreshed_at: new Date(Date.now() - 4 * 60_000).toISOString() })];
   await board.runDueBoards(client, { budget: BIG() });
   assert.equal(warned.length, 0, 'a board that waited the normal time says nothing');
   logger.warn = keepWarn;
@@ -404,7 +444,7 @@ const HOUR = 3_600_000;
   reset();
   log = await run('set', { type: 'chat' });
   assert.deepEqual(stored, { guildId: GUILD, kind: 'chat', channelId: CHANNEL, periods: undefined }, 'the channel is saved, and the periods it had are kept');
-  assert.equal(calls.sent.length, 3, 'and the cards are written at once');
+  assert.equal(calls.sent.length, 1, 'and the board is written at once, as one message');
   assert.ok(said(log.edits.at(-1)).includes('<#222222222222222222>') && said(log.edits.at(-1)).includes('every 5 minutes') && said(log.edits.at(-1)).includes('Month, Week, Day'), 'the answer says where they are, which cards and how often');
   reset();
   log = await run('set', { type: 'chat', periods: 'weekly-daily' });
@@ -431,10 +471,10 @@ const HOUR = 3_600_000;
   removedRow = null;
   log = await run('remove', { type: 'chat' });
   assert.ok(said(log.replies[0]).includes('no **chat** leaderboards'), 'nothing to remove');
-  removedRow = row({ daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' });
+  removedRow = row({ message_id: 'one', daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' });
   reset();
   log = await run('remove', { type: 'chat' });
-  assert.deepEqual([...calls.deleted].sort(), ['d', 'm', 'w'], 'its messages are deleted');
+  assert.deepEqual([...calls.deleted].sort(), ['d', 'm', 'one', 'w'], 'its message is deleted, and the ones of the older way too');
   assert.ok(said(log.edits.at(-1)).includes('taken away'));
 
   log = await run('status');
@@ -447,7 +487,7 @@ const HOUR = 3_600_000;
 
   reset();
   log = await run('refresh');
-  assert.equal(calls.sent.length >= 2, true, 'both boards are written again');
+  assert.equal(calls.sent.length >= 2, true, 'both boards are written again, a message each');
   log = await run('refresh');
   assert.ok(said(log.replies[0]).includes('Wait a minute'), 'one refresh a minute for each server');
 
@@ -455,7 +495,7 @@ const HOUR = 3_600_000;
   const source = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
   assert.ok(/create table if not exists activity_leaderboards/.test(source('src/db/schema.sql')), 'the table');
   assert.ok(/alter table activity_leaderboards add column if not exists periods text\[\] not null default '\{monthly,weekly,daily\}'/.test(source('src/db/schema.sql')), 'the periods, and the boards that existed keep all three');
-  assert.ok(/alter table activity_leaderboards add column if not exists card_state jsonb not null default '\{\}'::jsonb/.test(source('src/db/schema.sql')), 'the memory of the cards, empty for the boards that exist');
+  assert.ok(/alter table activity_leaderboards add column if not exists card_state jsonb not null default '\{\}'::jsonb/.test(source('src/db/schema.sql')) && /alter table activity_leaderboards add column if not exists message_id text/.test(source('src/db/schema.sql')), 'the one message and the memory of it, empty for the boards that exist');
   assert.ok(/create index if not exists idx_activity_leaderboards_due on activity_leaderboards \(last_refreshed_at asc nulls first\)/.test(source('src/db/schema.sql')), 'the boards that are due are found by the time of their last look');
   assert.ok(/PETTO_ACTIVITY_BOARD_EDITS_PER_SECOND/.test(source('docs/REFERENCE.md')), 'the setting is documented');
   assert.ok(/startActivityLeaderboardJob\(client\)/.test(source('index.js')), 'the job starts');
