@@ -118,7 +118,7 @@ const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(Bi
 const EVERYDAY = new Set([
   'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
   'channels', 'roles', 'emojis', 'boosters', 'inrole', 'rolemembers', 'servericon', 'serverbanner', 'serversplash', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
-  'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'feedback', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
+  'afk', 'remind', 'poll', 'rank', 'leaderboard', 'birthday', 'suggest', 'feedback', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
   'partner', 'request', 'review', 'uploads', 'stats', 'topcommands',
@@ -286,7 +286,8 @@ const DECLARED = {
 // `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are not slash commands any more (their umbrella subcommand has every option and action of
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
 // None is left: what `/mod` and `/staff` held of a command that is a slash command of its own is for the prefix only now.
-const UMBRELLA_TWINS = [];
+// `/levels rank` and `/levels leaderboard` stay next to `/rank` and `/leaderboard`: their short aliases (`!lra`, `!ll`) were published and must keep working.
+const UMBRELLA_TWINS = ['levels rank = /rank'];
 const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
@@ -747,10 +748,10 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     await endToEnd('userinfo', [], {}, live.plain, { include: /user/i });
     await endToEnd('serverinfo', [], { server: null }, live.plain, { include: /Petto Test/ });
     await endToEnd('rank', [], {}, live.plain, { include: /level|rank|XP/i });
-    await endToEnd('top', [], {}, live.plain, { include: /./ });
+    await endToEnd('leaderboard', [], {}, live.plain, { include: /./ });
     {
-      // The buttons of /top: somebody else pressing one is told whose it is (it used to fail without a word), and the author turns the page.
-      const command = byName.get('top');
+      // The buttons of /leaderboard: somebody else pressing one is told whose it is (it used to fail without a word), and the author turns the page.
+      const command = byName.get('leaderboard');
       const { interaction } = interactionFor(live, live.plain, { path: [], node: json(command) }, { command, values: { page: 1, type: null, period: null } });
       const handlers = {};
       interaction.editReply = async () => ({ createMessageComponentCollector: () => ({ on: (name, fn) => { handlers[name] = fn; }, stop() {} }), edit: async () => {} });
@@ -776,7 +777,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     await endToEnd('warn', ['user'], { user: target.user, reason: 'spam' }, moderator, { include: /./ });
     await endToEnd('mute', ['user'], { user: target.user, reason: 'spam' }, moderator, { include: /./ });
     await endToEnd('purge', [], { amount: 5, user: null, filter: null, text: null, starts_with: null, ends_with: null, before: null, after: null }, moderator, { include: /./ });
-    assert.deepEqual([...new Set(answered)].sort(), ['afk', 'avatar', 'ban', 'help', 'kick', 'mute', 'ping', 'poll', 'purge', 'rank', 'remind', 'serverinfo', 'top', 'userinfo', 'warn'], 'the 15 most used commands were run');
+    assert.deepEqual([...new Set(answered)].sort(), ['afk', 'avatar', 'ban', 'help', 'kick', 'leaderboard', 'mute', 'ping', 'poll', 'purge', 'rank', 'remind', 'serverinfo', 'userinfo', 'warn'], 'the 15 most used commands were run');
     // A plain member typing the moderation commands is told what is missing, with the permission, and nothing happens.
     for (const [name, path] of [['ban', ['user']], ['kick', ['user']], ['warn', ['user']], ['mute', ['user']], ['purge', []]]) {
       const command = byName.get(name);

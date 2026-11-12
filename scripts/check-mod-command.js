@@ -561,8 +561,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 91, '91 commands registered with Discord (88 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 88, '88 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 93, '93 commands registered with Discord (90 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 90, '90 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   assert.ok(!registered.some((each) => each.name === 'mod'), '/mod is not registered with Discord: it is a prefix command only (`!mod ban @x`)');
   // `/ban`, `/kick` and `/warn` are still registered with their own permissions (each has subcommands that /mod does not wrap, and /mod is at 25).

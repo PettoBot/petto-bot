@@ -43,7 +43,7 @@ const ESSENTIAL = [
   'case', 'jail', 'lockdown', 'mute', 'nickname', 'note', 'snipe', 'thread',
   // The quota of messages of a role (`/rolequota set`, `status`, `excuse`...): any member looks at their own count, the rest is for administrators.
   'rolequota',
-  'activityboard',
+  'activityboard', 'rank', 'leaderboard',
   // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`); what else they held is a command of its own: `/unban`, `/unmute`, `/unjail`.
   'unban', 'unmute', 'unjail',
   // Registered before for their own reasons.

@@ -4,7 +4,7 @@
 // (utils/umbrella.js): `/levels rank` is `!rank`, `/levels leaderboard` is `!top`, `/levels voice xp` is `!level voice-xp`.
 //
 // The old commands keep working as they were with the prefix (`!level`, `!xp`, `!rank`, `!top`, `!leaderboard`, `!lb`...), and so do the old words as the first
-// word of this one (`!levels voice-xp 5`). They are not slash commands any more.
+// word of this one (`!levels voice-xp 5`). `rank` and `top` are also slash commands of their own now (`/rank`, `/leaderboard`), the shorter ways to the same answers.
 //
 // PERMISSIONS: Discord checks `default_member_permissions` for a whole command, never for one subcommand, so `/levels` is open (everybody uses `rank`
 // and `leaderboard`) and every subcommand of a group asks, when it runs, for what `!level` asks (Manage Server), for the slash command and the prefix alike.

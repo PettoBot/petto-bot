@@ -9,7 +9,8 @@ const { getVoiceConfig } = require('../../utils/levelSource');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
-  // A prefix command: its slash entry is inside `/levels` or `/bot` (utils/umbrella.js).
+  // Also a slash command of its own: `/rank` (your level and XP, or someone else's), with `!rank`, `!nivel` and `!lvl` for the prefix.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('rank')
     .setDescription('View your level/XP rank, or someone else\'s.')
