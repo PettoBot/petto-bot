@@ -1,15 +1,16 @@
-// The activity leaderboards: a card for the day, the week and the month of the chat or of the voice channels, in a channel of the server, edited by Petto every hour.
+// The activity leaderboards: a card for the day, the week and the month (the ones the server chose) of the chat or of the voice channels, in a channel of the server, edited by Petto
+// about every 5 minutes, and only when what they say changed.
 // What is shown is read from `activity_members` (a count for each member and day, never what was said), so it follows what a server turned off in `!statsconfig` and
 // who asked not to be counted (`!stats privacy`). Days, weeks (ISO, from Monday) and months are the ones of Petto, GMT-5 (Colombia).
 // Written in TypeScript: `npm run build:ts` compiles it over src/utils/activityLeaderboard.js, which is what the bot loads.
 import { ChannelType, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import type { Client, ContainerBuilder, Guild, GuildBasedChannel } from 'discord.js';
 import db = require('../db/activityLeaderboards');
-import type { BoardRow, Kind, TopRow } from '../db/activityLeaderboards';
+import type { BoardRow, Kind, Period, TopRow } from '../db/activityLeaderboards';
 
-export type Period = 'daily' | 'weekly' | 'monthly';
+export type { Period };
 /** The order they are posted in, and so the order they read in: the longest first. */
-export const PERIODS: readonly Period[] = ['monthly', 'weekly', 'daily'];
+export const PERIODS: readonly Period[] = db.PERIODS;
 /** Places shown in a card: the first one on its own line (the most active) and the rest numbered. */
 export const PLACES = 10;
 /** How many members are asked for, so that the ones who left the server can be skipped and the card is still full. */
@@ -32,6 +33,10 @@ const icons = require('../music/icons') as Record<string, string>;
 const logger = require('./logger') as { warn: (message: string) => void };
 
 const DAY_MS = 86_400_000;
+/** A card that says the same as the last time is not edited again, except once in a while: that is how a message that someone deleted is found and written again. */
+const FORCE_EDIT_MS = 55 * 60_000;
+const lastWritten = new Map<string, { text: string; at: number }>();
+const writtenKey = (row: BoardRow, period: Period): string => `${row.guild_id}:${row.kind}:${period}`;
 
 // ---- Periods -------------------------------------------------------------------------------------------------------------------
 
@@ -117,7 +122,8 @@ const codeOf = (error: unknown): number | null => {
 /** The short reason saved in the board when it cannot be written; the command and the dashboard say it in words. */
 export type Reason = 'statsOff' | 'membersOff' | 'channel' | 'permissions' | 'error';
 
-export interface RefreshResult { ok: boolean; reason?: Reason }
+/** `wrote` is true when a message was edited, posted or deleted at Discord: a board with nothing new costs the database only. */
+export interface RefreshResult { ok: boolean; reason?: Reason; wrote?: boolean }
 
 const NEEDED = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
 
@@ -138,10 +144,11 @@ export function statsReason(guildId: string): 'statsOff' | 'membersOff' | null {
 }
 
 /**
- * Writes the three cards of a board: edits the messages it has, or posts all three again in order when one is missing (deleted by someone), and remembers them.
- * A board that cannot be written keeps the reason in the database. Never throws for something that is the server's doing.
+ * Writes the cards of a board (the periods the server chose): edits the messages it has, or posts them all again in order when one is missing (deleted by someone) or a
+ * period was added, and remembers them. A card that says the same as when it was last written is not edited again (about once an hour it is, to find a deleted one), so a
+ * quiet server costs nothing at Discord. A board that cannot be written keeps the reason in the database. Never throws for something that is the server's doing.
  */
-export async function refreshBoard(client: Client, row: BoardRow, { now = new Date() }: { now?: Date } = {}): Promise<RefreshResult> {
+export async function refreshBoard(client: Client, row: BoardRow, { now = new Date(), force = false }: { now?: Date; force?: boolean } = {}): Promise<RefreshResult> {
   const guild = client.guilds.cache.get(row.guild_id);
   if (!guild) return { ok: false, reason: 'error' }; // not reachable now: nothing is said, it is looked at again
   const fail = async (reason: Reason): Promise<RefreshResult> => { await db.markError(row.guild_id, row.kind, reason); return { ok: false, reason }; };
@@ -153,33 +160,56 @@ export async function refreshBoard(client: Client, row: BoardRow, { now = new Da
   if ('reason' in writable) return fail(writable.reason);
   const lang = await guildLanguage(guild.id);
 
+  // Only the periods the server chose are read and written; the others have no message.
+  const chosen = PERIODS.filter((period) => db.cleanPeriods(row.periods).includes(period));
+  const texts = new Map<Period, string>();
   const payloads = new Map<Period, { components: ContainerBuilder[]; flags: MessageFlags.IsComponentsV2; allowedMentions: { parse: [] } }>();
-  for (const period of PERIODS) {
+  for (const period of chosen) {
     const window = periodWindow(period, now);
     const entries = await entriesOf(guild, await db.readTop(guild.id, row.kind, window.startDay, CANDIDATES));
-    payloads.set(period, { components: [textCard(boardText(lang, row.kind, period, entries, window.resetAt))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+    const text = boardText(lang, row.kind, period, entries, window.resetAt);
+    texts.set(period, text);
+    payloads.set(period, { components: [textCard(text)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
   }
 
   const known: Record<Period, string | null> = { daily: row.daily_message_id, weekly: row.weekly_message_id, monthly: row.monthly_message_id };
   const saved: Record<Period, string | null> = { ...known };
+  let wrote = false;
   try {
-    let repost = PERIODS.some((period) => !known[period]);
+    // A period that was taken away loses its message; the others stay where they are.
+    for (const period of PERIODS) {
+      if (chosen.includes(period) || !known[period]) continue;
+      await writable.channel.messages.delete(known[period] as string).catch(() => null);
+      wrote = true;
+      saved[period] = null;
+      lastWritten.delete(writtenKey(row, period));
+    }
+    // A period that was added has no message yet: they are all written again so they stay in order.
+    let repost = chosen.some((period) => !known[period]);
     if (!repost) {
-      for (const period of PERIODS) {
+      for (const period of chosen) {
+        const before = lastWritten.get(writtenKey(row, period));
+        if (!force && before && before.text === texts.get(period) && now.getTime() - before.at < FORCE_EDIT_MS) continue; // nothing changed (a command writes them anyway)
         try {
           await writable.channel.messages.edit(known[period] as string, payloads.get(period)!);
+          wrote = true;
+          lastWritten.set(writtenKey(row, period), { text: texts.get(period) as string, at: now.getTime() });
         } catch (error) {
           if (codeOf(error) !== ERROR_CODES.unknownMessage) throw error;
-          repost = true; // someone deleted one: all three are written again so they stay in order
+          repost = true; // someone deleted one: all of them are written again so they stay in order
           break;
         }
       }
     }
     if (repost) {
-      for (const period of PERIODS) {
+      wrote = true;
+      for (const period of chosen) {
         if (known[period]) await writable.channel.messages.delete(known[period] as string).catch(() => null);
       }
-      for (const period of PERIODS) saved[period] = (await writable.channel.send(payloads.get(period)!)).id;
+      for (const period of chosen) {
+        saved[period] = (await writable.channel.send(payloads.get(period)!)).id;
+        lastWritten.set(writtenKey(row, period), { text: texts.get(period) as string, at: now.getTime() });
+      }
     }
   } catch (error) {
     const code = codeOf(error);
@@ -190,11 +220,12 @@ export async function refreshBoard(client: Client, row: BoardRow, { now = new Da
   }
   await db.saveMessages(row.guild_id, row.kind, { daily: saved.daily, weekly: saved.weekly, monthly: saved.monthly });
   await db.markRefreshed(row.guild_id, row.kind);
-  return { ok: true };
+  return { ok: true, wrote };
 }
 
 /** Deletes the messages of a board that was taken away (best effort: they may be gone already or Petto may not see the channel). */
 export async function deleteBoardMessages(client: Client, row: BoardRow): Promise<void> {
+  for (const period of PERIODS) lastWritten.delete(writtenKey(row, period));
   const guild = client.guilds.cache.get(row.guild_id);
   const channel = guild ? await guild.channels.fetch(row.channel_id).catch(() => null) : null;
   if (!channel || !('messages' in channel)) return;
@@ -203,16 +234,24 @@ export async function deleteBoardMessages(client: Client, row: BoardRow): Promis
   }
 }
 
-/** Writes the boards that are due, one server after another with a pause between them. */
-export async function runDueBoards(client: Client, { pauseMs = 1500, sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: { pauseMs?: number; sleep?: (ms: number) => Promise<void> } = {}): Promise<number> {
-  const due = await db.listDue(20);
+/**
+ * Looks at the boards that are due, one server after another. After a board that wrote something at Discord there is a pause, so a few hundred servers never send a burst of
+ * edits; a board with nothing new needs none. A round stops after `budgetMs` and the ones left are the first due at the next look.
+ */
+export async function runDueBoards(client: Client, { pauseMs = 1500, budgetMs = 45_000, now = () => Date.now(), sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: { pauseMs?: number; budgetMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> } = {}): Promise<number> {
+  const due = await db.listDue(60);
+  const started = now();
+  let looked = 0;
   for (const row of due) {
+    if (now() - started > budgetMs) break;
+    looked += 1;
+    let wrote = true;
     try {
-      await refreshBoard(client, row);
+      wrote = Boolean((await refreshBoard(client, row)).wrote);
     } catch (error) {
       logger.warn(`Activity leaderboard (${row.kind}) in guild ${row.guild_id} failed: ${(error as Error)?.message}`);
     }
-    await sleep(pauseMs);
+    if (wrote) await sleep(pauseMs);
   }
-  return due.length;
+  return looked;
 }

@@ -621,7 +621,7 @@
  "lmr": "levels multiplier remove",
  "lmre": "levels manage reset",
  "lms": "levels multiplier set",
- "lmsr": "levels manage sync-roles",
+ "lmsr": "levels manage sync",
  "lmx": "levels manage xp",
  "loga": "logs add",
  "logcl": "logs color list",

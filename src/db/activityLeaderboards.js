@@ -1,10 +1,11 @@
 "use strict";
 // i18n-ignore-file: database layer, nothing here is shown to anyone.
-// The activity leaderboards a server asked for (table `activity_leaderboards`): one row for each server and kind (chat or voice) with the channel and the three messages
-// (daily, weekly, monthly) that Petto edits every hour, and the top of the members read from `activity_members` (counts only, never what was said).
+// The activity leaderboards a server asked for (table `activity_leaderboards`): one row for each server and kind (chat or voice) with the channel, the periods the server chose
+// and their messages (daily, weekly, monthly) that Petto edits every few minutes, and the top of the members read from `activity_members` (counts only, never what was said).
 // Written in TypeScript: `npm run build:ts` compiles it over src/db/activityLeaderboards.js, which is what the bot loads.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REFRESH_MINUTES = exports.KINDS = void 0;
+exports.REFRESH_SECONDS = exports.PERIODS = exports.KINDS = void 0;
+exports.cleanPeriods = cleanPeriods;
 exports.listBoards = listBoards;
 exports.getBoard = getBoard;
 exports.upsertBoard = upsertBoard;
@@ -16,36 +17,53 @@ exports.listDue = listDue;
 exports.readTop = readTop;
 exports.readTopBetween = readTopBetween;
 exports.KINDS = ['chat', 'voice'];
+/** The order the cards are posted in, and so the order they read in: the longest first. */
+exports.PERIODS = ['monthly', 'weekly', 'daily'];
+/** The periods in the order of `PERIODS`, once each, and only the ones that exist; what is not a period is dropped. A list with none of them is every period. */
+function cleanPeriods(value) {
+    const wanted = new Set(Array.isArray(value) ? value.map(String) : []);
+    const chosen = exports.PERIODS.filter((period) => wanted.has(period));
+    return chosen.length ? [...chosen] : [...exports.PERIODS];
+}
 // The project is JavaScript: its modules are read with `require` and given the shape that is used here.
 const { getPrimaryPool } = require('./postgres');
 const { ensureGuild } = require('./guilds');
-/** A board that has not been refreshed for this long is due. */
-exports.REFRESH_MINUTES = 55;
+/**
+ * A board that has not been refreshed for this long is due. The job looks every minute, so a board is written about every 5 minutes (a little less than that
+ * after the last time, so the look that follows is the one that finds it due).
+ */
+exports.REFRESH_SECONDS = 270;
 const pool = () => getPrimaryPool();
 const asRow = (row) => (row ? row : null);
+/** What the database holds is never trusted to be well formed: the periods of a row are always the clean list. */
+const withPeriods = (row) => ({ ...row, periods: cleanPeriods(row.periods) });
 async function listBoards(guildId) {
     const { rows } = await pool().query('select * from activity_leaderboards where guild_id = $1 order by kind', [guildId]);
-    return rows;
+    return rows.map(withPeriods);
 }
 async function getBoard(guildId, kind) {
     const { rows } = await pool().query('select * from activity_leaderboards where guild_id = $1 and kind = $2', [guildId, kind]);
-    return asRow(rows[0]);
+    const row = asRow(rows[0]);
+    return row ? withPeriods(row) : null;
 }
 /**
  * Chooses the channel of a board. The messages are kept when it is the same channel (Petto goes on editing them) and forgotten when it changes (they are in the
- * old one); either way the board is due now, so it is written at the next look or at once by the command.
+ * old one); either way the board is due now, so it is written at the next look or at once by the command. `periods` chooses the cards; left out, a new board has all of
+ * them and an old one keeps the ones it had.
  */
-async function upsertBoard(guildId, kind, channelId) {
+async function upsertBoard(guildId, kind, channelId, periods) {
     await ensureGuild(guildId);
-    const { rows } = await pool().query(`insert into activity_leaderboards (guild_id, kind, channel_id) values ($1, $2, $3)
+    const chosen = periods ? cleanPeriods(periods) : null;
+    const { rows } = await pool().query(`insert into activity_leaderboards (guild_id, kind, channel_id, periods) values ($1, $2, $3, coalesce($4::text[], '{monthly,weekly,daily}'::text[]))
      on conflict (guild_id, kind) do update set
        channel_id = excluded.channel_id,
+       periods = coalesce($4::text[], activity_leaderboards.periods),
        daily_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.daily_message_id end,
        weekly_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.weekly_message_id end,
        monthly_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.monthly_message_id end,
        last_refreshed_at = null, last_error = null
-     returning *`, [guildId, kind, channelId]);
-    return rows[0];
+     returning *`, [guildId, kind, channelId, chosen]);
+    return withPeriods(rows[0]);
 }
 /** Takes a board away and answers the row it had (to delete its messages), or null when there was none. */
 async function removeBoard(guildId, kind) {
@@ -59,16 +77,16 @@ async function saveMessages(guildId, kind, ids) {
 async function markRefreshed(guildId, kind) {
     await pool().query('update activity_leaderboards set last_refreshed_at = now(), last_error = null where guild_id = $1 and kind = $2', [guildId, kind]);
 }
-/** Saves why a board could not be written (a short code) and counts it as looked at, so it is tried again in an hour and not at every round. */
+/** Saves why a board could not be written (a short code) and counts it as looked at, so it is tried again at the next round (in about 5 minutes) and not at every look. */
 async function markError(guildId, kind, code) {
     await pool().query('update activity_leaderboards set last_error = $3, last_refreshed_at = now() where guild_id = $1 and kind = $2', [guildId, kind, code]);
 }
-/** The boards that were never written or were last written `REFRESH_MINUTES` ago, the oldest first. */
+/** The boards that were never written or were last written `REFRESH_SECONDS` ago, the oldest first. */
 async function listDue(limit = 20) {
     const { rows } = await pool().query(`select * from activity_leaderboards
-      where last_refreshed_at is null or last_refreshed_at <= now() - make_interval(mins => $2)
-      order by last_refreshed_at asc nulls first limit $1`, [Math.max(1, Math.min(200, limit)), exports.REFRESH_MINUTES]);
-    return rows;
+      where last_refreshed_at is null or last_refreshed_at <= now() - make_interval(secs => $2)
+      order by last_refreshed_at asc nulls first limit $1`, [Math.max(1, Math.min(200, limit)), exports.REFRESH_SECONDS]);
+    return rows.map(withPeriods);
 }
 /**
  * The most active members from `sinceDay` (`YYYY-MM-DD`, in the day of Petto) until now: messages for `chat`, seconds in voice for `voice`.

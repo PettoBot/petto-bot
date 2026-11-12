@@ -19,6 +19,7 @@ stub('src/db/levelUsers.js', { getUser: async () => testUser });
 stub('src/utils/levelActions.js', { notifyLevelUp: async (options) => { sentTests.push(options); } });
 stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
 stub('src/utils/emojis.js', { EMOJI: {} });
+stub('src/utils/levelSync.js', { runSync: async () => ({}), kindsOf: () => ['roles'] });
 stub('src/utils/roleResolve.js', { resolveRole: (guild, token) => ({ id: String(token).replace(/\D/g, '') || '1' }) });
 const command = require('../src/commands/leveling/level.js');
 const { buildInteractionFromMessage } = require('../src/handlers/prefixInteraction');

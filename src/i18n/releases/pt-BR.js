@@ -1,5 +1,43 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
+  'v0.7.11': {
+    label: 'v0.7.11 · Brownie: rankings de atividade, cotas de cargo, verificação mais forte e um bot privado',
+    summary: 'Brownie: rankings dos membros mais ativos, uma cota de mensagens para um cargo, uma verificação com checagem de Tor, contas alternativas e e-mail, comandos de barra diretos para moderação, e um bot cujo código agora é privado.',
+    sections: [
+      {
+        title: 'Atividade e níveis',
+        items: [
+          '`/activityboard set` publica os membros mais ativos do chat ou da voz como cartões do mês, da semana e do dia (todos ou só alguns), editados a cada 5 minutos, mais ou menos, e pode dar um cargo ao membro mais ativo da semana.',
+          '`/rolequota` pede a um cargo uma quantidade de mensagens a cada período e tira o cargo de quem falha vezes demais; `/rolequota progress` mostra quem está atrasado.',
+          '`/rank` e `/leaderboard` são comandos de barra próprios, `/levels manage sync` pode corrigir níveis, cargos de voz e contadores de mensagens (`type`), e um membro que sai perde o XP por padrão (`keep_xp` o mantém).',
+          '`/variables` mostra as opções de qualquer comando e onde estão as variáveis das mensagens.',
+        ],
+      },
+      {
+        title: 'Verificação e segurança',
+        items: [
+          'A verificação pode checar Tor, contas alternativas, a conta do Discord e um código por e-mail além do captcha, o código por e-mail é um método próprio, e o painel e as DMs foram redesenhados.',
+          '`/automod link` volta a perguntar ao Google Safe Browsing.',
+          '**O código do bot agora é privado.** Alguém tentou adicionar código malicioso por um pull request; ele nunca chegou ao bot e nenhum dado vazou. Para fechar a porta a esse tipo de tentativa, o bot deixou de ser de código aberto; pode voltar a ser no futuro.',
+        ],
+      },
+      {
+        title: 'Comandos e servidores',
+        items: [
+          'Moderação sem o guarda-chuva `/mod`: `/ban`, `/kick`, `/mute`, `/warn`, `/jail`... recebem suas opções diretamente, `/ban` e `/mute` aceitam um tempo opcional, os comandos em massa voltaram, e `/case`, `/note`, `/lockdown` e mais são comandos próprios, usando os 100 espaços extras que o Discord dá a cada servidor.',
+          '`/premium` tem botões e menus, `/customize` muda como o Petto aparece em um servidor pelo Discord, `/channel copyperms`, `/bot topcommands`, `!color` com uma imagem de amostra, e `/role all` conta primeiro quem precisa da mudança. `/community` acabou: cada coisa que os membros enviam à equipe é um comando próprio.',
+          'O quadro de feedback é feito pelo Petto, os cartões de imagem mostram a decoração do avatar, e o dashboard tem páginas de cotas de cargo e de rankings de atividade.',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          '`/levels manage xp add` não somava mais o número ao texto do anterior, e uma sugestão não pode receber a mesma resposta duas vezes.',
+          'Um feed que falha diz por quê, e um feed apagado não publica nada. O Petto não continua perguntando ao Discord o que o Discord mandou esperar, e o watchdog não gasta seus reinícios quando só o Discord não responde.',
+        ],
+      },
+    ],
+  },
   'v0.7.10': {
     label: 'v0.7.10 · Cupcake: gatilhos de cargo, boost de votos e domínios permitidos',
     summary: 'Cupcake: regras que agem quando um membro recebe um cargo, +10% de XP para quem vota no Petto, domínios permitidos no filtro de links, comandos de barra com nomes mais claros e um bot que se protege sob carga.',

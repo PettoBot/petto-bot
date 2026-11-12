@@ -105,6 +105,12 @@ const walkFiles = (dir, ext) => fs.readdirSync(dir, { withFileTypes: true }).fla
   said = await ask('role all');
   assert.ok(said.includes('!role all') && said.includes('`--role`') && said.includes('`--preview`'), 'the options of a part of a command, from its builder, with the one that can be written alone');
   assert.ok(said.includes('role') && /required|obligatoria/.test(said) === true, 'and which are required');
+  // The answer is a card with its parts told apart (a block for the command, one for the options, one for what is written in the text, each with a divider),
+  // and not one block of text. Discord's type 14 is a divider; the description of each option is small text under it.
+  const parts = JSON.parse(said).components;
+  assert.ok(parts.filter((part) => part.type === 14).length >= 2, 'the card has dividers between its parts');
+  assert.ok(parts.filter((part) => part.type === 10).length >= 3, 'and a block of text for each part');
+  assert.ok(said.includes('### Options') && said.includes('\\n-# '), 'the options have a title and their text small under each one');
   said = await ask('role');
   assert.ok(said.includes('!variables role add') && said.includes('Ask for one') && said.includes('!variables role all'), 'a command with parts lists them');
   said = await ask('q');
@@ -136,7 +142,7 @@ const walkFiles = (dir, ext) => fs.readdirSync(dir, { withFileTypes: true }).fla
   said = await ask('quote', 'en', true);
   assert.ok(said.includes('!quote hello @member --color') && !said.includes('/quote hello'), 'but the examples of options use the prefix');
   said = await ask('', 'en', true);
-  assert.ok(said.includes('/variables quote') && said.includes('/embed vars') && said.includes('with the prefix'), 'the overview too');
+  assert.ok(said.includes('/variables quote') && said.includes('/embed vars') && said.includes('With the prefix'), 'the overview too');
   assert.ok((await ask('flags', 'es', true)).includes('/variables <comando>'), 'in Spanish');
   assert.ok((await ask('nothingatall', 'en', true)).includes('Try `/variables`'), 'and what it says when it finds nothing');
 

@@ -9,14 +9,15 @@ exports.statsReason = statsReason;
 exports.refreshBoard = refreshBoard;
 exports.deleteBoardMessages = deleteBoardMessages;
 exports.runDueBoards = runDueBoards;
-// The activity leaderboards: a card for the day, the week and the month of the chat or of the voice channels, in a channel of the server, edited by Petto every hour.
+// The activity leaderboards: a card for the day, the week and the month (the ones the server chose) of the chat or of the voice channels, in a channel of the server, edited by Petto
+// about every 5 minutes, and only when what they say changed.
 // What is shown is read from `activity_members` (a count for each member and day, never what was said), so it follows what a server turned off in `!statsconfig` and
 // who asked not to be counted (`!stats privacy`). Days, weeks (ISO, from Monday) and months are the ones of Petto, GMT-5 (Colombia).
 // Written in TypeScript: `npm run build:ts` compiles it over src/utils/activityLeaderboard.js, which is what the bot loads.
 const discord_js_1 = require("discord.js");
 const db = require("../db/activityLeaderboards");
 /** The order they are posted in, and so the order they read in: the longest first. */
-exports.PERIODS = ['monthly', 'weekly', 'daily'];
+exports.PERIODS = db.PERIODS;
 /** Places shown in a card: the first one on its own line (the most active) and the rest numbered. */
 exports.PLACES = 10;
 /** How many members are asked for, so that the ones who left the server can be skipped and the card is still full. */
@@ -30,6 +31,10 @@ const { EMOJI } = require('./emojis');
 const icons = require('../music/icons');
 const logger = require('./logger');
 const DAY_MS = 86_400_000;
+/** A card that says the same as the last time is not edited again, except once in a while: that is how a message that someone deleted is found and written again. */
+const FORCE_EDIT_MS = 55 * 60_000;
+const lastWritten = new Map();
+const writtenKey = (row, period) => `${row.guild_id}:${row.kind}:${period}`;
 /** The period of `at` for a kind of card: today, this ISO week (Monday to Sunday) or this month, and when it ends. All in GMT-5. */
 function periodWindow(period, at = new Date()) {
     const clock = new Date(at.getTime() + OFFSET_MS); // its UTC fields are the clock of Colombia
@@ -115,10 +120,11 @@ function statsReason(guildId) {
     return null;
 }
 /**
- * Writes the three cards of a board: edits the messages it has, or posts all three again in order when one is missing (deleted by someone), and remembers them.
- * A board that cannot be written keeps the reason in the database. Never throws for something that is the server's doing.
+ * Writes the cards of a board (the periods the server chose): edits the messages it has, or posts them all again in order when one is missing (deleted by someone) or a
+ * period was added, and remembers them. A card that says the same as when it was last written is not edited again (about once an hour it is, to find a deleted one), so a
+ * quiet server costs nothing at Discord. A board that cannot be written keeps the reason in the database. Never throws for something that is the server's doing.
  */
-async function refreshBoard(client, row, { now = new Date() } = {}) {
+async function refreshBoard(client, row, { now = new Date(), force = false } = {}) {
     const guild = client.guilds.cache.get(row.guild_id);
     if (!guild)
         return { ok: false, reason: 'error' }; // not reachable now: nothing is said, it is looked at again
@@ -131,36 +137,60 @@ async function refreshBoard(client, row, { now = new Date() } = {}) {
     if ('reason' in writable)
         return fail(writable.reason);
     const lang = await guildLanguage(guild.id);
+    // Only the periods the server chose are read and written; the others have no message.
+    const chosen = exports.PERIODS.filter((period) => db.cleanPeriods(row.periods).includes(period));
+    const texts = new Map();
     const payloads = new Map();
-    for (const period of exports.PERIODS) {
+    for (const period of chosen) {
         const window = periodWindow(period, now);
         const entries = await entriesOf(guild, await db.readTop(guild.id, row.kind, window.startDay, exports.CANDIDATES));
-        payloads.set(period, { components: [textCard(boardText(lang, row.kind, period, entries, window.resetAt))], flags: discord_js_1.MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+        const text = boardText(lang, row.kind, period, entries, window.resetAt);
+        texts.set(period, text);
+        payloads.set(period, { components: [textCard(text)], flags: discord_js_1.MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
     }
     const known = { daily: row.daily_message_id, weekly: row.weekly_message_id, monthly: row.monthly_message_id };
     const saved = { ...known };
+    let wrote = false;
     try {
-        let repost = exports.PERIODS.some((period) => !known[period]);
+        // A period that was taken away loses its message; the others stay where they are.
+        for (const period of exports.PERIODS) {
+            if (chosen.includes(period) || !known[period])
+                continue;
+            await writable.channel.messages.delete(known[period]).catch(() => null);
+            wrote = true;
+            saved[period] = null;
+            lastWritten.delete(writtenKey(row, period));
+        }
+        // A period that was added has no message yet: they are all written again so they stay in order.
+        let repost = chosen.some((period) => !known[period]);
         if (!repost) {
-            for (const period of exports.PERIODS) {
+            for (const period of chosen) {
+                const before = lastWritten.get(writtenKey(row, period));
+                if (!force && before && before.text === texts.get(period) && now.getTime() - before.at < FORCE_EDIT_MS)
+                    continue; // nothing changed (a command writes them anyway)
                 try {
                     await writable.channel.messages.edit(known[period], payloads.get(period));
+                    wrote = true;
+                    lastWritten.set(writtenKey(row, period), { text: texts.get(period), at: now.getTime() });
                 }
                 catch (error) {
                     if (codeOf(error) !== ERROR_CODES.unknownMessage)
                         throw error;
-                    repost = true; // someone deleted one: all three are written again so they stay in order
+                    repost = true; // someone deleted one: all of them are written again so they stay in order
                     break;
                 }
             }
         }
         if (repost) {
-            for (const period of exports.PERIODS) {
+            wrote = true;
+            for (const period of chosen) {
                 if (known[period])
                     await writable.channel.messages.delete(known[period]).catch(() => null);
             }
-            for (const period of exports.PERIODS)
+            for (const period of chosen) {
                 saved[period] = (await writable.channel.send(payloads.get(period))).id;
+                lastWritten.set(writtenKey(row, period), { text: texts.get(period), at: now.getTime() });
+            }
         }
     }
     catch (error) {
@@ -174,10 +204,12 @@ async function refreshBoard(client, row, { now = new Date() } = {}) {
     }
     await db.saveMessages(row.guild_id, row.kind, { daily: saved.daily, weekly: saved.weekly, monthly: saved.monthly });
     await db.markRefreshed(row.guild_id, row.kind);
-    return { ok: true };
+    return { ok: true, wrote };
 }
 /** Deletes the messages of a board that was taken away (best effort: they may be gone already or Petto may not see the channel). */
 async function deleteBoardMessages(client, row) {
+    for (const period of exports.PERIODS)
+        lastWritten.delete(writtenKey(row, period));
     const guild = client.guilds.cache.get(row.guild_id);
     const channel = guild ? await guild.channels.fetch(row.channel_id).catch(() => null) : null;
     if (!channel || !('messages' in channel))
@@ -187,17 +219,27 @@ async function deleteBoardMessages(client, row) {
             await channel.messages.delete(id).catch(() => null);
     }
 }
-/** Writes the boards that are due, one server after another with a pause between them. */
-async function runDueBoards(client, { pauseMs = 1500, sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }) } = {}) {
-    const due = await db.listDue(20);
+/**
+ * Looks at the boards that are due, one server after another. After a board that wrote something at Discord there is a pause, so a few hundred servers never send a burst of
+ * edits; a board with nothing new needs none. A round stops after `budgetMs` and the ones left are the first due at the next look.
+ */
+async function runDueBoards(client, { pauseMs = 1500, budgetMs = 45_000, now = () => Date.now(), sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }) } = {}) {
+    const due = await db.listDue(60);
+    const started = now();
+    let looked = 0;
     for (const row of due) {
+        if (now() - started > budgetMs)
+            break;
+        looked += 1;
+        let wrote = true;
         try {
-            await refreshBoard(client, row);
+            wrote = Boolean((await refreshBoard(client, row)).wrote);
         }
         catch (error) {
             logger.warn(`Activity leaderboard (${row.kind}) in guild ${row.guild_id} failed: ${error?.message}`);
         }
-        await sleep(pauseMs);
+        if (wrote)
+            await sleep(pauseMs);
     }
-    return due.length;
+    return looked;
 }

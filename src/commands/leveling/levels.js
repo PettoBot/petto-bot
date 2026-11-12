@@ -53,20 +53,26 @@ const SUBCOMMANDS = [
   { group: 'event', wraps: 'level', wrapsGroup: 'event' },
   {
     group: 'manage',
-    description: "Change a member's XP or level by hand, reset it, or give the reward roles the levels have earned.",
+    description: "Change a member's XP or level by hand, reset it, or sync roles, levels and counters.",
     leaves: [
       level('xp', 'xp', [], 'manage'),
       level('level', 'level', [], 'manage'),
-      level('sync-roles', 'sync', [], 'manage'),
+      level('sync', 'sync', [], 'manage'),
       level('reset', 'reset', ['reset']),
     ],
   },
 ];
 
-module.exports = defineUmbrella({
+const levels = defineUmbrella({
   name: 'levels',
   description: 'Levels and XP: your rank, the leaderboard of the server and the settings of the leveling system.',
   subcommands: SUBCOMMANDS,
   // `/rank` and `/leaderboard` do the same, so `/levels rank` and `/levels leaderboard` are only for the prefix.
   prefixOnlySubcommands: ['rank', 'leaderboard'],
 });
+
+// `manage sync` used to be called `manage sync-roles` (and did only that): the old way of writing it, `!levels manage sync-roles` and the short word `!lmsr`, still reads as `manage sync`,
+// whose `type` is `roles` unless another is chosen.
+levels.prefixPathAliases = { 'manage sync-roles': 'manage sync' }; // i18n-ignore: command words, not text
+
+module.exports = levels;

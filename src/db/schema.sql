@@ -2517,7 +2517,7 @@ create table if not exists activity_members (
 create index if not exists idx_activity_members_guild_day on activity_members(guild_id, day);
 alter table activity_members enable row level security;
 
--- Activity leaderboards: one row per server and kind (chat or voice) with the channel and the three messages (daily, weekly, monthly) that Petto edits every hour.
+-- Activity leaderboards: one row per server and kind (chat or voice) with the channel, the periods the server chose and their messages (daily, weekly, monthly) that Petto edits every few minutes.
 -- It reads activity_members (counts only), so it follows what a server turned off in !statsconfig and who asked not to be counted.
 create table if not exists activity_leaderboards (
   guild_id           text not null references guilds(guild_id) on delete cascade,
@@ -2531,6 +2531,8 @@ create table if not exists activity_leaderboards (
   created_at         timestamptz not null default now(),
   primary key (guild_id, kind)
 );
+-- Which cards a board has (any of monthly, weekly, daily). The boards that existed before the choice have all three.
+alter table activity_leaderboards add column if not exists periods text[] not null default '{monthly,weekly,daily}';
 alter table activity_leaderboards enable row level security;
 
 -- Role of the most active member: one row per server and kind (chat or voice) with the role, who has it now and the week it was last given for (the first day of that week).

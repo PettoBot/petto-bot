@@ -75,6 +75,28 @@ async function listWithLevels(guildId, { offset = 0, limit = 100 } = {}) {
   return data ?? [];
 }
 
+/** A page of every member who has a row (by user id) with what a sync reads: the XP and the level of each kind, and the messages. */
+async function listForSync(guildId, { offset = 0, limit = 100 } = {}) {
+  const { data, error } = await database.from('level_users').select('user_id,xp,level,voice_xp,voice_level,messages').eq('guild_id', guildId).order('user_id', { ascending: true }).range(offset, offset + limit - 1);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Raises the message counter of each member to what the activity statistics (`activity_members`) say, for the members who have a row; a counter that is already
+ * higher is left alone and nobody gets a row. Answers how many were raised.
+ */
+async function raiseMessagesFromStats(guildId) {
+  const { rows } = await getPrimaryPool().query(
+    `update level_users lu set messages = s.total, updated_at = now()
+       from (select user_id, sum(messages)::bigint as total from activity_members where guild_id = $1 group by user_id) s
+      where lu.guild_id = $1 and lu.user_id = s.user_id and s.total > lu.messages
+      returning lu.user_id`,
+    [guildId],
+  );
+  return rows.length;
+}
+
 /** 1-based rank position by XP (ties broken by whoever reached that XP first is not tracked — same ordering as bli). */
 async function getRank(guildId, xp) {
   const { count, error } = await database.from('level_users').select('user_id', { count: 'exact', head: true }).eq('guild_id', guildId).gt('xp', xp);
@@ -130,4 +152,4 @@ async function takeDailyXp(guildId, userId, day, gain, cap) {
   return Number(rows[0]?.granted ?? 0);
 }
 
-module.exports = { takeDailyXp, touchStreak, getUser, getUsers, listWithLevels, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, deleteUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
+module.exports = { listForSync, raiseMessagesFromStats, takeDailyXp, touchStreak, getUser, getUsers, listWithLevels, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, deleteUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
