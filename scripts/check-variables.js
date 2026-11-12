@@ -1,6 +1,7 @@
 // Checks `!variables`: the list of options that are only written in the text (utils/commandFlags.ts) has a text in the three languages and points at commands that exist; every
 // `--flag` that Petto reads or tells people about is either an option of a command (the prefix reads any option as `--name value`) or is in that list, so a new one cannot be forgotten;
 // and the command answers in each language: the overview, the options of a command or of one of its subcommands, where an option is used, the flags and what it says when it finds nothing.
+// It is a slash command (`/variables`) and works with the prefix (`!variables`, `!vars`); the options it explains are always shown with a prefix, since `--name value` is only written there.
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
@@ -26,10 +27,11 @@ const walkFiles = (dir, ext) => fs.readdirSync(dir, { withFileTypes: true }).fla
   client.prefixRoutes = new Map();
   await loadCommands(client);
 
-  // ---- the command: prefix only, no slot of the `/` menu, with its description in the three languages
-  assert.equal(command.prefixOnly, true, 'it is only for the prefix: no slot of the / menu');
+  // ---- the command: a slash command too, with the prefix, and its description in the three languages
+  assert.ok(!command.prefixOnly && command.registerSlash === true, 'it is a slash command of its own, and the prefix works too');
   assert.ok(command.aliases.includes('vars'));
-  assert.equal(isSlashCommand(command), false, 'it is not registered as a slash command');
+  assert.equal(isSlashCommand(command), true, 'it is registered as a slash command');
+  assert.equal(command.data.toJSON().default_member_permissions ?? null, null, 'open to everybody');
   assert.ok(client.commands.has('variables') && client.commandAliases.get('vars') === 'variables', 'it is loaded, with its word');
   for (const lang of ['en', 'es', 'pt-BR']) for (const key of ['cmd.info.variables.desc', 'cmd.info.variables.opt.query.desc']) assert.notEqual(i18n.t(lang, key), key, `${lang}: ${key}`);
 
@@ -78,10 +80,10 @@ const walkFiles = (dir, ext) => fs.readdirSync(dir, { withFileTypes: true }).fla
 
   // ---- the answers
   const GUILD = '111111111111111111';
-  const ask = async (query, lang = 'en') => {
+  const ask = async (query, lang = 'en', slash = false) => {
     i18n.setCachedGuildLanguage(GUILD, lang);
     const replies = [];
-    const interaction = { client, guild: { id: GUILD }, guildId: GUILD, locale: 'en-US', guildLocale: 'en-US', user: { id: 'u' }, typedPrefix: '!', options: { getString: () => query }, reply: async (payload) => { replies.push(payload); } };
+    const interaction = { client, guild: { id: GUILD }, guildId: GUILD, locale: 'en-US', guildLocale: 'en-US', user: { id: 'u' }, ...(slash ? {} : { typedPrefix: '!' }), options: { getString: () => query }, reply: async (payload) => { replies.push(payload); } };
     await command.execute(interaction);
     assert.equal(replies.length, 1, `one answer for "${query}"`);
     assert.equal(replies[0].flags, MessageFlags.IsComponentsV2);
@@ -127,6 +129,16 @@ const walkFiles = (dir, ext) => fs.readdirSync(dir, { withFileTypes: true }).fla
   assert.ok(said.includes('Maybe') && said.includes('!variables role'), 'a few that start the same way');
   said = await ask(`quote ${'x'.repeat(2000)}`);
   assert.ok(said.length < 4000, 'an answer fits in a message');
+
+  // As a slash command it calls itself back with `/`, and shows the examples of the options with `!` (a `--name value` is only written with a prefix).
+  said = await ask('role', 'en', true);
+  assert.ok(said.includes('/variables role add') && !said.includes('!variables role add'), 'a slash command points to /variables');
+  said = await ask('quote', 'en', true);
+  assert.ok(said.includes('!quote hello @member --color') && !said.includes('/quote hello'), 'but the examples of options use the prefix');
+  said = await ask('', 'en', true);
+  assert.ok(said.includes('/variables quote') && said.includes('/embed vars') && said.includes('with the prefix'), 'the overview too');
+  assert.ok((await ask('flags', 'es', true)).includes('/variables <comando>'), 'in Spanish');
+  assert.ok((await ask('nothingatall', 'en', true)).includes('Try `/variables`'), 'and what it says when it finds nothing');
 
   // A team-only command is not shown to everybody.
   said = await ask('leaveguild');

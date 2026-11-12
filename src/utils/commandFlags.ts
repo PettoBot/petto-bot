@@ -59,6 +59,21 @@ export function flagsNamed(name: string): SpecialFlag[] {
   return SPECIAL_FLAGS.filter((entry) => entry.flags.some((each) => normalizeName(each) === wanted));
 }
 
+/** What `isListed` reads of a loaded command. */
+export interface ListableCommand {
+  data?: unknown;
+  teamOnly?: boolean;
+  ownerOnly?: boolean;
+  hiddenEverywhere?: boolean;
+  hiddenFromHelp?: boolean;
+  privateGuildId?: string;
+}
+
+/** Is the command one that everybody can be told about (`!variables`)? Not the ones for the Petto team, hidden ones or the ones of a private server. It only decides what is listed. */
+export function isListed(command: ListableCommand): boolean {
+  return Boolean(command.data) && !command.teamOnly && !command.ownerOnly && !command.hiddenEverywhere && !command.hiddenFromHelp && !command.privateGuildId;
+}
+
 /** `--Not-Strict` and `not_strict` are the same name. */
 export function normalizeName(name: string): string {
   return String(name).trim().toLowerCase().replace(/^-+/, '').replace(/-/g, '_');

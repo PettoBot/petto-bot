@@ -2,7 +2,7 @@
 // `!variables` (alias `!vars`): where to find every variable and option. The words in braces of a message (`{user}`) have their list in `!embed vars` and the dashboard; the options of the
 // commands (`--color`, `--duration 7d`) were only known by who wrote them, so this answers them: `!variables <command>` lists the options of a command from its own builder (in the language of
 // the server), `!variables <option>` says where an option is used, and `!variables flags` lists the ones that are written only in the text (utils/commandFlags.ts).
-// Prefix only: it takes no slot of the `/` menu. Written in TypeScript: `npm run build:ts` compiles it over src/commands/info/variables.js, which is what the bot loads.
+// A slash command too (`/variables`), asked by the maintainer; the options it explains are written with the prefix (`!role all @Role --preview`), so its examples always use one. Written in TypeScript: `npm run build:ts` compiles it over src/commands/info/variables.js, which is what the bot loads.
 const discord_js_1 = require("discord.js");
 const commandFlags_1 = require("../../utils/commandFlags");
 const { t, languageOf, commandDescription } = require('../../i18n');
@@ -18,7 +18,7 @@ const MAX_LINES = 14;
 const MAX_PARTS = 30;
 const MAX_TEXT = 3600;
 const WIKI = 'https://wiki.petto.sbs';
-const isPublic = (command) => Boolean(command.data) && !command.teamOnly && !command.ownerOnly && !command.hiddenEverywhere && !command.hiddenFromHelp && !command.privateGuildId;
+const isPublic = (command) => (0, commandFlags_1.isListed)(command);
 const isBranch = (node) => node.type === SUBCOMMAND || node.type === SUBGROUP;
 const wikiPath = (lang) => (lang === 'es' ? '/es' : lang === 'pt-BR' ? '/pt-br' : '');
 const shorten = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1).trimEnd()}…` : text);
@@ -55,15 +55,15 @@ function flagLine(lang, prefix, entry) {
     return `${names}${takes} — ${t(lang, `variables.flag.${entry.id}`)} \`${prefix}${entry.example}\``;
 }
 /** `!variables flags`: the options that are only written in the text, by command. */
-function flagsText(lang, prefix) {
+function flagsText(lang, prefix, self) {
     const byCommand = new Map();
     for (const entry of commandFlags_1.SPECIAL_FLAGS)
         byCommand.set(entry.command, [...(byCommand.get(entry.command) ?? []), entry]);
     const blocks = [...byCommand.entries()].map(([name, entries]) => [`**${prefix}${name}**`, ...entries.map((entry) => flagLine(lang, prefix, entry))].join('\n'));
-    return [t(lang, 'variables.flags.intro'), '', ...blocks.flatMap((block) => [block, '']), t(lang, 'variables.footer', { prefix })].join('\n');
+    return [t(lang, 'variables.flags.intro', { prefix: self }), '', ...blocks.flatMap((block) => [block, '']), t(lang, 'variables.footer', { prefix: self })].join('\n');
 }
 /** The options of a command or of the subcommand that its words reach. */
-function commandText(lang, prefix, command, node, path) {
+function commandText(lang, prefix, self, command, node, path) {
     const name = command.data?.name ?? '';
     const shown = [name, ...path].join(' ');
     const description = commandDescription(lang, command, path, null, node.description ?? '');
@@ -75,7 +75,7 @@ function commandText(lang, prefix, command, node, path) {
         const all = leavesOf(node, path);
         const leaves = all.slice(0, MAX_PARTS);
         const total = all.length;
-        const lines = leaves.map((leaf) => `\`${prefix}variables ${[name, ...leaf.path].join(' ')}\` — ${commandDescription(lang, command, leaf.path, null, leaf.node.description ?? '')}`);
+        const lines = leaves.map((leaf) => `\`${self}variables ${[name, ...leaf.path].join(' ')}\` — ${commandDescription(lang, command, leaf.path, null, leaf.node.description ?? '')}`);
         return [heading, '', t(lang, 'variables.command.parts'), ...lines, ...(total > leaves.length ? [t(lang, 'variables.more', { count: total - leaves.length })] : []), ...(extra.length ? ['', t(lang, 'variables.command.flags'), ...extra] : [])].join('\n');
     }
     const options = (node.options ?? []).filter((option) => !isBranch(option));
@@ -93,11 +93,11 @@ function commandText(lang, prefix, command, node, path) {
         ...(lines.length > MAX_LINES ? [t(lang, 'variables.more', { count: lines.length - MAX_LINES })] : []),
         ...(extra.length ? ['', t(lang, 'variables.command.flags'), ...extra] : []),
         '',
-        t(lang, 'variables.footer', { prefix }),
+        t(lang, 'variables.footer', { prefix: self }),
     ].join('\n');
 }
 /** Where an option is used (`!variables duration`): the commands that have it, and the flags that are written in the text with that name. */
-function optionText(lang, prefix, name, used, special) {
+function optionText(lang, prefix, self, name, used, special) {
     const kinds = new Set(used.map((entry) => entry.option.type ?? 3));
     const kindText = kinds.size === 1 ? ` (${t(lang, `variables.type.${TYPE_NAMES[[...kinds][0] ?? 3] ?? 'string'}`)})` : '';
     const lines = used.slice(0, MAX_LINES).map((entry) => `\`${prefix}${entry.path.join(' ')} --${entry.option.name}\` — ${commandDescription(lang, entry.command, entry.path.slice(1), entry.option.name, entry.option.description ?? '')}`);
@@ -107,11 +107,12 @@ function optionText(lang, prefix, name, used, special) {
         ...(lines.length ? ['', t(lang, 'variables.option.used', { count: used.length }), ...lines] : []),
         ...(used.length > MAX_LINES ? [t(lang, 'variables.more', { count: used.length - MAX_LINES })] : []),
         '',
-        t(lang, 'variables.footer', { prefix }),
+        t(lang, 'variables.footer', { prefix: self }),
     ].join('\n');
 }
 module.exports = {
-    prefixOnly: true,
+    // A slash command of its own, and the prefix works as well (`!variables`, `!vars`).
+    registerSlash: true,
     aliases: ['vars'],
     data: new discord_js_1.SlashCommandBuilder()
         .setName('variables')
@@ -120,10 +121,13 @@ module.exports = {
         .addStringOption((option) => option.setName('query').setDescription('A command (quote, role all), an option (color, duration) or flags').setRequired(false)),
     async execute(interaction) {
         const lang = await languageOf(interaction);
-        const prefix = String(interaction.typedPrefix ?? '!');
+        const typed = interaction.typedPrefix;
+        // How the command is called back (`/variables quote` or `!variables quote`), and the prefix of the examples: the options (`--name value`) are only written with a prefix.
+        const self = String(typed ?? '/');
+        const prefix = String(typed ?? '!');
         const client = interaction.client;
         const say = (text) => interaction.reply({ components: [textCard(shorten(text))], flags: discord_js_1.MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
-        const vars = { prefix, url: `${WIKI}${wikiPath(lang)}/resources/scripting/variables` };
+        const vars = { prefix: self, url: `${WIKI}${wikiPath(lang)}/resources/scripting/variables` };
         const query = (interaction.options.getString('query') ?? '').trim();
         if (!query) {
             await say(t(lang, 'variables.overview', vars));
@@ -132,7 +136,7 @@ module.exports = {
         const words = query.split(/\s+/);
         const first = (0, commandFlags_1.normalizeName)(words[0] ?? '');
         if (['flags', 'text', 'texto', 'banderas'].includes(first) && words.length === 1) {
-            await say(flagsText(lang, prefix));
+            await say(flagsText(lang, prefix, self));
             return;
         }
         if (['messages', 'message', 'embed', 'embeds', 'mensajes', 'mensagens'].includes(first) && words.length === 1) {
@@ -143,7 +147,7 @@ module.exports = {
         const command = findCommand(client, words[0] ?? '');
         if (command?.data) {
             const { node, path } = walk(command.data.toJSON(), words.slice(1));
-            await say(commandText(lang, prefix, command, node, path));
+            await say(commandText(lang, prefix, self, command, node, path));
             return;
         }
         // The name of an option: where it is used.
@@ -161,11 +165,11 @@ module.exports = {
         }
         const special = (0, commandFlags_1.flagsNamed)(query);
         if (used.length || special.length) {
-            await say(optionText(lang, prefix, wanted, used, special));
+            await say(optionText(lang, prefix, self, wanted, used, special));
             return;
         }
         // Nothing: a few commands that start the same way, or how to look.
-        const near = [...client.commands.values()].filter((each) => isPublic(each) && each.data && each.data.name.startsWith(words[0]?.toLowerCase() ?? '')).slice(0, 5).map((each) => `\`${prefix}variables ${each.data?.name}\``);
-        await say([t(lang, 'variables.notFound', { emoji: EMOJI.DENY, query: query.slice(0, 60), prefix }), ...(near.length ? [t(lang, 'variables.didYouMean', { list: near.join(', ') })] : [])].join('\n'));
+        const near = [...client.commands.values()].filter((each) => isPublic(each) && each.data && each.data.name.startsWith(words[0]?.toLowerCase() ?? '')).slice(0, 5).map((each) => `\`${self}variables ${each.data?.name}\``);
+        await say([t(lang, 'variables.notFound', { emoji: EMOJI.DENY, query: query.slice(0, 60), prefix: self }), ...(near.length ? [t(lang, 'variables.didYouMean', { list: near.join(', ') })] : [])].join('\n'));
     },
 };

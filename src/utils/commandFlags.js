@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SPECIAL_FLAGS = void 0;
 exports.flagsFor = flagsFor;
 exports.flagsNamed = flagsNamed;
+exports.isListed = isListed;
 exports.normalizeName = normalizeName;
 const flag = (id, command, path, flags, takes, example) => ({ id, command, path, flags, takes, example });
 exports.SPECIAL_FLAGS = [
@@ -44,6 +45,10 @@ function flagsFor(command, path = []) {
 function flagsNamed(name) {
     const wanted = normalizeName(name);
     return exports.SPECIAL_FLAGS.filter((entry) => entry.flags.some((each) => normalizeName(each) === wanted));
+}
+/** Is the command one that everybody can be told about (`!variables`)? Not the ones for the Petto team, hidden ones or the ones of a private server. It only decides what is listed. */
+function isListed(command) {
+    return Boolean(command.data) && !command.teamOnly && !command.ownerOnly && !command.hiddenEverywhere && !command.hiddenFromHelp && !command.privateGuildId;
 }
 /** `--Not-Strict` and `not_strict` are the same name. */
 function normalizeName(name) {

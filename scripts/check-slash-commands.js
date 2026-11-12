@@ -44,6 +44,8 @@ const ESSENTIAL = [
   // The quota of messages of a role (`/rolequota set`, `status`, `excuse`...): any member looks at their own count, the rest is for administrators.
   'rolequota',
   'activityboard', 'rank', 'leaderboard',
+  // Where to find the options of any command (`/variables quote`, `/variables duration`), asked by the maintainer: it takes the 91st slot, the last one before the 9 that are kept free.
+  'variables',
   // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`); what else they held is a command of its own: `/unban`, `/unmute`, `/unjail`.
   'unban', 'unmute', 'unjail',
   // Registered before for their own reasons.

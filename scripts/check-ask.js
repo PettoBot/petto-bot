@@ -882,7 +882,7 @@ const ask = (pool, input = {}, extra = {}) => askAi.ask({ userId: ANA, guildId: 
         assert.ok(text && text.length <= 100 && text !== node.description, `${node.name} (${locale}): translated, up to 100 characters`);
       }
     }
-    assert.ok(collectCommandData().length === 93, 'the registered commands are 93 (90 slash commands and the 3 menus)');
+    assert.ok(collectCommandData().length === 94, 'the registered commands are 94 (91 slash commands and the 3 menus)');
     assert.deepEqual(aiCommand.ruleKeys, { ask: 'ask', usage: 'askusage' }, 'a rule on ask or askusage reaches the subcommand');
     assert.deepEqual(require('../src/utils/commandRules').ruleNames(aiCommand, { subcommand: 'ask' }), ['ask', 'ai']);
     assert.deepEqual(require('../src/utils/commandRules').ruleNames(aiCommand, { subcommand: 'usage' }), ['askusage', 'ai']);
