@@ -3670,6 +3670,21 @@ create table if not exists site_credits (
 create index if not exists site_credits_order_idx on site_credits (kind, sort_order);
 alter table site_credits enable row level security;
 
+-- The versions of the changelog that the team writes in the dashboard (Staff → Changelog), shown on petto.sbs/changelog and in its RSS feed next to the ones written in the
+-- code of the website. `content` is { en, es, pt }, each { notices: [{ kind, title, text }], items: [markdown line] }. A version here replaces the one of the same number in the
+-- code; only `published` ones are shown.
+create table if not exists site_changelog (
+  version      text primary key,
+  name         text not null default '',
+  release_date date not null,
+  published    boolean not null default false,
+  content      jsonb not null default '{}'::jsonb,
+  updated_by   text,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+alter table site_changelog enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- Levels, second round: the level-up message can answer the message that levelled the member up and delete itself, voice has reward
 -- roles of its own, multipliers also work by category and can stack, a base multiplier for the whole server, who can earn XP, and a
