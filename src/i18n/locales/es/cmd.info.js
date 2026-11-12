@@ -189,4 +189,13 @@ module.exports = {
   'cmd.info.bot.premium.remove.opt.server.desc': 'El servidor: elígelo de la lista (por defecto, este)',
   'cmd.info.bot.premium.servers.desc': 'Lista los servidores que tienen tu Premium y cuántos espacios te quedan.',
   'cmd.info.bot.premium.info.desc': 'Mira los planes de Premium y cómo darlo a un servidor.',
+  'cmd.info.activityboard.desc': 'Rankings de los miembros más activos, en un canal, actualizados cada hora.',
+  'cmd.info.activityboard.set.desc': 'Publica los rankings diario, semanal y mensual en un canal.',
+  'cmd.info.activityboard.set.opt.type.desc': 'Qué rankings',
+  'cmd.info.activityboard.set.opt.channel.desc': 'El canal donde se publican',
+  'cmd.info.activityboard.remove.desc': 'Detiene los rankings de un tipo y borra sus mensajes.',
+  'cmd.info.activityboard.remove.opt.type.desc': 'Qué rankings',
+  'cmd.info.activityboard.status.desc': 'Mira dónde están los rankings y cuándo se actualizaron por última vez.',
+  'cmd.info.activityboard.refresh.desc': 'Escribe los rankings otra vez ahora.',
+  'cmd.info.activityboard.refresh.opt.type.desc': 'Qué rankings',
 };

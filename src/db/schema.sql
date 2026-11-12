@@ -2517,6 +2517,22 @@ create table if not exists activity_members (
 create index if not exists idx_activity_members_guild_day on activity_members(guild_id, day);
 alter table activity_members enable row level security;
 
+-- Activity leaderboards: one row per server and kind (chat or voice) with the channel and the three messages (daily, weekly, monthly) that Petto edits every hour.
+-- It reads activity_members (counts only), so it follows what a server turned off in !statsconfig and who asked not to be counted.
+create table if not exists activity_leaderboards (
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  kind               text not null check (kind in ('chat', 'voice')),
+  channel_id         text not null,
+  daily_message_id   text,
+  weekly_message_id  text,
+  monthly_message_id text,
+  last_refreshed_at  timestamptz,
+  last_error         text,
+  created_at         timestamptz not null default now(),
+  primary key (guild_id, kind)
+);
+alter table activity_leaderboards enable row level security;
+
 create or replace function increment_member_flow(p_guild_id text, p_day date, p_joins integer, p_leaves integer, p_invited integer)
 returns void language plpgsql as $$
 begin

@@ -1,4 +1,8 @@
 {
+ "are": "alias remove",
+ "arem": "activityboard remove",
+ "as": "antiscam status",
+ "aset": "activityboard set",
  "bal": "boosterrole settings limit",
  "brab": "boosterrole settings base-role",
  "braco": "boosterrole settings cooldown",
