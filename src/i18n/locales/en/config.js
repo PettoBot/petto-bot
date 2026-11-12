@@ -206,6 +206,7 @@ module.exports = {
   'config.column.ignored_category_ids': 'Ignored category',
   'config.column.voice_ignored_category_ids': 'Voice ignored category',
   'config.column.reset_on_leave': 'Reset on leave',
+  'config.column.keep_xp': 'Keep XP on leave',
   'config.column.restore_roles': 'Restore roles',
   'config.column.leaderboard_public': 'Leaderboard public',
   'config.column.leaderboard_slug': 'Leaderboard slug',

@@ -1,6 +1,7 @@
-// Checks what happens to the levels of a member who leaves: by default nothing (the XP is kept), and with `reset_on_leave` the row of the member and what they earned in the
-// weeks and months that are kept are DELETED (not a row of zeros), so nothing is left of them in a ranking; bots are ignored; a failure is logged and never thrown, and one table
-// failing does not leave the other behind. Also the summary of `!level rules`: a server that wipes the XP does not say the reward roles are given back.
+// Checks what happens to the levels of a member who leaves: by default (`keep_xp` off) the row of the member and what they earned in the weeks and months that are kept are
+// DELETED (not a row of zeros), so nothing is left of them in a ranking; with `keep_xp` on the XP is kept; bots are ignored; a failure is logged and never thrown, and one table
+// failing does not leave the other behind. Also `!level rules`: `keep_xp`, the old name `reset_on_leave` that still works and means the opposite, and the summary, where a server
+// that wipes the XP does not say the reward roles are given back.
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
@@ -14,7 +15,7 @@ const logger = require('../src/utils/logger');
 const i18n = require('../src/i18n');
 
 // The event reads `getConfig` when it is loaded, so the fake is in place before it is.
-let config = { enabled: true, reset_on_leave: false };
+let config = { enabled: true, keep_xp: false };
 let configError = null;
 levelConfig.getConfig = async () => { if (configError) throw configError; return config; };
 const event = require('../src/events/guildMemberRemoveLevels');
@@ -34,17 +35,25 @@ const member = (extra = {}) => ({ id: USER, guild: { id: GUILD }, user: { bot: f
   logger.warn = (...args) => warnings.push(args);
   const reset = () => { calls.length = 0; warnings.length = 0; failUsers = null; failPeriods = null; };
 
-  // By default the XP is kept.
-  await event.execute(member());
-  assert.deepEqual(calls, [], 'a member who leaves keeps their XP unless the server chose otherwise');
-
-  // With reset_on_leave both tables are cleaned, by deleting (not by writing zeros).
-  config = { enabled: true, reset_on_leave: true };
+  // By default (also for a server that never chose) the XP is wiped: both tables are cleaned, by deleting (not by writing zeros).
   reset();
   await event.execute(member());
   assert.deepEqual(calls, [['level_users', GUILD, USER], ['level_period_xp', GUILD, USER]], 'the row and the weekly and monthly XP of the member are deleted');
   assert.ok(!calls.some((call) => call[0] === 'resetUser'), 'no row of zeros is left behind');
   assert.deepEqual(warnings, []);
+
+  // With keep_xp on the XP is kept.
+  config = { enabled: true, keep_xp: true };
+  reset();
+  await event.execute(member());
+  assert.deepEqual(calls, [], 'a server that turned keep_xp on keeps the XP of who leaves');
+
+  // A server with no settings row is not known: nothing is deleted.
+  config = null;
+  reset();
+  await event.execute(member());
+  assert.deepEqual(calls, [], 'without a row of settings nothing is deleted');
+  config = { enabled: true, keep_xp: false };
 
   // A bot has no levels.
   reset();
@@ -68,11 +77,22 @@ const member = (extra = {}) => ({ id: USER, guild: { id: GUILD }, user: { bot: f
   assert.equal(warnings.length, 1, 'a server whose settings cannot be read is logged, not thrown');
   configError = null;
 
-  // The summary of `!level rules`: it must not promise to give back reward roles from an XP that was wiped.
+  // The rule: `keep_xp` is the name now; `reset_on_leave` still works, is not offered in the list and means the opposite.
   const level = require('../src/commands/leveling/level.js');
   assert.equal(typeof level.execute, 'function');
+  assert.deepEqual([level.RULE_SETTINGS.keep_xp.column, Boolean(level.RULE_SETTINGS.keep_xp.invert), Boolean(level.RULE_SETTINGS.keep_xp.hidden)], ['keep_xp', false, false]);
+  assert.deepEqual([level.RULE_SETTINGS.reset_on_leave.column, level.RULE_SETTINGS.reset_on_leave.invert, level.RULE_SETTINGS.reset_on_leave.hidden], ['keep_xp', true, true], 'the old name writes keep_xp, turned around, and is not listed');
+  assert.equal(level.readRuleValue(level.RULE_SETTINGS.keep_xp, 'on'), true);
+  assert.equal(level.readRuleValue(level.RULE_SETTINGS.reset_on_leave, 'off'), false);
+  const levelSource = fs.readFileSync(path.join(__dirname, '..', 'src/commands/leveling/level.js'), 'utf8');
+  assert.ok(/patch = \{ \[rule\.column\]: rule\.invert \? !value : value \}/.test(levelSource), 'the old name is turned around when it is written (`reset_on_leave on` is `keep_xp off`)');
+  assert.ok(/value: 'keep_xp'/.test(levelSource) && !/value: 'reset_on_leave'/.test(levelSource), 'the list offers keep_xp and not the old name');
+  assert.ok(/ALTER|alter table level_config add column if not exists keep_xp boolean not null default false/i.test(fs.readFileSync(path.join(__dirname, '..', 'src/db/schema.sql'), 'utf8')), 'keep_xp is a new column: every server starts with the default, nothing is overwritten');
+  assert.equal(i18n.t('en', 'config.column.keep_xp'), 'Keep XP on leave');
+
+  // The summary of `!level rules`: it must not promise to give back reward roles from an XP that was wiped.
   const source = fs.readFileSync(path.join(__dirname, '..', 'src/commands/leveling/level.js'), 'utf8');
-  assert.ok(/restore_roles !== false && !config\.reset_on_leave/.test(source), 'the reward roles are only "given back" when the XP is kept');
+  assert.ok(/restore_roles !== false && Boolean\(config\.keep_xp\)/.test(source), 'the reward roles are only "given back" when the XP is kept');
   for (const lang of ['en', 'es', 'pt-BR']) {
     for (const key of ['leaveKeep', 'leaveKeepRestore', 'leaveWipe']) assert.notEqual(i18n.t(lang, `leveling.rules.${key}`), `leveling.rules.${key}`, `${lang}: ${key} is written`);
     assert.equal(i18n.t(lang, 'leveling.rules.leaveWipeRestore'), 'leveling.rules.leaveWipeRestore', `${lang}: "wiped and given back" does not exist any more`);
@@ -82,5 +102,5 @@ const member = (extra = {}) => ({ id: USER, guild: { id: GUILD }, user: { bot: f
   // The database functions are in place.
   assert.equal(typeof levelUsersDb.deleteUser, 'function');
   assert.ok(/delete from level_period_xp where guild_id = \$1 and user_id = \$2/.test(fs.readFileSync(path.join(__dirname, '..', 'src/db/levelPeriods.js'), 'utf8')), 'the weekly and monthly rows of one member are deleted by guild and user');
-  console.log('Level leave checks passed (kept by default, deleted with reset_on_leave in both tables, bots, failures, the summary of the rules).');
+  console.log('Level leave checks passed (deleted by default in both tables, kept with keep_xp, no row, bots, failures, the rule and its old name, the summary).');
 })().catch((err) => { console.error(err); process.exit(1); });

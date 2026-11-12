@@ -3718,6 +3718,9 @@ create table if not exists giveaway_preset_levels (
 alter table giveaway_preset_levels enable row level security;
 
 alter table level_config add column if not exists reset_on_leave boolean not null default false;
+-- `keep_xp` replaces reset_on_leave (which is not read any more): a member who leaves LOSES their XP unless the server turns this on. It is a new column so that every server,
+-- the ones that already existed too, starts with the default (wipe); adding it needs no UPDATE, so nothing is overwritten when the bot starts again.
+alter table level_config add column if not exists keep_xp boolean not null default false;
 alter table level_config add column if not exists restore_roles boolean not null default true;
 
 -- ---------------------------------------------------------------------------

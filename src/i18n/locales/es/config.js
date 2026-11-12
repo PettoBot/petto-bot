@@ -206,6 +206,7 @@ module.exports = {
   'config.column.ignored_category_ids': 'Categorías ignoradas',
   'config.column.voice_ignored_category_ids': 'Categorías de voz ignoradas',
   'config.column.reset_on_leave': 'Reiniciar al salir',
+  'config.column.keep_xp': 'Conservar XP al salir',
   'config.column.restore_roles': 'Restaurar roles',
   'config.column.leaderboard_public': 'Tabla de clasificación pública',
   'config.column.leaderboard_slug': 'Identificador de la tabla de clasificación',
