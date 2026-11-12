@@ -43,7 +43,7 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   assert.ok(en.includes('**Most active chatter** `racem1c`') && en.includes('**8,372 messages**'), 'the most active member on its own line, with the number written for the language');
   assert.ok(en.includes('`user2`') && en.includes('`user10`') && !en.includes('`user11`'), 'ten places in all: the first and nine more');
   assert.ok(en.includes('pe_zz02:') && en.includes('pe_zz10:') && !en.includes('pe_zz01:'), 'the numbered rows have the pink numbers 2 to 10');
-  assert.ok(en.includes(`<t:${Math.floor(resetAt.getTime() / 1000)}:R>`) && en.includes('-# Updates every hour!'), 'when it begins again, and how often it is updated');
+  assert.ok(en.includes(`<t:${Math.floor(resetAt.getTime() / 1000)}:R>`) && en.includes('-# Updates every 5 minutes!'), 'when it begins again, and how often it is updated');
   const voice = board.boardText('en', 'voice', 'weekly', [{ username: 'tal', amount: 3600 }, { username: 'mia', amount: 60 }], resetAt);
   assert.ok(voice.includes('Voice Leaderboard [Weekly]') && voice.includes('**Most active talker** `tal`') && voice.includes('**60 voice minutes**'), 'voice is shown in minutes');
   assert.ok(voice.includes('**1 voice minute**'), 'and in the singular');
@@ -53,7 +53,7 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   assert.ok(es.includes('Ranking de chat [Mensual]') && es.includes('**Más activo en el chat**') && es.includes('8,372 mensajes') && es.includes('Se reinicia'), 'Spanish: the title, the words and the numbers as the bot writes them in Latin American Spanish');
   const pt = board.boardText('pt-BR', 'voice', 'daily', [{ username: 'a', amount: 7200 }], resetAt);
   assert.ok(board.boardText('pt-BR', 'chat', 'daily', [{ username: 'a', amount: 8372 }], resetAt).includes('8.372 mensagens'), 'Portuguese writes the thousands with a dot');
-  assert.ok(pt.includes('Ranking de voz [Diário]') && pt.includes('120 minutos de voz') && pt.includes('Atualiza a cada hora!'), 'Portuguese');
+  assert.ok(pt.includes('Ranking de voz [Diário]') && pt.includes('120 minutos de voz') && pt.includes('Atualiza a cada 5 minutos!'), 'Portuguese');
 
   // ---- a server with its channel, its members and what the messages do
   const me = { id: 'bot' };
@@ -95,7 +95,7 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
 
   // The first time: the three messages are posted in order and remembered.
   let result = await board.refreshBoard(client, row(), { now: when });
-  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(result, { ok: true, wrote: true });
   assert.equal(calls.sent.length, 3, 'three messages');
   assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Monthly', 'Weekly', 'Daily'], 'the month first, the day last');
   assert.deepEqual(saved.messages, { daily: 'msg3', weekly: 'msg2', monthly: 'msg1' });
@@ -109,21 +109,60 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   assert.ok(cardText.includes('`name_m12`'), 'the tenth is the twelfth of the list, after leaving out a bot, one who asked not to be counted and one who left');
   assert.deepEqual(calls.fetched.flat(), ['gone', 'gone', 'gone'], 'the ones that are not in the cache are asked for (once for each card)');
 
-  // The next times: the same messages are edited, nothing is posted.
+  // The next times: a card that says the same is not edited again (a quiet server costs Discord nothing), one that changed is edited, and so is every one after an hour.
+  const messages = { daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' };
   reset();
-  result = await board.refreshBoard(client, row({ daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' }), { now: when });
-  assert.deepEqual([calls.sent.length, calls.edited.map(([id]) => id)], [0, ['m', 'w', 'd']], 'three edits, in order');
-  assert.equal(saved.refreshed, 1);
+  result = await board.refreshBoard(client, row(messages), { now: when });
+  assert.deepEqual([result, calls.sent.length, calls.edited.length], [{ ok: true, wrote: false }, 0, 0], 'nothing new: nothing is written at Discord');
+  assert.equal(saved.refreshed, 1, 'but it counts as looked at');
+  reset();
+  result = await board.refreshBoard(client, row(messages), { now: when, force: true });
+  assert.deepEqual([calls.sent.length, calls.edited.map(([id]) => id)], [0, ['m', 'w', 'd']], 'a command writes them anyway: three edits, in order');
+  reset();
+  const keepRead = db.readTop;
+  db.readTop = async (guildId, kind, sinceDay) => (sinceDay === '2026-11-11' ? [{ user_id: 'm1', amount: 99 }] : top);
+  result = await board.refreshBoard(client, row(messages), { now: when });
+  assert.deepEqual([result.wrote, calls.edited.map(([id]) => id)], [true, ['d']], 'only the card that changed is edited');
+  db.readTop = keepRead;
+  reset();
+  await board.refreshBoard(client, row(messages), { now: when, force: true }); // the three are as they were
+  reset();
+  result = await board.refreshBoard(client, row(messages), { now: new Date(when.getTime() + 56 * 60_000) });
+  assert.deepEqual(calls.edited.map(([id]) => id), ['m', 'w', 'd'], 'after an hour they are edited anyway, which is how a deleted one is found');
+  reset();
+  await board.refreshBoard(client, row(messages), { now: when, force: true });
 
   // Someone deleted one: the rest go and all three are posted again, so they stay in order.
   reset();
   const gone = Object.assign(new Error('Unknown Message'), { code: 10008 });
   currentChannel = channel({ editError: (id) => (id === 'w' ? gone : null) });
-  result = await board.refreshBoard(client, row({ daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' }), { now: when });
+  result = await board.refreshBoard(client, row(messages), { now: when, force: true });
   assert.equal(result.ok, true);
   assert.deepEqual([...calls.deleted].sort(), ['d', 'm', 'w'], 'the old ones are deleted');
   assert.equal(calls.sent.length, 3, 'and three new ones are posted');
   assert.deepEqual(saved.messages, { daily: 'msg6', weekly: 'msg5', monthly: 'msg4' });
+
+  // The periods a server chose: only those cards are read and written.
+  currentChannel = channel();
+  reset();
+  result = await board.refreshBoard(client, row({ periods: ['weekly'] }), { now: when });
+  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Weekly'], 'only the week is posted');
+  assert.deepEqual(asked.map((args) => args[2]), ['2026-11-09'], 'and only the week is read');
+  assert.deepEqual(saved.messages, { daily: null, weekly: 'msg7', monthly: null }, 'the other two have no message');
+  reset();
+  result = await board.refreshBoard(client, row({ periods: ['weekly'], daily_message_id: 'd', weekly_message_id: 'w', monthly_message_id: 'm' }), { now: when, force: true });
+  assert.deepEqual([...calls.deleted], ['m', 'd'], 'a period that was taken away loses its message');
+  assert.deepEqual([calls.sent.length, calls.edited.map(([id]) => id)], [0, ['w']], 'the one that stays is edited where it is');
+  assert.deepEqual(saved.messages, { daily: null, weekly: 'w', monthly: null });
+  reset();
+  result = await board.refreshBoard(client, row({ periods: ['weekly', 'daily'], weekly_message_id: 'w' }), { now: when });
+  assert.deepEqual([...calls.deleted], ['w'], 'a period that was added: the card that was there is deleted');
+  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Weekly', 'Daily'], 'and they are posted again in order');
+  reset();
+  result = await board.refreshBoard(client, row({ periods: ['monthly', 'daily'] }), { now: when });
+  assert.deepEqual(calls.sent.map(([, payload]) => (text(payload).match(/Leaderboard \[(\w+)\]/) ?? [])[1]), ['Monthly', 'Daily'], 'the month and the day, without the week');
+  assert.deepEqual(db.cleanPeriods(['daily', 'nothing', 'monthly', 'daily']), ['monthly', 'daily'], 'the periods are kept in order, once each, and only real ones');
+  assert.deepEqual([db.cleanPeriods([]), db.cleanPeriods(undefined), db.cleanPeriods('weekly'), db.cleanPeriods(['x'])], [['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily']], 'a list with none of them is all of them');
 
   // The reasons a board cannot be written are saved, and nothing throws.
   currentChannel = channel();
@@ -162,14 +201,28 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   const pauses = [];
   const ran = await board.runDueBoards(client, { pauseMs: 1500, sleep: async (ms) => { pauses.push(ms); } });
   assert.equal(ran, 3);
-  assert.deepEqual(pauses, [1500, 1500, 1500], 'a pause after each one');
+  assert.deepEqual(pauses, [1500, 1500], 'a pause after each one that wrote at Discord (the one of another server did not)');
   assert.equal(calls.sent.length, 6, 'the two that can be reached were written, the third (another server) was skipped');
+  // A board with nothing new needs no pause, and a round stops when its time is spent.
+  reset();
+  await board.refreshBoard(client, row(messages), { now: new Date(), force: true });
+  db.listDue = async () => [row(messages), row({ ...messages, kind: 'voice' })];
+  pauses.length = 0;
+  reset();
+  await board.runDueBoards(client, { pauseMs: 1500, sleep: async (ms) => { pauses.push(ms); } });
+  assert.ok(pauses.length <= 1, 'the one with nothing new does not pause');
+  let clock = 0;
+  const limited = await board.runDueBoards(client, { budgetMs: 15, now: () => { clock += 10; return clock; }, sleep: async () => {} });
+  assert.ok(limited < 2, 'a round stops when its time is spent');
+  assert.ok(db.REFRESH_SECONDS >= 240 && db.REFRESH_SECONDS < 300, 'a board is due a little before 5 minutes after its last time');
+  assert.ok(/POLL_INTERVAL_MS = 60_000/.test(fs.readFileSync(path.join(__dirname, '..', 'src/jobs/activityLeaderboardJob.ts'), 'utf8')), 'the job looks every minute, so a board is written about every 5 minutes');
+  assert.ok(/'activityLeaderboardJob'/.test(fs.readFileSync(path.join(__dirname, '..', 'src/utils/loadGuard.js'), 'utf8')), 'the load guard pauses it when the bot is degraded');
 
   // ---- the command
   let stored = null;
   let removedRow = null;
   const listed = [];
-  db.upsertBoard = async (guildId, kind, channelId) => { stored = { guildId, kind, channelId }; return row({ kind, channel_id: channelId }); };
+  db.upsertBoard = async (guildId, kind, channelId, periods) => { stored = { guildId, kind, channelId, periods }; return row({ kind, channel_id: channelId, periods: periods ?? ['monthly', 'weekly', 'daily'] }); };
   db.removeBoard = async () => removedRow;
   db.listBoards = async () => listed;
   const interaction = (sub, opts = {}, { allowed = true } = {}) => {
@@ -195,9 +248,21 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   assert.equal(log.replies[0].flags & MessageFlags.Ephemeral, MessageFlags.Ephemeral, 'the refusal is private');
   reset();
   log = await run('set', { type: 'chat' });
-  assert.deepEqual(stored, { guildId: GUILD, kind: 'chat', channelId: CHANNEL }, 'the channel is saved');
+  assert.deepEqual(stored, { guildId: GUILD, kind: 'chat', channelId: CHANNEL, periods: undefined }, 'the channel is saved, and the periods it had are kept');
   assert.equal(calls.sent.length, 3, 'and the cards are written at once');
-  assert.ok(said(log.edits.at(-1)).includes('<#222222222222222222>') && said(log.edits.at(-1)).includes('every hour'), 'the answer says where they are');
+  assert.ok(said(log.edits.at(-1)).includes('<#222222222222222222>') && said(log.edits.at(-1)).includes('every 5 minutes') && said(log.edits.at(-1)).includes('Month, Week, Day'), 'the answer says where they are, which cards and how often');
+  reset();
+  log = await run('set', { type: 'chat', periods: 'weekly-daily' });
+  assert.deepEqual(stored.periods, ['weekly', 'daily'], 'the week and the day only');
+  assert.ok(said(log.edits.at(-1)).includes('Week, Day') && !said(log.edits.at(-1)).includes('Month'), 'and the answer says so');
+  log = await run('set', { type: 'chat', periods: 'monthly' });
+  assert.deepEqual(stored.periods, ['monthly'], 'only the month');
+  log = await run('set', { type: 'chat', periods: 'all' });
+  assert.deepEqual(stored.periods, ['monthly', 'weekly', 'daily'], 'all of them');
+  const setOptions = command.data.toJSON().options.find((option) => option.name === 'set').options;
+  const periodOption = setOptions.find((option) => option.name === 'periods');
+  assert.ok(periodOption && !periodOption.required, 'an optional option of set');
+  assert.deepEqual(periodOption.choices.map((choice) => choice.value), ['all', 'monthly', 'weekly', 'daily', 'monthly-weekly', 'monthly-daily', 'weekly-daily'], 'every way to choose the cards');
   statsRules.setForTests({ configs: new Map([[GUILD, { enabled: false, members: true, content: true }]]), optedOut: new Set() });
   stored = null;
   log = await run('set', { type: 'voice' });
@@ -223,6 +288,7 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   log = await run('status');
   const status = said(log.replies[0]);
   assert.ok(status.includes('**chat** in <#222222222222222222>') && status.includes('updated <t:') && status.includes('**voice**') && status.includes('View Channel'), 'where each is, when it was updated and what is wrong');
+  assert.ok(status.includes('Cards: Month, Week, Day'), 'and which cards it has');
 
   reset();
   log = await run('refresh');
@@ -233,6 +299,7 @@ const text = (payload) => JSON.stringify(payload.components[0].toJSON());
   // ---- the pieces are in place
   const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
   assert.ok(/create table if not exists activity_leaderboards/.test(read('src/db/schema.sql')), 'the table');
+  assert.ok(/alter table activity_leaderboards add column if not exists periods text\[\] not null default '\{monthly,weekly,daily\}'/.test(read('src/db/schema.sql')), 'the periods, and the boards that existed keep all three');
   assert.ok(/startActivityLeaderboardJob\(client\)/.test(read('index.js')), 'the job starts');
   assert.ok(!/content/.test(read('src/db/activityLeaderboards.ts').replace(/content-type/g, '').replace(/what was said/g, '')), 'nothing about what was said is read');
   console.log('Activity leaderboard checks passed (periods, the card, writing and editing, the reasons it fails, who is in the top, the job, the command).');

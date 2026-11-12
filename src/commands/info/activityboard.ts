@@ -1,11 +1,11 @@
-// `/activityboard`: the activity leaderboards of a server (chat and voice, each with a card for the day, the week and the month, edited every hour).
-// `set` chooses the channel of one kind and writes the cards at once, `remove` takes them away, `status` says where they are and `refresh` writes them again now.
+// `/activityboard`: the activity leaderboards of a server (chat and voice, each with the cards of the periods the server chose: the month, the week and the day, edited about every 5 minutes).
+// `set` chooses the channel of one kind (and which cards it has) and writes the cards at once, `remove` takes them away, `status` says where they are and `refresh` writes them again now.
 // `role-set` chooses a role that goes to the most active member of the week (chat or voice) when the week ends, `role-remove` stops it and `role-status` says who has it.
 // Written in TypeScript: `npm run build:ts` compiles it over src/commands/info/activityboard.js, which is what the bot loads.
 import { ChannelType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { ChatInputCommandInteraction, ContainerBuilder } from 'discord.js';
 import db = require('../../db/activityLeaderboards');
-import type { Kind } from '../../db/activityLeaderboards';
+import type { Kind, Period } from '../../db/activityLeaderboards';
 import roleDb = require('../../db/activityTopRoles');
 import { deleteBoardMessages, refreshBoard, statsReason, writableChannel } from '../../utils/activityLeaderboard';
 import type { Reason } from '../../utils/activityLeaderboard';
@@ -21,6 +21,17 @@ const V2 = MessageFlags.IsComponentsV2;
 const REFRESH_COOLDOWN_MS = 60_000;
 const lastRefresh = new Map<string, number>();
 
+/** The cards a board can have: every period, one of them, or two. The value is the periods joined by `-`, longest first. */
+const PERIOD_CHOICES: Record<string, Period[]> = {
+  all: ['monthly', 'weekly', 'daily'],
+  monthly: ['monthly'],
+  weekly: ['weekly'],
+  daily: ['daily'],
+  'monthly-weekly': ['monthly', 'weekly'],
+  'monthly-daily': ['monthly', 'daily'],
+  'weekly-daily': ['weekly', 'daily'],
+};
+
 const kindOption = (required: boolean) => (option: import('discord.js').SlashCommandStringOption) => option
   .setName('type').setDescription('Which leaderboards').setRequired(required)
   .addChoices({ name: 'Chat (messages)', value: 'chat' }, { name: 'Voice (minutes)', value: 'voice' });
@@ -31,12 +42,22 @@ const command = {
   registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('activityboard')
-    .setDescription('Leaderboards of the most active members, in a channel, updated every hour.')
+    .setDescription('Leaderboards of the most active members, in a channel, updated every few minutes.')
     .setDMPermission(false)
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((sub) => sub.setName('set').setDescription('Post the daily, weekly and monthly leaderboards in a channel.')
+    .addSubcommand((sub) => sub.setName('set').setDescription('Post the leaderboards (month, week and day, or only some of them) in a channel.')
       .addStringOption(kindOption(true))
-      .addChannelOption((option) => option.setName('channel').setDescription('The channel where they are posted').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)))
+      .addChannelOption((option) => option.setName('channel').setDescription('The channel where they are posted').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true))
+      .addStringOption((option) => option.setName('periods').setDescription('Which cards (default: all three; when it is already set, the ones it has)').setRequired(false)
+        .addChoices(
+          { name: 'All: month, week and day', value: 'all' },
+          { name: 'Month only', value: 'monthly' },
+          { name: 'Week only', value: 'weekly' },
+          { name: 'Day only', value: 'daily' },
+          { name: 'Month and week', value: 'monthly-weekly' },
+          { name: 'Month and day', value: 'monthly-daily' },
+          { name: 'Week and day', value: 'weekly-daily' },
+        )))
     .addSubcommand((sub) => sub.setName('remove').setDescription('Stop the leaderboards of a kind and delete their messages.').addStringOption(kindOption(true)))
     .addSubcommand((sub) => sub.setName('status').setDescription('See where the leaderboards are and when they were last updated.'))
     .addSubcommand((sub) => sub.setName('refresh').setDescription('Write the leaderboards again now.').addStringOption(kindOption(false)))
@@ -57,6 +78,7 @@ const command = {
     const reasonPlain = (reason: Reason): string => t(lang, `leaderboards.error.${reason}`, { emoji: '' }).trim(); // inside another sentence, which has its own icon
     const roleReasonPlain = (reason: RoleReason): string => t(lang, `leaderboards.roleError.${reason}`, { emoji: '' }).trim();
     const kindName = (kind: Kind): string => t(lang, `leaderboards.kind.${kind}`);
+    const periodsText = (periods: readonly Period[] | undefined): string => db.cleanPeriods(periods).map((period) => t(lang, `leaderboards.periodName.${period}`)).join(', ');
     // The types of discord.js only list Ephemeral for a deferral; Discord accepts the flag of a Components V2 message there, as the rest of the bot does.
     const defer = (): Promise<unknown> => interaction.deferReply({ flags: V2 as never });
 
@@ -74,10 +96,11 @@ const command = {
       const writable = writableChannel(guild, await guild.channels.fetch(picked.id).catch(() => null));
       if ('reason' in writable) { await show(reasonText(writable.reason), true); return; }
       await defer();
-      const row = await db.upsertBoard(guild.id, kind, writable.channel.id);
-      const result = await refreshBoard(interaction.client, row);
+      const asked = interaction.options.getString('periods');
+      const row = await db.upsertBoard(guild.id, kind, writable.channel.id, asked ? PERIOD_CHOICES[asked] ?? PERIOD_CHOICES.all : undefined);
+      const result = await refreshBoard(interaction.client, row, { force: true });
       await show(result.ok
-        ? t(lang, 'leaderboards.set.done', { emoji: EMOJI.APPROVE, kind: kindName(kind), channel: `<#${writable.channel.id}>` })
+        ? t(lang, 'leaderboards.set.done', { emoji: EMOJI.APPROVE, kind: kindName(kind), channel: `<#${writable.channel.id}>`, periods: periodsText(row.periods) })
         : t(lang, 'leaderboards.set.failed', { emoji: EMOJI.DENY, channel: `<#${writable.channel.id}>`, reason: reasonPlain(result.reason ?? 'error') }));
       return;
     }
@@ -98,7 +121,7 @@ const command = {
       const lines = rows.map((row) => {
         const when = row.last_refreshed_at ? ` · ${t(lang, 'leaderboards.status.updated', { when: `<t:${Math.floor(new Date(row.last_refreshed_at).getTime() / 1000)}:R>` })}` : ` · ${t(lang, 'leaderboards.status.waiting')}`;
         const problem = row.last_error ? ` · ${reasonPlain(row.last_error as Reason)}` : '';
-        return `${t(lang, 'leaderboards.status.line', { kind: kindName(row.kind), channel: `<#${row.channel_id}>` })}\n-#${when.replace(' ·', '')}${problem}`;
+        return `${t(lang, 'leaderboards.status.line', { kind: kindName(row.kind), channel: `<#${row.channel_id}>` })}\n-# ${t(lang, 'leaderboards.status.periods', { list: periodsText(row.periods) })} ·${when.replace(' ·', '')}${problem}`;
       });
       await show([t(lang, 'leaderboards.status.title'), ...lines].join('\n'));
       return;
@@ -149,7 +172,7 @@ const command = {
     if (!rows.length) { await show(t(lang, 'leaderboards.status.none', { emoji: EMOJI.ALERT }), true); return; }
     lastRefresh.set(guild.id, Date.now());
     await defer();
-    const results = await Promise.all(rows.map((row) => refreshBoard(interaction.client, row)));
+    const results = await Promise.all(rows.map((row) => refreshBoard(interaction.client, row, { force: true })));
     const failed = results.find((result) => !result.ok);
     await show(failed
       ? t(lang, 'leaderboards.refresh.failed', { emoji: EMOJI.DENY, reason: reasonPlain(failed.reason ?? 'error') })
