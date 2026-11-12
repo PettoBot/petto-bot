@@ -62,6 +62,12 @@ async function resetUser(guildId, userId) {
   if (error) throw error;
 }
 
+/** Deletes the row of a member (what a server that wipes the XP of who leaves asks for): nothing is left of them, and it is made again if they return. */
+async function deleteUser(guildId, userId) {
+  const { error } = await database.from('level_users').delete().eq('guild_id', guildId).eq('user_id', userId);
+  if (error) throw error;
+}
+
 /** A page of the members of a server who have a level (messages or voice), by user id, for the ones who need their reward roles checked. */
 async function listWithLevels(guildId, { offset = 0, limit = 100 } = {}) {
   const { data, error } = await database.from('level_users').select('user_id,level,voice_level').eq('guild_id', guildId).or('level.gt.0,voice_level.gt.0').order('user_id', { ascending: true }).range(offset, offset + limit - 1);
@@ -124,4 +130,4 @@ async function takeDailyXp(guildId, userId, day, gain, cap) {
   return Number(rows[0]?.granted ?? 0);
 }
 
-module.exports = { takeDailyXp, touchStreak, getUser, getUsers, listWithLevels, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
+module.exports = { takeDailyXp, touchStreak, getUser, getUsers, listWithLevels, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, deleteUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };

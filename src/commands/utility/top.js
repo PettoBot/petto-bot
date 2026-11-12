@@ -69,15 +69,18 @@ async function buildPeriodPage(guild, page, source, period, lang = currentLangua
 }
 
 module.exports = {
-  // A prefix command: its slash entry is inside `/levels` or `/bot` (utils/umbrella.js).
+  // Also a slash command of its own: `/leaderboard` (the ranking of the server), with `!leaderboard`, `!top`, `!lb` and `!ranking` for the prefix. It was called `top`: the rules a
+  // server saved for `top` (`!disablecommand top`, `!restrictcommand top`) still apply to it (`legacyRuleNames`).
+  registerSlash: true,
+  legacyRuleNames: ['top'],
   data: new SlashCommandBuilder()
-    .setName('top')
+    .setName('leaderboard')
     .setDescription('Server XP leaderboard.')
     .setDMPermission(false)
     .addIntegerOption((o) => o.setName('page').setDescription('Page number').setRequired(false).setMinValue(1))
     .addStringOption((o) => o.setName('type').setDescription('Which leveling system to view').addChoices({ name: 'Messages', value: 'messages' }, { name: 'Voice', value: 'voice' }).setRequired(false))
     .addStringOption((o) => o.setName('period').setDescription('All time (default), this week or this month').addChoices({ name: 'All time', value: 'all' }, { name: 'This week', value: 'week' }, { name: 'This month', value: 'month' }).setRequired(false)),
-  aliases: ['leaderboard', 'lb', 'ranking'],
+  aliases: ['top', 'lb', 'ranking'],
 
   async execute(interaction) {
     // Worked out once: the page buttons answer in a collector, outside the command's language.

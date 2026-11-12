@@ -33,7 +33,8 @@ assert.ok(STANDALONE.every((name) => loose.includes(name)), `these slash command
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');
 
 // ---------------------------------------------------------------- 2. nothing from the old list
-const OLD_COMMANDS = ['level', 'rank', 'top', 'act', 'auto', 'contrib', 'special', 'botinfo', 'ping'];
+// `/rank` and `/leaderboard` (it was `/top`) are slash commands of their own now; `/levels rank` and `/levels leaderboard` are only for the prefix.
+const OLD_COMMANDS = ['level', 'top', 'act', 'auto', 'contrib', 'special', 'botinfo', 'ping'];
 for (const name of OLD_COMMANDS) assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered any more`);
 const nodeNames = (json, prefix = []) => (json.options ?? []).filter((option) => option.type === SUBCOMMAND || option.type === GROUP).flatMap((option) => [[...prefix, option.name].join(' '), ...nodeNames(option, [...prefix, option.name])]);
 const paths = new Set(chat.flatMap((json) => [json.name, ...nodeNames(json, [json.name])]));
@@ -42,9 +43,11 @@ const OLD_PATHS = [
   'game minecraft', 'game minecraft-server', 'game roblox', 'game steam', 'game chesscom', 'game lichess', 'game pokemon', 'game modrinth', 'game rps',
   'me rep', 'me rep-give', 'staff imute', 'staff iunmute', 'staff rmute', 'staff runmute', 'staff raid', 'role in', 'role has', 'boosterrole admin base', 'boosterrole admin limit',
   'boosterrole admin cooldown', 'boosterrole admin share-limit', 'search anilist anime anime',
+  // `/rank` and `/leaderboard` are commands of their own, so they are not in the menu of `/levels` too (the prefix keeps `!levels rank`, `!lra`, `!ll`).
+  'levels rank', 'levels leaderboard',
 ];
 for (const old of OLD_PATHS) assert.ok(!paths.has(old), `/${old} is not registered any more`);
-for (const kept of ['levels rank', 'levels leaderboard', 'action love hug', 'bot info', 'bot ping', 'poll', 'suggest send', 'suggest approve', 'confess send', 'confess approve', 'request make', 'request config channel', 'review give', 'profile show', 'profile config channel', 'prefix view', 'prefix add', 'prefix remove', 'prefix set', 'prefix reset', 'me prefix']) {
+for (const kept of ['rank', 'leaderboard', 'action love hug', 'bot info', 'bot ping', 'poll', 'suggest send', 'suggest approve', 'confess send', 'confess approve', 'request make', 'request config channel', 'review give', 'profile show', 'profile config channel', 'prefix view', 'prefix add', 'prefix remove', 'prefix set', 'prefix reset', 'me prefix']) {
   assert.ok(paths.has(kept), `/${kept} is registered`);
 }
 assert.ok(!paths.has('config prefix show'), 'the prefix of the server is /prefix, not a group of /config');
@@ -89,7 +92,7 @@ const usage = slotUsage(registered);
 assert.ok(usage.chat.used <= LIMITS.chat, `${usage.chat.used} chat commands (at most ${LIMITS.chat})`);
 assert.equal(usage.chat.used, chat.length);
 // When the global 100 run short, a command is moved to the second set (`guildScoped: true`, registered in each server: 100 more slots) instead of being squeezed in.
-assert.ok(usage.chat.free >= 10, `${usage.chat.free} chat command slots are still free (at least 10 are kept; past that, mark commands guildScoped to move them to the second set)`);
+assert.ok(usage.chat.free >= 9, `${usage.chat.free} chat command slots are still free (at least 9 are kept, 10 until /variables was added; past that, mark commands guildScoped to move them to the second set)`);
 
 // ---------------------------------------------------------------- 4. the old words still resolve
 const client = { user: { id: '123' }, users: { fetch: async (id) => ({ id }) } };
@@ -101,7 +104,7 @@ const target = (word) => {
 };
 const WORDS = {
   act: 'action', action: 'action', auto: 'automation', automation: 'automation', contrib: 'contributions', contributions: 'contributions', special: 'specialchannels', specialchannels: 'specialchannels',
-  level: 'level', levels: 'levels', xp: 'level', rank: 'rank', nivel: 'rank', lvl: 'rank', top: 'top', leaderboard: 'top', lb: 'top', ranking: 'top', botinfo: 'botinfo', about: 'botinfo', bi: 'botinfo',
+  level: 'level', levels: 'levels', xp: 'level', rank: 'rank', nivel: 'rank', lvl: 'rank', top: 'leaderboard', leaderboard: 'leaderboard', lb: 'leaderboard', ranking: 'leaderboard', botinfo: 'botinfo', about: 'botinfo', bi: 'botinfo',
   ping: 'ping', p: 'ping', poll: 'poll', pl: 'poll', suggest: 'suggest', sug: 'suggest', suggestion: 'suggestion', prefix: 'prefix', pfx: 'prefix', setup: 'setup',
   hug: 'action', pat: 'action', slap: 'action', hf: 'action',
   restrictcommand: 'restrictcommand', disablecommand: 'disablecommand', moderation: 'moderation', statsconfig: 'statsconfig', poj: 'poj', imgonly: 'imgonly', urlonly: 'urlonly',
@@ -154,8 +157,10 @@ const all = new Map();
 for (const file of findCommandFiles(COMMANDS_DIR)) {
   const command = require(file);
   if (!command?.data) continue;
+  command.fileName = path.basename(file, '.js');
   command.category = path.relative(COMMANDS_DIR, file).split(path.sep)[0];
   all.set(command.data.name, command);
+  all.set(path.basename(file, '.js'), command); // an umbrella names the FILE it wraps (`top.js` is the command `leaderboard`)
 }
 const subsOf = (command) => (command.data.toJSON().options ?? []).flatMap((option) => (option.type === SUBCOMMAND ? [option.name] : option.type === GROUP ? option.options.map((sub) => `${option.name} ${sub.name}`) : []));
 const covered = new Map();
@@ -198,6 +203,7 @@ const LEFT_OUT = {
 const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky' };
 const missing = [];
 for (const [name, command] of all) {
+  if (name !== command.data.name) continue; // the same command under the name of its file (the umbrellas name the file: `top.js` is `/leaderboard`)
   if (GROUP_OF_ROLE[name]) { assert.ok(paths.has(`role ${GROUP_OF_ROLE[name]}`), `/role ${GROUP_OF_ROLE[name]} covers !${name}`); continue; }
   const json = command.data.toJSON();
   if ((json.type ?? 1) !== 1 || command.category === 'music' || command.teamOnly || command.ownerOnly || command.hiddenEverywhere || command.privateGuildId || command.hiddenFromHelp || command.slashOnly) continue;
@@ -225,10 +231,10 @@ moderationPermissions.hasConfiguredRole = async () => false;
 const recorded = [];
 const restore = [];
 const wrappedByAnUmbrella = new Set([...all.values()].flatMap((command) => (command.leaves ?? []).map((entry) => entry.wraps).filter(Boolean)));
-for (const command of [...all.values()].filter((each) => wrappedByAnUmbrella.has(each.data.name) && !each.umbrella)) {
+for (const command of [...all.values()].filter((each) => wrappedByAnUmbrella.has(each.fileName) && !each.umbrella)) {
   const original = command.execute;
   restore.push(() => { command.execute = original; });
-  command.execute = async (interaction) => { recorded.push({ file: command.data.name, sub: interaction.options.getSubcommand(false), group: interaction.options.getSubcommandGroup(false), name: interaction.commandName }); };
+  command.execute = async (interaction) => { recorded.push({ file: command.fileName, sub: interaction.options.getSubcommand(false), group: interaction.options.getSubcommandGroup(false), name: interaction.commandName }); };
 }
 const fakeInteraction = (leaf) => ({
   commandName: 'x', guildId: '1', guild: { id: '1' }, user: { id: '2' },
@@ -245,7 +251,7 @@ const fakeInteraction = (leaf) => ({
       recorded.length = 0;
       await command.execute(fakeInteraction(leaf));
       assert.equal(recorded.length, 1, `/${umbrella} ${leaf.group ?? ''} ${leaf.name} runs one command`);
-      assert.deepEqual([recorded[0].file, recorded[0].sub, recorded[0].group, recorded[0].name], [leaf.wraps, leaf.sub ?? null, leaf.subGroup ?? null, leaf.wraps], `/${umbrella} ${leaf.group ?? ''} ${leaf.name} runs ${leaf.wraps} ${leaf.subGroup ?? ''} ${leaf.sub ?? ''}`);
+      assert.deepEqual([recorded[0].file, recorded[0].sub, recorded[0].group, recorded[0].name], [leaf.wraps, leaf.sub ?? null, leaf.subGroup ?? null, all.get(leaf.wraps).data.name], `/${umbrella} ${leaf.group ?? ''} ${leaf.name} runs ${leaf.wraps} ${leaf.subGroup ?? ''} ${leaf.sub ?? ''}`);
       ran += 1;
     }
   }

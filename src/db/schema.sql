@@ -2517,6 +2517,37 @@ create table if not exists activity_members (
 create index if not exists idx_activity_members_guild_day on activity_members(guild_id, day);
 alter table activity_members enable row level security;
 
+-- Activity leaderboards: one row per server and kind (chat or voice) with the channel and the three messages (daily, weekly, monthly) that Petto edits every hour.
+-- It reads activity_members (counts only), so it follows what a server turned off in !statsconfig and who asked not to be counted.
+create table if not exists activity_leaderboards (
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  kind               text not null check (kind in ('chat', 'voice')),
+  channel_id         text not null,
+  daily_message_id   text,
+  weekly_message_id  text,
+  monthly_message_id text,
+  last_refreshed_at  timestamptz,
+  last_error         text,
+  created_at         timestamptz not null default now(),
+  primary key (guild_id, kind)
+);
+alter table activity_leaderboards enable row level security;
+
+-- Role of the most active member: one row per server and kind (chat or voice) with the role, who has it now and the week it was last given for (the first day of that week).
+-- The role goes to the number 1 of the week that just ended (weekly ranking of activity_members), so it follows !statsconfig and !stats privacy too.
+create table if not exists activity_top_roles (
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  kind              text not null check (kind in ('chat', 'voice')),
+  role_id           text not null,
+  holder_id         text,
+  awarded_week      text,
+  last_checked_at   timestamptz,
+  last_error        text,
+  created_at        timestamptz not null default now(),
+  primary key (guild_id, kind)
+);
+alter table activity_top_roles enable row level security;
+
 create or replace function increment_member_flow(p_guild_id text, p_day date, p_joins integer, p_leaves integer, p_invited integer)
 returns void language plpgsql as $$
 begin
@@ -3687,6 +3718,9 @@ create table if not exists giveaway_preset_levels (
 alter table giveaway_preset_levels enable row level security;
 
 alter table level_config add column if not exists reset_on_leave boolean not null default false;
+-- `keep_xp` replaces reset_on_leave (which is not read any more): a member who leaves LOSES their XP unless the server turns this on. It is a new column so that every server,
+-- the ones that already existed too, starts with the default (wipe); adding it needs no UPDATE, so nothing is overwritten when the bot starts again.
+alter table level_config add column if not exists keep_xp boolean not null default false;
 alter table level_config add column if not exists restore_roles boolean not null default true;
 
 -- ---------------------------------------------------------------------------

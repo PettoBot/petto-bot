@@ -1,4 +1,13 @@
 {
+ "are": "alias remove",
+ "arem": "activityboard remove",
+ "arr": "autoresponder remove",
+ "arre": "autoresponder reset",
+ "arrem": "automation reaction remove",
+ "arres": "automation reaction reset",
+ "ars": "autoresponder show",
+ "as": "antiscam status",
+ "aset": "activityboard set",
  "bal": "boosterrole settings limit",
  "brab": "boosterrole settings base-role",
  "braco": "boosterrole settings cooldown",

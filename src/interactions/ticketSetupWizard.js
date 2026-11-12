@@ -85,7 +85,7 @@ function renderWizard(uid, draft, lang = currentLanguage()) {
     t(lang, 'tickets.setup.summary.types', { count: draft.types.length, max: maxTypes(draft) }),
   ];
   const lines = [
-    t(lang, 'tickets.setup.intro', { emoji: EMOJI.STAR }),
+    t(lang, 'tickets.setup.intro', { emoji: EMOJI.TICKET }),
     '',
     t(lang, 'tickets.setup.panelChannel', { mark: mark(draft.channelId), channel: draft.channelId ? `<#${draft.channelId}>` : t(lang, 'tickets.setup.panelChannelEmpty') }),
     t(lang, 'tickets.setup.supportRoles', { mark: mark(draft.supportRoleIds.length), roles: draft.supportRoleIds.length ? draft.supportRoleIds.map((r) => `<@&${r}>`).join(' ') : t(lang, 'tickets.setup.supportRolesEmpty') }),

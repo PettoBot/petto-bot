@@ -1,10 +1,11 @@
 // /levels: everything about levels in one command (a tidier `/` list: they are found by typing `/levels`). The two things members use are subcommands of
-// their own, `rank` (your level and XP, or someone else's) and `leaderboard` (the ranking of the server); the settings of the system are in groups
+// their own, `rank` (your level and XP, or someone else's) and `leaderboard` (the ranking of the server), now commands of their own too; the settings of the system are in groups
 // (`settings`, `voice`, `reward`, `multiplier`, `event`, `manage`). Each subcommand takes the same options and runs the same code as the old commands
 // (utils/umbrella.js): `/levels rank` is `!rank`, `/levels leaderboard` is `!top`, `/levels voice xp` is `!level voice-xp`.
 //
 // The old commands keep working as they were with the prefix (`!level`, `!xp`, `!rank`, `!top`, `!leaderboard`, `!lb`...), and so do the old words as the first
-// word of this one (`!levels voice-xp 5`). They are not slash commands any more.
+// word of this one (`!levels voice-xp 5`). `rank` and `leaderboard` are slash commands of their own (`/rank`, `/leaderboard`), so they are not in the `/levels` menu any
+// more (no command twice); `!levels rank`, `!levels leaderboard` and their short words (`!lra`, `!ll`) keep working with the prefix, as published.
 //
 // PERMISSIONS: Discord checks `default_member_permissions` for a whole command, never for one subcommand, so `/levels` is open (everybody uses `rank`
 // and `leaderboard`) and every subcommand of a group asks, when it runs, for what `!level` asks (Manage Server), for the slash command and the prefix alike.
@@ -66,4 +67,6 @@ module.exports = defineUmbrella({
   name: 'levels',
   description: 'Levels and XP: your rank, the leaderboard of the server and the settings of the leveling system.',
   subcommands: SUBCOMMANDS,
+  // `/rank` and `/leaderboard` do the same, so `/levels rank` and `/levels leaderboard` are only for the prefix.
+  prefixOnlySubcommands: ['rank', 'leaderboard'],
 });

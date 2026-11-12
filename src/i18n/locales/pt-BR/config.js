@@ -206,6 +206,7 @@ module.exports = {
   'config.column.ignored_category_ids': 'Categorias ignoradas',
   'config.column.voice_ignored_category_ids': 'Categorias de voz ignoradas',
   'config.column.reset_on_leave': 'Zerar ao sair',
+  'config.column.keep_xp': 'Manter XP ao sair',
   'config.column.restore_roles': 'Restaurar cargos',
   'config.column.leaderboard_public': 'Ranking público',
   'config.column.leaderboard_slug': 'Identificador do ranking',

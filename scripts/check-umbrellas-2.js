@@ -491,7 +491,11 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.ok(!Object.hasOwn(commandFile('me').prefixSubcommandAliases ?? {}, 'br'), '`!me br` is not a thing any more');
   // The commands that were already slash commands are still registered as they were.
   for (const name of ['afk', 'remind', 'ban', 'kick']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
-  for (const name of ['rank', 'top']) assert.ok(!isSlashCommand(commandFile(name)) && client.commands.has(name), `/${name} is not a slash command any more (/levels rank, /levels leaderboard) and !${name} still works`);
+  // `/rank` and `/leaderboard` are slash commands of their own, the shorter ways to `/levels rank` and `/levels leaderboard` (the umbrella keeps them, so the short aliases `!lra` and `!ll` still mean the same).
+  assert.ok(isSlashCommand(commandFile('rank')) && client.commands.has('rank'), '/rank is a slash command, and !rank works');
+  assert.ok(isSlashCommand(commandFile('leaderboard')) && client.commands.has('leaderboard'), '/leaderboard is a slash command (it was called top)');
+  for (const word of ['top', 'lb', 'ranking']) assert.equal(client.commandAliases.get(word), 'leaderboard', `!${word} still reaches the leaderboard`);
+  assert.deepEqual(commandFile('leaderboard').legacyRuleNames, ['top'], 'the rules a server saved for top still apply');
   assert.ok(isSlashCommand(commandFile('suggest')) && client.commands.has('suggest'), '/suggest is a slash command again (/suggest send), and !suggest still works');
   // `/avatar`, `/userinfo`, `/purge` (and `/serverinfo`, `/unban`, `/timeout`) were replaced by `/user avatar`, `/user info`, `/mod purge`...: the prefix is unchanged.
   for (const name of ['timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
@@ -679,8 +683,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 90, '90 commands registered globally with Discord (87 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 87, '87 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 94, '94 commands registered globally with Discord (91 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 91, '91 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });

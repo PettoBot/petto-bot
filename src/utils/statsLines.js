@@ -18,7 +18,7 @@ function bestDayLine(stats, lang) {
   const values = stats.current.series.messages;
   let best = -1;
   values.forEach((value, i) => { if (value > 0 && (best === -1 || value > values[best])) best = i; });
-  return best === -1 ? null : t(lang, 'info.stats.line.bestDay', { emoji: EMOJI.STAR, day: dayText(stats.current.days[best], lang), count: formatNumber(lang, values[best]) });
+  return best === -1 ? null : t(lang, 'info.stats.line.bestDay', { emoji: EMOJI.FIELD_CALENDAR, day: dayText(stats.current.days[best], lang), count: formatNumber(lang, values[best]) });
 }
 
 function concentrationLine(stats, lang) {

@@ -292,7 +292,7 @@ async function officialControl(interaction, lang) {
   const stats = await getAutoModStats(interaction.client);
   const reached = stats.remaining === 0;
   const lines = [
-    `### ${reached ? EMOJI.APPROVE : EMOJI.STAR} Petto Official AutoMod`, // i18n-ignore: Petto team only
+    `### ${reached ? EMOJI.APPROVE : EMOJI.AUTOMOD} Petto Official AutoMod`, // i18n-ignore: Petto team only
     `**Guilds checked:** ${stats.guilds}`, // i18n-ignore: Petto team only
     `**Guilds with Petto rules:** ${stats.guildsWithAutoMod}`, // i18n-ignore: Petto team only
     `**Managed rules:** ${stats.managedRules}`, // i18n-ignore: Petto team only

@@ -117,8 +117,8 @@ const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(Bi
 // Open at Discord and in the code, for everybody (read something, or work on the member's own data).
 const EVERYDAY = new Set([
   'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
-  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'rolemembers', 'servericon', 'serverbanner', 'serversplash', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
-  'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'feedback', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
+  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'rolemembers', 'servericon', 'serverbanner', 'serversplash', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'variables', 'premium', 'globalranking', 'cmdconfig',
+  'afk', 'remind', 'poll', 'rank', 'leaderboard', 'birthday', 'suggest', 'feedback', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
   'partner', 'request', 'review', 'uploads', 'stats', 'topcommands',
@@ -747,10 +747,10 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     await endToEnd('userinfo', [], {}, live.plain, { include: /user/i });
     await endToEnd('serverinfo', [], { server: null }, live.plain, { include: /Petto Test/ });
     await endToEnd('rank', [], {}, live.plain, { include: /level|rank|XP/i });
-    await endToEnd('top', [], {}, live.plain, { include: /./ });
+    await endToEnd('leaderboard', [], {}, live.plain, { include: /./ });
     {
-      // The buttons of /top: somebody else pressing one is told whose it is (it used to fail without a word), and the author turns the page.
-      const command = byName.get('top');
+      // The buttons of /leaderboard: somebody else pressing one is told whose it is (it used to fail without a word), and the author turns the page.
+      const command = byName.get('leaderboard');
       const { interaction } = interactionFor(live, live.plain, { path: [], node: json(command) }, { command, values: { page: 1, type: null, period: null } });
       const handlers = {};
       interaction.editReply = async () => ({ createMessageComponentCollector: () => ({ on: (name, fn) => { handlers[name] = fn; }, stop() {} }), edit: async () => {} });
@@ -776,7 +776,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     await endToEnd('warn', ['user'], { user: target.user, reason: 'spam' }, moderator, { include: /./ });
     await endToEnd('mute', ['user'], { user: target.user, reason: 'spam' }, moderator, { include: /./ });
     await endToEnd('purge', [], { amount: 5, user: null, filter: null, text: null, starts_with: null, ends_with: null, before: null, after: null }, moderator, { include: /./ });
-    assert.deepEqual([...new Set(answered)].sort(), ['afk', 'avatar', 'ban', 'help', 'kick', 'mute', 'ping', 'poll', 'purge', 'rank', 'remind', 'serverinfo', 'top', 'userinfo', 'warn'], 'the 15 most used commands were run');
+    assert.deepEqual([...new Set(answered)].sort(), ['afk', 'avatar', 'ban', 'help', 'kick', 'leaderboard', 'mute', 'ping', 'poll', 'purge', 'rank', 'remind', 'serverinfo', 'userinfo', 'warn'], 'the 15 most used commands were run');
     // A plain member typing the moderation commands is told what is missing, with the permission, and nothing happens.
     for (const [name, path] of [['ban', ['user']], ['kick', ['user']], ['warn', ['user']], ['mute', ['user']], ['purge', []]]) {
       const command = byName.get(name);

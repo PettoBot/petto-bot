@@ -50,6 +50,11 @@ async function memberStanding(guildId, userId, kind, source, at = new Date()) {
   return row && Number(row.xp) > 0 ? { xp: Number(row.xp), position: row.position } : null;
 }
 
+/** Deletes what a member earned in the weeks and months that are kept (a server that wipes the XP of who leaves does not leave them in the weekly and monthly rankings). */
+async function deleteUser(guildId, userId) {
+  await getPrimaryPool().query('delete from level_period_xp where guild_id = $1 and user_id = $2', [String(guildId), String(userId)]);
+}
+
 /** Deletes the rows of periods that are over, keeping a few for a look back. */
 async function pruneOldPeriods(at = new Date()) {
   const weekCut = periodKeys(new Date(at.getTime() - KEEP_WEEKS * 7 * 86_400_000)).week;
@@ -61,4 +66,4 @@ async function pruneOldPeriods(at = new Date()) {
   return rowCount;
 }
 
-module.exports = { addPeriodXp, boardPage, boardCount, memberStanding, pruneOldPeriods };
+module.exports = { addPeriodXp, boardPage, boardCount, memberStanding, pruneOldPeriods, deleteUser };

@@ -49,7 +49,7 @@ function buildRows(uid, draft, lang) {
 /** Renders the panel message: a live preview of the poll-in-progress + edit buttons. */
 function renderPanel(uid, draft, lang = currentLanguage()) {
   const lines = [
-    t(lang, 'polls.panel.intro', { emoji: EMOJI.STAR }),
+    t(lang, 'polls.panel.intro', { emoji: EMOJI.CHECK }),
     '',
     `### 📊 ${draft.question ?? t(lang, 'polls.panel.noQuestion')}`,
     '',

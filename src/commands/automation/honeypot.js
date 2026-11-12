@@ -280,7 +280,7 @@ async function listConfiguredHoneypots(interaction, lang) {
         '',
         t(lang, 'security.honeypot.list.footer'),
       ].join('\n')
-      : t(lang, 'security.honeypot.list.empty', { emoji: EMOJI.STAR });
+      : t(lang, 'security.honeypot.list.empty', { emoji: EMOJI.SAFETY });
 
     await interaction.editReply({
       components: [textCard(content)],

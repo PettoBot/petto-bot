@@ -111,7 +111,7 @@ module.exports = {
           { name: 'streak_bonus (extra XP per earlier day in a row)', value: 'streak_bonus' },
           { name: 'streak_max_days (days after which the streak bonus stops growing)', value: 'streak_max_days' },
           { name: 'xp_multiplier (a base multiplier for all XP, e.g. 1.5)', value: 'xp_multiplier' },
-          { name: 'reset_on_leave (wipe the XP and level of a member who leaves)', value: 'reset_on_leave' },
+          { name: 'keep_xp (keep the XP and level of a member who leaves; off wipes them, the default)', value: 'keep_xp' },
           { name: 'restore_roles (give the reward roles back to a member who returns)', value: 'restore_roles' },
           { name: 'multiplier_mode (how several role multipliers join: highest, stack or sum)', value: 'multiplier_mode' },
           { name: 'multiplier_cap (the most a combined multiplier can reach)', value: 'multiplier_cap' },
@@ -659,7 +659,9 @@ const RULE_SETTINGS = {
   streak_bonus: { column: 'streak_bonus_xp', kind: 'number', min: 0, max: 10000 },
   streak_max_days: { column: 'streak_max_days', kind: 'number', min: 1, max: 365 },
   xp_multiplier: { column: 'xp_multiplier', kind: 'decimal', min: 0, max: 20 },
-  reset_on_leave: { column: 'reset_on_leave', kind: 'flag' },
+  keep_xp: { column: 'keep_xp', kind: 'flag' },
+  // The name it had before, on = wipe: it still works and means the opposite of `keep_xp` (it is not offered in the list).
+  reset_on_leave: { column: 'keep_xp', kind: 'flag', invert: true, hidden: true },
   restore_roles: { column: 'restore_roles', kind: 'flag' },
   multiplier_mode: { column: 'multiplier_mode', kind: 'choice', choices: ['highest', 'stack', 'sum'] },
   multiplier_cap: { column: 'multiplier_cap', kind: 'decimal', min: 1, max: 100 },
@@ -700,7 +702,7 @@ async function rulesCmd(interaction, lang) {
   if (setting) {
     const rule = RULE_SETTINGS[setting];
     if (!rule) {
-      await interaction.reply({ content: t(lang, 'leveling.rules.unknown', { setting, list: Object.keys(RULE_SETTINGS).map((name) => `\`${name}\``).join(', ') }), flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'leveling.rules.unknown', { setting, list: Object.entries(RULE_SETTINGS).filter(([, rule]) => !rule.hidden).map(([name]) => `\`${name}\``).join(', ') }), flags: MessageFlags.Ephemeral });
       return;
     }
     const value = readRuleValue(rule, text);
@@ -708,7 +710,7 @@ async function rulesCmd(interaction, lang) {
       await interaction.reply({ content: ruleValueHelp(setting, rule, lang), flags: MessageFlags.Ephemeral });
       return;
     }
-    patch = { [rule.column]: value };
+    patch = { [rule.column]: rule.invert ? !value : value };
   }
   await defer(interaction);
   const config = patch ? await levelConfigDb.upsertConfig(interaction.guild.id, patch) : await levelConfigDb.ensureConfig(interaction.guild.id);
@@ -717,7 +719,8 @@ async function rulesCmd(interaction, lang) {
 }
 
 function rulesSummary(config, lang) {
-  const keepRoles = config.restore_roles !== false;
+  // Reward roles are given back from the level that is kept: a server that wipes the XP of who leaves has nothing to give back.
+  const keepRoles = config.restore_roles !== false && Boolean(config.keep_xp);
   return [
     config.min_message_chars > 0 ? tn(lang, 'leveling.rules.minLength', config.min_message_chars, { count: config.min_message_chars }) : t(lang, 'leveling.rules.minLengthOff'),
     t(lang, config.anti_repeat ? 'leveling.rules.antiRepeatOn' : 'leveling.rules.antiRepeatOff'),
@@ -726,7 +729,7 @@ function rulesSummary(config, lang) {
     Number(config.daily_xp_cap) > 0 ? t(lang, 'leveling.rules.dailyCapOn', { xp: Number(config.daily_xp_cap) }) : t(lang, 'leveling.rules.dailyCapOff'),
     config.daily_bonus_xp > 0 ? t(lang, 'leveling.rules.dailyOn', { xp: config.daily_bonus_xp }) : t(lang, 'leveling.rules.dailyOff'),
     config.streak_bonus_xp > 0 ? tn(lang, 'leveling.rules.streakOn', config.streak_max_days, { xp: config.streak_bonus_xp, count: config.streak_max_days }) : t(lang, 'leveling.rules.streakOff'),
-    t(lang, `leveling.rules.leave${config.reset_on_leave ? 'Wipe' : 'Keep'}${keepRoles ? 'Restore' : ''}`),
+    t(lang, `leveling.rules.leave${config.keep_xp ? 'Keep' : 'Wipe'}${keepRoles ? 'Restore' : ''}`),
     t(lang, 'leveling.rules.multipliers', { base: Number(config.xp_multiplier ?? 1), mode: config.multiplier_mode ?? 'highest', cap: Number(config.multiplier_cap ?? 20) }),
     config.vote_boost_enabled === false ? t(lang, 'leveling.rules.voteBoostOff') : t(lang, 'leveling.rules.voteBoostOn', { percent: VOTE_BOOST_PERCENT }),
   ].join('\n');
