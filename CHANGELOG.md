@@ -4,6 +4,9 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+- **A changelog editor for the team in the dashboard, and the changelog of the website reads from the database.** Why: a new version, or a notice such as a security alert or a warning that the bot restarts, needed a change in the code of the website and a deploy of it. What: the new table `site_changelog` (`version`, `name`, `release_date`, `published`, `content` as `{ en, es, pt }` with `notices` and `items`, who saved it and when), created at start with `if not exists`. The website has a page in the dashboard (Staff → Changelog, for the owner and the team) to write a version in Markdown with notices (security, warning, breaking change, information) in the three languages, with a live preview, and to publish it or keep it as a draft; `petto.sbs/changelog`, each version's page and the RSS feed read the published ones from this table (a version saved here replaces the one of the same number written in the code, and if the table cannot be read the website shows the ones in its code). Impact: one new table, no change for the bot; the notice of every version (Brownie has a security notice) can be written from the dashboard from now on.
+
 ## [0.7.11] — 2026-11-12 · Brownie
 
 ### Security
