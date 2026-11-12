@@ -56,15 +56,21 @@ const HOUR = 3_600_000;
   assert.ok(en.includes('pe_zz02:') && en.includes('pe_zz10:') && !en.includes('pe_zz01:'), 'the numbered rows have the pink numbers 2 to 10');
   assert.ok(en.includes(`<t:${Math.floor(resetAt.getTime() / 1000)}:R>`) && en.includes('-# Updates every 5 minutes!'), 'when it begins again, and how often it is updated');
   const voice = board.boardText('en', 'voice', 'weekly', [{ username: 'tal', amount: 3600 }, { username: 'mia', amount: 60 }], resetAt);
-  assert.ok(voice.includes('Voice Leaderboard [Weekly]') && voice.includes('**Most active talker** `tal`') && voice.includes('**60 voice minutes**'), 'voice is shown in minutes');
-  assert.ok(voice.includes('**1 voice minute**'), 'and in the singular');
+  assert.ok(voice.includes('Voice Leaderboard [Weekly]') && voice.includes('**Most active talker** `tal`') && voice.includes('**1 hour**') && voice.includes('**1 minute**'), 'voice is shown as a time: an hour, a minute (singular)');
+  // The time in voice: hours and minutes, only minutes under an hour, only seconds under a minute, and never days.
+  const time = (seconds, lang = 'en') => board.voiceTime(lang, seconds);
+  assert.deepEqual([0, 1, 59, 60, 61, 3599, 3600, 3660, 7200, 19800].map((seconds) => time(seconds)), ['0 seconds', '1 second', '59 seconds', '1 minute', '1 minute', '59 minutes', '1 hour', '1 hour 1 minute', '2 hours', '5 hours 30 minutes'], 'seconds under a minute, minutes under an hour, then hours and minutes (the minutes that are left are dropped, not rounded up)');
+  assert.deepEqual([1350 * 3600, 1350 * 3600 + 1800, 100 * 86400].map((seconds) => time(seconds)), ['1,350 hours', '1,350 hours 30 minutes', '2,400 hours'], 'the most is hours: a long time is never written in days');
+  assert.deepEqual([time(-5), time(Number.NaN), time(undefined), time(90.9)], ['0 seconds', '0 seconds', '0 seconds', '1 minute'], 'what is not a time is nothing');
+  assert.deepEqual([time(19800, 'es'), time(3660, 'es'), time(45, 'es'), time(19800, 'pt-BR'), time(3660, 'pt-BR'), time(60, 'pt-BR')], ['5 horas 30 minutos', '1 hora 1 minuto', '45 segundos', '5 horas 30 minutos', '1 hora 1 minuto', '1 minuto'], 'the same in Spanish and Portuguese');
+  assert.ok(board.boardText('en', 'voice', 'daily', [{ username: 'tal', amount: 19800 }], resetAt).includes('**5 hours 30 minutes**'), 'and that is what the card of the voice says');
   assert.ok(board.boardText('en', 'chat', 'daily', [{ username: 'a', amount: 1 }], resetAt).includes('**1 message**'), 'one message');
   assert.ok(board.boardText('en', 'chat', 'daily', [], resetAt).includes('Nobody has been active in this period yet.'), 'an empty card says so');
   const es = board.boardText('es', 'chat', 'monthly', chat, resetAt);
   assert.ok(es.includes('Ranking de chat [Mensual]') && es.includes('**Más activo en el chat**') && es.includes('8,372 mensajes') && es.includes('Se reinicia'), 'Spanish: the title, the words and the numbers as the bot writes them in Latin American Spanish');
   const pt = board.boardText('pt-BR', 'voice', 'daily', [{ username: 'a', amount: 7200 }], resetAt);
   assert.ok(board.boardText('pt-BR', 'chat', 'daily', [{ username: 'a', amount: 8372 }], resetAt).includes('8.372 mensagens'), 'Portuguese writes the thousands with a dot');
-  assert.ok(pt.includes('Ranking de voz [Diário]') && pt.includes('120 minutos de voz') && pt.includes('Atualiza a cada 5 minutos!'), 'Portuguese');
+  assert.ok(pt.includes('Ranking de voz [Diário]') && pt.includes('**2 horas**') && pt.includes('Atualiza a cada 5 minutos!'), 'Portuguese');
 
   // ---- the SQL: the three tops in one trip, and the boards saved together
   nextRows = [

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIN_PLACES = exports.TEXT_LIMIT = exports.CANDIDATES = exports.PLACES = exports.PERIODS = void 0;
 exports.createEditBudget = createEditBudget;
 exports.periodWindow = periodWindow;
+exports.voiceTime = voiceTime;
 exports.boardText = boardText;
 exports.topMembers = topMembers;
 exports.writableChannel = writableChannel;
@@ -88,9 +89,21 @@ function periodWindow(period, at = new Date()) {
     return { startDay: new Date(start).toISOString().slice(0, 10), resetAt: new Date(end - OFFSET_MS) };
 }
 const rankEmoji = (place) => EMOJI[`BOARD_RANK_${String(place).padStart(2, '0')}`] ?? `${place}.`;
-const amountText = (lang, kind, amount) => (kind === 'voice'
-    ? tn(lang, 'leaderboards.unit.minutes', Math.floor(amount / 60))
-    : tn(lang, 'leaderboards.unit.messages', amount));
+/**
+ * A time in a voice channel, read the way a person says it: hours and minutes ("5 hours 30 minutes", just "5 hours" when the minutes are none), only minutes under an hour, only
+ * seconds under a minute. Never days: a long time stays in hours ("1,350 hours").
+ */
+function voiceTime(lang, seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (total < 60)
+        return tn(lang, 'leaderboards.unit.seconds', total);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    if (!hours)
+        return tn(lang, 'leaderboards.unit.minutes', minutes);
+    return minutes ? `${tn(lang, 'leaderboards.unit.hours', hours)} ${tn(lang, 'leaderboards.unit.minutes', minutes)}` : tn(lang, 'leaderboards.unit.hours', hours);
+}
+const amountText = (lang, kind, amount) => (kind === 'voice' ? voiceTime(lang, amount) : tn(lang, 'leaderboards.unit.messages', amount));
 /** The words of one card: the title, the most active member, the next places (`places` of them in all), when it starts again and how often it is updated. */
 function boardText(lang, kind, period, entries, resetAt, places = exports.PLACES) {
     const title = `**${t(lang, `leaderboards.title.${kind}`, { period: t(lang, `leaderboards.period.${period}`) })}**`;

@@ -111,9 +111,20 @@ export function periodWindow(period: Period, at: Date = new Date()): PeriodWindo
 export interface Entry { username: string; amount: number }
 
 const rankEmoji = (place: number): string => EMOJI[`BOARD_RANK_${String(place).padStart(2, '0')}`] ?? `${place}.`;
-const amountText = (lang: string, kind: Kind, amount: number): string => (kind === 'voice'
-  ? tn(lang, 'leaderboards.unit.minutes', Math.floor(amount / 60))
-  : tn(lang, 'leaderboards.unit.messages', amount));
+/**
+ * A time in a voice channel, read the way a person says it: hours and minutes ("5 hours 30 minutes", just "5 hours" when the minutes are none), only minutes under an hour, only
+ * seconds under a minute. Never days: a long time stays in hours ("1,350 hours").
+ */
+export function voiceTime(lang: string, seconds: number): string {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (total < 60) return tn(lang, 'leaderboards.unit.seconds', total);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (!hours) return tn(lang, 'leaderboards.unit.minutes', minutes);
+  return minutes ? `${tn(lang, 'leaderboards.unit.hours', hours)} ${tn(lang, 'leaderboards.unit.minutes', minutes)}` : tn(lang, 'leaderboards.unit.hours', hours);
+}
+
+const amountText = (lang: string, kind: Kind, amount: number): string => (kind === 'voice' ? voiceTime(lang, amount) : tn(lang, 'leaderboards.unit.messages', amount));
 
 /** The words of one card: the title, the most active member, the next places (`places` of them in all), when it starts again and how often it is updated. */
 export function boardText(lang: string, kind: Kind, period: Period, entries: Entry[], resetAt: Date, places: number = PLACES): string {
