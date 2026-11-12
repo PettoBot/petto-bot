@@ -33,7 +33,7 @@ function serverCommands(client) {
 function slotLines(usage) {
   const bar = (entry) => `**${entry.used} / ${entry.limit}** (${entry.free} left)`;
   return [
-    `${EMOJI.STAR} Slash commands: ${bar(usage.chat)}`,
+    `${EMOJI.INTEGRATIONS} Slash commands: ${bar(usage.chat)}`,
     `User menus: ${bar(usage.user)} · Message menus: ${bar(usage.message)}`,
   ];
 }
@@ -82,7 +82,7 @@ module.exports = {
 
     // The second set of commands: registered in every server the bot is in, with its own 100 slots on top of the global ones.
     const serverUsed = serverCommands(client).length;
-    lines.push('', '**Server commands (registered in each server)**', `${EMOJI.STAR} Slash commands: **${serverUsed} / ${LIMITS.chat}** (${Math.max(0, LIMITS.chat - serverUsed)} left in each server)`);
+    lines.push('', '**Server commands (registered in each server)**', `${EMOJI.INTEGRATIONS} Slash commands: **${serverUsed} / ${LIMITS.chat}** (${Math.max(0, LIMITS.chat - serverUsed)} left in each server)`);
 
     // The commands that work only with the prefix (the ones people see in the help): how many could still be moved to slash commands, and which of them
     // are too big to go as they are (more than 25 subcommands, or 8000 characters).

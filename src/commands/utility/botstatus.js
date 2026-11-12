@@ -81,7 +81,7 @@ module.exports = {
     if (!requestedStatus && !requestedDevice) {
       const [status, { device, source }] = await Promise.all([currentStatus(), botDevice.currentDevice()]);
       const where = source === 'saved' ? 'saved' : 'from the environment, PETTO_MOBILE_STATUS';
-      return reply(interaction, `${EMOJI.STAR} Petto's status is **${statusLabel(status, device)}**.\n${EMOJI.STAR} Its device is **${deviceLabel(device)}** (${where}).\n-# Change the dot with \`!botstatus online\`, \`idle\`, \`dnd\` or \`invisible\`, and the device with \`!botstatus device normal\`, \`phone\`, \`android\` or \`ios\`. The phone icon only shows with online, and a new device restarts the bot.${deviceKeyword ? '\n-# Give the device after the word: `!botstatus device phone`.' : ''}`);
+      return reply(interaction, `${EMOJI.BOT} Petto's status is **${statusLabel(status, device)}**.\n${EMOJI.BOT} Its device is **${deviceLabel(device)}** (${where}).\n-# Change the dot with \`!botstatus online\`, \`idle\`, \`dnd\` or \`invisible\`, and the device with \`!botstatus device normal\`, \`phone\`, \`android\` or \`ios\`. The phone icon only shows with online, and a new device restarts the bot.${deviceKeyword ? '\n-# Give the device after the word: `!botstatus device phone`.' : ''}`);
     }
 
     const lines = [];

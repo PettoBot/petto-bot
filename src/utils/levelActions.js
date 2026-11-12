@@ -20,12 +20,13 @@ const { t, currentLanguage } = require('../i18n');
 const { sendDm } = require('./dmOrigin');
 
 // The level-up messages the database holds when a server wrote none, in English: they are shown in the server's language.
-// The old text and voice defaults carried {EMOJI}; the text one drops it (the old star is not injected into the default).
+// The default texts are kept in the database without the emoji (an older version had it with {EMOJI}, an even older one without): all of them show the
+// translated default, which starts with {EMOJI}, the level-up arrow.
 const DEFAULT_MESSAGES = new Map([
   ['{user} just leveled up to **{level}**!', 'leveling.notify.default'], // i18n-ignore: stored default, compared
   ['{EMOJI} {user} just leveled up to **{level}**!', 'leveling.notify.default'], // i18n-ignore: stored default, compared
   ['{user} reached voice level **{level}**!', 'leveling.notify.voiceDefault'], // i18n-ignore: stored default, compared
-  ['{EMOJI} {user} reached voice level **{level}**!', 'leveling.notify.voiceDefaultStar'], // i18n-ignore: stored default, compared
+  ['{EMOJI} {user} reached voice level **{level}**!', 'leveling.notify.voiceDefault'], // i18n-ignore: stored default, compared
 ]);
 
 // The day each member was last marked active, so a streak is touched in the database once a day and not on every message.
@@ -226,7 +227,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
   // A message the server wrote (a milestone or its own) is sent as it is; the default one is translated.
   const defaultKey = DEFAULT_MESSAGES.get(config.notify_message);
   const configuredText = milestone ?? (defaultKey ? t(lang, defaultKey) : config.notify_message);
-  const rawText = configuredText.replace(/\{EMOJI\}/g, EMOJI.STAR);
+  const rawText = configuredText.replace(/\{EMOJI\}/g, EMOJI.LEVEL_UP);
   const { text: cleanedText, emojis: reactReplies } = extractReactReplies(rawText);
   const text = await resolve(cleanedText, ctx);
   if (!text && reactReplies.length) {

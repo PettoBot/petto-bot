@@ -2,9 +2,8 @@
 module.exports = {
   'leveling.notEnabled.messages': 'Message leveling is not enabled in this server.',
   'leveling.notEnabled.voice': 'Voice leveling is not enabled in this server.',
-  'leveling.notify.default': '{user} just leveled up to **{level}**!',
-  'leveling.notify.voiceDefault': '{user} reached voice level **{level}**!',
-  'leveling.notify.voiceDefaultStar': '{EMOJI} {user} reached voice level **{level}**!',
+  'leveling.notify.default': '{EMOJI} {user} just leveled up to **{level}**!',
+  'leveling.notify.voiceDefault': '{EMOJI} {user} reached voice level **{level}**!',
   'leveling.rank.noXp': "{user} doesn't have any XP recorded yet.",
   'leveling.rank.noVoiceXp': "{user} doesn't have any voice XP recorded yet.",
   'leveling.rankView.level': 'Level',

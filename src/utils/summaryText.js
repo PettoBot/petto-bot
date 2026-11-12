@@ -9,7 +9,7 @@ const dayText = (day, lang) => new Date(`${day}T00:00:00Z`).toLocaleDateString(D
 const hours = (seconds) => { const m = Math.floor(seconds / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 
 const MAX_LINES = 4;
-const ICON = { time: EMOJI.FIELD_CALENDAR, good: EMOJI.APPROVE, star: EMOJI.STAR, note: EMOJI.FIELD_NOTES, alert: EMOJI.ALERT, hammer: EMOJI.HAMMER, members: EMOJI.MEMBERS };
+const ICON = { time: EMOJI.FIELD_CALENDAR, good: EMOJI.APPROVE, star: EMOJI.GEM, note: EMOJI.FIELD_NOTES, alert: EMOJI.ALERT, hammer: EMOJI.HAMMER, members: EMOJI.MEMBERS };
 // Who applied the sanctions: the catalog key of each source.
 const SOURCE_KEYS = { moderator: 'moderators', automod: 'automod', honeypot: 'honeypot', escalation: 'escalation', expiry: 'expiry', antinuke: 'antinuke' };
 

@@ -61,7 +61,7 @@ function kindText(field, lang) {
 
 function renderPanel(uid, draft, lang = currentLanguage()) {
   const lines = [
-    t(lang, draft.mode === 'edit' ? 'tickets.formBuilder.editing' : 'tickets.formBuilder.building', { emoji: EMOJI.STAR, name: draft.name }),
+    t(lang, draft.mode === 'edit' ? 'tickets.formBuilder.editing' : 'tickets.formBuilder.building', { emoji: EMOJI.TICKET, name: draft.name }),
     '',
     `### 📋 ${draft.title}`,
     '',

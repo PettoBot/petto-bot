@@ -30,7 +30,7 @@ const OWNER_ID = '293504726505357312';
 function buildThanksMessage(guildName, setupMention, prefix, lang = currentLanguage()) {
   const container = new ContainerBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guildName })),
+      new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.BOT, server: guildName })),
       new TextDisplayBuilder().setContent(t(lang, 'core.join.howToStart', { setup: setupMention, prefix })),
     );
   const row = new ActionRowBuilder().addComponents(

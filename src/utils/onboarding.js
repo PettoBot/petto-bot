@@ -182,7 +182,7 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
 
 function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
   const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guild.name })))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.BOT, server: guild.name })))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { prefix })));
 

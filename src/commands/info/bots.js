@@ -43,7 +43,7 @@ function botLine(member, lang, petto) {
   const name = plain(member.displayName ?? user.globalName ?? user.username);
   const tag = plain(user.tag ?? user.username);
   const parts = [`**${name}**${tag && tag !== name ? ` (${tag})` : ''}`, `\`${member.id}\``];
-  if (member.id === petto) parts.push(`${EMOJI.STAR} ${t(lang, 'info.bots.petto')}`);
+  if (member.id === petto) parts.push(`${EMOJI.BOT} ${t(lang, 'info.bots.petto')}`);
   if (isVerified(user)) parts.push(`${EMOJI.CHECK} ${t(lang, 'info.bots.verified')}`);
   if (member.joinedTimestamp) parts.push(t(lang, 'info.bots.joined', { when: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` }));
   return parts.join(' · ');

@@ -2,9 +2,8 @@
 module.exports = {
   'leveling.notEnabled.messages': 'Los niveles por mensajes no están activados en este servidor.',
   'leveling.notEnabled.voice': 'Los niveles de voz no están activados en este servidor.',
-  'leveling.notify.default': '¡{user} acaba de subir al nivel **{level}**!',
-  'leveling.notify.voiceDefault': '¡{user} alcanzó el nivel de voz **{level}**!',
-  'leveling.notify.voiceDefaultStar': '{EMOJI} ¡{user} alcanzó el nivel de voz **{level}**!',
+  'leveling.notify.default': '{EMOJI} ¡{user} acaba de subir al nivel **{level}**!',
+  'leveling.notify.voiceDefault': '{EMOJI} ¡{user} alcanzó el nivel de voz **{level}**!',
   'leveling.rank.noXp': '{user} todavía no tiene XP registrado.',
   'leveling.rank.noVoiceXp': '{user} todavía no tiene XP de voz registrado.',
   'leveling.rankView.level': 'Nivel',

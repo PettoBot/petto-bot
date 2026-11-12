@@ -4,7 +4,8 @@
 const EMOJI = {
   LOADING: '<a:petto_loading:1541481906468814880>',
   LOAD: '<a:petto_loading:1541481906468814880>',
-  STAR: '<:pe_star_empty:1562518954965073920>',
+  // The arrow of a level-up message: it is what {EMOJI} means in the level-up texts (text and voice).
+  LEVEL_UP: '<:pe_iconlevelup:1570474804467863592>',
   ALERT: '<:petto_warning:1527894476616630433>',
   APPROVE: '<:petto_approve:1527894552277549066>',
   DENY: '<:petto_deny:1527894509579665458>',

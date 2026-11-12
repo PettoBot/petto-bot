@@ -439,7 +439,7 @@ async function auditForInteraction(interaction, limit = 10) {
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_audit_viewed', null, { count: rows.length });
   const content = rows.length
     ? [t(lang, 'backup.audit.title'), ...rows.map((row) => `• **${formatAuditAction(row.action, lang)}** · <@${row.actor_id}>${row.backup_number ? ` · ${t(lang, 'backup.audit.backupNumber', { number: row.backup_number })}` : ''} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`)].join('\n')
-    : t(lang, 'backup.audit.empty', { emoji: EMOJI.STAR });
+    : t(lang, 'backup.audit.empty', { emoji: EMOJI.BACKUP });
   await finish(interaction, buildStatusCard(content, COLORS.DEFAULT, interaction, lang));
 }
 
@@ -504,7 +504,7 @@ function buildPanel(guild, userId, rows, scheduleRow, lang = currentLanguage()) 
 
   return new ContainerBuilder()
     .setAccentColor(COLORS.DEFAULT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'backup.panel.title', { emoji: EMOJI.STAR }), t(lang, 'backup.panel.intro', { server: guild.name })].join('\n')))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'backup.panel.title', { emoji: EMOJI.BACKUP }), t(lang, 'backup.panel.intro', { server: guild.name })].join('\n')))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'backup.panel.recent'), recent].join('\n')))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
@@ -538,7 +538,7 @@ function buildBackupMenuRow(guildId, userId, lang = currentLanguage()) {
 }
 
 function formatBackupList(rows, lang = currentLanguage()) {
-  if (!rows.length) return t(lang, 'backup.list.empty', { emoji: EMOJI.STAR });
+  if (!rows.length) return t(lang, 'backup.list.empty', { emoji: EMOJI.BACKUP });
   return [t(lang, 'backup.list.title'), ...rows.map((row) => backupLine(row, lang)), '', t(lang, 'backup.list.footer')].join('\n');
 }
 

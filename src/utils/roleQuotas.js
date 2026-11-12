@@ -236,7 +236,7 @@ async function closeRule(client, rule, { now = new Date(), sleep = wait } = {}) 
     const channel = guild.channels.cache.get(rule.report_channel_id);
     if (channel?.isTextBased?.()) {
       const lines = [
-        t(lang, 'automation.rolequota.report.title', { emoji: EMOJI.STAR, role: `<@&${role.id}>`, days: rule.period_days, min: rule.min_messages }),
+        t(lang, 'automation.rolequota.report.title', { emoji: EMOJI.MEMBERS, role: `<@&${role.id}>`, days: rule.period_days, min: rule.min_messages }),
         t(lang, 'automation.rolequota.report.totals', { met: result.met, missed: result.missed, removed: result.removed, excused: result.excused, fresh: result.fresh }),
         ...(removedIds.length ? [t(lang, 'automation.rolequota.report.removed', { list: mentionList(removedIds) })] : []),
         ...(missedIds.length ? [t(lang, 'automation.rolequota.report.missed', { max: rule.max_strikes, list: mentionList(missedIds.filter((id) => !removedIds.includes(id))) })] : []),

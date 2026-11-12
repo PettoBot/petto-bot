@@ -8,7 +8,7 @@ const { t, languageOf, currentLanguage } = require('../i18n');
 function placeholderEmbed(embedName, lang) {
   return new EmbedBuilder()
     .setColor(0x4b4f59)
-    .setDescription(t(lang, 'embeds.panel.created', { emoji: EMOJI.STAR, name: embedName }));
+    .setDescription(t(lang, 'embeds.panel.created', { emoji: EMOJI.PALETTE, name: embedName }));
 }
 
 function buildRows(sid, data, lang) {
@@ -45,7 +45,7 @@ async function renderPanel(doc, embedName, userId, previewRef = '/embed preview'
   const data = doc?.data ?? {};
   const sid = `${userId}::${embedName}`;
 
-  const content = t(lang, 'embeds.panel.editing', { emoji: EMOJI.STAR, name: embedName, command: previewRef });
+  const content = t(lang, 'embeds.panel.editing', { emoji: EMOJI.PALETTE, name: embedName, command: previewRef });
 
   let embed;
   if (hasContent(data)) {

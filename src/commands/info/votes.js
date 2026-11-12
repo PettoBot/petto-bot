@@ -37,7 +37,7 @@ module.exports = {
       const rows = await votesDb.topVoters(10);
       if (!rows.length) return reply([t(lang, 'votes.none'), t(lang, 'votes.voteAt', { links: voteLinks(interaction.client, lang) })].join('\n'));
       const lines = rows.map((row, index) => tn(lang, 'votes.top.line', row.total, { count: row.total, rank: index + 1, user: `<@${row.user_id}>` }));
-      return reply([t(lang, 'votes.top.title', { emoji: EMOJI.STAR }), ...lines, t(lang, 'votes.voteAt', { links: voteLinks(interaction.client, lang) })].join('\n'));
+      return reply([t(lang, 'votes.top.title', { emoji: EMOJI.GEM }), ...lines, t(lang, 'votes.voteAt', { links: voteLinks(interaction.client, lang) })].join('\n'));
     }
 
     const target = interaction.options.getUser('user') ?? interaction.user;
@@ -46,10 +46,10 @@ module.exports = {
     const boostVars = { percent: VOTE_BOOST_PERCENT, hours: VOTE_BOOST_HOURS };
     // The boost: active with the time it ends, or (for the member who asked) how to get it. The last line says the lists share one timer.
     const boostText = boost
-      ? t(lang, own ? 'votes.boost.active' : 'votes.boost.activeOther', { ...boostVars, emoji: EMOJI.STAR, percent: boost.percent, time: `<t:${Math.floor(boost.endsAt / 1000)}:R>` })
+      ? t(lang, own ? 'votes.boost.active' : 'votes.boost.activeOther', { ...boostVars, emoji: EMOJI.GEM, percent: boost.percent, time: `<t:${Math.floor(boost.endsAt / 1000)}:R>` })
       : t(lang, own ? 'votes.boost.inactive' : 'votes.boost.inactiveOther', boostVars);
     return reply([
-      t(lang, 'votes.show.title', { emoji: EMOJI.STAR }),
+      t(lang, 'votes.show.title', { emoji: EMOJI.GEM }),
       t(lang, 'votes.show.total', { votes: tn(lang, 'votes.show.votes', totals.total, { count: totals.total }), members: tn(lang, 'votes.show.members', totals.voters, { count: totals.voters }) }),
       totals.lists ? splitText(interaction.client, totals.lists, 'total', true) : '',
       votedOnSeveral(interaction.client, totals.lists)
