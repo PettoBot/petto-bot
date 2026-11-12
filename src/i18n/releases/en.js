@@ -1,5 +1,43 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.11': {
+    label: 'v0.7.11 · Brownie: activity leaderboards, role quotas, stronger verification & a private bot',
+    summary: 'Brownie: leaderboards of the most active members, a quota of messages for a role, a verification with Tor, alt account and email checks, direct slash commands for moderation, and a bot whose code is private now.',
+    sections: [
+      {
+        title: 'Activity and levels',
+        items: [
+          '`/activityboard set` posts the most active members of the chat or the voice as cards for the month, the week and the day (all or only some), edited about every 5 minutes, and can give a role to the most active member of the week.',
+          '`/rolequota` asks a role for a number of messages each period and takes the role away from who misses it too many times; `/rolequota progress` shows who is behind.',
+          '`/rank` and `/leaderboard` are slash commands of their own, `/levels manage sync` can fix levels, voice roles and message counters (`type`), and a member who leaves loses their XP by default (`keep_xp` keeps it).',
+          '`/variables` shows the options of any command and where the variables of messages are.',
+        ],
+      },
+      {
+        title: 'Verification and security',
+        items: [
+          'Verification can check Tor, alt accounts, the Discord account and an email code on top of the captcha, the email code is a method of its own, and the panel and DMs are redesigned.',
+          '`/automod link` asks Google Safe Browsing again.',
+          '**The code of the bot is private now.** Someone tried to add malicious code through a pull request; it never reached the bot and no data was leaked. To close the door to this kind of attempt the bot stopped being open source; it may be again in the future.',
+        ],
+      },
+      {
+        title: 'Commands and servers',
+        items: [
+          'Moderation without the `/mod` umbrella: `/ban`, `/kick`, `/mute`, `/warn`, `/jail`... take their options directly, `/ban` and `/mute` take an optional time, the mass commands are back, and `/case`, `/note`, `/lockdown` and more are commands of their own, using the 100 extra slots Discord gives each server.',
+          '`/premium` has buttons and menus, `/customize` changes how Petto looks in a server from Discord, `/channel copyperms`, `/bot topcommands`, `!color` with a sample picture, and `/role all` counts first who needs the change. `/community` is gone: each thing members send to the staff is a command of its own.',
+          'The feedback board is done by Petto, image cards show the avatar decoration, and the dashboard has pages for role quotas and activity leaderboards.',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          '`/levels manage xp add` no longer added the number to the text of the old one, and a suggestion cannot be given the same answer twice.',
+          'A feed that fails says why, and a deleted feed posts nothing. Petto no longer keeps asking Discord for what it told it to wait on, and the watchdog does not use its restarts when only Discord does not answer.',
+        ],
+      },
+    ],
+  },
   'v0.7.10': {
     label: 'v0.7.10 · Cupcake: role triggers, vote boost, allowed domains & clearer slash commands',
     summary: 'Cupcake: rules that act when a member is given a role, +10% XP for members who vote for Petto, allowed domains in the links filter, slash commands with clearer names, and a bot that protects itself under load.',
