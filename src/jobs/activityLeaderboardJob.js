@@ -6,8 +6,9 @@ const activityTopRole_1 = require("../utils/activityTopRole");
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
 const loadGuard = require('../utils/loadGuard');
-// Every minute: a board is due 270 seconds after its last time (db/activityLeaderboards.ts `REFRESH_SECONDS`), so this is what makes it about every 5 minutes.
-const POLL_INTERVAL_MS = 60_000;
+// Every 15 seconds: a board is due 270 seconds after its last time (db/activityLeaderboards.ts `REFRESH_SECONDS`), so a board is looked at every 270 to 285 seconds. A look that finds nothing
+// due is one small query; one that finds many goes on for up to 50 seconds and the next starts after it ends (`exclusiveTask`).
+const POLL_INTERVAL_MS = 15_000;
 const FIRST_RUN_MS = 2 * 60_000;
 function startActivityLeaderboardJob(client) {
     const run = exclusiveTask(async () => {
@@ -20,5 +21,5 @@ function startActivityLeaderboardJob(client) {
     const safe = () => { run().catch((error) => logger.error('Activity leaderboard job error:', error)); };
     setTimeout(safe, FIRST_RUN_MS).unref?.();
     setInterval(safe, POLL_INTERVAL_MS).unref?.();
-    logger.info('Activity leaderboard job started (looking every minute for boards and roles that are due).');
+    logger.info('Activity leaderboard job started (looking every 15 seconds for boards and roles that are due).');
 }
