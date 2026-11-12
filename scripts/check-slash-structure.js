@@ -186,6 +186,7 @@ for (const command of all.values()) {
 }
 // What is left out on purpose, with the reason.
 const LEFT_OUT = {
+  variables: 'a lookup that is only for the prefix (`!variables`, `!vars`): it takes no slot of the `/` menu, which keeps its 10 free (scripts/check-slash-commands.js)',
   timeout: 'an old word of `!tempmute` that was never a command of its own (it replaced `/timeout` long ago: `/mute` with a duration is the same)',
   tempban: 'the slash form is `/ban` with its optional duration (no command is in the menu twice)',
   tempmute: 'the slash form is `/mute` with its optional duration (no command is in the menu twice)',

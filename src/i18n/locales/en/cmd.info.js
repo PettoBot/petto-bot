@@ -199,6 +199,8 @@ module.exports = {
   'cmd.info.usercosmetics.opt.user.desc': 'User (default: you)',
   'cmd.info.userinfo.desc': 'Shows information about a member.',
   'cmd.info.userinfo.opt.user.desc': 'User (default: you)',
+  'cmd.info.variables.desc': 'Find the options of any command (--color, --duration 7d) and the variables of messages.',
+  'cmd.info.variables.opt.query.desc': 'A command (quote, role all), an option (color, duration) or flags',
   'cmd.info.version.desc': 'Browse Petto releases and published changes.',
   'cmd.info.votes.desc': 'See the votes of Petto on top.gg and omniplex.gg: the total, yours and your vote boost.',
   'cmd.info.votes.show.desc': 'The votes of Petto and yours (or of another member).',

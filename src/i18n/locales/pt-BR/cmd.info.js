@@ -204,4 +204,6 @@ module.exports = {
   'cmd.info.activityboard.role-remove.desc': 'Para de dar o cargo do membro mais ativo e o retira de quem o tem.',
   'cmd.info.activityboard.role-remove.opt.type.desc': 'Quais rankings',
   'cmd.info.activityboard.role-status.desc': 'Veja os cargos dos membros mais ativos e quem está com eles.',
+  'cmd.info.variables.desc': 'Encontre as opções de qualquer comando (--color, --duration 7d) e as variáveis de mensagens.',
+  'cmd.info.variables.opt.query.desc': 'Um comando (quote, role all), uma opção (color, duration) ou flags',
 };
