@@ -57,8 +57,12 @@ const NETWORK_CODES = Object.freeze(['ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIMEDOUT
 /** PostgreSQL codes of a lost or overloaded connection (class 08, shutdowns 57P0x, too many connections 53300, a cancelled slow query 57014). */
 const DATABASE_CONNECTION_CODES = Object.freeze(['57P01', '57P02', '57P03', '53300', '57014', '08000', '08001', '08003', '08004', '08006', '08007', '08P01']);
 
-/** Messages with no useful code: matched in order, the first one wins. */
+/**
+ * Messages with no useful code: matched in order, the first one wins. A row with `priority: true` is something the team has to look at (its text is the alert of Petto itself,
+ * not an error of Discord), so it comes first: its own text can mention a wait or a limit that the rows below would take for a hiccup.
+ */
 const MESSAGE_PATTERNS = Object.freeze([
+  { kind: 'load-guard-critical', priority: true, fix: FIX.INVESTIGATE, test: /^\s*\[load guard\][^]*\bto critical\b/i, explain: 'Load guard: the bot went to CRITICAL, so it is overloaded (the event loop is lagging, requests wait too long for Discord or the memory is almost full) and it sheds almost everything, or it is about to restart. The reason is in the alert. Look at `!perf` and `!perf cpu` while it happens.' },
   { kind: 'rate-limit', fix: FIX.RETRY, test: /rate ?limit|too many requests|you are being rate limited/i, explain: 'Rate limit: Discord asked Petto to slow down. Petto waits and tries again by itself.' },
   { kind: 'redis-timeout', fix: FIX.RETRY, test: /\bredis\b[^]*?(timed? ?out|timeout|connection|ECONN|ETIMEDOUT)|(timed? ?out|timeout)[^]*?\bredis\b/i, explain: 'Redis timeout or connection problem: Petto skips Redis for a few seconds and uses the database. Nothing to do.' },
   { kind: 'database-connection', fix: FIX.RETRY, test: /connection terminated|timeout exceeded when trying to connect|Client has encountered a connection error|terminating connection|server closed the connection|too many clients|the database system is (starting up|shutting down)|Connection (?:ended|refused)/i, explain: 'The database connection dropped or was busy for a moment. Petto reconnects by itself.' },
@@ -264,7 +268,7 @@ function classify(error, context = {}) {
   }
 
   // Rate limits and 5xx answers of Discord.
-  if (status === 429 || /RateLimitError/.test(name)) return escalate(makeResult({ ...base, kind: 'rate-limit', priority: false, fix: FIX.RETRY, explain: MESSAGE_PATTERNS[0].explain }));
+  if (status === 429 || /RateLimitError/.test(name)) return escalate(makeResult({ ...base, kind: 'rate-limit', priority: false, fix: FIX.RETRY, explain: MESSAGE_PATTERNS.find((row) => row.kind === 'rate-limit').explain }));
   if (status !== null && status >= 500) return escalate(makeResult({ ...base, kind: 'discord-outage', priority: false, fix: FIX.RETRY, explain: MESSAGE_PATTERNS.find((row) => row.kind === 'discord-outage').explain }));
 
   // Network and database connection codes.
@@ -286,7 +290,7 @@ function classify(error, context = {}) {
   // The text, when there is no code.
   for (const row of MESSAGE_PATTERNS) {
     if (!row.test.test(text)) continue;
-    const priority = row.kind === 'missing-permission-text' && context.internal === true;
+    const priority = Boolean(row.priority) || (row.kind === 'missing-permission-text' && context.internal === true);
     return escalate(makeResult({ ...base, kind: row.kind, priority, fix: priority ? FIX.INVESTIGATE : row.fix, explain: row.explain }));
   }
 

@@ -88,6 +88,15 @@ function checkClassification() {
   assert.deepEqual([deadRoleResult.priority, deadRoleResult.benign, deadRoleResult.kind, deadRoleResult.fix], [false, true, 'unknown-role', 'config-role-missing'], 'a deleted role is a setting of the server, never a priority error');
   assert.equal(deadRoleResult.explanation, 'Unknown Role: a role chosen in a Petto setting (verification, join roles, reaction roles, level rewards...) was deleted from the server, so the server needs to pick it again. Not a Petto bug.');
   assert.equal(classify(null, { args: ['Could not give the role: Unknown Role'] }).kind, 'unknown-role', 'the name of the error written in a text is read too');
+  // The alert of the load guard (the bot went to critical) is a priority error that explains itself: it used to read "Unknown: needs a look".
+  for (const reason of ['event loop p99 2300 ms (limit 2000)', 'longest wait of a request to Discord 9100 ms (limit 8000)', 'requests waiting for Discord 410 (limit 300)', 'memory of the process 93 % of the limit (limit 92)']) {
+    const alert = `[load guard] The bot went from degraded to critical: ${reason}. Since 2026-11-12T01:02:03.000Z.`;
+    const guard = classify(null, { args: [alert] });
+    assert.deepEqual([guard.kind, guard.priority, guard.benign, guard.fix], ['load-guard-critical', true, false, 'investigate'], `the load guard alert (${reason}) is priority, with its own kind`);
+    assert.match(guard.explanation, /overloaded.*Look at `!perf`/, 'and it says what it is and where to look');
+    assert.notEqual(guard.explanation, triage.EXPLAIN_UNKNOWN, 'not the unknown one');
+  }
+  assert.equal(classify(null, { args: ['[load guard] The bot went from normal to degraded: event loop p99 900 ms (limit 700). Since 2026-11-12T01:02:03.000Z.'] }).kind, 'unexpected-message', 'only the critical one has the row: degraded never reaches the team');
   assert.match(classify(api(50013, 'Missing Permissions')).explanation, /above the highest role of Petto/, 'a role above Petto is explained');
   assert.equal(classify(api(10062, 'x')).fix, 'late-answer');
   assert.equal(classify(coded('ETIMEDOUT')).fix, 'retry');
