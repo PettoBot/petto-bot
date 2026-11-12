@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PLACES = exports.PERIODS = void 0;
+exports.CANDIDATES = exports.PLACES = exports.PERIODS = void 0;
 exports.periodWindow = periodWindow;
 exports.boardText = boardText;
+exports.topMembers = topMembers;
 exports.writableChannel = writableChannel;
 exports.statsReason = statsReason;
 exports.refreshBoard = refreshBoard;
@@ -19,7 +20,7 @@ exports.PERIODS = ['monthly', 'weekly', 'daily'];
 /** Places shown in a card: the first one on its own line (the most active) and the rest numbered. */
 exports.PLACES = 10;
 /** How many members are asked for, so that the ones who left the server can be skipped and the card is still full. */
-const CANDIDATES = 30;
+exports.CANDIDATES = 30;
 // The project is JavaScript: its modules are read with `require` and given the shape that is used here.
 const statsRules = require('../db/statsRules');
 const { botDay, OFFSET_MS } = require('./botTime');
@@ -67,24 +68,27 @@ function boardText(lang, kind, period, entries, resetAt) {
     lines.push('', `${icons.CLOCK} **${t(lang, 'leaderboards.resets', { when: `<t:${Math.floor(resetAt.getTime() / 1000)}:R>` })}**`, `-# ${t(lang, 'leaderboards.footer')}`);
     return lines.join('\n');
 }
-// ---- Who is in the top ---------------------------------------------------------------------------------------------------------
-/** The top of the period with the usernames: members who are no longer in the server, bots and people who asked not to be counted are left out. */
-async function entriesOf(guild, rows) {
+/**
+ * The top of the period with the usernames: members who are no longer in the server, bots and people who asked not to be counted are left out.
+ * The role of the most active member of the week is given from the same list, so the card and the role always name the same person.
+ */
+async function topMembers(guild, rows, limit = exports.PLACES) {
     const wanted = rows.filter((row) => !statsRules.isOptedOut(row.user_id));
     const missing = wanted.map((row) => row.user_id).filter((id) => !guild.members.cache.has(id));
     if (missing.length)
         await guild.members.fetch({ user: missing.slice(0, 100) }).catch(() => null);
-    const entries = [];
+    const members = [];
     for (const row of wanted) {
         const member = guild.members.cache.get(row.user_id);
         if (!member || member.user.bot)
             continue;
-        entries.push({ username: member.user.username, amount: row.amount });
-        if (entries.length >= exports.PLACES)
+        members.push({ userId: row.user_id, username: member.user.username, amount: row.amount });
+        if (members.length >= limit)
             break;
     }
-    return entries;
+    return members;
 }
+const entriesOf = async (guild, rows) => (await topMembers(guild, rows)).map(({ username, amount }) => ({ username, amount }));
 // ---- Writing the three messages -------------------------------------------------------------------------------------------------
 const ERROR_CODES = { unknownChannel: 10003, unknownMessage: 10008, missingAccess: 50001, missingPermissions: 50013 };
 const codeOf = (error) => {
@@ -130,7 +134,7 @@ async function refreshBoard(client, row, { now = new Date() } = {}) {
     const payloads = new Map();
     for (const period of exports.PERIODS) {
         const window = periodWindow(period, now);
-        const entries = await entriesOf(guild, await db.readTop(guild.id, row.kind, window.startDay, CANDIDATES));
+        const entries = await entriesOf(guild, await db.readTop(guild.id, row.kind, window.startDay, exports.CANDIDATES));
         payloads.set(period, { components: [textCard(boardText(lang, row.kind, period, entries, window.resetAt))], flags: discord_js_1.MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
     }
     const known = { daily: row.daily_message_id, weekly: row.weekly_message_id, monthly: row.monthly_message_id };

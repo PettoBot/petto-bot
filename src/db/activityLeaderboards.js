@@ -14,6 +14,7 @@ exports.markRefreshed = markRefreshed;
 exports.markError = markError;
 exports.listDue = listDue;
 exports.readTop = readTop;
+exports.readTopBetween = readTopBetween;
 exports.KINDS = ['chat', 'voice'];
 // The project is JavaScript: its modules are read with `require` and given the shape that is used here.
 const { getPrimaryPool } = require('./postgres');
@@ -78,5 +79,16 @@ async function readTop(guildId, kind, sinceDay, limit = 30) {
     const { rows } = await pool().query(`select user_id, sum(${column})::bigint as amount from activity_members
       where guild_id = $1 and day >= $2 group by user_id having sum(${column}) > 0
       order by sum(${column}) desc, user_id limit $3`, [guildId, sinceDay, Math.max(1, Math.min(100, limit))]);
+    return rows.map((row) => ({ user_id: String(row.user_id), amount: Number(row.amount) }));
+}
+/**
+ * The most active members of the days from `fromDay` up to (not including) `toDay` (`YYYY-MM-DD`, in the day of Petto): a period that has ended, such as last week.
+ * Same counts as `readTop`; members with nothing in the period are not listed.
+ */
+async function readTopBetween(guildId, kind, fromDay, toDay, limit = 30) {
+    const column = kind === 'voice' ? 'voice_seconds' : 'messages'; // chosen here, never from the outside
+    const { rows } = await pool().query(`select user_id, sum(${column})::bigint as amount from activity_members
+      where guild_id = $1 and day >= $2 and day < $3 group by user_id having sum(${column}) > 0
+      order by sum(${column}) desc, user_id limit $4`, [guildId, fromDay, toDay, Math.max(1, Math.min(100, limit))]);
     return rows.map((row) => ({ user_id: String(row.user_id), amount: Number(row.amount) }));
 }

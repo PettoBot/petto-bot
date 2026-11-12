@@ -2533,6 +2533,21 @@ create table if not exists activity_leaderboards (
 );
 alter table activity_leaderboards enable row level security;
 
+-- Role of the most active member: one row per server and kind (chat or voice) with the role, who has it now and the week it was last given for (the first day of that week).
+-- The role goes to the number 1 of the week that just ended (weekly ranking of activity_members), so it follows !statsconfig and !stats privacy too.
+create table if not exists activity_top_roles (
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  kind              text not null check (kind in ('chat', 'voice')),
+  role_id           text not null,
+  holder_id         text,
+  awarded_week      text,
+  last_checked_at   timestamptz,
+  last_error        text,
+  created_at        timestamptz not null default now(),
+  primary key (guild_id, kind)
+);
+alter table activity_top_roles enable row level security;
+
 create or replace function increment_member_flow(p_guild_id text, p_day date, p_joins integer, p_leaves integer, p_invited integer)
 returns void language plpgsql as $$
 begin

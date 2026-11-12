@@ -1,8 +1,10 @@
 // i18n-ignore-file: a job, it only logs for the team.
 // Writes the activity leaderboards that are due (utils/activityLeaderboard.ts `runDueBoards`): every board is edited about once an hour, and one that was just set (or whose
-// channel was changed from the dashboard) is written at the next look, which is every 5 minutes. Written in TypeScript: compiled over activityLeaderboardJob.js.
+// channel was changed from the dashboard) is written at the next look, which is every 5 minutes. At the same look it gives the role of the most active member of the week that
+// just ended to the servers that chose one (utils/activityTopRole.ts `runDueRoles`). Written in TypeScript: compiled over activityLeaderboardJob.js.
 import type { Client } from 'discord.js';
 import { runDueBoards } from '../utils/activityLeaderboard';
+import { runDueRoles } from '../utils/activityTopRole';
 
 const logger = require('../utils/logger') as { info: (message: string) => void; error: (message: string, error?: unknown) => void };
 const { exclusiveTask } = require('../utils/concurrency') as { exclusiveTask: <T>(task: () => Promise<T>) => () => Promise<T | undefined> };
@@ -16,9 +18,10 @@ export function startActivityLeaderboardJob(client: Client): void {
     // Boards are not essential: when the bot is struggling they wait (they are only an hour late).
     if (loadGuard.level() === 'critical') return;
     await runDueBoards(client);
+    await runDueRoles(client); // the role of the most active member of the week that just ended, for the servers that asked for it
   });
   const safe = (): void => { run().catch((error: unknown) => logger.error('Activity leaderboard job error:', error)); };
   setTimeout(safe, FIRST_RUN_MS).unref?.();
   setInterval(safe, POLL_INTERVAL_MS).unref?.();
-  logger.info('Activity leaderboard job started (looking every 5 minutes for boards that are due).');
+  logger.info('Activity leaderboard job started (looking every 5 minutes for boards and roles that are due).');
 }

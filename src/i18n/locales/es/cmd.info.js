@@ -198,4 +198,10 @@ module.exports = {
   'cmd.info.activityboard.status.desc': 'Mira dónde están los rankings y cuándo se actualizaron por última vez.',
   'cmd.info.activityboard.refresh.desc': 'Escribe los rankings otra vez ahora.',
   'cmd.info.activityboard.refresh.opt.type.desc': 'Qué rankings',
+  'cmd.info.activityboard.role-set.desc': 'Da un rol al miembro más activo de la semana, cuando termina la semana.',
+  'cmd.info.activityboard.role-set.opt.type.desc': 'Qué rankings',
+  'cmd.info.activityboard.role-set.opt.role.desc': 'El rol para el número 1 de la semana',
+  'cmd.info.activityboard.role-remove.desc': 'Deja de dar el rol del miembro más activo y se lo quita a quien lo tiene.',
+  'cmd.info.activityboard.role-remove.opt.type.desc': 'Qué rankings',
+  'cmd.info.activityboard.role-status.desc': 'Mira los roles de los miembros más activos y quién los tiene.',
 };

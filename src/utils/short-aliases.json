@@ -97,6 +97,8 @@
  "arres": "automation reaction reset",
  "arrr": "autoresponder role remove",
  "ars": "autoresponder show",
+ "arse": "activityboard role-set",
+ "arst": "activityboard role-status",
  "as": "antiscam status",
  "ase": "antiscam set",
  "aset": "activityboard set",

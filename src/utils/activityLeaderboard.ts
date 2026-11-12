@@ -13,7 +13,7 @@ export const PERIODS: readonly Period[] = ['monthly', 'weekly', 'daily'];
 /** Places shown in a card: the first one on its own line (the most active) and the rest numbered. */
 export const PLACES = 10;
 /** How many members are asked for, so that the ones who left the server can be skipped and the card is still full. */
-const CANDIDATES = 30;
+export const CANDIDATES = 30;
 
 interface StatsRules { rulesOf(guildId: string): { enabled: boolean; members: boolean }; isOptedOut(userId: string): boolean }
 interface Translate {
@@ -83,20 +83,28 @@ export function boardText(lang: string, kind: Kind, period: Period, entries: Ent
 
 // ---- Who is in the top ---------------------------------------------------------------------------------------------------------
 
-/** The top of the period with the usernames: members who are no longer in the server, bots and people who asked not to be counted are left out. */
-async function entriesOf(guild: Guild, rows: TopRow[]): Promise<Entry[]> {
+/** A member who may be in a top: who they are and what they did in the period. */
+export interface TopMember extends Entry { userId: string }
+
+/**
+ * The top of the period with the usernames: members who are no longer in the server, bots and people who asked not to be counted are left out.
+ * The role of the most active member of the week is given from the same list, so the card and the role always name the same person.
+ */
+export async function topMembers(guild: Guild, rows: TopRow[], limit: number = PLACES): Promise<TopMember[]> {
   const wanted = rows.filter((row) => !statsRules.isOptedOut(row.user_id));
   const missing = wanted.map((row) => row.user_id).filter((id) => !guild.members.cache.has(id));
   if (missing.length) await guild.members.fetch({ user: missing.slice(0, 100) }).catch(() => null);
-  const entries: Entry[] = [];
+  const members: TopMember[] = [];
   for (const row of wanted) {
     const member = guild.members.cache.get(row.user_id);
     if (!member || member.user.bot) continue;
-    entries.push({ username: member.user.username, amount: row.amount });
-    if (entries.length >= PLACES) break;
+    members.push({ userId: row.user_id, username: member.user.username, amount: row.amount });
+    if (members.length >= limit) break;
   }
-  return entries;
+  return members;
 }
+
+const entriesOf = async (guild: Guild, rows: TopRow[]): Promise<Entry[]> => (await topMembers(guild, rows)).map(({ username, amount }) => ({ username, amount }));
 
 // ---- Writing the three messages -------------------------------------------------------------------------------------------------
 
@@ -122,7 +130,7 @@ export function writableChannel(guild: Guild, channel: GuildBasedChannel | null)
 }
 
 /** The reason a server cannot have boards at all: statistics turned off, or kept without members. */
-export function statsReason(guildId: string): Reason | null {
+export function statsReason(guildId: string): 'statsOff' | 'membersOff' | null {
   const rules = statsRules.rulesOf(guildId);
   if (!rules.enabled) return 'statsOff';
   if (!rules.members) return 'membersOff';

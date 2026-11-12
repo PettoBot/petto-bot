@@ -112,3 +112,18 @@ export async function readTop(guildId: string, kind: Kind, sinceDay: string, lim
   );
   return rows.map((row) => ({ user_id: String(row.user_id), amount: Number(row.amount) }));
 }
+
+/**
+ * The most active members of the days from `fromDay` up to (not including) `toDay` (`YYYY-MM-DD`, in the day of Petto): a period that has ended, such as last week.
+ * Same counts as `readTop`; members with nothing in the period are not listed.
+ */
+export async function readTopBetween(guildId: string, kind: Kind, fromDay: string, toDay: string, limit = 30): Promise<TopRow[]> {
+  const column = kind === 'voice' ? 'voice_seconds' : 'messages'; // chosen here, never from the outside
+  const { rows } = await pool().query(
+    `select user_id, sum(${column})::bigint as amount from activity_members
+      where guild_id = $1 and day >= $2 and day < $3 group by user_id having sum(${column}) > 0
+      order by sum(${column}) desc, user_id limit $4`,
+    [guildId, fromDay, toDay, Math.max(1, Math.min(100, limit))],
+  );
+  return rows.map((row) => ({ user_id: String(row.user_id), amount: Number(row.amount) }));
+}
