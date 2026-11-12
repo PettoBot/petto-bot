@@ -17,6 +17,9 @@ export function cleanPeriods(value: unknown): Period[] {
   return chosen.length ? [...chosen] : [...PERIODS];
 }
 
+/** The memory of a card: `h` is a short hash of the text it was written with, `at` the moment (milliseconds). */
+export type CardState = Partial<Record<Period, { h: string; at: number }>>;
+
 /** A row of `activity_leaderboards`. */
 export interface BoardRow {
   guild_id: string;
@@ -26,6 +29,8 @@ export interface BoardRow {
   weekly_message_id: string | null;
   monthly_message_id: string | null;
   periods: Period[];
+  /** What each card said when it was last written: a short hash of its text and the moment (milliseconds). */
+  card_state: CardState | null;
   last_refreshed_at: string | Date | null;
   last_error: string | null;
   created_at: string | Date;
@@ -41,10 +46,12 @@ const { getPrimaryPool } = require('./postgres') as { getPrimaryPool: () => Pool
 const { ensureGuild } = require('./guilds') as { ensureGuild: (guildId: string) => Promise<unknown> };
 
 /**
- * A board that has not been refreshed for this long is due. The job looks every minute, so a board is written about every 5 minutes (a little less than that
+ * A board that has not been refreshed for this long is due. The job looks every 15 seconds, so a board is looked at every 5 minutes (a little less than that
  * after the last time, so the look that follows is the one that finds it due).
  */
 export const REFRESH_SECONDS = 270;
+/** The most boards one look reads. */
+export const MAX_DUE = 500;
 
 const pool = (): Pool => getPrimaryPool();
 const asRow = (row: Record<string, unknown> | undefined): BoardRow | null => (row ? (row as unknown as BoardRow) : null);
@@ -79,6 +86,7 @@ export async function upsertBoard(guildId: string, kind: Kind, channelId: string
        daily_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.daily_message_id end,
        weekly_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.weekly_message_id end,
        monthly_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.monthly_message_id end,
+       card_state = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.card_state else '{}'::jsonb end,
        last_refreshed_at = null, last_error = null
      returning *`,
     [guildId, kind, channelId, chosen],
@@ -115,9 +123,64 @@ export async function listDue(limit = 20): Promise<BoardRow[]> {
     `select * from activity_leaderboards
       where last_refreshed_at is null or last_refreshed_at <= now() - make_interval(secs => $2)
       order by last_refreshed_at asc nulls first limit $1`,
-    [Math.max(1, Math.min(200, limit)), REFRESH_SECONDS],
+    [Math.max(1, Math.min(MAX_DUE, limit)), REFRESH_SECONDS],
   );
   return (rows as unknown as BoardRow[]).map(withPeriods);
+}
+
+/** What a look found about a board, written together with the others of its round (`flushRefreshed`). `state` is the memory of the cards when it changed. */
+export interface Refreshed {
+  guildId: string;
+  kind: Kind;
+  ids: { daily: string | null; weekly: string | null; monthly: string | null };
+  state: CardState | null;
+}
+
+/**
+ * Marks boards as looked at, with their messages and the memory of their cards, in one statement (a round looks at hundreds of boards, and one statement for each would
+ * be most of what the database does for them). A card that was not written keeps the memory it had.
+ */
+export async function flushRefreshed(entries: readonly Refreshed[]): Promise<void> {
+  if (!entries.length) return;
+  await pool().query(
+    `update activity_leaderboards b set
+        last_refreshed_at = now(), last_error = null,
+        daily_message_id = nullif(v.daily, ''), weekly_message_id = nullif(v.weekly, ''), monthly_message_id = nullif(v.monthly, ''),
+        card_state = case when v.state = '' then b.card_state else v.state::jsonb end
+      from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) as v(guild_id, kind, daily, weekly, monthly, state)
+      where b.guild_id = v.guild_id and b.kind = v.kind`,
+    [
+      entries.map((entry) => entry.guildId),
+      entries.map((entry) => entry.kind),
+      entries.map((entry) => entry.ids.daily ?? ''),
+      entries.map((entry) => entry.ids.weekly ?? ''),
+      entries.map((entry) => entry.ids.monthly ?? ''),
+      entries.map((entry) => (entry.state ? JSON.stringify(entry.state) : '')),
+    ],
+  );
+}
+
+/**
+ * The top of each period asked for, read in one round trip: the days from the earliest `startDay` are read once and every period adds up its own days from them (the month
+ * contains the week and the day, so reading each period on its own read the same rows up to three times). Members with nothing in a period are not listed.
+ */
+export async function readTops(guildId: string, kind: Kind, periods: readonly { period: Period; startDay: string }[], limit = 30): Promise<Record<Period, TopRow[]>> {
+  const result: Record<Period, TopRow[]> = { daily: [], weekly: [], monthly: [] };
+  if (!periods.length) return result;
+  const column = kind === 'voice' ? 'voice_seconds' : 'messages'; // chosen here, never from the outside
+  const earliest = periods.map((each) => each.startDay).sort()[0];
+  const params: unknown[] = [guildId, earliest, Math.max(1, Math.min(100, limit))];
+  const parts = periods.map((each) => {
+    params.push(each.period, each.startDay);
+    return `(select $${params.length - 1}::text as period, user_id, sum(${column})::bigint as amount from days where day >= $${params.length}::date group by user_id having sum(${column}) > 0 order by sum(${column}) desc, user_id limit $3)`;
+  });
+  const { rows } = await pool().query(`with days as materialized (select user_id, day, ${column} from activity_members where guild_id = $1 and day >= $2::date) ${parts.join(' union all ')}`, params);
+  for (const row of rows) {
+    const period = String(row.period) as Period;
+    if (period in result) result[period].push({ user_id: String(row.user_id), amount: Number(row.amount) });
+  }
+  for (const period of PERIODS) result[period].sort((a, b) => b.amount - a.amount || (a.user_id < b.user_id ? -1 : 1));
+  return result;
 }
 
 /**

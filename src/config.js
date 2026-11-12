@@ -130,6 +130,9 @@ module.exports = {
   // Requests per second the bot may make to Discord, all of them (commands, logs, webhooks, panels). Discloud shuts an app down when it
   // passes 300 requests in 30 seconds (10 a second), so the default keeps a margin: 8 a second is at most 240 in 30 seconds.
   restRequestsPerSecond: envInt('PETTO_REST_RPS', 8, 1, 45),
+  // The writes to Discord (edit, post, delete a card) that the activity leaderboards may make a second, out of the requests above: half of them by default, so the logs, the timers, the
+  // panels and the answers to commands keep their part. When more cards than that have to be written, the oldest boards go first and the rest wait for the next look.
+  activityBoardEditsPerSecond: envInt('PETTO_ACTIVITY_BOARD_EDITS_PER_SECOND', Math.max(1, Math.floor(envInt('PETTO_REST_RPS', 8, 1, 45) / 2)), 1, 40),
   // The queue in front of Discord (utils/restGate.js): how many background requests may wait, how long one may wait before it fails instead of sitting
   // in the line, and how many may be in flight at once. The answers to commands never wait for the background lane.
   restMaxQueue: envInt('PETTO_REST_MAX_QUEUE', 400, 10, 10_000),
