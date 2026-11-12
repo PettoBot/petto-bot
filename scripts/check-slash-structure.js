@@ -33,7 +33,7 @@ assert.ok(STANDALONE.every((name) => loose.includes(name)), `these slash command
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');
 
 // ---------------------------------------------------------------- 2. nothing from the old list
-// `/rank` and `/leaderboard` (it was `/top`) are slash commands of their own now, next to `/levels rank` and `/levels leaderboard`.
+// `/rank` and `/leaderboard` (it was `/top`) are slash commands of their own now; `/levels rank` and `/levels leaderboard` are only for the prefix.
 const OLD_COMMANDS = ['level', 'top', 'act', 'auto', 'contrib', 'special', 'botinfo', 'ping'];
 for (const name of OLD_COMMANDS) assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered any more`);
 const nodeNames = (json, prefix = []) => (json.options ?? []).filter((option) => option.type === SUBCOMMAND || option.type === GROUP).flatMap((option) => [[...prefix, option.name].join(' '), ...nodeNames(option, [...prefix, option.name])]);
@@ -43,9 +43,11 @@ const OLD_PATHS = [
   'game minecraft', 'game minecraft-server', 'game roblox', 'game steam', 'game chesscom', 'game lichess', 'game pokemon', 'game modrinth', 'game rps',
   'me rep', 'me rep-give', 'staff imute', 'staff iunmute', 'staff rmute', 'staff runmute', 'staff raid', 'role in', 'role has', 'boosterrole admin base', 'boosterrole admin limit',
   'boosterrole admin cooldown', 'boosterrole admin share-limit', 'search anilist anime anime',
+  // `/rank` and `/leaderboard` are commands of their own, so they are not in the menu of `/levels` too (the prefix keeps `!levels rank`, `!lra`, `!ll`).
+  'levels rank', 'levels leaderboard',
 ];
 for (const old of OLD_PATHS) assert.ok(!paths.has(old), `/${old} is not registered any more`);
-for (const kept of ['levels rank', 'levels leaderboard', 'action love hug', 'bot info', 'bot ping', 'poll', 'suggest send', 'suggest approve', 'confess send', 'confess approve', 'request make', 'request config channel', 'review give', 'profile show', 'profile config channel', 'prefix view', 'prefix add', 'prefix remove', 'prefix set', 'prefix reset', 'me prefix']) {
+for (const kept of ['rank', 'leaderboard', 'action love hug', 'bot info', 'bot ping', 'poll', 'suggest send', 'suggest approve', 'confess send', 'confess approve', 'request make', 'request config channel', 'review give', 'profile show', 'profile config channel', 'prefix view', 'prefix add', 'prefix remove', 'prefix set', 'prefix reset', 'me prefix']) {
   assert.ok(paths.has(kept), `/${kept} is registered`);
 }
 assert.ok(!paths.has('config prefix show'), 'the prefix of the server is /prefix, not a group of /config');
@@ -201,6 +203,7 @@ const LEFT_OUT = {
 const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky' };
 const missing = [];
 for (const [name, command] of all) {
+  if (name !== command.data.name) continue; // the same command under the name of its file (the umbrellas name the file: `top.js` is `/leaderboard`)
   if (GROUP_OF_ROLE[name]) { assert.ok(paths.has(`role ${GROUP_OF_ROLE[name]}`), `/role ${GROUP_OF_ROLE[name]} covers !${name}`); continue; }
   const json = command.data.toJSON();
   if ((json.type ?? 1) !== 1 || command.category === 'music' || command.teamOnly || command.ownerOnly || command.hiddenEverywhere || command.privateGuildId || command.hiddenFromHelp || command.slashOnly) continue;

@@ -373,7 +373,7 @@ function prefixWordsOf(subcommands, load) {
  *   - the prefix sends the first word to the wrapped command (`prefixWords`), `!<umbrella>` alone lists what it holds, and the rules of a
  *     server (`!disablecommand`, `!restrictcommand`, a permission level) name the wrapped command, or the umbrella to stop all of it.
  */
-function defineUmbrella({ name, description, subcommands, load = loadByName, aliases = [], legacyRuleNames = [], legacyRoutes = {}, legacyRuleKeys = {} }) {
+function defineUmbrella({ name, description, subcommands, load = loadByName, aliases = [], legacyRuleNames = [], legacyRoutes = {}, legacyRuleKeys = {}, prefixOnlySubcommands = [] }) {
   const leaves = expandGroups(subcommands, load);
   const executor = wrappedExecutor(load, leaves);
   return {
@@ -385,6 +385,8 @@ function defineUmbrella({ name, description, subcommands, load = loadByName, ali
     legacyRuleNames,
     // The first words of older versions of the umbrella that go to a command (`!config prefix set` is `!prefix set`).
     prefixWords: { ...prefixWordsOf(subcommands, load), ...Object.fromEntries(Object.entries(legacyRoutes).filter(([word]) => !subcommands.some((entry) => (entry.group ?? entry.name) === word))) },
+    // Subcommands that are not in the `/` menu (another slash command does the same) but keep working with the prefix and its words (`!levels rank`, `!lra`).
+    prefixOnlySubcommands,
     rulesBySubcommand: true,
     ruleKeys: { ...ruleKeysOf(leaves), ...legacyRuleKeys },
     permissionForSubcommand: executor.permissionForSubcommand,

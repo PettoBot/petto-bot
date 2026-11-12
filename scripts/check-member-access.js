@@ -286,8 +286,7 @@ const DECLARED = {
 // `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are not slash commands any more (their umbrella subcommand has every option and action of
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
 // None is left: what `/mod` and `/staff` held of a command that is a slash command of its own is for the prefix only now.
-// `/levels rank` and `/levels leaderboard` stay next to `/rank` and `/leaderboard`: their short aliases (`!lra`, `!ll`) were published and must keep working.
-const UMBRELLA_TWINS = ['levels rank = /rank'];
+const UMBRELLA_TWINS = [];
 const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
