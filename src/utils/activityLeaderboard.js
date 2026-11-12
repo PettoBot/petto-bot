@@ -90,8 +90,8 @@ function periodWindow(period, at = new Date()) {
 }
 const rankEmoji = (place) => EMOJI[`BOARD_RANK_${String(place).padStart(2, '0')}`] ?? `${place}.`;
 /**
- * A time in a voice channel, read the way a person says it: hours and minutes ("5 hours 30 minutes", just "5 hours" when the minutes are none), only minutes under an hour, only
- * seconds under a minute. Never days: a long time stays in hours ("1,350 hours").
+ * A time in a voice channel, short: hours and minutes ("5H 30min", just "5H" when the minutes are none), only minutes under an hour ("45min"), only seconds under a minute ("30s").
+ * Never days: a long time stays in hours ("1,350H"). The letters are the same in every language.
  */
 function voiceTime(lang, seconds) {
     const total = Math.max(0, Math.floor(Number(seconds) || 0));
