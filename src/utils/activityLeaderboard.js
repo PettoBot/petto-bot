@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CANDIDATES = exports.PLACES = exports.PERIODS = void 0;
+exports.MIN_PLACES = exports.TEXT_LIMIT = exports.CANDIDATES = exports.PLACES = exports.PERIODS = void 0;
 exports.createEditBudget = createEditBudget;
 exports.periodWindow = periodWindow;
+exports.voiceTime = voiceTime;
 exports.boardText = boardText;
 exports.topMembers = topMembers;
 exports.writableChannel = writableChannel;
@@ -10,8 +11,8 @@ exports.statsReason = statsReason;
 exports.refreshBoard = refreshBoard;
 exports.deleteBoardMessages = deleteBoardMessages;
 exports.runDueBoards = runDueBoards;
-// The activity leaderboards: a card for the day, the week and the month (the ones the server chose) of the chat or of the voice channels, in a channel of the server, edited by Petto
-// about every 5 minutes, and only when what they say changed.
+// The activity leaderboards: a card for the day, the week and the month (the ones the server chose) of the chat or of the voice channels, all in ONE message in a channel of the
+// server (a card for each period, one under the other), edited by Petto about every 5 minutes, and only when what it says changed.
 // What is shown is read from `activity_members` (a count for each member and day, never what was said), so it follows what a server turned off in `!statsconfig` and
 // who asked not to be counted (`!stats privacy`). Days, weeks (ISO, from Monday) and months are the ones of Petto, GMT-5 (Colombia).
 // Written in TypeScript: `npm run build:ts` compiles it over src/utils/activityLeaderboard.js, which is what the bot loads.
@@ -36,11 +37,18 @@ const config = require('../config');
 const { forEachWithConcurrency } = require('./concurrency');
 const DAY_MS = 86_400_000;
 /**
- * A card that says the same as the last time is not edited again, except once in a long while: that is how a message that someone deleted is found when nobody has said anything
- * (when something changes, the edit finds it at once). The memory of what a card said is in the database (`card_state`), so a restart of the bot edits nothing.
+ * A message that says the same as the last time is not edited again, except once in a long while: that is how a message that someone deleted is found when nobody has said anything
+ * (when something changes, the edit finds it at once). The memory of what the message said is in the database (`card_state`), so a restart of the bot edits nothing.
  */
 const FORCE_EDIT_MS = 6 * 60 * 60_000;
-/** The short hash of a card's text that is kept in `card_state`. */
+/**
+ * A message made of components (Components V2) can hold 4000 characters of text in all, and a board puts the cards of up to three periods in one: with usernames of 32 letters and
+ * big numbers three full cards are 4200 and something. When they do not fit, every card shows one place less (never fewer than `MIN_PLACES`) until they do. The margin is for what
+ * the count of Discord may include that this one does not.
+ */
+exports.TEXT_LIMIT = 3900;
+exports.MIN_PLACES = 3;
+/** The short hash of the text of a message that is kept in `card_state`. */
 const hashOf = (text) => (0, node_crypto_1.createHash)('sha1').update(text).digest('hex').slice(0, 16);
 function createEditBudget({ perSecond, capacity = Math.max(12, perSecond * 20), now = () => Date.now() }) {
     let tokens = capacity;
@@ -81,18 +89,30 @@ function periodWindow(period, at = new Date()) {
     return { startDay: new Date(start).toISOString().slice(0, 10), resetAt: new Date(end - OFFSET_MS) };
 }
 const rankEmoji = (place) => EMOJI[`BOARD_RANK_${String(place).padStart(2, '0')}`] ?? `${place}.`;
-const amountText = (lang, kind, amount) => (kind === 'voice'
-    ? tn(lang, 'leaderboards.unit.minutes', Math.floor(amount / 60))
-    : tn(lang, 'leaderboards.unit.messages', amount));
-/** The words of one card: the title, the most active member, the next places, when it starts again and how often it is updated. */
-function boardText(lang, kind, period, entries, resetAt) {
+/**
+ * A time in a voice channel, short: hours and minutes ("5H 30min", just "5H" when the minutes are none), only minutes under an hour ("45min"), only seconds under a minute ("30s").
+ * Never days: a long time stays in hours ("1,350H"). The letters are the same in every language.
+ */
+function voiceTime(lang, seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (total < 60)
+        return tn(lang, 'leaderboards.unit.seconds', total);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    if (!hours)
+        return tn(lang, 'leaderboards.unit.minutes', minutes);
+    return minutes ? `${tn(lang, 'leaderboards.unit.hours', hours)} ${tn(lang, 'leaderboards.unit.minutes', minutes)}` : tn(lang, 'leaderboards.unit.hours', hours);
+}
+const amountText = (lang, kind, amount) => (kind === 'voice' ? voiceTime(lang, amount) : tn(lang, 'leaderboards.unit.messages', amount));
+/** The words of one card: the title, the most active member, the next places (`places` of them in all), when it starts again and how often it is updated. */
+function boardText(lang, kind, period, entries, resetAt, places = exports.PLACES) {
     const title = `**${t(lang, `leaderboards.title.${kind}`, { period: t(lang, `leaderboards.period.${period}`) })}**`;
     const lines = [title, ''];
     if (!entries.length) {
         lines.push(t(lang, 'leaderboards.empty'));
     }
     else {
-        const [first, ...rest] = entries.slice(0, exports.PLACES);
+        const [first, ...rest] = entries.slice(0, Math.max(1, places));
         lines.push(`${EMOJI.BOARD_TOP} **${t(lang, `leaderboards.top.${kind}`)}** \`${first.username}\` ${EMOJI.BOARD_ARROW} **${amountText(lang, kind, first.amount)}**`);
         if (rest.length)
             lines.push('');
@@ -148,16 +168,18 @@ function statsReason(guildId) {
     return null;
 }
 /**
- * Writes the cards of a board (the periods the server chose): edits the messages it has, or posts them all again in order when one is missing (deleted by someone) or a
- * period was added, and remembers them. A card that says the same as when it was last written is not edited again (the memory is in the database, and one that has not been
- * written for hours is, to find a deleted one), so a quiet server costs nothing at Discord. A board that cannot be written keeps the reason in the database. Never throws for
- * something that is the server's doing.
+ * Writes a board: ONE message with the card of each period the server chose, one under the other. It edits the message it has, or posts it when it has none (a new board, one that
+ * someone deleted) and remembers it. A board whose cards say the same as when it was last written is not edited again (the memory is in the database, and one that has not been
+ * written for hours is, to find a deleted message), so a quiet server costs nothing at Discord. A board written the older way (one message for each period) gets its new message
+ * posted first and the old ones deleted after, so there is never a moment with nothing. A board that cannot be written keeps the reason in the database. Never throws for something
+ * that is the server's doing.
  *
  * `budget` (what a round of the job passes) limits the writes to Discord: a board that needs more of them than the bucket has is not touched (`deferred`). `pending` (also from the
  * job) collects what a look found, to save it with the other boards of the round in one statement; without it the board is saved at once, as a command or the dashboard want.
  */
 async function refreshBoard(client, row, { now = new Date(), force = false, budget, pending } = {}) {
-    const known = { daily: row.daily_message_id, weekly: row.weekly_message_id, monthly: row.monthly_message_id };
+    const known = row.message_id;
+    const old = [row.monthly_message_id, row.weekly_message_id, row.daily_message_id].filter((id) => Boolean(id));
     const done = async (entry) => { if (pending)
         pending.push(entry);
     else
@@ -165,7 +187,7 @@ async function refreshBoard(client, row, { now = new Date(), force = false, budg
     const guild = client.guilds.cache.get(row.guild_id);
     if (!guild) {
         // Not reachable now: nothing is said, but it counts as looked at, so a board that cannot be reached never stays first in line and holds back the others.
-        await done({ guildId: row.guild_id, kind: row.kind, ids: known, state: null });
+        await done({ guildId: row.guild_id, kind: row.kind, messageId: known, clearOld: false, state: null });
         return { ok: false, reason: 'error' };
     }
     const fail = async (reason) => { await db.markError(row.guild_id, row.kind, reason); return { ok: false, reason }; };
@@ -181,78 +203,64 @@ async function refreshBoard(client, row, { now = new Date(), force = false, budg
     const chosen = exports.PERIODS.filter((period) => db.cleanPeriods(row.periods).includes(period));
     const windows = new Map(chosen.map((period) => [period, periodWindow(period, now)]));
     const tops = await db.readTops(guild.id, row.kind, chosen.map((period) => ({ period, startDay: windows.get(period).startDay })), exports.CANDIDATES);
-    const texts = new Map();
-    const hashes = new Map();
-    const payloads = new Map();
-    for (const period of chosen) {
-        const entries = await entriesOf(guild, tops[period] ?? []);
-        const text = boardText(lang, row.kind, period, entries, windows.get(period).resetAt);
-        texts.set(period, text);
-        hashes.set(period, hashOf(text));
-        payloads.set(period, { components: [textCard(text)], flags: discord_js_1.MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+    const members = new Map();
+    for (const period of chosen)
+        members.set(period, await entriesOf(guild, tops[period] ?? []));
+    // The cards of the periods are one message: with a very long list they might not fit, and then every card shows one place less.
+    let texts = new Map();
+    for (let places = exports.PLACES; places >= exports.MIN_PLACES; places -= 1) {
+        texts = new Map(chosen.map((period) => [period, boardText(lang, row.kind, period, members.get(period), windows.get(period).resetAt, places)]));
+        if ([...texts.values()].reduce((sum, text) => sum + text.length, 0) <= exports.TEXT_LIMIT)
+            break;
     }
-    // What has to be written, decided before anything is sent: a card with no memory (the board is older than the memory) is not written, it only starts remembering, at a time
-    // spread over the hours so that they do not all come due together; a card whose text or age says so is edited.
+    const payload = { components: chosen.map((period) => textCard(texts.get(period))), flags: discord_js_1.MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
+    const hash = hashOf(chosen.map((period) => texts.get(period)).join('\n\u0000\n'));
+    // What has to be written, decided before anything is sent. No message yet (a new board, one that someone deleted, one written the older way): it is posted. A message with no
+    // memory (the board is older than the memory) is not written, it only starts remembering, at a time spread over the hours so that they do not all come due together. A message whose
+    // text or age says so is edited. The messages of the older way are deleted after the new one is there.
     const stamp = now.getTime();
-    const state = { ...(row.card_state ?? {}) };
+    let state = { ...(row.card_state ?? {}) };
     let stateChanged = false;
-    const removed = exports.PERIODS.filter((period) => !chosen.includes(period) && known[period]);
-    let repost = chosen.some((period) => !known[period]);
-    const toEdit = [];
-    if (!repost) {
-        for (const period of chosen) {
-            const before = state[period];
-            if (!before && !force) {
-                state[period] = { h: hashes.get(period), at: stamp - Math.floor(Math.random() * FORCE_EDIT_MS) };
-                stateChanged = true;
-                continue;
-            }
-            if (force || !before || before.h !== hashes.get(period) || stamp - before.at >= FORCE_EDIT_MS)
-                toEdit.push(period);
-        }
+    const before = typeof state.h === 'string' && typeof state.at === 'number' ? { h: state.h, at: state.at } : null;
+    let mode = 'none';
+    if (!known)
+        mode = 'post';
+    else if (force)
+        mode = 'edit';
+    else if (!before) {
+        state = { h: hash, at: stamp - Math.floor(Math.random() * FORCE_EDIT_MS) };
+        stateChanged = true;
     }
-    const cost = removed.length + (repost ? chosen.filter((period) => known[period]).length + chosen.length : toEdit.length);
+    else if (before.h !== hash || stamp - before.at >= FORCE_EDIT_MS)
+        mode = 'edit';
+    const cost = (mode === 'none' ? 0 : 1) + old.length;
     if (cost > 0 && budget && !budget.take(cost))
         return { ok: false, deferred: true };
-    const saved = { ...known };
+    let messageId = known;
     let edits = 0;
     try {
-        // A period that was taken away loses its message; the others stay where they are.
-        for (const period of removed) {
-            await writable.channel.messages.delete(known[period]).catch(() => null);
-            edits += 1;
-            saved[period] = null;
-            delete state[period];
-            stateChanged = true;
-        }
-        // A period that was added has no message yet: they are all written again so they stay in order.
-        for (const period of toEdit) {
+        if (mode === 'edit') {
             try {
-                await writable.channel.messages.edit(known[period], payloads.get(period));
+                await writable.channel.messages.edit(known, payload);
                 edits += 1;
-                state[period] = { h: hashes.get(period), at: stamp };
-                stateChanged = true;
             }
             catch (error) {
                 if (codeOf(error) !== ERROR_CODES.unknownMessage)
                     throw error;
-                repost = true; // someone deleted one: all of them are written again so they stay in order
-                break;
+                mode = 'post'; // someone deleted it: it is written again
             }
         }
-        if (repost) {
-            for (const period of chosen) {
-                if (known[period]) {
-                    await writable.channel.messages.delete(known[period]).catch(() => null);
-                    edits += 1;
-                }
-            }
-            for (const period of chosen) {
-                saved[period] = (await writable.channel.send(payloads.get(period))).id;
-                edits += 1;
-                state[period] = { h: hashes.get(period), at: stamp };
-                stateChanged = true;
-            }
+        if (mode === 'post') {
+            messageId = (await writable.channel.send(payload)).id;
+            edits += 1;
+        }
+        if (mode !== 'none') {
+            state = { h: hash, at: stamp };
+            stateChanged = true;
+        }
+        for (const id of old) {
+            await writable.channel.messages.delete(id).catch(() => null);
+            edits += 1;
         }
     }
     catch (error) {
@@ -264,7 +272,7 @@ async function refreshBoard(client, row, { now = new Date(), force = false, budg
         logger.warn(`Activity leaderboard (${row.kind}) in guild ${row.guild_id} could not be written: ${error?.message}`);
         return fail('error');
     }
-    await done({ guildId: row.guild_id, kind: row.kind, ids: saved, state: stateChanged ? state : null });
+    await done({ guildId: row.guild_id, kind: row.kind, messageId, clearOld: old.length > 0, state: stateChanged ? state : null });
     return { ok: true, wrote: edits > 0, edits };
 }
 /** Deletes the messages of a board that was taken away (best effort: they may be gone already or Petto may not see the channel). */
@@ -273,7 +281,7 @@ async function deleteBoardMessages(client, row) {
     const channel = guild ? await guild.channels.fetch(row.channel_id).catch(() => null) : null;
     if (!channel || !('messages' in channel))
         return;
-    for (const id of [row.daily_message_id, row.weekly_message_id, row.monthly_message_id]) {
+    for (const id of [row.message_id, row.monthly_message_id, row.weekly_message_id, row.daily_message_id]) {
         if (id)
             await channel.messages.delete(id).catch(() => null);
     }

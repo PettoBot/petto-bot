@@ -1,6 +1,6 @@
 // i18n-ignore-file: database layer, nothing here is shown to anyone.
 // The activity leaderboards a server asked for (table `activity_leaderboards`): one row for each server and kind (chat or voice) with the channel, the periods the server chose
-// and their messages (daily, weekly, monthly) that Petto edits every few minutes, and the top of the members read from `activity_members` (counts only, never what was said).
+// and their one message (a card for each period in it) that Petto edits every few minutes, and the top of the members read from `activity_members` (counts only, never what was said).
 // Written in TypeScript: `npm run build:ts` compiles it over src/db/activityLeaderboards.js, which is what the bot loads.
 
 export type Kind = 'chat' | 'voice';
@@ -17,19 +17,22 @@ export function cleanPeriods(value: unknown): Period[] {
   return chosen.length ? [...chosen] : [...PERIODS];
 }
 
-/** The memory of a card: `h` is a short hash of the text it was written with, `at` the moment (milliseconds). */
-export type CardState = Partial<Record<Period, { h: string; at: number }>>;
+/** The memory of the message of a board: `h` is a short hash of the text it was written with, `at` the moment (milliseconds). The older memory, one for each card, has no `h` and is not used. */
+export interface CardState { h?: string; at?: number }
 
 /** A row of `activity_leaderboards`. */
 export interface BoardRow {
   guild_id: string;
   kind: Kind;
   channel_id: string;
+  /** The one message of the board, with the card of each period in it. */
+  message_id: string | null;
+  /** The messages of a board written as one message for each period (before this): they are replaced by `message_id` and deleted. */
   daily_message_id: string | null;
   weekly_message_id: string | null;
   monthly_message_id: string | null;
   periods: Period[];
-  /** What each card said when it was last written: a short hash of its text and the moment (milliseconds). */
+  /** What the message said when it was last written: a short hash of its text and the moment (milliseconds). */
   card_state: CardState | null;
   last_refreshed_at: string | Date | null;
   last_error: string | null;
@@ -83,6 +86,7 @@ export async function upsertBoard(guildId: string, kind: Kind, channelId: string
      on conflict (guild_id, kind) do update set
        channel_id = excluded.channel_id,
        periods = coalesce($4::text[], activity_leaderboards.periods),
+       message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.message_id end,
        daily_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.daily_message_id end,
        weekly_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.weekly_message_id end,
        monthly_message_id = case when activity_leaderboards.channel_id = excluded.channel_id then activity_leaderboards.monthly_message_id end,
@@ -98,18 +102,6 @@ export async function upsertBoard(guildId: string, kind: Kind, channelId: string
 export async function removeBoard(guildId: string, kind: Kind): Promise<BoardRow | null> {
   const { rows } = await pool().query('delete from activity_leaderboards where guild_id = $1 and kind = $2 returning *', [guildId, kind]);
   return asRow(rows[0]);
-}
-
-/** Remembers the three messages of a board (null forgets one). */
-export async function saveMessages(guildId: string, kind: Kind, ids: { daily: string | null; weekly: string | null; monthly: string | null }): Promise<void> {
-  await pool().query(
-    'update activity_leaderboards set daily_message_id = $3, weekly_message_id = $4, monthly_message_id = $5 where guild_id = $1 and kind = $2',
-    [guildId, kind, ids.daily, ids.weekly, ids.monthly],
-  );
-}
-
-export async function markRefreshed(guildId: string, kind: Kind): Promise<void> {
-  await pool().query('update activity_leaderboards set last_refreshed_at = now(), last_error = null where guild_id = $1 and kind = $2', [guildId, kind]);
 }
 
 /** Saves why a board could not be written (a short code) and counts it as looked at, so it is tried again at the next round (in about 5 minutes) and not at every look. */
@@ -128,33 +120,39 @@ export async function listDue(limit = 20): Promise<BoardRow[]> {
   return (rows as unknown as BoardRow[]).map(withPeriods);
 }
 
-/** What a look found about a board, written together with the others of its round (`flushRefreshed`). `state` is the memory of the cards when it changed. */
+/**
+ * What a look found about a board, written together with the others of its round (`flushRefreshed`). `messageId` is the one message of the board; `clearOld` says that the messages of
+ * the older way (one for each period) were deleted, so their ids are forgotten; `state` is the memory of the message when it changed.
+ */
 export interface Refreshed {
   guildId: string;
   kind: Kind;
-  ids: { daily: string | null; weekly: string | null; monthly: string | null };
+  messageId: string | null;
+  clearOld: boolean;
   state: CardState | null;
 }
 
 /**
- * Marks boards as looked at, with their messages and the memory of their cards, in one statement (a round looks at hundreds of boards, and one statement for each would
- * be most of what the database does for them). A card that was not written keeps the memory it had.
+ * Marks boards as looked at, with their message and the memory of it, in one statement (a round looks at hundreds of boards, and one statement for each would be most of what
+ * the database does for them). A board whose message was not written keeps the memory it had.
  */
 export async function flushRefreshed(entries: readonly Refreshed[]): Promise<void> {
   if (!entries.length) return;
   await pool().query(
     `update activity_leaderboards b set
         last_refreshed_at = now(), last_error = null,
-        daily_message_id = nullif(v.daily, ''), weekly_message_id = nullif(v.weekly, ''), monthly_message_id = nullif(v.monthly, ''),
+        message_id = nullif(v.message, ''),
+        daily_message_id = case when v.clear = 'true' then null else b.daily_message_id end,
+        weekly_message_id = case when v.clear = 'true' then null else b.weekly_message_id end,
+        monthly_message_id = case when v.clear = 'true' then null else b.monthly_message_id end,
         card_state = case when v.state = '' then b.card_state else v.state::jsonb end
-      from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) as v(guild_id, kind, daily, weekly, monthly, state)
+      from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) as v(guild_id, kind, message, clear, state)
       where b.guild_id = v.guild_id and b.kind = v.kind`,
     [
       entries.map((entry) => entry.guildId),
       entries.map((entry) => entry.kind),
-      entries.map((entry) => entry.ids.daily ?? ''),
-      entries.map((entry) => entry.ids.weekly ?? ''),
-      entries.map((entry) => entry.ids.monthly ?? ''),
+      entries.map((entry) => entry.messageId ?? ''),
+      entries.map((entry) => String(entry.clearOld)),
       entries.map((entry) => (entry.state ? JSON.stringify(entry.state) : '')),
     ],
   );

@@ -2533,8 +2533,11 @@ create table if not exists activity_leaderboards (
 );
 -- Which cards a board has (any of monthly, weekly, daily). The boards that existed before the choice have all three.
 alter table activity_leaderboards add column if not exists periods text[] not null default '{monthly,weekly,daily}';
--- What each card said the last time it was written ({ "daily": { "h": short hash of the text, "at": milliseconds }, ... }), so a restart of the bot does not edit every card again and a
--- card that says the same is left alone. The look for the boards that are due goes by the time of the last look, oldest first.
+-- The one message of the board, with the card of each period in it. The three columns above (daily, weekly, monthly) are the boards that were written as one message for each period:
+-- Petto writes the new message, deletes those and leaves them empty.
+alter table activity_leaderboards add column if not exists message_id text;
+-- What the message said the last time it was written ({ "h": short hash of its text, "at": milliseconds }), so a restart of the bot does not edit every board again and a board that says
+-- the same is left alone. The look for the boards that are due goes by the time of the last look, oldest first.
 alter table activity_leaderboards add column if not exists card_state jsonb not null default '{}'::jsonb;
 create index if not exists idx_activity_leaderboards_due on activity_leaderboards (last_refreshed_at asc nulls first);
 alter table activity_leaderboards enable row level security;
