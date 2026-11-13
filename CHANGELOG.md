@@ -5,6 +5,7 @@ All notable changes to Petto are documented here.
 ## [Unreleased]
 
 ### Fixed
+- **The confirmation of a warn had the plain warning icon, not the one of the warnings.** Why: `!warn` (and `/warn`) answered "Se advirtió a ..." with `EMOJI.ALERT`, the icon that the errors of a command use, while the list of cases (`!cases`) shows a warn with `EMOJI.PETTO_ALERT`, so the same warning looked like two different things. What: the confirmation of a warn (`buildCaseCard`) and the line of a warn that was sent to many members at once (`moderation.warn.bulkDone`) use the same icon as the case in the list; the other sanctions keep the hammer. `scripts/check-moderation-tools.js` checks it.
 - **The bump reminder failed with `Cannot read properties of undefined (reading 'cache')` when the bot started.** Why: right after a restart Discord still calls some servers "unavailable"; discord.js builds those without their emojis and stickers, and the variable `{guild.emoji_count}` (and the reminder that uses the variables of a message) read `guild.emojis.cache`, which did not exist, so the job that sends the due reminders raised a priority error for each of them (`TypeError ... resolve (src/utils/embedVariables.js)`). What: a guild that is still unavailable waits (the reminder is not sent and not marked as done, so the next look of the job, a minute later, sends it) and `{guild.emoji_count}` says 0 when the emojis are not loaded, instead of throwing. `scripts/check-bump-timing.js` and `scripts/check-embed-variables.js` check both.
 
 ### Added

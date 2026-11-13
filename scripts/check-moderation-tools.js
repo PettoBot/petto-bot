@@ -104,6 +104,12 @@ const actor = { id: 'mod', username: 'mod' };
   const target = { id: '5', username: 'rule_breaker' };
   assert.match(buildCaseCard({ caseNumber: 3, type: 'tempban', target, reason: 'spam', duration: '2 días', lang: 'es' }).toJSON().content, /Se baneó a \*\*rule_breaker\*\* \(<@5>\) del servidor temporalmente por \*\*2 días\*\*\. Razón: \*\*spam\*\*\.\n-# caso · #3$/);
   assert.match(buildCaseCard({ caseNumber: 3, type: 'ban', target, reason: '' }).toJSON().content, /\*\*rule_breaker\*\* \(<@5>\) was banned from the server\. Reason: \*\*No reason provided\*\*\.\n-# case · #3$/);
+  // The confirmation of a warn has the icon of a warning (the same as the case in the list), not the plain warning that the errors of a command use.
+  const { EMOJI } = require('../src/utils/emojis');
+  const warnCard = buildCaseCard({ caseNumber: 4, type: 'warn', target, reason: 'spam', lang: 'es' }).toJSON().content;
+  assert.ok(warnCard.startsWith(`${EMOJI.PETTO_ALERT} Se advirtió a **rule_breaker**`), 'a warn is confirmed with the warning icon of the cases');
+  assert.ok(!warnCard.includes(EMOJI.ALERT) && !warnCard.includes(EMOJI.WARNING), 'and not with the icon of the errors of a command');
+  assert.ok(buildCaseCard({ caseNumber: 5, type: 'kick', target, reason: 'spam', lang: 'es' }).toJSON().content.startsWith(EMOJI.HAMMER), 'the other sanctions keep the hammer');
   const { buildSanctionDM } = require('../src/utils/sanctionMessage');
   const dm = buildSanctionDM({ type: 'warn', guild: { id: '9', name: 'Servidor', memberCount: 1 }, client: { user: { username: 'Petto' } }, reason: 'flood', appealUrl: 'https://appeal.test', lang: 'pt-BR' });
   assert.match(dm, /Você recebeu uma advertência em \*\*Servidor\*\*\n\*\*Motivo:\*\* flood\n\nAcha que foi um engano\? Apele aqui: https:\/\/appeal\.test$/);
