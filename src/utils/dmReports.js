@@ -68,7 +68,7 @@ function teamCard(row, { handledBy = null } = {}) {
   const origin = row.guild_id ? `${oneLine(row.guild_name, 100) || 'unknown'} (\`${row.guild_id}\`)` : 'Petto itself (no server)';
   const text = [
     `### DM report #${row.id} · ${oneLine(row.category, 40)}`,
-    `**From server:** ${origin}\n**Kind:** \`${oneLine(row.kind, 20)}\`\n**Reporter:** \`${oneLine(row.reporter_id, 25)}\` (\`${oneLine(row.reporter_tag, 40) || 'unknown'}\`)\n**When:** <t:${seconds}:R>\n**DM deleted by the reporter:** ${row.deleted_dm ? 'yes' : 'no'}${repliedLine(row)}${handled ? `\n**Handled by:** \`${oneLine(handledBy ?? row.handled_by, 25)}\`` : ''}`,
+    `**From server:** ${origin}\n**Kind:** \`${oneLine(row.kind, 20)}\`\n**Reporter:** \`${oneLine(row.reporter_id, 25)}\` (\`${oneLine(row.reporter_tag, 40) || 'unknown'}\`)\n**When:** <t:${seconds}:R>\n**DM deleted by the reporter:** ${row.deleted_dm ? 'yes' : 'no'}${repliedLine(row)}${row.reporter_blocked ? '\n**Reporter blocked:** yes (they cannot send reports)' : ''}${handled ?`\n**Handled by:** \`${oneLine(handledBy ?? row.handled_by, 25)}\`` : ''}`,
     `### The reported message\n\`\`\`\n${(row.message_text ?? '').slice(0, LIMITS.snapshot) || '(no text)'}\n\`\`\``,
     `### Details from the reporter\n\`\`\`\n${String(row.details ?? '').replace(/```/g, "'''").slice(0, LIMITS.max)}\n\`\`\``,
   ].join('\n');
@@ -79,6 +79,8 @@ function teamCard(row, { handledBy = null } = {}) {
     components.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:reply:${row.id}`).setLabel('Reply to reporter').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:done:${row.id}`).setLabel('Mark handled').setStyle(ButtonStyle.Success),
+      // A report that is false or abusive: the person cannot send more (no button once they are blocked; `!blacklist reporter list` shows who is).
+      ...(row.reporter_blocked ? [] : [new ButtonBuilder().setCustomId(`${TEAM_PREFIX}:block:${row.id}`).setLabel('Block reporter').setStyle(ButtonStyle.Danger)]),
     ));
   }
   return { components, flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
@@ -137,12 +139,15 @@ const limiter = createLimiter();
 
 /**
  * Validates, limits, stores and delivers a report. `report`: { user, message, guild: { id, name } | null, kind, category, details, deleteAfter }.
- * Returns `{ ok: false, reason, ...}` (reason: tooShort, badCategory, limit, duplicate, failed) or `{ ok: true, id, delivered, deleted }`.
+ * Returns `{ ok: false, reason, ...}` (reason: blocked, tooShort, badCategory, limit, duplicate, failed) or `{ ok: true, id, delivered, deleted }`.
  * `deps` lets a check give its own database, limiter and channel.
  */
 async function submitDmReport({ client, user, message, guild = null, kind = 'notice', category, details, deleteAfter = false, lang = null }, deps = {}) {
   const db = deps.db ?? require('../db/dmReports');
   const memory = deps.limiter ?? limiter;
+  // A person the Petto team blocked cannot send reports: nothing is stored and nothing reaches the team. If the database cannot answer, the report goes on (it would fail to store anyway).
+  const blocks = deps.blocks ?? require('../db/dmReportBlocks');
+  if (await blocks.isBlocked(user.id).catch(() => false)) return { ok: false, reason: 'blocked' };
   const text = String(details ?? '').trim();
   if (text.length < LIMITS.min || text.length > LIMITS.max) return { ok: false, reason: 'tooShort', min: LIMITS.min, max: LIMITS.max };
   if (!isDmReportCategory(category)) return { ok: false, reason: 'badCategory' };
@@ -190,7 +195,9 @@ async function refreshOpenCards(client, { limit = 25, channelId = config.opsChan
     for (const row of await db.openCards(limit)) {
       try {
         const message = await channel.messages.fetch(row.delivered_message_id);
-        if (JSON.stringify(message.components?.map(json) ?? []).includes(`${TEAM_PREFIX}:reply:`)) continue;
+        const shown = JSON.stringify(message.components?.map(json) ?? []);
+        // A card that has the answer button and, unless the person is blocked already, the block button is left alone.
+        if (shown.includes(`${TEAM_PREFIX}:reply:`) && (row.reporter_blocked || shown.includes(`${TEAM_PREFIX}:block:`))) continue;
         await message.edit(teamCard(row));
         changed += 1;
       } catch { /* a card that is gone (deleted) or cannot be edited is left as it is */ }

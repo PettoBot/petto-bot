@@ -212,6 +212,9 @@ for (const file of [...SCANNED_DIRS.flatMap(filesUnder), ...typeScriptSources(pa
     if (/i18n-ignore(?:-file|-next-line)?(?!-)(?!\s*:\s*\S)/.test(text) && !/i18n-ignore\/|USES_I18N|i18n-ignore\)/.test(text)) problem(`${path.relative(ROOT, file)}:${index + 1} has an i18n-ignore without a reason (write \`// i18n-ignore: why\`)`);
   });
   if (!SCAN_ALL && !USES_I18N.test(source)) continue;
+  // A file written in TypeScript is compiled over its .js, and the compiler puts its own lines first: the mark counts where the author wrote it.
+  const tsSource = file.endsWith('.js') && fs.existsSync(file.replace(/\.js$/, '.ts')) ? fs.readFileSync(file.replace(/\.js$/, '.ts'), 'utf8') : '';
+  if (tsSource && hardcodedText(tsSource).length === 0 && hardcodedText(source).length > 0 && /^\s*\/\/\s*i18n-ignore-file:\s*\S/m.test(tsSource.split('\n').slice(0, 5).join('\n'))) continue;
   for (const hit of hardcodedText(source)) {
     if (ignoredTexts.has(hit.text)) continue;
     problem(`${path.relative(ROOT, file)}:${hit.line} looks like English written in the code: ${JSON.stringify(hit.text)} (translate it, or mark the line with // i18n-ignore and why)`);

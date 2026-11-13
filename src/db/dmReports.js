@@ -4,6 +4,9 @@
 // cannot send two.
 const { getPrimaryPool } = require('./postgres');
 
+/** `reporter_blocked`: whether the Petto team already blocked the person from sending reports (table dm_report_blocks). The card of the team shows it and offers no button to block again. */
+const blocked = (alias) => `exists (select 1 from dm_report_blocks b where b.user_id = ${alias}.reporter_id) as reporter_blocked`;
+
 /** The statements, exported so the checks can assert what they say. */
 const SQL = Object.freeze({
   insert: `insert into dm_reports (reporter_id, reporter_tag, message_id, channel_id, guild_id, guild_name, kind, category, details, message_text, deleted_dm, reporter_lang)
@@ -14,11 +17,12 @@ returning *`,
   oldestRecent: "select created_at from dm_reports where reporter_id = $1 and created_at > now() - ($2::int * interval '1 second') order by created_at asc limit 1",
   delivered: 'update dm_reports set delivered_message_id = $2 where id = $1',
   deleted: 'update dm_reports set deleted_dm = true where id = $1',
-  handle: "update dm_reports set status = 'handled', handled_by = $2, handled_at = now() where id = $1 and status = 'open' returning *",
-  get: 'select * from dm_reports where id = $1',
+  // `reporter_blocked` says whether the Petto team already blocked the person from sending reports (table dm_report_blocks): the card of the team shows it and offers no button to block again.
+  handle: `update dm_reports set status = 'handled', handled_by = $2, handled_at = now() where id = $1 and status = 'open' returning *, ${blocked('dm_reports')}`,
+  get: `select r.*, ${blocked('r')} from dm_reports r where r.id = $1`,
   // The team answered the reporter: counted only while the report is open (an answer to a handled one is not sent).
-  replied: "update dm_reports set reply_count = reply_count + 1, last_reply_by = $2, last_reply_at = now() where id = $1 and status = 'open' returning *",
-  openCards: "select * from dm_reports where status = 'open' and delivered_message_id is not null order by id desc limit $1",
+  replied: `update dm_reports set reply_count = reply_count + 1, last_reply_by = $2, last_reply_at = now() where id = $1 and status = 'open' returning *, ${blocked('dm_reports')}`,
+  openCards: `select r.*, ${blocked('r')} from dm_reports r where r.status = 'open' and r.delivered_message_id is not null order by r.id desc limit $1`,
 });
 
 /**

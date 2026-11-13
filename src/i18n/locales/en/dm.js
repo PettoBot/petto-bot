@@ -34,6 +34,7 @@ module.exports = {
   'dm.report.limit': 'You already sent {max} reports in the last hour. Try again in {minutes} minutes.',
   'dm.report.duplicate': 'You already reported this message. Petto staff will look at it.',
   'dm.report.failed': 'Your report could not be saved right now. Please try again later.',
+  'dm.report.blocked': 'You cannot send reports to the Petto team right now.',
   'dm.team.title': 'A message from the Petto team about your report #{number}',
   'dm.team.footer': 'Petto cannot read replies in this chat. If something is still wrong, send a new report with the report button under a Petto message.',
 };
