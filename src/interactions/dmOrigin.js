@@ -14,6 +14,7 @@ const { plainCard } = require('../utils/plainCard');
 const { dmCategoryOptions, DM_ABUSE } = require('../utils/reportCategories');
 const { LIMITS, submitDmReport } = require('../utils/dmReports');
 const { MODAL_PREFIX, PREFIX, kindOf, parseCustomId, safeName } = require('../utils/dmOrigin');
+const blocks = require('../db/dmReportBlocks');
 const logger = require('../utils/logger');
 
 const V2 = MessageFlags.IsComponentsV2;
@@ -141,6 +142,8 @@ async function handleButton(interaction) {
   // The form has to be the first answer (a form cannot follow an acknowledgement), so what is checked before it is only what is already in memory.
   const why = await refusalFor(interaction, lang);
   if (why) return refuse(interaction, why);
+  // A person the Petto team blocked does not even get the form (from memory: the form has to be the first answer). The database decides again when they send one.
+  if (blocks.isBlockedCached(interaction.user.id)) return refuse(interaction, t(lang, 'dm.report.blocked'));
   return interaction.showModal(buildReportModal({ guildId: parsed.guildId, kind: parsed.kind, messageId: interaction.message.id, lang }));
 }
 
@@ -178,7 +181,7 @@ async function handleModal(interaction) {
     lang,
   });
   if (result.ok) return reply(`${t(lang, 'dm.report.sent', { emoji: EMOJI.APPROVE })}${result.deleted ? `\n${t(lang, 'dm.report.deleted')}` : ''}`);
-  const key = { tooShort: 'dm.report.tooShort', badCategory: 'dm.report.badCategory', limit: 'dm.report.limit', duplicate: 'dm.report.duplicate' }[result.reason] ?? 'dm.report.failed';
+  const key = { blocked: 'dm.report.blocked', tooShort: 'dm.report.tooShort', badCategory: 'dm.report.badCategory', limit: 'dm.report.limit', duplicate: 'dm.report.duplicate' }[result.reason] ?? 'dm.report.failed';
   return fail(t(lang, key, { min: LIMITS.min, max: result.max ?? LIMITS.perHour, minutes: result.minutes ?? 60 }));
 }
 

@@ -64,6 +64,10 @@ module.exports = {
       return client.commandAliases?.get(word) ?? route?.disableName ?? route?.command ?? null;
     }).then((changed) => { if (changed) logger.info(`Disabled-command rules: ${changed} saved with an alias now use the real command name.`); })
       .catch((err) => logger.warn(`The disabled-command rules could not be tidied: ${err?.message ?? err}`));
+    // Who the Petto team blocked from sending DM reports is read into memory, so the report button can answer at once.
+    require('../db/dmReportBlocks').load()
+      .then((count) => { if (count) logger.info(`DM reports: ${count} person(s) blocked from sending reports.`); })
+      .catch((err) => logger.localWarn(`DM reports: could not read who is blocked: ${err?.message ?? err}`));
     // The open DM reports that were sent before the answer button existed get it (once, a little after the start, in the background).
     setTimeout(() => {
       require('../utils/dmReports').refreshOpenCards(client)

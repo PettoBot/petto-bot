@@ -4,6 +4,8 @@ const { EMOJI } = require('../../utils/emojis');
 const store = require('../../db/guildBlacklist');
 const blacklist = require('../../utils/guildBlacklist');
 const { isTeam, findGuild, notFoundText, guildLine, protectedGuildIds, opsNote, oneLine, teamReply, SNOWFLAKE_RE } = require('../../utils/teamTools');
+const reportBlocks = require('../../utils/reportBlocks');
+const reportBlockStore = require('../../db/dmReportBlocks');
 
 const RED = 0xfe6465;
 const YELLOW = 0xfed53c;
@@ -16,6 +18,7 @@ const USAGE = [
   '`!blacklist remove <server id or name>` takes it off the list.',
   '`!blacklist list [page]` shows the list: reason, who added it, when, and whether Petto is still in it.',
   '`!blacklist info <server id or name>` shows one entry.',
+  '`!blacklist reporter <person> [reason]` blocks a person from sending DM reports (false or abusive ones); `reporter remove|info <person>` and `reporter list` manage them.',
   '`petto blacklist ...` works the same.',
 ].join('\n');
 
@@ -103,6 +106,13 @@ async function info(interaction, parsed) {
   return teamReply(interaction, `### Blacklisted server\n${entryLines(target.entry, interaction.client, { long: true })}`, null);
 }
 
+/** `!blacklist reporter ...`: blocks a person from sending DM reports to the team (the logic is in utils/reportBlocks.ts). */
+async function reporter(interaction, text) {
+  const answer = await reportBlocks.reporterCommand(text, { client: interaction.client, by: interaction.user.id, store: reportBlockStore });
+  const icon = answer.tone === 'good' ? `${EMOJI.APPROVE} ` : answer.tone === 'warn' ? `${EMOJI.WARNING} ` : '';
+  return teamReply(interaction, `${icon}${answer.text}`, answer.tone === 'good' ? GREEN : answer.tone === 'warn' ? YELLOW : null);
+}
+
 /** Private control of the Petto team: the blacklist of servers that break the terms. Prefix only, hidden everywhere, and nobody outside the team gets an answer. */
 module.exports = {
   prefixOnly: true,
@@ -110,13 +120,13 @@ module.exports = {
   hiddenEverywhere: true,
   teamOnly: true,
   team: {
-    summary: 'Blacklists servers that break the terms: Petto leaves them, tells the owner why, and leaves again if they add it back.',
-    usage: ['!blacklist <server id or name> <reason>', '!blacklist remove <server>', '!blacklist list [page]', '!blacklist info <server>'],
+    summary: 'Blacklists servers that break the terms: Petto leaves them, tells the owner why, and leaves again if they add it back. `reporter` blocks a person from sending DM reports (false or abusive ones).',
+    usage: ['!blacklist <server id or name> <reason>', '!blacklist remove <server>', '!blacklist list [page]', '!blacklist info <server>', '!blacklist reporter <person> [reason]', '!blacklist reporter remove|info <person>', '!blacklist reporter list [page]'],
     who: 'owner and developers',
     area: 'servers',
-    examples: ['!blacklist 123456789012345678 spam and scams', '!blacklist list', '!blacklist remove 123456789012345678'],
+    examples: ['!blacklist 123456789012345678 spam and scams', '!blacklist list', '!blacklist remove 123456789012345678', '!blacklist reporter 123456789012345678 false reports', '!blacklist reporter remove 123456789012345678'],
     answers: 'one card: the server (name, ID, members, owner) and what was done; the list is paged',
-    dangers: 'Petto leaves the server at once and tells its owner why; it also leaves again if the server adds it back.',
+    dangers: 'Petto leaves the server at once and tells its owner why; it also leaves again if the server adds it back. A blocked reporter is told they cannot send reports, not why.',
   },
   // The text keeps its quotes and spaces: the reason is free text and the name of a server may have spaces.
   prefixRawOptions: { _: (text) => ({ text: String(text ?? '') }) },
@@ -129,6 +139,8 @@ module.exports = {
   async execute(interaction) {
     // Nobody else gets an answer: for everybody outside the team this is not a command (it is hidden everywhere), and this is the second lock.
     if (!isTeam(interaction.user?.id)) return undefined;
+    // `reporter ...` is another list: the people blocked from sending DM reports (a server whose name is "reporter" is written between quotes).
+    if (reportBlocks.isReporterText(interaction.options.getString('text'))) return reporter(interaction, interaction.options.getString('text'));
     const parsed = blacklist.parseBlacklistText(interaction.options.getString('text'), { names: namesOf(interaction.client) });
     if (parsed.action === 'help') return teamReply(interaction, `### Blacklist\n${USAGE}`, null);
     if (parsed.action === 'list') return list(interaction, parsed);

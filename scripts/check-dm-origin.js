@@ -28,6 +28,28 @@ function stub(relative, exports) {
 const warnings = [];
 stub('src/utils/logger.js', { info() {}, warn: (...args) => warnings.push(args.map(String).join(' ')), error() {}, debug() {} });
 
+// The people blocked from sending reports: the REAL store (src/db/dmReportBlocks.ts, compiled) over an in-memory table that answers its own statements, no database.
+const blockTable = [];
+const realBlocks = require('../src/db/dmReportBlocks');
+const blockQuery = async (sql, params = []) => {
+  const S = realBlocks.SQL;
+  if (sql === S.ids) return { rows: blockTable.map((row) => ({ user_id: row.user_id })) };
+  if (sql === S.get) return { rows: blockTable.filter((row) => row.user_id === params[0]) };
+  if (sql === S.insert) {
+    if (blockTable.some((row) => row.user_id === params[0])) return { rows: [] };
+    const row = { user_id: params[0], user_tag: params[1], reason: params[2], blocked_by: params[3], report_id: params[4], created_at: new Date() };
+    blockTable.push(row);
+    return { rows: [row] };
+  }
+  if (sql === S.remove) { const index = blockTable.findIndex((row) => row.user_id === params[0]); return { rows: index < 0 ? [] : blockTable.splice(index, 1) }; }
+  if (sql === S.list) return { rows: [...blockTable].reverse().slice(params[1], params[1] + params[0]) };
+  if (sql === S.count) return { rows: [{ total: blockTable.length }] };
+  throw new Error(`a statement the check does not know: ${sql}`);
+};
+const blockStore = realBlocks.createStore(blockQuery);
+stub('src/db/dmReportBlocks.js', { ...realBlocks, ...blockStore });
+const withBlocked = (row) => ({ ...row, reporter_blocked: blockTable.some((block) => block.user_id === row.reporter_id) });
+
 // An in-memory table of dm_reports: the same calls as src/db/dmReports.js, no database.
 const table = [];
 const fakeDb = {
@@ -48,10 +70,10 @@ const fakeDb = {
   },
   async setDelivered(id, messageId) { table.find((row) => row.id === id).delivered_message_id = messageId; },
   async setDeleted() {},
-  async handle(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { status: 'handled', handled_by: userId }); return row; },
-  async get(id) { return table.find((row) => row.id === Number(id)) ?? null; },
-  async replied(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { reply_count: row.reply_count + 1, last_reply_by: userId, last_reply_at: new Date() }); return row; },
-  async openCards() { return table.filter((row) => row.status === 'open' && row.delivered_message_id); },
+  async handle(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { status: 'handled', handled_by: userId }); return withBlocked(row); },
+  async get(id) { const row = table.find((item) => item.id === Number(id)); return row ? withBlocked(row) : null; },
+  async replied(id, userId) { const row = table.find((item) => item.id === Number(id)); if (!row || row.status !== 'open') return null; Object.assign(row, { reply_count: row.reply_count + 1, last_reply_by: userId, last_reply_at: new Date() }); return withBlocked(row); },
+  async openCards() { return table.filter((row) => row.status === 'open' && row.delivered_message_id).map(withBlocked); },
 };
 Object.assign(fakeDb, { SQL: {}, createStore: () => fakeDb });
 stub('src/db/dmReports.js', fakeDb);
@@ -783,13 +805,15 @@ section(async () => {
 
   // The open cards sent before the button existed get it, once; the ones that have it are left alone.
   const oldCard = { id: 'old', components: [{ toJSON: () => ({ type: 1, components: [{ custom_id: 'dmteam:done:51' }] }) }], edited: 0, async edit() { this.edited += 1; } };
-  const newCard = { id: 'new', components: [{ toJSON: () => ({ type: 1, components: [{ custom_id: 'dmteam:reply:52' }] }) }], edited: 0, async edit() { this.edited += 1; } };
+  const newCard = { id: 'new', components: [{ toJSON: () => ({ type: 1, components: [{ custom_id: 'dmteam:reply:52' }, { custom_id: 'dmteam:block:52' }] }) }], edited: 0, async edit() { this.edited += 1; } };
+  const halfCard = { id: 'half', components: [{ toJSON: () => ({ type: 1, components: [{ custom_id: 'dmteam:reply:53' }] }) }], edited: 0, async edit() { this.edited += 1; } };
   table.push({ ...row, id: 52, message_id: 'm52', delivered_message_id: 'new' });
+  table.push({ ...row, id: 53, message_id: 'm53', delivered_message_id: 'half' });
   row.delivered_message_id = 'old';
-  const channel = { messages: { fetch: async (id) => { if (id === 'old') return oldCard; if (id === 'new') return newCard; throw new Error('Unknown Message'); } } };
+  const channel = { messages: { fetch: async (id) => { if (id === 'old') return oldCard; if (id === 'new') return newCard; if (id === 'half') return halfCard; throw new Error('Unknown Message'); } } };
   const changed = await dmReports.refreshOpenCards({ channels: { fetch: async () => channel } }, { channelId: 'c1', db: fakeDb });
-  assert.equal(changed, 1, 'one card was changed');
-  assert.deepEqual([oldCard.edited, newCard.edited], [1, 0], 'the old one got the button, the new one was not touched');
+  assert.equal(changed, 2, 'two cards were changed');
+  assert.deepEqual([oldCard.edited, newCard.edited, halfCard.edited], [1, 0, 1], 'the old ones got the buttons (the one with the answer button only gets the block button), the new one was not touched');
   assert.equal(await dmReports.refreshOpenCards({ channels: { fetch: async () => { throw new Error('Missing Access'); } } }, { channelId: 'c1', db: fakeDb }), 0, 'a channel that cannot be read changes nothing and does not throw');
   table.length = 0;
 });
@@ -811,6 +835,157 @@ section(async () => {
   const recent = await store.recent('r', 3600);
   assert.deepEqual([recent.total, recent.oldest instanceof Date], [2, true]);
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// Blocking a person from sending reports: the button of the card, the form, the command of the team and what the person reads.
+section(async () => {
+  const operator = config.ownerId;
+  const reportBlocks = require('../src/utils/reportBlocks');
+  const { handleBlockModal } = require('../src/interactions/dmTeam');
+  const row = { id: 61, category: 'dm_abuse', kind: 'team', guild_id: null, guild_name: null, reporter_id: USER_ID, reporter_tag: 'wah1001', reporter_lang: 'en', message_text: 'x', details: 'y'.repeat(30), status: 'open', reply_count: 0, created_at: new Date(), delivered_message_id: 'card61', message_id: 'm61' };
+  table.push(row);
+  blockTable.length = 0;
+  const ids = (card) => JSON.stringify(card.components.map(jsonOf));
+
+  // The card: an open one has the button, one of a person already blocked says so and has no button to block again, a handled one has no button at all.
+  const open = ids(dmReports.teamCard(row));
+  assert.ok(open.includes('dmteam:block:61') && open.includes('Block reporter'), 'an open card can block the reporter');
+  assert.ok(open.includes('dmteam:reply:61') && open.includes('dmteam:done:61'), 'next to the other two buttons');
+  const blockedCard = ids(dmReports.teamCard({ ...row, reporter_blocked: true }));
+  assert.ok(blockedCard.includes('Reporter blocked:** yes') && !blockedCard.includes('dmteam:block'), 'a blocked reporter: the card says so and has no button to block again');
+  assert.ok(blockedCard.includes('dmteam:reply:61'), 'and it can still be answered');
+  assert.ok(!ids(dmReports.teamCard({ ...row, status: 'handled', handled_by: operator })).includes('dmteam:block'), 'a handled card has no button at all');
+
+  // The button: only the team; it opens a form that asks why (suggesting a reason).
+  const press = async (id, customId) => { const { interaction, calls } = fake({ customId, user: { id } }); await handleTeamButton(interaction, { db: fakeDb }); return calls; };
+  let calls = await press('111111111111111111', 'dmteam:block:61');
+  assert.match(calls.replies[0].content, /Only the Petto team/, 'a stranger cannot block');
+  assert.equal(calls.modal, null);
+  calls = await press(operator, 'dmteam:block:61');
+  const form = JSON.stringify(calls.modal.toJSON());
+  assert.equal(calls.modal.toJSON().custom_id, 'dmteam:blockm:61', 'the team gets the form');
+  assert.ok(form.includes('False or abusive DM reports') && form.includes('Why are you blocking them?'), 'with a reason to start from');
+  assert.equal(blockTable.length, 0, 'asking blocks nobody');
+  calls = await press(operator, 'dmteam:block:999');
+  assert.match(calls.replies[0].content, /does not exist/, 'a report that is not there');
+
+  // The form.
+  const submitBlock = async (id, text, { reporterIsTeam = false, bot = false } = {}) => {
+    const { interaction, calls: c } = fake({ customId: 'dmteam:blockm:61', user: { id } });
+    interaction.fields = { getTextInputValue: () => text };
+    interaction.client.users = { fetch: async (reporterId) => ({ id: reporterId, username: 'wah1001', bot }) };
+    const keep = row.reporter_id;
+    if (reporterIsTeam) row.reporter_id = operator;
+    try { await handleBlockModal(interaction, { db: fakeDb }); } finally { row.reporter_id = keep; }
+    return c;
+  };
+  calls = await submitBlock('111111111111111111', 'Spams false reports');
+  assert.match(calls.replies[0].content, /Only the Petto team/, 'a stranger sends nothing');
+  assert.equal(blockTable.length, 0);
+  calls = await submitBlock(operator, 'ab');
+  assert.match(calls.replies[0].content, /too short/, 'a reason of two letters is not a reason');
+  calls = await submitBlock(operator, 'x'.repeat(301));
+  assert.match(calls.replies[0].content, /too long/, 'nor a novel');
+  calls = await submitBlock(operator, 'Spams false reports', { reporterIsTeam: true });
+  assert.match(calls.replies[0].content, /on the Petto team/, 'nobody of the team can be blocked');
+  calls = await submitBlock(operator, 'Spams false reports', { bot: true });
+  assert.match(calls.replies[0].content, /bot/, 'and no bot');
+  assert.equal(blockTable.length, 0, 'none of those blocked anybody');
+  calls = await submitBlock(operator, '  Spams   false reports  ');
+  assert.deepEqual(blockTable.map((entry) => [entry.user_id, entry.user_tag, entry.reason, entry.blocked_by, entry.report_id]), [[USER_ID, 'wah1001', 'Spams false reports', operator, 61]], 'blocked, with the reason tidied, who did it and from which report');
+  assert.ok(ids(calls.updates[0]).includes('Reporter blocked:** yes') && !ids(calls.updates[0]).includes('dmteam:block'), 'the card is updated: it says so and the button is gone');
+  assert.deepEqual(calls.updates[0].allowedMentions, { parse: [] }, 'with no mention that can notify');
+  calls = await submitBlock(operator, 'Spams false reports again');
+  assert.match(calls.replies[0].content, /already blocked/, 'a second block says so');
+  assert.equal(blockTable.length, 1);
+  calls = await press(operator, 'dmteam:block:61');
+  assert.match(calls.replies[0].content, /already blocked/, 'and the button of an old card does not open the form again');
+
+  // The person: the report button answers at once (from memory) and the form (from the database) refuses too; nothing is stored or sent to the team.
+  await blockStore.load();
+  const message = botMessage();
+  let pressed = fake({ customId: origin.customId('report', guild, 'form'), message });
+  await handlers.handleButton(pressed.interaction);
+  assert.equal(pressed.calls.modal, null, 'a blocked person does not get the form');
+  assert.match(sayText(pressed.calls), /cannot send reports to the Petto team right now/, 'they are told they cannot send reports');
+  assert.ok(!sayText(pressed.calls).includes('wah1001') && !/spam|false/i.test(sayText(pressed.calls)), 'not why');
+  assert.ok(!sayText(pressed.calls).includes(operator), 'and not who decided');
+  pressed.calls.replies.forEach((reply) => privateCard(reply, 'the refusal'));
+  const before = table.length;
+  const result = await dmReports.submitDmReport({ client: {}, user: { id: USER_ID, username: 'wah1001' }, message: { id: '623456789012345678', channelId: 'dm1' }, category: 'dm_abuse', details: 'z'.repeat(40) }, { db: fakeDb });
+  assert.deepEqual(result, { ok: false, reason: 'blocked' }, 'even a form that was already open is refused');
+  assert.equal(table.length, before, 'nothing was stored');
+  const other = await dmReports.submitDmReport({ client: {}, user: { id: '777777777777777777', username: 'other' }, message: { id: '623456789012345679', channelId: 'dm1' }, category: 'nonsense', details: 'z'.repeat(40) }, { db: fakeDb });
+  assert.equal(other.reason, 'badCategory', 'somebody else is checked as always (not blocked)');
+  const keepBlocks = { isBlocked: async () => { throw new Error('the database is down'); } };
+  const open2 = await dmReports.submitDmReport({ client: {}, user: { id: USER_ID, username: 'wah1001' }, message: { id: '623456789012345680', channelId: 'dm1' }, category: 'nonsense', details: 'z'.repeat(40) }, { db: fakeDb, blocks: keepBlocks });
+  assert.equal(open2.reason, 'badCategory', 'when the database cannot say, the report goes on to its own checks (it would fail to store anyway)');
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    const line = i18n.t(lang, 'dm.report.blocked');
+    assert.ok(line && line !== 'dm.report.blocked' && line.length > 20, `${lang}: the refusal is written`);
+  }
+  assert.ok(/blocked: 'dm\.report\.blocked'/.test(fs.readFileSync(path.join(ROOT, 'src/interactions/dmOrigin.js'), 'utf8')), 'the form says it with the same words');
+
+  // The command of the team: `!blacklist reporter ...` (the logic of src/utils/reportBlocks.ts).
+  blockTable.length = 0;
+  const fakeClient = { user: { id: BOT_ID }, users: { fetch: async (id) => (id === '404404404404404404' ? Promise.reject(new Error('Unknown User')) : { id, username: `user_${id.slice(-4)}`, bot: id === '808808808808808808' }) }, channels: { cache: new Map(), fetch: async () => null } };
+  const run = (text) => reportBlocks.reporterCommand(text, { client: fakeClient, by: operator, store: blockStore });
+  assert.deepEqual(['reporter', ' reporter list', 'REPORTER x', 'reporters', 'reporter\n1'].map(reportBlocks.isReporterText), [true, true, true, false, true], 'the word has to stand alone: a server called "reporters" is another thing');
+  assert.deepEqual(reportBlocks.parseReporterText('reporter'), { action: 'help' });
+  assert.deepEqual(reportBlocks.parseReporterText('reporter list 3'), { action: 'list', page: 3 });
+  assert.deepEqual(reportBlocks.parseReporterText('reporter list nope'), { action: 'list', page: 1 });
+  assert.deepEqual(reportBlocks.parseReporterText('reporter remove <@123456789012345678>'), { action: 'remove', target: '<@123456789012345678>' });
+  assert.deepEqual(reportBlocks.parseReporterText('reporter unblock 123456789012345678'), { action: 'remove', target: '123456789012345678' });
+  assert.deepEqual(reportBlocks.parseReporterText('reporter 123456789012345678 false reports, again'), { action: 'add', target: '123456789012345678', reason: 'false reports, again' });
+  assert.deepEqual([reportBlocks.userIdOf('<@!123456789012345678>'), reportBlocks.userIdOf('123456789012345678'), reportBlocks.userIdOf('abc'), reportBlocks.userIdOf('123')], ['123456789012345678', '123456789012345678', null, null], 'a mention or an ID, nothing else');
+  let answer = await run('reporter');
+  assert.ok(answer.tone === 'plain' && answer.text.includes('!blacklist reporter remove'), 'help');
+  answer = await run('reporter list');
+  assert.match(answer.text, /Nobody is blocked/, 'an empty list says so');
+  answer = await run('reporter nobody here');
+  assert.equal(answer.tone, 'warn', 'a word that is not a person');
+  answer = await run('reporter 404404404404404404 spam');
+  assert.match(answer.text, /could not find a user/, 'an ID with no user');
+  answer = await run(`reporter ${operator} spam`);
+  assert.match(answer.text, /on the Petto team/, 'the team cannot be blocked');
+  answer = await run(`reporter ${BOT_ID}x`);
+  assert.equal(answer.tone, 'warn');
+  answer = await run('reporter 808808808808808808 spam');
+  assert.match(answer.text, /bot/, 'a bot cannot');
+  answer = await run('reporter 303303303303303303 ab');
+  assert.match(answer.text, /too short/, 'the reason has a size');
+  assert.equal(blockTable.length, 0, 'none of those blocked anybody');
+  answer = await run('reporter <@303303303303303303>');
+  assert.equal(answer.tone, 'good', 'a mention, with no reason');
+  assert.deepEqual([blockTable[0].user_id, blockTable[0].reason, blockTable[0].blocked_by], ['303303303303303303', 'False or abusive DM reports', operator], 'it takes the default reason');
+  assert.ok(answer.text.includes('is blocked from sending DM reports') && answer.text.includes('not why'), 'the answer says what it did and what the person reads');
+  answer = await run('reporter 303303303303303303 again');
+  assert.match(answer.text, /already blocked/, 'blocking twice says so');
+  await run('reporter 202202202202202202 harassing the team with false reports');
+  answer = await run('reporter info 202202202202202202');
+  assert.ok(answer.text.includes('harassing the team') && answer.text.includes(operator), 'info: who, why, by whom');
+  answer = await run('reporter info 909909909909909909');
+  assert.match(answer.text, /is not blocked/);
+  answer = await run('reporter list');
+  assert.ok(answer.text.includes('Blocked reporters (2)') && answer.text.indexOf('202202202202202202') < answer.text.indexOf('303303303303303303'), 'the list: the newest first');
+  answer = await run('reporter remove 303303303303303303');
+  assert.equal(answer.tone, 'good');
+  assert.deepEqual(blockTable.map((entry) => entry.user_id), ['202202202202202202'], 'the block is gone');
+  assert.equal(blockStore.isBlockedCached('303303303303303303'), false, 'also from memory, at once');
+  answer = await run('reporter remove 303303303303303303');
+  assert.match(answer.text, /was not blocked/);
+
+  // It is only in the team command: the file of the command sends `reporter ...` there and the card has no other way in.
+  const command = fs.readFileSync(path.join(ROOT, 'src/commands/utility/blacklist.js'), 'utf8');
+  assert.ok(/reportBlocks\.isReporterText\(/.test(command) && /isTeam\(interaction\.user\?\.id\)\) return undefined;[\s\S]*isReporterText/.test(command), 'the team lock comes first, then the reporter list');
+  assert.ok(/CREATE TABLE IF NOT EXISTS dm_report_blocks \(/i.test(fs.readFileSync(path.join(ROOT, 'src/db/schema.sql'), 'utf8')) && /alter table dm_report_blocks enable row level security;/.test(fs.readFileSync(path.join(ROOT, 'src/db/schema.sql'), 'utf8')), 'the table, closed to everyone but the bot');
+  assert.ok(/blocked\('dm_reports'\)/.test(fs.readFileSync(path.join(ROOT, 'src/db/dmReports.js'), 'utf8')) && /dm_report_blocks/.test(realDbSql()), 'the statements of the reports say whether the reporter is blocked');
+  table.length = 0;
+  blockTable.length = 0;
+});
+
+function realDbSql() { return Object.values(require('../src/db/dmReports').SQL ?? {}).join('\n') || fs.readFileSync(path.join(ROOT, 'src/db/dmReports.js'), 'utf8'); }
+
 
 (async () => {
   for (const part of parts) await part();

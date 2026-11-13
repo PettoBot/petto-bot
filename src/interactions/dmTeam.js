@@ -1,15 +1,20 @@
 // i18n-ignore-file: the buttons and the form under the cards of the Petto team (operators only), in English. What the reporter reads comes from the catalog (dm.team.*).
-// The card of a DM report in the team channel: "Reply to reporter" and "Mark handled". Only the Petto team may press them (the same people as the other team tools).
+// The card of a DM report in the team channel: "Reply to reporter", "Mark handled" and "Block reporter". Only the Petto team may press them (the same people as the other team tools).
 // A handled report is final: there is no button or statement that opens it again (and a handled report is not answered either), and an old button pressed twice only says so.
+// "Block reporter" asks why (only the team sees it) and stops that person from sending more DM reports: they are told they cannot, not why. `!blacklist reporter ...` is the same list.
 const { LabelBuilder, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { isPettoOperator } = require('../utils/autoModControl');
 const { teamCard } = require('../utils/dmReports');
 const { TEAM_PREFIX, sendDm } = require('../utils/dmOrigin');
 const { plainCard } = require('../utils/plainCard');
+const { cleanReason, refusalFor } = require('../utils/reportBlocks');
+const { DEFAULT_REASON, LIMITS: BLOCK_LIMITS } = require('../db/dmReportBlocks');
+const { opsNote, oneLine } = require('../utils/teamTools');
 const { t } = require('../i18n');
 const logger = require('../utils/logger');
 
 const REPLY = Object.freeze({ min: 10, max: 1500, field: 'reply', modal: `${TEAM_PREFIX}:replym` });
+const BLOCK = Object.freeze({ field: 'reason', modal: `${TEAM_PREFIX}:blockm` });
 const LANGUAGES = new Set(['en', 'es', 'pt-BR']);
 
 const reply = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
@@ -42,12 +47,40 @@ function replyPayload(row, text, lang) {
   return { ...plainCard(`### ${t(lang, 'dm.team.title', { number: row.id })}\n${quoted}\n\n-# ${t(lang, 'dm.team.footer')}`), allowedMentions: { parse: [] } };
 }
 
-/** `dmteam:done:<id>` and `dmteam:reply:<id>`. (`dmteam:open:<id>` from a card of an older version is not valid any more: nothing reopens a report.) */
+/** The form that asks why the reporter is blocked: only the team reads it (the person is told they cannot send reports, not why). */
+function blockModal(row) {
+  return new ModalBuilder()
+    .setCustomId(`${BLOCK.modal}:${row.id}`)
+    .setTitle('Block this reporter'.slice(0, 45))
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('Why are you blocking them?')
+        .setDescription('Only the team sees it. They are told they cannot send reports, not why.')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId(BLOCK.field)
+            .setStyle(TextInputStyle.Short)
+            .setValue(DEFAULT_REASON)
+            .setMinLength(BLOCK_LIMITS.reasonMin)
+            .setMaxLength(BLOCK_LIMITS.reasonMax)
+            .setRequired(true),
+        ),
+    );
+}
+
+/** `dmteam:done:<id>`, `dmteam:reply:<id>` and `dmteam:block:<id>`. (`dmteam:open:<id>` from a card of an older version is not valid any more: nothing reopens a report.) */
 async function handleTeamButton(interaction, deps = {}) {
   const db = deps.db ?? require('../db/dmReports');
-  const match = new RegExp(`^${TEAM_PREFIX}:(done|reply):(\\d{1,18})$`).exec(interaction.customId);
+  const match = new RegExp(`^${TEAM_PREFIX}:(done|reply|block):(\\d{1,18})$`).exec(interaction.customId);
   if (!match) return reply(interaction, 'That button is not valid any more.');
   if (!isPettoOperator(interaction.user.id)) return reply(interaction, 'Only the Petto team can do this.');
+
+  if (match[1] === 'block') {
+    const row = await db.get(match[2]);
+    if (!row) return reply(interaction, 'That report does not exist.');
+    if (row.reporter_blocked) return reply(interaction, 'That person is already blocked from sending reports.');
+    return interaction.showModal(blockModal(row));
+  }
 
   if (match[1] === 'reply') {
     const row = await db.get(match[2]);
@@ -60,8 +93,32 @@ async function handleTeamButton(interaction, deps = {}) {
   return interaction.update(teamCard(row, { handledBy: row.handled_by ?? interaction.user.id }));
 }
 
-/** `dmteam:replym:<id>`: the form was sent. The reporter gets the message by DM and the card says it was answered. */
+/** `dmteam:blockm:<id>`: the form of the block was sent. The person cannot send DM reports any more, the team's operations channel has a note, and the card says so. */
+async function handleBlockModal(interaction, deps = {}) {
+  const db = deps.db ?? require('../db/dmReports');
+  const blocks = deps.blocks ?? require('../db/dmReportBlocks');
+  const match = new RegExp(`^${BLOCK.modal}:(\\d{1,18})$`).exec(interaction.customId);
+  if (!match) return reply(interaction, 'That form is not valid any more.');
+  if (!isPettoOperator(interaction.user.id)) return reply(interaction, 'Only the Petto team can do this.');
+
+  const checked = cleanReason(interaction.fields.getTextInputValue(BLOCK.field));
+  if (!checked.ok) return reply(interaction, checked.error);
+  const row = await db.get(match[1]);
+  if (!row) return reply(interaction, 'That report does not exist.');
+  const user = await interaction.client.users.fetch(row.reporter_id).catch(() => null);
+  const refusal = refusalFor(String(row.reporter_id), user, interaction.client.user?.id);
+  if (refusal) return reply(interaction, refusal);
+
+  const added = await blocks.add({ userId: row.reporter_id, userTag: row.reporter_tag ?? user?.username ?? null, reason: checked.reason, by: interaction.user.id, reportId: row.id });
+  if (!added) return reply(interaction, 'That person was already blocked from sending reports.');
+  await opsNote(interaction.client, `**Reporter blocked** (from the card of DM report #${row.id}).\nPerson: \`${row.reporter_id}\` (\`${oneLine(row.reporter_tag, 40) || 'unknown'}\`)\nReason: ${oneLine(checked.reason, 300)}\nBy: <@${interaction.user.id}> (\`${interaction.user.id}\`)`).catch(() => null);
+  if (typeof interaction.update === 'function') return interaction.update(teamCard({ ...row, reporter_blocked: true }));
+  return reply(interaction, 'Blocked. They cannot send DM reports any more.');
+}
+
+/** `dmteam:replym:<id>`: the form was sent. The reporter gets the message by DM and the card says it was answered. (`dmteam:blockm:<id>` is the form of the block.) */
 async function handleTeamModal(interaction, deps = {}) {
+  if (String(interaction.customId).startsWith(`${BLOCK.modal}:`)) return handleBlockModal(interaction, deps);
   const db = deps.db ?? require('../db/dmReports');
   const send = deps.sendDm ?? sendDm;
   const match = new RegExp(`^${REPLY.modal}:(\\d{1,18})$`).exec(interaction.customId);
@@ -83,4 +140,4 @@ async function handleTeamModal(interaction, deps = {}) {
   return reply(interaction, 'Sent to the reporter.');
 }
 
-module.exports = { handleTeamButton, handleTeamModal, replyModal, replyPayload, REPLY };
+module.exports = { handleTeamButton, handleTeamModal, handleBlockModal, replyModal, blockModal, replyPayload, REPLY, BLOCK };

@@ -5027,6 +5027,19 @@ drop trigger if exists dm_reports_final on dm_reports;
 create trigger dm_reports_final before update of status, handled_by on dm_reports
   for each row execute function dm_reports_final();
 
+-- The people the Petto team blocked from sending DM reports (false or abusive ones): the button under a message of Petto tells them they cannot send reports, and nothing reaches
+-- the team. One row for each person (db/dmReportBlocks.ts); `report_id` is the report the team was reading when it blocked them (if any). Nothing here touches the reports of the
+-- servers: it is only the reports that go to the Petto team.
+create table if not exists dm_report_blocks (
+  user_id    text primary key,
+  user_tag   text,
+  reason     text not null,
+  blocked_by text not null,
+  report_id  bigint,
+  created_at timestamptz not null default now()
+);
+alter table dm_report_blocks enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- The servers the Petto team blacklisted for breaking the terms of service or the privacy policy (db/guildBlacklist.js, utils/guildBlacklist.js).
 -- Petto leaves one that it is in, and leaves again the second it is added back. It is NOT erased with the departure of a server (db/guildDepartures.js
