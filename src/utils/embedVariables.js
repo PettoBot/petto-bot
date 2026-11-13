@@ -194,7 +194,7 @@ async function resolve(text, ctx = {}) {
     '{guild.owner_id}': guild?.ownerId ?? '',
     '{guild.created_at}': guild?.createdAt?.toLocaleDateString(dateLocale) ?? '',
     '{guild.created_at_timestamp}': guild?.createdTimestamp ? String(Math.floor(guild.createdTimestamp / 1000)) : '',
-    '{guild.emoji_count}': (guild?.emojis.cache.size ?? 0).toString(),
+    '{guild.emoji_count}': (guild?.emojis?.cache.size ?? 0).toString(), // `emojis` is missing on a guild that Discord said was unavailable (right after a restart): 0 until it is loaded
     '{guild.role_count}': (guild?.roles.cache.size ?? 0).toString(),
     '{guild.boost_count}': boostCurrent.toString(),
     '{guild.boost_tier}': currentLevel > 0 ? word('boostTier', { level: currentLevel }) : word('noBoostTier'),
