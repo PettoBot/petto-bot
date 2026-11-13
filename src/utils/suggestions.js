@@ -312,4 +312,4 @@ async function voters({ guild, member, id }) {
   return { row, up: votes.filter((v) => v.vote === 1).map((v) => v.user_id), down: votes.filter((v) => v.vote === -1).map((v) => v.user_id) };
 }
 
-module.exports = { pictureName, BUTTON_PREFIX, STATUSES, statusLabel, CLOSED, MAX_CONTENT, makeId, splitImage, parseEmoji, voteRow, defaultDesign, suggestionVars, render, refresh, isStaff, submit, vote, voters, answer, remove };
+module.exports = { pictureName, copyPicture, BUTTON_PREFIX, STATUSES, statusLabel, CLOSED, MAX_CONTENT, makeId, splitImage, parseEmoji, voteRow, defaultDesign, suggestionVars, render, refresh, isStaff, submit, vote, voters, answer, remove };
