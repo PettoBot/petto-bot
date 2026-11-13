@@ -198,5 +198,13 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
   await confessions.submit({ guild, user: user('u23'), text: 'check this one' });
   assert.ok(JSON.stringify(sent[0].components).includes('<@u23>'), 'the card of the staff shows who wrote it');
 
+  // A confession with a picture link: the picture is copied with `copyPicture` of the suggestions, which has to be exported (it was not, and every
+  // confession with a picture failed with "copyPicture is not a function"). A picture that cannot be had (here the link is not reachable) is only left out.
+  assert.equal(typeof require('../src/utils/suggestions').copyPicture, 'function', 'suggestions exports copyPicture, which confessions uses');
+  config = { ...base, cooldown_seconds: 0, allow_images: true };
+  sent.length = 0;
+  result = await confessions.submit({ guild, user: user('u24'), text: 'with a picture', imageUrl: 'https://cdn.invalid/picture.png' });
+  assert.ok(!result.error && result.row, 'a confession with a picture link is posted (the picture is left out when it cannot be copied)');
+
   console.log('confessions ok');
 })().catch((error) => { console.error(error); process.exit(1); });
