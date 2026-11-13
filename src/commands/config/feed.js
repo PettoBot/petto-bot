@@ -11,6 +11,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 const feedSense = require('../../interactions/feedSense');
+const reactions = require('../../feeds/reactions');
 
 const V2 = MessageFlags.IsComponentsV2;
 const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'animals', 'randommusic', 'pictures'];
@@ -31,7 +32,7 @@ module.exports = {
   resultCard,
   aliases: ['feeds', 'notify', 'notifications'],
   prefixDefaultSubcommand: 'list',
-  prefixSubcommandAliases: { follow: 'add', create: 'add', delete: 'remove', rm: 'remove', del: 'remove', stop: 'pause', start: 'resume', on: 'resume', off: 'pause', msg: 'message', text: 'message', mention: 'ping', ls: 'list' }, // i18n-ignore: the words people type after the command
+  prefixSubcommandAliases: { follow: 'add', create: 'add', delete: 'remove', rm: 'remove', del: 'remove', stop: 'pause', start: 'resume', on: 'resume', off: 'pause', msg: 'message', reaction: 'reactions', react: 'reactions', emojis: 'reactions', text: 'message', mention: 'ping', ls: 'list' }, // i18n-ignore: the words people type after the command
   data: new SlashCommandBuilder()
     .setName('feed')
     .setDescription('Post in a channel what an account publishes: videos, streams, posts, new versions.')
@@ -49,6 +50,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('message').setDescription('The words above each notice, with {feed.title} and {feed.url}.')
       .addIntegerOption(idOption)
       .addStringOption((o) => o.setName('text').setDescription('The words, or "clear"').setMaxLength(1500).setRequired(true)))
+    .addSubcommand((s) => s.setName('reactions').setDescription('Emojis Petto adds to each notice of a feed (up to 5).')
+      .addIntegerOption(idOption)
+      .addStringOption((o) => o.setName('emojis').setDescription('Up to 5 emojis, like 👍 🔥 or a custom one, or "clear"').setMaxLength(300).setRequired(true)))
     .addSubcommand((s) => s.setName('ping').setDescription('Mention a role (or everyone) with each notice of a feed.')
       .addIntegerOption(idOption)
       .addRoleOption((o) => o.setName('role').setDescription('The role to mention (leave empty to stop mentioning)').setRequired(false))
@@ -106,7 +110,7 @@ module.exports = {
     if (sub === 'test') {
       await interaction.deferReply({ flags: V2 | MessageFlags.Ephemeral });
       const result = await service.sendTest(guild, feed, lang);
-      return interaction.editReply({ components: [textCard(result.ok ? t(lang, 'feeds.test.ok', { emoji: EMOJI.APPROVE, channel: channelOf(feed) }) : t(lang, `feeds.add.error.${result.error}`, { emoji: EMOJI.DENY }), result.ok ? 0xa5ea7a : 0xfe6465)], flags: V2 | MessageFlags.Ephemeral });
+      return interaction.editReply({ components: [textCard(result.ok ? t(lang, result.reactionsFailed ? 'feeds.test.okNoReactions' : 'feeds.test.ok', { emoji: EMOJI.APPROVE, channel: channelOf(feed) }) : t(lang, `feeds.add.error.${result.error}`, { emoji: EMOJI.DENY }), result.ok ? 0xa5ea7a : 0xfe6465)], flags: V2 | MessageFlags.Ephemeral });
     }
     if (sub === 'pause' || sub === 'resume') {
       await service.updateFeed(guild, id, { enabled: sub === 'resume' });
@@ -117,6 +121,24 @@ module.exports = {
       const clear = /^(clear|none|-|off|borrar|limpiar|nada)$/i.test(text);
       await service.updateFeed(guild, id, { message: clear ? '' : text });
       return ok(clear ? 'feeds.message.cleared' : 'feeds.message.ok', { id: number });
+    }
+    if (sub === 'reactions') {
+      const text = String(interaction.options.getString('emojis') ?? '').trim();
+      if (/^(clear|none|-|off|borrar|limpiar|nada)$/i.test(text)) {
+        await service.updateFeed(guild, id, { options: { reactions: [] } });
+        return ok('feeds.reactions.cleared', { id: number });
+      }
+      const parsed = reactions.parseReactions(text);
+      if (!parsed.emojis.length) return fail('feeds.reactions.none');
+      if (parsed.tooMany) return fail('feeds.reactions.tooMany', { max: reactions.MAX_REACTIONS });
+      // A custom emoji has to be one Petto can use (it is in a server Petto is in).
+      const unusable = parsed.emojis.find((emoji) => { const emojiId = reactions.customIdOf(emoji); return emojiId && !interaction.client.emojis.cache.has(emojiId); });
+      if (unusable) return fail('feeds.reactions.unavailable', { emoji2: unusable });
+      await service.updateFeed(guild, id, { options: { reactions: parsed.emojis } });
+      const channel = guild.channels.cache.get(feed.channel_id);
+      const permissions = channel && guild.members.me ? channel.permissionsFor(guild.members.me) : null;
+      const lacking = permissions && !permissions.has([PermissionFlagsBits.AddReactions, PermissionFlagsBits.ReadMessageHistory]);
+      return ok(lacking ? 'feeds.reactions.okNeedPermission' : 'feeds.reactions.ok', { id: number, emojis: parsed.emojis.join(' '), channel: channelOf(feed) });
     }
     if (sub === 'ping') {
       const role = interaction.options.getRole('role');
