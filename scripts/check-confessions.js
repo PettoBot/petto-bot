@@ -19,6 +19,7 @@ const blocked = new Set();
 const sent = [];
 let when = Date.now();
 let ownAvatar = false;
+let webhookAttachments = null; // what the webhook answers as the files of the message it sent: a plain list (a channel that is not in memory), or none
 stub('src/db/confessions.js', {
   DEFAULTS: {},
   getConfig: async () => config,
@@ -32,10 +33,14 @@ stub('src/db/confessions.js', {
   updateConfig: async (guildId, patch) => { config = { ...config, ...patch }; return config; },
 });
 stub('src/utils/senderIdentity.js', {
-  webhookFor: async () => ({ send: async (options) => { sent.push({ via: 'webhook', ...options }); return { id: `m${sent.length}` }; } }),
+  webhookFor: async () => ({ send: async (options) => { sent.push({ via: 'webhook', ...options }); return { id: `m${sent.length}`, ...(webhookAttachments ? { attachments: webhookAttachments } : {}) }; } }),
 });
 stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 
+// The picture of a confession is copied from a link: here the copy is replaced, so a test decides if the picture can be had.
+const suggestionsModule = require('../src/utils/suggestions');
+let pictureReachable = false;
+suggestionsModule.copyPicture = async () => (pictureReachable ? { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), name: 'suggestion.jpg' } : null);
 const confessions = require('../src/utils/confessions');
 const empty = () => ({ cache: new Map() });
 const makeChannel = (id) => ({
@@ -241,6 +246,46 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     sent.length = 0;
     await handlers.handleModal(submitted({ text: 'old form', image: 'https://cdn.invalid/old.png' }, null));
     assert.equal(sent.length, 1, 'a form that was open before this change (a text box for a link) still works');
+  }
+
+  // A confession with a picture that waits for the staff: the card they get carries the file, and when they approve it the picture goes out with the confession.
+  // (It failed with "the referenced attachment (attachment://suggestion.jpg) was not found": the card was sent through a webhook that answered with a plain list of files,
+  // the link of the file was not kept, and at the approval the confession pointed to a file it did not carry.)
+  {
+    const reviewChannel = channels.review;
+    const realFetch = reviewChannel.messages.fetch;
+    config = { ...base, require_review: true, cooldown_seconds: 0 };
+
+    // The link is kept when the webhook answers with a plain list of files.
+    pictureReachable = true; webhookAttachments = [{ url: 'https://cdn.example/raw-list.jpg' }];
+    let waitingWithPicture = (await confessions.submit({ guild, user: user('u50'), text: 'raw list', imageUrl: 'https://cdn.example/x.png' })).row;
+    assert.equal(rows.get(waitingWithPicture.id).image_url, 'https://cdn.example/raw-list.jpg', 'the link of the file is kept from a plain list');
+
+    // The webhook did not say where the file is (the case that failed): the card is asked for it, and the picture goes out with the confession.
+    webhookAttachments = null;
+    waitingWithPicture = (await confessions.submit({ guild, user: user('u51'), text: 'asked later', imageUrl: 'https://cdn.example/x.png' })).row;
+    assert.equal(rows.get(waitingWithPicture.id).image_url, 'attachment://suggestion.jpg', 'only the name of the file was kept');
+    reviewChannel.messages.fetch = async () => ({ id: 'mr', attachments: { first: () => ({ url: 'https://cdn.example/from-the-card.jpg' }) } });
+    sent.length = 0;
+    let approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
+    assert.ok(!approved.error, approved.error);
+    assert.equal(sent.length, 1, 'it is posted');
+    assert.ok(sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'with the file of the picture');
+    assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://suggestion.jpg'), 'and it points to that file');
+
+    // The card cannot be read any more: the confession goes out without the picture instead of failing.
+    waitingWithPicture = (await confessions.submit({ guild, user: user('u52'), text: 'lost picture', imageUrl: 'https://cdn.example/x.png' })).row;
+    reviewChannel.messages.fetch = async () => null;
+    pictureReachable = false;
+    sent.length = 0;
+    approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
+    assert.ok(!approved.error, approved.error);
+    assert.equal(sent.length, 1, 'it is posted anyway');
+    assert.ok(!(sent[0].files ?? []).some((file) => file.name === 'suggestion.jpg'), 'with no file');
+    assert.ok(!JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://suggestion.jpg'), 'and pointing to no file (Discord refuses that)');
+    assert.equal(rows.get(waitingWithPicture.id).image_url, null, 'the picture is not kept as a name with no file');
+    reviewChannel.messages.fetch = realFetch;
+    pictureReachable = false; webhookAttachments = null;
   }
 
   // A confession with a picture link: the picture is copied with `copyPicture` of the suggestions, which has to be exported (it was not, and every

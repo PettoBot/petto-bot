@@ -181,16 +181,34 @@ const authorText = (lang, row) => (row?.author_id ? t(lang, 'confessions.log.fro
 
 const isStaff = (member, config) => Boolean(member && (member.permissions?.has(PermissionFlagsBits.ManageGuild) || (config?.staff_role_id && member.roles?.cache?.has(config.staff_role_id))));
 
+/** The link of the first file of a message: a message of discord.js has a collection of files, but a webhook that answers for a channel that is not in memory gives the plain object, with a list. */
+function firstFileUrl(message) {
+  const files = message?.attachments;
+  const first = Array.isArray(files) ? files[0] : files?.first?.();
+  return first?.url ?? null;
+}
+
+/** The picture of a confession that waits for the staff, from the card that was sent to them (its file is the only copy), or null when it cannot be had. */
+async function reviewPictureUrl(guild, row) {
+  if (!row.review_channel_id || !row.review_message_id) return null;
+  const channel = await guild.channels.fetch(row.review_channel_id).catch(() => null);
+  const message = channel?.messages ? await channel.messages.fetch(row.review_message_id).catch(() => null) : null;
+  return firstFileUrl(message);
+}
+
 /** Posts a confession that is ready (no review needed or already approved). Returns the updated row. */
 async function publish(guild, row, config, picture = null, lang = currentLanguage()) {
   const channel = await guild.channels.fetch(config.channel_id).catch(() => null);
   // i18n-ignore: internal error, only logged (the member gets a message of their own)
   if (!channel?.isTextBased?.() || channel.isThread?.()) throw new Error('The channel for confessions is not there any more.');
-  const shown = picture ? { ...row, image_url: `attachment://${picture.name}` } : row;
+  // A picture that is only a name (`attachment://...`) needs its file in this message: with no file it goes out without the picture (Discord refuses a message that points to a file it was not given).
+  const lost = !picture && /^attachment:\/\//.test(row.image_url ?? '');
+  if (lost) logger.warn(`The picture of confession ${row.id} could not be had; it goes out without it.`);
+  const shown = picture ? { ...row, image_url: `attachment://${picture.name}` } : lost ? { ...row, image_url: null } : row;
   const payload = await render(guild, shown, config, { pictureName: picture?.name, lang });
   if (picture) payload.files = [...payload.files, new AttachmentBuilder(picture.buffer, { name: picture.name })];
   const message = await sendAnonymous(channel, config, payload, { lang });
-  const keepImage = picture ? `attachment://${picture.name}` : row.image_url;
+  const keepImage = picture ? `attachment://${picture.name}` : lost ? null : row.image_url;
   const posted = await db.update(row.id, { status: 'posted', channel_id: channel.id, message_id: message.id, image_url: keepImage });
   // The panel goes back to the bottom, under the confession that just came out.
   bumpPanel(guild, config, channel.id);
@@ -246,7 +264,7 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
       const card = reviewCard(row, config, { pictureName: picture?.name, lang });
       if (picture) card.files = [new AttachmentBuilder(picture.buffer, { name: picture.name })];
       const message = await sendAnonymous(channel, config, card, { name: t(lang, 'confessions.review.name'), lang });
-      row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: message.attachments?.first?.()?.url ?? row.image_url });
+      row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: firstFileUrl(message) ?? row.image_url });
       return { row, review: true };
     }
     row = await publish(guild, row, config, picture, lang);
@@ -271,7 +289,9 @@ async function decide({ guild, member, id, approve }) {
   let updated;
   if (approve) {
     try {
-      const own = /^https?:\/\//.test(row.image_url ?? '') ? await takePicture(row.image_url) : null;
+      // The picture of a confession that waited is the file of the card the staff got (its link), and when that link was not kept, the card itself is asked for it.
+      const link = /^attachment:\/\//.test(row.image_url ?? '') ? await reviewPictureUrl(guild, row) : row.image_url;
+      const own = /^https?:\/\//.test(link ?? '') ? await takePicture(link) : null;
       updated = await publish(guild, row, config, own, lang);
     } catch (err) {
       logger.warn(`A confession could not be published in ${guild.id}: ${err.message}`);
