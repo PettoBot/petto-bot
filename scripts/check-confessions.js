@@ -312,6 +312,30 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     reviewChannel.messages.fetch = realFetch;
     pictureReachable = false; webhookAttachments = null;
 
+    // The approval button is acknowledged first (copying the picture and posting can take longer than the 3 seconds Discord gives), and the card is edited after.
+    {
+      const handlers = require('../src/interactions/confessions');
+      const calls = [];
+      const press = (customId, extra = {}) => ({
+        customId, guild, guildId: guild.id, user: user('s1'), member: staff, message: { attachments: new Map() },
+        deferUpdate: async () => { calls.push('deferUpdate'); }, update: async () => { calls.push('update'); },
+        editReply: async () => { calls.push('editReply'); }, followUp: async (payload) => { calls.push(`followUp:${JSON.stringify(payload.components.map((c) => c.toJSON?.() ?? c))}`); }, reply: async () => { calls.push('reply'); },
+        ...extra,
+      });
+      config = { ...base, require_review: true, cooldown_seconds: 0 };
+      const toApprove = (await confessions.submit({ guild, user: user('u60'), text: 'press the button' })).row;
+      sent.length = 0;
+      await handlers.handleButton(press(`cfs:ok:${toApprove.id}`));
+      assert.deepEqual(calls, ['deferUpdate', 'editReply'], 'the button is acknowledged first, then the card is edited (not `update`, which would answer late)');
+      assert.equal(sent.length, 1, 'and the confession is posted');
+      calls.length = 0;
+      await handlers.handleButton(press(`cfs:ok:${toApprove.id}`));
+      assert.equal(calls[0], 'deferUpdate'); assert.ok(calls[1].startsWith('followUp:') && calls[1].includes('already'), 'an error is a private follow-up, after the acknowledgement');
+      calls.length = 0;
+      await handlers.handleButton(press('cfs:ok:nope', { member: { permissions: { has: () => false }, roles: empty() } }));
+      assert.ok(calls[1].startsWith('followUp:') && calls[1].includes('Only the staff'), 'someone who is not staff gets the private error');
+    }
+
     // The person is told when the picture they asked for could not be copied (the confession still goes); nothing is said when no picture was asked for.
     config = { ...base, require_review: false, cooldown_seconds: 0 };
     const lost = await confessions.submit({ guild, user: user('u56'), text: 'a picture that cannot be had', imageUrl: 'https://cdn.example/x.png' });
