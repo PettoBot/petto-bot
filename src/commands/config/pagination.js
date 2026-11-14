@@ -153,7 +153,19 @@ async function limitReached(guildId) {
   return count >= allowed.limit ? allowed : null;
 }
 
+/**
+ * The channel chosen for `create`. As a slash command it is a channel option, and discord.js refuses to read it as text (`Option "channel" is of type: 7; expected 3`, which broke
+ * `/message pagination create`); with the prefix it is the id written in the text.
+ */
+function channelIdOf(options) {
+  let channel = null;
+  try { channel = options.getChannel('channel'); } catch { channel = null; }
+  if (channel?.id) return channel.id;
+  try { return options.getString('channel') ?? null; } catch { return null; }
+}
+
 module.exports = {
+  channelIdOf,
   aliases: ['pn', 'pages'],
   prefixSubcommandAliases: { restorereactions: 'restore', rr: 'restore', new: 'create', del: 'delete', edit: 'update', show: 'view', info: 'view' },
   prefixRawOptions: Object.fromEntries(SUBCOMMANDS.map((sub) => [sub, raw(sub)])),
@@ -228,7 +240,7 @@ module.exports = {
       }
 
       if (sub === 'create') {
-        const channelId = value('channel');
+        const channelId = channelIdOf(interaction.options);
         const channel = channelId ? interaction.guild.channels.cache.get(channelId) ?? await interaction.guild.channels.fetch(channelId).catch(() => null) : interaction.channel;
         if (!channel?.isTextBased?.() || !channel.messages) return fail('noChannel');
         const permissions = channel.permissionsFor(interaction.member);
