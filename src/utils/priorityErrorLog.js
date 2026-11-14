@@ -114,7 +114,7 @@ function buildPriorityCard(entry, { allowedMentions = NO_PING.allowedMentions } 
     };
     const copyText = JSON.stringify(copy, (key, value) => (Array.isArray(value) && !value.length ? undefined : value), 1);
     const parts = [
-      `${entry.pingText ? `${entry.pingText}\n` : ''}## ${EMOJI.DENY} Petto priority error${entry.fallback ? '\n-# Posted in the general log because the priority channel is not set or cannot be reached.' : ''}`,
+      `${entry.pingText ? `${entry.pingText}\n` : ''}### ${EMOJI.DENY} Petto priority error${entry.fallback ? '\n-# Posted in the general log because the priority channel is not set or cannot be reached.' : ''}`,
       [
         `**Event**\n${s(label, 200, { line: true })}`,
         `**What it probably means**\n${s(meaning, 300, { line: true })}`,
