@@ -198,6 +198,51 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
   await confessions.submit({ guild, user: user('u23'), text: 'check this one' });
   assert.ok(JSON.stringify(sent[0].components).includes('<@u23>'), 'the card of the staff shows who wrote it');
 
+  // The form of the panel: the text, and (when the server allows pictures) the file upload of a form for one picture, not a box for a link. The form of a reply has no picture.
+  {
+    const handlers = require('../src/interactions/confessions');
+    const modals = [];
+    const open = (customId, custom = {}) => handlers.handleButton({ customId, guild, guildId: guild.id, user: user('u30'), showModal: async (modal) => { modals.push(modal.toJSON()); }, reply: async () => {}, ...custom });
+    const parts = (modal) => modal.components.map((label) => ({ label: label.label, description: label.description, id: label.component.custom_id, type: label.component.type }));
+    config = { ...base, allow_images: true, cooldown_seconds: 0 };
+    await open('cfs:new');
+    assert.deepEqual(parts(modals[0]).map((part) => [part.id, part.type]), [['text', 4], ['image', 19]], 'a text and a file upload (type 19)');
+    const upload = modals[0].components[1].component;
+    assert.equal(upload.min_values, 0); assert.equal(upload.max_values, 1); assert.equal(upload.required, false, 'one picture, optional');
+    assert.ok(parts(modals[0])[1].label.length <= 45 && parts(modals[0])[1].description.length <= 100, 'the label and its description fit what Discord allows');
+    config = { ...base, allow_images: false };
+    await open('cfs:new');
+    assert.deepEqual(parts(modals[1]).map((part) => part.id), ['text'], 'no picture when the server does not allow them');
+    config = { ...base, allow_images: true, allow_replies: true };
+    await open('cfs:reply:abc');
+    assert.deepEqual(parts(modals[2]).map((part) => part.id), ['text'], 'a reply has no picture');
+
+    // Sent: the picture that was dropped goes with the confession; a file that is not a picture is refused; the old text box for a link still works.
+    const replies = [];
+    const submitted = (fields, files) => ({
+      customId: 'cfs:form', guild, guildId: guild.id, user: user('u31'),
+      deferReply: async () => {}, editReply: async (payload) => { replies.push(JSON.stringify(payload.components.map((c) => c.toJSON?.() ?? c))); },
+      fields: {
+        getTextInputValue: (id) => { if (!(id in fields)) throw new Error('no such field'); return fields[id]; },
+        getUploadedFiles: (id) => { if (!files) throw new Error('not a file upload'); return new Map(files.map((file, index) => [String(index), file])); },
+      },
+    });
+    config = { ...base, allow_images: true, cooldown_seconds: 0 };
+    sent.length = 0;
+    await handlers.handleModal(submitted({ text: 'with a dropped picture' }, [{ id: '1', url: 'https://cdn.invalid/a.png', name: 'a.png', contentType: 'image/png' }]));
+    assert.equal(sent.length, 1, 'a confession with a dropped picture is posted (the picture is left out here: the link cannot be reached)');
+    sent.length = 0;
+    await handlers.handleModal(submitted({ text: 'with a document' }, [{ id: '2', url: 'https://cdn.invalid/a.pdf', name: 'a.pdf', contentType: 'application/pdf' }]));
+    assert.equal(sent.length, 0, 'a file that is not a picture is not posted');
+    assert.ok(replies.at(-1).includes('Only a picture can go with a confession'), 'and the person is told');
+    sent.length = 0;
+    await handlers.handleModal(submitted({ text: 'no file at all' }, []));
+    assert.equal(sent.length, 1, 'no file: just the text');
+    sent.length = 0;
+    await handlers.handleModal(submitted({ text: 'old form', image: 'https://cdn.invalid/old.png' }, null));
+    assert.equal(sent.length, 1, 'a form that was open before this change (a text box for a link) still works');
+  }
+
   // A confession with a picture link: the picture is copied with `copyPicture` of the suggestions, which has to be exported (it was not, and every
   // confession with a picture failed with "copyPicture is not a function"). A picture that cannot be had (here the link is not reachable) is only left out.
   assert.equal(typeof require('../src/utils/suggestions').copyPicture, 'function', 'suggestions exports copyPicture, which confessions uses');

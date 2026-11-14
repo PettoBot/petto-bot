@@ -1,6 +1,6 @@
 // The buttons of the confessions: "Confess" of the panel (opens the form), "Reply anonymously" under each confession, and the two of
 // the staff to approve or reject one that waits.
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ContainerBuilder, TextDisplayBuilder, MessageFlags } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, LabelBuilder, FileUploadBuilder, ContainerBuilder, TextDisplayBuilder, MessageFlags } = require('discord.js');
 const db = require('../db/confessions');
 const confessions = require('../utils/confessions');
 const logger = require('../utils/logger');
@@ -18,10 +18,20 @@ const say = (interaction, text, color = null) => interaction.reply({
 
 const { buildPanel } = confessions;
 
+/**
+ * The form of a confession: the text and, when the server allows pictures, a place to drop or attach the picture itself (the file upload of a form, one picture, optional).
+ * A link to a picture written inside the text still works. The form of an anonymous reply has no picture.
+ */
 function form(customId, title, config, withImage, lang) {
-  const rows = [new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('text').setLabel(t(lang, 'confessions.form.text')).setStyle(TextInputStyle.Paragraph).setMinLength(1).setMaxLength(confessions.MAX_CONTENT).setRequired(true))];
-  if (withImage && config.allow_images) rows.push(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('image').setLabel(t(lang, 'confessions.form.image')).setStyle(TextInputStyle.Short).setMaxLength(400).setRequired(false)));
-  return new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(...rows);
+  const modal = new ModalBuilder().setCustomId(customId).setTitle(title).addLabelComponents(
+    new LabelBuilder().setLabel(t(lang, 'confessions.form.text')).setTextInputComponent(new TextInputBuilder().setCustomId('text').setStyle(TextInputStyle.Paragraph).setMinLength(1).setMaxLength(confessions.MAX_CONTENT).setRequired(true)),
+  );
+  if (withImage && config.allow_images) {
+    modal.addLabelComponents(
+      new LabelBuilder().setLabel(t(lang, 'confessions.form.image')).setDescription(t(lang, 'confessions.form.imageHint')).setFileUploadComponent(new FileUploadBuilder().setCustomId('image').setMinValues(0).setMaxValues(1).setRequired(false)),
+    );
+  }
+  return modal;
 }
 
 async function handleButton(interaction) {
@@ -60,9 +70,15 @@ async function handleModal(interaction) {
     if (result.error) return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(0xff6b6b).addTextDisplayComponents(new TextDisplayBuilder().setContent(result.error))], flags: V2 });
     return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'confessions.replyPosted', { thread: `${result.thread}` })))], flags: V2 });
   }
+  // The picture the person dropped in the form. (A form that was open before this change has a text box for a link there instead: it still works.)
+  let attachments = [];
+  try { attachments = [...(interaction.fields.getUploadedFiles('image', false)?.values() ?? [])]; } catch { attachments = []; }
   let image = null;
-  try { image = interaction.fields.getTextInputValue('image')?.trim() || null; } catch { image = null; }
-  result = await confessions.submit({ guild: interaction.guild, user: interaction.user, text, imageUrl: image });
+  if (!attachments.length) { try { image = interaction.fields.getTextInputValue('image')?.trim() || null; } catch { image = null; } }
+  if (attachments.length && !attachments.some((file) => String(file?.contentType ?? '').startsWith('image/'))) {
+    return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(0xff6b6b).addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'confessions.error.notImage')))], flags: V2 });
+  }
+  result = await confessions.submit({ guild: interaction.guild, user: interaction.user, text, attachments, imageUrl: image });
   const body = result.error ?? (result.review ? t(lang, 'confessions.sentToStaff') : result.message?.url ? t(lang, 'confessions.posted.link', { link: result.message.url }) : t(lang, 'confessions.posted.plain'));
   return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(result.error ? 0xff6b6b : 0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(body))], flags: V2 });
 }
