@@ -189,6 +189,17 @@ const toCode = (design) => `p2.${Buffer.from(JSON.stringify(design)).toString('b
   // ---- The prefix text ----
   const link = `https://discord.com/channels/${G}/${CH}/${MSG}`;
   assert.deepEqual(command.parseArgs('create', `<#${CH}> rules --private`), { private: true, channel: CH, embed: 'rules' });
+  // The channel of `create`: a slash command gives it as a channel option, which discord.js refuses to read as text (this broke `/message pagination create`); the prefix gives its id as text.
+  {
+    const { CommandInteractionOptionResolver } = require('discord.js');
+    const slash = new CommandInteractionOptionResolver({}, [{ name: 'create', type: 1, options: [{ name: 'channel', type: 7, value: CH, channel: { id: CH, type: 0 } }, { name: 'embed', type: 3, value: 'rules' }] }], { channels: new Map([[CH, { id: CH, type: 0 }]]) });
+    assert.throws(() => slash.getString('channel'), /of type: 7; expected 3/, 'the error of the bug: a channel option cannot be read as text');
+    assert.equal(command.channelIdOf(slash), CH, 'a slash command gives the id of the channel option');
+    assert.equal(command.channelIdOf({ getChannel: () => null, getString: () => CH }), CH, 'the prefix gives the id as text');
+    assert.equal(command.channelIdOf({ getChannel: () => { throw new Error('not a channel option'); }, getString: () => CH }), CH, 'even when the option cannot be read as a channel');
+    assert.equal(command.channelIdOf({ getChannel: () => null, getString: () => null }), null, 'no channel chosen: the channel of the command is used');
+    assert.equal(command.channelIdOf({ getChannel: () => { throw new Error('x'); }, getString: () => { throw new Error('y'); } }), null, 'and nothing that throws');
+  }
   assert.deepEqual(command.parseArgs('create', '{embed}$v{title: Hi --there}'), { embed: '{embed}$v{title: Hi --there}' }, 'a code keeps a -- inside its braces');
   assert.deepEqual(command.parseArgs('set', `${link} --private`), { private: true, message: link });
   assert.deepEqual(command.parseArgs('add', `${link} {embed}$v{title: Two words}\n$v{description: line}`), { message: link, embed: '{embed}$v{title: Two words}\n$v{description: line}' });
