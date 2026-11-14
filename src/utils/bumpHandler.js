@@ -119,7 +119,8 @@ async function deliverReminder(client, reminder) {
   try {
     const guild = await client.guilds.fetch(reminder.guild_id).catch(() => null);
     const channel = guild ? await guild.channels.fetch(reminder.channel_id).catch(() => null) : null;
-    if (!guild || !channel) return;
+    // A guild that Discord still calls unavailable (the minutes after a restart) has no emojis or stickers loaded: it waits, and the job sends the reminder at its next look.
+    if (!guild || guild.available === false || !channel) return;
 
     const bumper = reminder.last_bumper_id ? await client.users.fetch(reminder.last_bumper_id).catch(() => null) : null;
     // A job runs outside of any server's language: each server's is looked up.

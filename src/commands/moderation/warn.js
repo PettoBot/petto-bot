@@ -152,7 +152,7 @@ async function warnUsers(interaction) {
     await checkAndApplyEscalation(interaction.client, interaction.guild, member, warnCount).catch((err) => logger.error('Escalation check failed:', err));
   }
 
-  const lines = [tn(lang, 'moderation.warn.bulkDone', succeeded.length, { emoji: EMOJI.WARNING, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
+  const lines = [tn(lang, 'moderation.warn.bulkDone', succeeded.length, { emoji: EMOJI.PETTO_ALERT, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
   if (succeeded.length) lines.push(mentionList(lang, succeeded));
   if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: mentionList(lang, skipped) }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));

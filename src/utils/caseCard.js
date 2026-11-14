@@ -35,7 +35,8 @@ const CONFIRM_TYPES = new Set(['ban', 'hardban', 'tempban', 'softban', 'unban', 
 
 /** The confirmation of a sanction: a line of plain text, with the hammer (the alert for a warn) and the case number small under it. */
 function buildCaseCard({ caseNumber, type, target, reason, duration, lang = currentLanguage() }) {
-  const emoji = type === 'warn' ? EMOJI.ALERT : EMOJI.HAMMER;
+  // The same icon as the case in the list (`caseIcon`). The plain warning (`EMOJI.ALERT`) is the one of the errors of a command, not of a warning to a member.
+  const emoji = type === 'warn' ? EMOJI.PETTO_ALERT : EMOJI.HAMMER;
   const name = target?.username ?? target?.user?.username ?? String(target?.id ?? target);
   const mention = target?.id ? ` (<@${target.id}>)` : '';
   const vars = { emoji, name, mention, duration, reason: displayReason(reason, lang) || t(lang, 'moderation.card.noReason') };

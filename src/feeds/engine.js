@@ -5,6 +5,7 @@ const feedsDb = require('../db/feeds');
 const { PROVIDERS, noteLate } = require('./providers');
 const { buildFeedMessage, buildFeedPayload } = require('./card');
 const { channelProblem } = require('./service');
+const reactions = require('./reactions');
 const { fallbackPicture } = require('./platforms');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { peekGuildLanguage, t } = require('../i18n');
@@ -226,6 +227,8 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
         try {
           const message = await channel.send(await buildFeedPayload(feed, item, { lang }));
           posted += 1;
+          // The reactions of the feed (up to 5) go on after the notice, without holding the next one back; a reaction that fails never fails the feed.
+          if (feed.options?.reactions?.length) reactions.addReactions(message, feed.options.reactions).catch(() => null);
           if (feed.platform === 'youtube' && (item.type === 'video' || item.type === 'short')) noteLate(feed.account_id, item);
           if (item.type === 'live' && item.publishedAt) noteLateLive(feed, item, now);
           if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item }).catch((error) => logger.warn(`Feed ${feed.id}: could not save its live message: ${error.message}`)); // the notice is out: this is not a failure to post

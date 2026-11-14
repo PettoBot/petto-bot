@@ -2193,9 +2193,11 @@ const allText = (message) => JSON.stringify(json(message.components));
   const sent = [];
   const edits = [];
   let failSend = null;
+  const reacted = []; // [message id, emoji] of every reaction a feed added
+  let failReact = null;
   const makeChannel = (id) => ({
     id, isTextBased: () => true, isDMBased: () => false, permissionsFor: () => ({ has: () => true }),
-    send: async (payload) => { if (failSend) throw Object.assign(new Error('x'), { code: failSend }); sent.push({ id, payload }); return { id: `m${sent.length}` }; },
+    send: async (payload) => { if (failSend) throw Object.assign(new Error('x'), { code: failSend }); sent.push({ id, payload }); const messageId = `m${sent.length}`; return { id: messageId, react: async (emoji) => { if (failReact) throw Object.assign(new Error('x'), { code: failReact }); reacted.push([messageId, emoji]); } }; },
     messages: { fetch: async (messageId) => ({ id: messageId, edit: async (payload) => { edits.push({ messageId, payload }); } }) },
   });
   const channels = new Map([[CH, makeChannel(CH)], [CH2, makeChannel(CH2)]]);
@@ -2390,6 +2392,55 @@ const allText = (message) => JSON.stringify(json(message.components));
   engine.forgetSchedule();
   await engine.tick(client, { now: at + 2_200_000 });
   assert.equal(sent.length, before + 1);
+
+  // Reactions: up to 5 emojis a feed adds to each notice. Only emojis are kept; they go on after the notice, and a failed reaction never fails the feed.
+  {
+    const feed = (await rows())[0];
+    assert.equal(feed.options.reactions, undefined, 'a feed has no reactions until it is given some');
+    const CUSTOM_EMOJI = '<:pe_ok:123456789012345678>';
+    await service.updateFeed(guild, feed.id, { options: { reactions: ['👍', CUSTOM_EMOJI, 'words', '👍', '🔥'] } });
+    assert.deepEqual((await rows())[0].options.reactions, ['👍', CUSTOM_EMOJI, '🔥'], 'only the emojis are kept, once each');
+    assert.equal((await rows())[0].options.player, feed.options.player, 'the other options stay as they were');
+    reacted.length = 0;
+    const beforeReact = sent.length;
+    queue = [{ id: 'react1', type: 'video', title: 'With reactions', publishedAt: at + 7 }];
+    engine.forgetSchedule();
+    await engine.tick(client, { now: at + 2_400_000 });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, beforeReact + 1, 'the notice is posted');
+    assert.deepEqual(reacted.map(([, emoji]) => emoji), ['👍', CUSTOM_EMOJI, '🔥'], 'the reactions go on in order');
+    assert.ok(reacted.every(([messageId]) => messageId === `m${sent.length}`), 'on the notice that was posted');
+
+    // A reaction that Discord refuses (no permission) does not fail the feed: the next notice is posted and the feed is on, with no failures.
+    failReact = 50013;
+    reacted.length = 0;
+    queue = [{ id: 'react2', type: 'video', title: 'No permission to react', publishedAt: at + 8 }];
+    engine.forgetSchedule();
+    await engine.tick(client, { now: at + 2_500_000 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, beforeReact + 2, 'the notice is posted anyway');
+    assert.equal((await rows())[0].enabled, true); assert.equal((await rows())[0].failures, 0, 'a reaction that fails is not a failure of the feed');
+
+    // The test notice gets the reactions too, and says when they could not be added.
+    const refused = await service.sendTest(guild, (await rows())[0], 'en');
+    assert.equal(refused.ok, true); assert.equal(refused.reactionsFailed, true, 'the test says the reactions could not be added');
+    failReact = null;
+    reacted.length = 0;
+    const worked = await service.sendTest(guild, (await rows())[0], 'en');
+    assert.equal(worked.ok, true); assert.equal(worked.reactionsFailed, false);
+    assert.equal(reacted.length, 3, 'the reactions go on the test notice');
+
+    // Clearing them: a feed with no reactions adds none.
+    await service.updateFeed(guild, feed.id, { options: { reactions: [] } });
+    assert.deepEqual((await rows())[0].options.reactions, []);
+    reacted.length = 0;
+    queue = [{ id: 'react3', type: 'video', title: 'No reactions again', publishedAt: at + 9 }];
+    engine.forgetSchedule();
+    await engine.tick(client, { now: at + 2_600_000 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(reacted.length, 0);
+  }
 
   // The test notice, the removal, and the cleanup of what is old.
   const tested2 = await service.sendTest(guild, (await rows())[0], 'en');

@@ -30,7 +30,7 @@ stub('src/i18n/index.js', { t: (lang, key) => `[${key}]`, guildLanguage: async (
 const { armReminder, armUpcomingReminders, sendReminderIfDue, checkBumpReminders } = require('../src/utils/bumpHandler');
 
 const client = {
-  guilds: { fetch: async (id) => ({ id, roles: { everyone: {} }, channels: { fetch: async () => ({ guildId: id, permissionOverwrites: { edit: async () => {} } }) } }) },
+  guilds: { fetch: async (id) => ({ id, available: id === 'g7' ? false : undefined, roles: { everyone: {} }, channels: { fetch: async () => ({ guildId: id, permissionOverwrites: { edit: async () => {} } }) } }) },
   users: { fetch: async () => null },
 };
 const row = (guild, inMs, extra = {}) => { rows.set(guild, { guild_id: guild, channel_id: 'c', next_bump_at: new Date(Date.now() + inMs).toISOString(), last_bumper_id: null, message: 'Time to bump', reminder_embed_template: null, pingable: false, autolock: false, ...extra }); return rows.get(guild); };
@@ -84,6 +84,19 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   row('g6', -60_000);
   await checkBumpReminders(client);
   assert.equal(sent.length, 1, 'a reminder that was due is sent by the job');
+
+  // A guild that Discord still calls unavailable (right after a restart, when the databases and the plan were just back): the reminder waits, with no error, and
+  // it is not marked as done, so the next look of the job sends it (this was a TypeError: an unavailable guild has no `emojis`).
+  sent.length = 0;
+  row('g7', -60_000);
+  const upsertsBefore = upserts.length;
+  await checkBumpReminders(client);
+  assert.equal(sent.length, 0, 'an unavailable guild is not written to yet');
+  assert.equal(upserts.length, upsertsBefore, 'and the reminder is not marked as done');
+  rows.get('g7').next_bump_at = new Date(Date.now() - 60_000).toISOString();
+  client.guilds.fetch = async (id) => ({ id, roles: { everyone: {} }, channels: { fetch: async () => ({ guildId: id, permissionOverwrites: { edit: async () => {} } }) } });
+  await checkBumpReminders(client);
+  assert.equal(sent.length, 1, 'once the guild is available, the next look sends it');
 
   // Starting the bot arms a timer for each reminder that is waiting.
   sent.length = 0;

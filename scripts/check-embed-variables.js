@@ -94,6 +94,9 @@ if (problems.length) {
   const member = { user, displayName: 'Ana B', joinedTimestamp: Date.now() - 3 * day, displayAvatarURL: () => '', roles: { cache: new Collection(), highest: { name: 'x' } } };
   const guild = { id: '9', name: 'Petto', memberCount: 1204, premiumTier: 0, premiumSubscriptionCount: 0, iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
   const out = (text, lang) => resolve(text, { member, user, guild, lang });
+  // A guild that Discord said was unavailable (right after a restart) has no `emojis` manager: the variable says 0 instead of throwing.
+  const { emojis: _emojis, ...unavailable } = { ...guild, available: false };
+  assert.equal(await resolve('{guild.emoji_count}|{guild.name}', { guild: unavailable }), '0|Petto', 'a guild with no emojis loaded is not a crash');
   assert.equal(await out('{user.account_age_days}'), '800');
   assert.equal(await out('{user.account_age}'), '2 years');
   assert.match(await out('{user.joined_age}'), /3 days/);

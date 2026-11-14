@@ -7,6 +7,7 @@ const { PROVIDERS, isProvider } = require('./providers');
 const { PLATFORMS } = require('./platforms');
 const { buildFeedPayload } = require('./card');
 const { MAX_TOP } = require('./text');
+const { cleanReactions, addReactions } = require('./reactions');
 const { IntegrationError } = require('../utils/integrations');
 const logger = require('../utils/logger');
 const { t } = require('../i18n');
@@ -38,13 +39,14 @@ function channelProblem(guild, channel) {
 const ids = (list, max = 10) => [...new Set((Array.isArray(list) ? list : []).map(String).filter((id) => SNOWFLAKE.test(id)))].slice(0, max);
 const words = (list) => [...new Set((Array.isArray(list) ? list : []).map((word) => String(word).trim().toLowerCase()).filter((word) => word && word.length <= 40))].slice(0, MAX_KEYWORDS);
 
-/** What a feed keeps of its options, and nothing else: `image`, `button`, `player` and a `color` the dashboard may set. */
+/** What a feed keeps of its options, and nothing else: `image`, `button`, `player`, a `color` the dashboard may set and `reactions` (up to 5 emojis added to each notice). */
 function cleanOptions(options = {}) {
   const out = {};
   if (typeof options.image === 'boolean') out.image = options.image;
   if (typeof options.button === 'boolean') out.button = options.button;
   if (typeof options.player === 'boolean') out.player = options.player;
   if (Number.isInteger(options.color) && options.color >= 0 && options.color <= 0xffffff) out.color = options.color;
+  if (Array.isArray(options.reactions)) out.reactions = cleanReactions(options.reactions);
   return out;
 }
 
@@ -179,7 +181,9 @@ async function sendTest(guild, feed, lang) {
   const item = await sampleItem(feed, lang);
   const message = await channel.send(await buildFeedPayload(feed, item, { lang, test: true })).catch((error) => ({ error }));
   if (message?.error) return { ok: false, error: 'permission', detail: message.error.message };
-  return { ok: true, channel, message };
+  // The reactions of the feed go on the test notice too, and the answer says if they could not be added (the notice itself was posted).
+  const reactions = feed.options?.reactions?.length ? await addReactions(message, feed.options.reactions) : null;
+  return { ok: true, channel, message, reactionsFailed: Boolean(reactions && reactions.stoppedBy !== null) };
 }
 
 module.exports = { createFeed, updateFeed, sendTest, sampleItem, channelProblem, cleanOptions, cleanTypes, labelChoices, NEEDED };
