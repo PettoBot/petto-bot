@@ -80,7 +80,8 @@ async function handleModal(interaction) {
   }
   result = await confessions.submit({ guild: interaction.guild, user: interaction.user, text, attachments, imageUrl: image });
   const body = result.error ?? (result.review ? t(lang, 'confessions.sentToStaff') : result.message?.url ? t(lang, 'confessions.posted.link', { link: result.message.url }) : t(lang, 'confessions.posted.plain'));
-  return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(result.error ? 0xff6b6b : 0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(body))], flags: V2 });
+  const note = !result.error && result.pictureLost ? `\n-# ${t(lang, 'confessions.pictureLost')}` : '';
+  return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(result.error ? 0xff6b6b : 0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(`${body}${note}`))], flags: V2 });
 }
 
 const { postPanel } = confessions;

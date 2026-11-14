@@ -54,7 +54,7 @@ module.exports = {
     // Written with the prefix, the message of the member is in the channel: it goes away so nobody sees who confessed.
     if (interaction.rawMessage?.deletable) await interaction.rawMessage.delete().catch(() => {});
     const done = result.review ? t(lang, 'confessions.sentToStaff') : result.message?.url ? t(lang, 'confessions.posted.link', { link: result.message.url }) : t(lang, 'confessions.posted.plain');
-    const text = result.error ? `${EMOJI.DENY}  ${result.error}` : `${EMOJI.APPROVE}  ${done}`;
+    const text = result.error ? `${EMOJI.DENY}  ${result.error}` : `${EMOJI.APPROVE}  ${done}${result.pictureLost ? `\n-# ${t(lang, 'confessions.pictureLost')}` : ''}`;
     if (interaction.rawMessage) {
       // A reply in the channel would show who confessed, so the answer goes to their DMs.
       await sendDm(interaction.user, { components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 }, { guild: interaction.guild, kind: 'confession' }).catch(() => {});

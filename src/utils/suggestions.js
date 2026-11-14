@@ -98,13 +98,14 @@ function pictureName(buffer) {
  * The picture of a suggestion as a file of its own message. The link the member gave (usually the attachment of their own message, which is
  * deleted right after) stops working, so the picture is copied now and the suggestion keeps it. null when it cannot be had.
  */
-async function copyPicture(url) {
+async function copyPicture(url, { what = 'a suggestion' } = {}) {
   try {
     const buffer = await fetchImageBuffer(url);
     const name = pictureName(buffer);
+    if (!name) logger.warn(`The picture of ${what} could not be copied: the file is not a PNG, JPEG, GIF or WebP picture.`);
     return name ? { buffer, name } : null;
   } catch (err) {
-    logger.warn(`The picture of a suggestion could not be copied: ${err.message}`);
+    logger.warn(`The picture of ${what} could not be copied: ${err.message}`);
     return null;
   }
 }

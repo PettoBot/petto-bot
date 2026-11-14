@@ -37,6 +37,7 @@ module.exports = {
   'confessions.error.blocked': 'No puedes hacer confesiones en este servidor.',
   'confessions.error.empty': 'Primero escribe tu confesión.',
   'confessions.error.notImage': 'Solo una imagen puede acompañar a una confesión (png, jpg, gif o webp). Inténtalo de nuevo con una imagen, o sin archivo.',
+  'confessions.pictureLost': 'No se pudo copiar la imagen (tiene que ser PNG, JPG, GIF o WebP, de hasta 6 MB), así que la confesión va sin ella.',
   'confessions.error.tooLong': 'Una confesión puede tener hasta {max} caracteres. La tuya tiene {length}.',
   'confessions.error.wait.one': 'Espera {count} segundo antes de la siguiente confesión.',
   'confessions.error.wait.other': 'Espera {count} segundos antes de la siguiente confesión.',
