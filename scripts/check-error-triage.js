@@ -199,6 +199,9 @@ function checkCard() {
   assert.ok(total <= 4000, `the card has ${total} characters; Discord accepts 4000`);
   for (const title of ['Petto priority error', 'What it probably means', 'Count in the last 10 minutes', 'Copy this to investigate', 'Stack (top 6 frames)', '**Details**', '**Server**', '**Command / source**']) assert.ok(json.includes(title), `${title} is on the card`);
   assert.ok(!json.includes('**Details**\\n```text\\n```'), 'sanity');
+  // The title is the small one (three #), never the big ones: they take too much room in the channel of errors.
+  assert.ok(json.includes('### ') && json.includes('Petto priority error'), 'the title of the card has three #');
+  assert.ok(!['"## ', '\\n## ', '"# ', '\\n# '].some((big) => json.includes(big)), 'and no title with one or two #');
 
   // Not pinging: no mention text and nobody allowed.
   const quiet = buildPriorityCard(hostileEntry());

@@ -46,7 +46,7 @@ function shownText(config, field, lang) {
 const isHttps = (value) => { try { return new URL(String(value)).protocol === 'https:'; } catch { return false; } };
 
 /** `{ buffer, name }` for a picture given as a link, null when it is not one Discord shows. */
-const takePicture = (url) => copyPicture(url);
+const takePicture = (url) => copyPicture(url, { what: 'a confession' });
 
 /** What `{confession.*}` says about one confession. */
 function confessionVars(row, guild) {
@@ -258,6 +258,8 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
   if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return { error: t(lang, 'confessions.error.cannotWrite', { channel: `${channel}` }) };
 
   const picture = picUrl ? await takePicture(picUrl) : null;
+  // A picture that was asked for and could not be copied (too big, not a picture, the link did not answer): the confession goes without it and the person is told.
+  const pictureLost = Boolean(picUrl && !picture);
   let row = await db.create({ id: makeId(), guild_id: guild.id, number: await db.nextNumber(guild.id), author_id: config.keep_author ? user.id : null, content: content || t(lang, 'confessions.pictureOnly'), image_url: picture ? `attachment://${picture.name}` : null });
   try {
     if (config.require_review && config.review_channel_id) {
@@ -265,12 +267,12 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
       if (picture) card.files = [new AttachmentBuilder(picture.buffer, { name: picture.name })];
       const message = await sendAnonymous(channel, config, card, { name: t(lang, 'confessions.review.name'), lang });
       row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: firstFileUrl(message) ?? row.image_url });
-      return { row, review: true };
+      return { row, review: true, pictureLost };
     }
     row = await publish(guild, row, config, picture, lang);
     const link = `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}`;
     await logAction(guild, config, t(lang, 'confessions.log.posted', { number: row.number, id: row.id, link, author: authorText(lang, row) }), config.color);
-    return { row, message: { url: `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}` } };
+    return { row, message: { url: `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}` }, pictureLost };
   } catch (err) {
     logger.warn(`A confession could not be posted in ${guild.id}: ${err.message}`);
     await db.remove(guild.id, row.id).catch(() => {});
@@ -289,9 +291,11 @@ async function decide({ guild, member, id, approve }) {
   let updated;
   if (approve) {
     try {
-      // The picture of a confession that waited is the file of the card the staff got (its link), and when that link was not kept, the card itself is asked for it.
-      const link = /^attachment:\/\//.test(row.image_url ?? '') ? await reviewPictureUrl(guild, row) : row.image_url;
-      const own = /^https?:\/\//.test(link ?? '') ? await takePicture(link) : null;
+      // The picture of a confession that waited is the file of the card the staff got.
+      // The card itself is asked first: Discord changes the signature of a link with time, so the link that was kept when the card was sent may not open any more, and the one the card has now does.
+      const fresh = await reviewPictureUrl(guild, row);
+      const link = fresh ?? (/^https?:\/\//.test(row.image_url ?? '') ? row.image_url : null);
+      const own = link ? await takePicture(link) : null;
       updated = await publish(guild, row, config, own, lang);
     } catch (err) {
       logger.warn(`A confession could not be published in ${guild.id}: ${err.message}`);

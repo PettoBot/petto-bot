@@ -48,13 +48,21 @@ async function handleButton(interaction) {
     return interaction.showModal(form(`${PREFIX}:answer:${id}`, t(lang, 'confessions.form.replyTitle'), config, false, lang));
   }
   if (action === 'ok' || action === 'no') {
+    // Approving copies the picture and posts the confession, which can take longer than the 3 seconds Discord gives to answer a button: it is acknowledged first and the card is edited after.
+    await interaction.deferUpdate();
     const member = interaction.member ?? await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
     const result = await confessions.decide({ guild: interaction.guild, member, id, approve: action === 'ok' });
-    if (result.error) return say(interaction, result.error, 0xff6b6b);
+    if (result.error) {
+      return interaction.followUp({
+        components: [new ContainerBuilder().setAccentColor(semanticColor(0xff6b6b)).addTextDisplayComponents(new TextDisplayBuilder().setContent(result.error))],
+        flags: V2 | MessageFlags.Ephemeral,
+        allowedMentions: { parse: [] },
+      });
+    }
     const picture = /^attachment:\/\/([\w.-]+)$/.exec(result.row.image_url ?? '')?.[1] ?? null;
     const card = confessions.reviewCard(result.row, result.config, { status: action === 'ok' ? 'approved' : 'rejected', by: interaction.user.id, pictureName: picture, lang });
     // The picture stays as the file of this message, so the edit keeps it.
-    return interaction.update({ components: card.components, flags: card.flags, attachments: [...(interaction.message?.attachments?.values?.() ?? [])], allowedMentions: card.allowedMentions });
+    return interaction.editReply({ components: card.components, flags: card.flags, attachments: [...(interaction.message?.attachments?.values?.() ?? [])], allowedMentions: card.allowedMentions });
   }
 }
 
@@ -80,7 +88,8 @@ async function handleModal(interaction) {
   }
   result = await confessions.submit({ guild: interaction.guild, user: interaction.user, text, attachments, imageUrl: image });
   const body = result.error ?? (result.review ? t(lang, 'confessions.sentToStaff') : result.message?.url ? t(lang, 'confessions.posted.link', { link: result.message.url }) : t(lang, 'confessions.posted.plain'));
-  return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(result.error ? 0xff6b6b : 0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(body))], flags: V2 });
+  const note = !result.error && result.pictureLost ? `\n-# ${t(lang, 'confessions.pictureLost')}` : '';
+  return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(result.error ? 0xff6b6b : 0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(`${body}${note}`))], flags: V2 });
 }
 
 const { postPanel } = confessions;

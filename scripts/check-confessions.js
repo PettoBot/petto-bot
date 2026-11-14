@@ -40,7 +40,8 @@ stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 // The picture of a confession is copied from a link: here the copy is replaced, so a test decides if the picture can be had.
 const suggestionsModule = require('../src/utils/suggestions');
 let pictureReachable = false;
-suggestionsModule.copyPicture = async () => (pictureReachable ? { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), name: 'suggestion.jpg' } : null);
+const staleLinks = new Set(); // links that no longer open (Discord changes the signature of a link with time)
+suggestionsModule.copyPicture = async (url) => (pictureReachable && !staleLinks.has(url) ? { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), name: 'suggestion.jpg' } : null);
 const confessions = require('../src/utils/confessions');
 const empty = () => ({ cache: new Map() });
 const makeChannel = (id) => ({
@@ -244,6 +245,10 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     await handlers.handleModal(submitted({ text: 'no file at all' }, []));
     assert.equal(sent.length, 1, 'no file: just the text');
     sent.length = 0;
+    replies.length = 0;
+    await handlers.handleModal(submitted({ text: 'a picture that cannot be copied' }, [{ id: '3', url: 'https://cdn.invalid/b.png', name: 'b.png', contentType: 'image/png' }]));
+    assert.ok(replies.at(-1).includes('could not be copied'), 'the person is told that the picture could not be copied');
+    sent.length = 0;
     await handlers.handleModal(submitted({ text: 'old form', image: 'https://cdn.invalid/old.png' }, null));
     assert.equal(sent.length, 1, 'a form that was open before this change (a text box for a link) still works');
   }
@@ -273,6 +278,26 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     assert.ok(sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'with the file of the picture');
     assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://suggestion.jpg'), 'and it points to that file');
 
+    // The link that was kept when the card was sent does not open any more (they expire): the card is asked first, and its link is the fresh one.
+    webhookAttachments = [{ url: 'https://cdn.example/old-link.jpg' }];
+    waitingWithPicture = (await confessions.submit({ guild, user: user('u54'), text: 'old link', imageUrl: 'https://cdn.example/x.png' })).row;
+    assert.equal(rows.get(waitingWithPicture.id).image_url, 'https://cdn.example/old-link.jpg');
+    staleLinks.add('https://cdn.example/old-link.jpg');
+    reviewChannel.messages.fetch = async () => ({ id: 'mr', attachments: { first: () => ({ url: 'https://cdn.example/fresh-link.jpg' }) } });
+    sent.length = 0;
+    approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
+    assert.ok(!approved.error, approved.error);
+    assert.ok(sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'the picture goes out although the kept link expired');
+    // And when the card cannot be read, the kept link is still tried.
+    reviewChannel.messages.fetch = async () => null;
+    staleLinks.clear();
+    webhookAttachments = [{ url: 'https://cdn.example/kept-link.jpg' }];
+    waitingWithPicture = (await confessions.submit({ guild, user: user('u55'), text: 'kept link', imageUrl: 'https://cdn.example/x.png' })).row;
+    sent.length = 0;
+    approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
+    assert.ok(!approved.error && sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'the kept link is used when the card cannot be read');
+    webhookAttachments = null;
+
     // The card cannot be read any more: the confession goes out without the picture instead of failing.
     waitingWithPicture = (await confessions.submit({ guild, user: user('u52'), text: 'lost picture', imageUrl: 'https://cdn.example/x.png' })).row;
     reviewChannel.messages.fetch = async () => null;
@@ -286,6 +311,39 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     assert.equal(rows.get(waitingWithPicture.id).image_url, null, 'the picture is not kept as a name with no file');
     reviewChannel.messages.fetch = realFetch;
     pictureReachable = false; webhookAttachments = null;
+
+    // The approval button is acknowledged first (copying the picture and posting can take longer than the 3 seconds Discord gives), and the card is edited after.
+    {
+      const handlers = require('../src/interactions/confessions');
+      const calls = [];
+      const press = (customId, extra = {}) => ({
+        customId, guild, guildId: guild.id, user: user('s1'), member: staff, message: { attachments: new Map() },
+        deferUpdate: async () => { calls.push('deferUpdate'); }, update: async () => { calls.push('update'); },
+        editReply: async () => { calls.push('editReply'); }, followUp: async (payload) => { calls.push(`followUp:${JSON.stringify(payload.components.map((c) => c.toJSON?.() ?? c))}`); }, reply: async () => { calls.push('reply'); },
+        ...extra,
+      });
+      config = { ...base, require_review: true, cooldown_seconds: 0 };
+      const toApprove = (await confessions.submit({ guild, user: user('u60'), text: 'press the button' })).row;
+      sent.length = 0;
+      await handlers.handleButton(press(`cfs:ok:${toApprove.id}`));
+      assert.deepEqual(calls, ['deferUpdate', 'editReply'], 'the button is acknowledged first, then the card is edited (not `update`, which would answer late)');
+      assert.equal(sent.length, 1, 'and the confession is posted');
+      calls.length = 0;
+      await handlers.handleButton(press(`cfs:ok:${toApprove.id}`));
+      assert.equal(calls[0], 'deferUpdate'); assert.ok(calls[1].startsWith('followUp:') && calls[1].includes('already'), 'an error is a private follow-up, after the acknowledgement');
+      calls.length = 0;
+      await handlers.handleButton(press('cfs:ok:nope', { member: { permissions: { has: () => false }, roles: empty() } }));
+      assert.ok(calls[1].startsWith('followUp:') && calls[1].includes('Only the staff'), 'someone who is not staff gets the private error');
+    }
+
+    // The person is told when the picture they asked for could not be copied (the confession still goes); nothing is said when no picture was asked for.
+    config = { ...base, require_review: false, cooldown_seconds: 0 };
+    const lost = await confessions.submit({ guild, user: user('u56'), text: 'a picture that cannot be had', imageUrl: 'https://cdn.example/x.png' });
+    assert.ok(!lost.error && lost.pictureLost === true, 'the confession is posted and says the picture was lost');
+    assert.equal((await confessions.submit({ guild, user: user('u57'), text: 'no picture asked' })).pictureLost, false, 'no picture asked, nothing lost');
+    pictureReachable = true;
+    assert.equal((await confessions.submit({ guild, user: user('u58'), text: 'with a picture', imageUrl: 'https://cdn.example/x.png' })).pictureLost, false, 'a picture that was copied is not lost');
+    pictureReachable = false;
   }
 
   // A confession with a picture link: the picture is copied with `copyPicture` of the suggestions, which has to be exported (it was not, and every

@@ -37,6 +37,7 @@ module.exports = {
   'confessions.error.blocked': 'You cannot make confessions in this server.',
   'confessions.error.empty': 'Write your confession first.',
   'confessions.error.notImage': 'Only a picture can go with a confession (png, jpg, gif or webp). Try again with a picture, or without a file.',
+  'confessions.pictureLost': 'The picture could not be copied (it has to be a PNG, JPG, GIF or WebP, up to 6 MB), so the confession goes without it.',
   'confessions.error.tooLong': 'A confession can have up to {max} letters. Yours has {length}.',
   'confessions.error.wait.one': 'Wait {count} second before the next confession.',
   'confessions.error.wait.other': 'Wait {count} seconds before the next confession.',
