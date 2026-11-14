@@ -48,6 +48,26 @@ const isHttps = (value) => { try { return new URL(String(value)).protocol === 'h
 /** `{ buffer, name }` for a picture given as a link, null when it is not one Discord shows. */
 const takePicture = (url) => copyPicture(url, { what: 'a confession' });
 
+/** Most pictures a confession can carry (the file upload of a form takes up to 10, and so does the gallery of a message). */
+const MAX_PICTURES = 10;
+const MB = 1024 * 1024;
+/** What one message may carry in files in this server, with room to spare: 10 MB, and more as the server is boosted. */
+const messageBytesFor = (guild) => ((guild?.premiumTier ?? 0) >= 3 ? 99 : (guild?.premiumTier ?? 0) === 2 ? 49 : 9) * MB;
+
+/** Copies the pictures of some links, in order, as many as fit in one message: `{ pictures: [{ buffer, name }], lost }` (`lost` is how many were left out: not a picture, too big, or no room). */
+async function takePictures(urls, guild) {
+  const pictures = [];
+  let total = 0;
+  const room = messageBytesFor(guild);
+  for (const url of urls.slice(0, MAX_PICTURES)) {
+    const copy = await takePicture(url);
+    if (!copy || total + copy.buffer.length > room) continue;
+    total += copy.buffer.length;
+    pictures.push({ buffer: copy.buffer, name: `confession-${pictures.length + 1}.${copy.name.split('.').pop()}` });
+  }
+  return { pictures, lost: Math.min(urls.length, MAX_PICTURES) - pictures.length };
+}
+
 /** What `{confession.*}` says about one confession. */
 function confessionVars(row, guild) {
   return {
@@ -66,25 +86,26 @@ function replyButtonRow(row, config, lang = currentLanguage()) {
 }
 
 /** The usual look, written as a design so a saved one of the dashboard can change any part of it. */
-function defaultDesign(config, row, { reply = false, lang = currentLanguage() } = {}) {
+function defaultDesign(config, row, { reply = false, lang = currentLanguage(), pictureNames = [] } = {}) {
   const text = { type: 10, content: `### ${reply ? t(lang, 'confessions.replyTitle') : shownText(config, 'title', lang)}\n{confession.content}` };
   // A confession has the face of silence at its right side (a reply does not).
   const children = [!reply && shushPicture() ? { type: 9, components: [text], accessory: { type: 11, media: { url: `attachment://${SHUSH_NAME}` } } } : text];
-  if (row.image_url) children.push({ type: 12, items: [{ media: { url: '{confession.image}' } }] });
+  if (pictureNames.length) children.push({ type: 12, items: pictureNames.map((name) => ({ media: { url: `attachment://${name}` } })) });
+  else if (row.image_url) children.push({ type: 12, items: [{ media: { url: '{confession.image}' } }] });
   if (config.footer && !reply) children.push({ type: 14, divider: true, spacing: 1 }, { type: 10, content: `-# ${shownText(config, 'footer', lang)}` });
   return { v2: { components: [{ type: 17, accent_color: config.color, components: children }] } };
 }
 
 /** The message of a confession (or of an anonymous reply), ready to send, in the language of the server (`lang`, found when not given). */
-async function render(guild, row, config, { pictureName = null, reply = false, lang = null } = {}) {
+async function render(guild, row, config, { pictureNames = [], reply = false, lang = null } = {}) {
   const language = lang ?? await guildLanguage(guild.id);
   const own = /^attachment:\/\/([\w.-]+)$/.exec(row.image_url ?? '');
   const shush = !reply && !config.embed_template ? shushPicture() : null;
-  const ctx = { guild, confession: confessionVars(row, guild), attachmentNames: new Set([own?.[1], pictureName, shush ? SHUSH_NAME : null].filter(Boolean)) };
+  const ctx = { guild, confession: confessionVars(row, guild), attachmentNames: new Set([own?.[1], ...pictureNames, shush ? SHUSH_NAME : null].filter(Boolean)) };
   let payload = null;
   if (config.embed_template && !reply) payload = await templatePayload(guild.id, config.embed_template, ctx);
   if (!payload) {
-    const built = await build(defaultDesign(config, row, { reply, lang: language }), { ...ctx, allowV2: true });
+    const built = await build(defaultDesign(config, row, { reply, lang: language, pictureNames }), { ...ctx, allowV2: true });
     payload = { components: built.components, files: [...(built.files ?? []), ...(shush ? [shush] : [])], embeds: [], flags: built.flags };
   }
   const rows = !reply && config.allow_replies ? [replyButtonRow(row, config, language)] : [];
@@ -181,34 +202,51 @@ const authorText = (lang, row) => (row?.author_id ? t(lang, 'confessions.log.fro
 
 const isStaff = (member, config) => Boolean(member && (member.permissions?.has(PermissionFlagsBits.ManageGuild) || (config?.staff_role_id && member.roles?.cache?.has(config.staff_role_id))));
 
-/** The link of the first file of a message: a message of discord.js has a collection of files, but a webhook that answers for a channel that is not in memory gives the plain object, with a list. */
-function firstFileUrl(message) {
+/**
+ * The links of the pictures a message carries: its files (a message of discord.js has a collection, but a webhook that answers for a channel that is not in memory gives the plain
+ * object, with a list) and, when it lists none, the pictures that its components show (a card of Components V2 keeps them in its gallery).
+ */
+function fileUrlsOf(message) {
   const files = message?.attachments;
-  const first = Array.isArray(files) ? files[0] : files?.first?.();
-  return first?.url ?? null;
+  const list = Array.isArray(files) ? files : [...(files?.values?.() ?? [])];
+  const urls = list.map((file) => file?.url).filter((url) => typeof url === 'string' && /^https:/.test(url));
+  if (urls.length) return urls;
+  const found = [];
+  const walk = (node, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 8) return;
+    const url = node.media?.url;
+    if (typeof url === 'string' && /^https:/.test(url)) found.push(url);
+    for (const key of ['components', 'items', 'accessory']) {
+      const child = node[key];
+      if (Array.isArray(child)) child.forEach((entry) => walk(entry, depth + 1)); else walk(child, depth + 1);
+    }
+  };
+  (message?.components ?? []).forEach((component) => walk(component));
+  return [...new Set(found)];
 }
 
-/** The picture of a confession that waits for the staff, from the card that was sent to them (its file is the only copy), or null when it cannot be had. */
-async function reviewPictureUrl(guild, row) {
-  if (!row.review_channel_id || !row.review_message_id) return null;
+/** The pictures of a confession that waits for the staff, from the card that was sent to them (its files are the only copy), or none when the card cannot be had. */
+async function reviewPictureUrls(guild, row) {
+  if (!row.review_channel_id || !row.review_message_id) return [];
   const channel = await guild.channels.fetch(row.review_channel_id).catch(() => null);
   const message = channel?.messages ? await channel.messages.fetch(row.review_message_id).catch(() => null) : null;
-  return firstFileUrl(message);
+  return fileUrlsOf(message);
 }
 
-/** Posts a confession that is ready (no review needed or already approved). Returns the updated row. */
-async function publish(guild, row, config, picture = null, lang = currentLanguage()) {
+/** Posts a confession that is ready (no review needed or already approved). `pictures` are the copies of its pictures. Returns the updated row. */
+async function publish(guild, row, config, pictures = [], lang = currentLanguage()) {
   const channel = await guild.channels.fetch(config.channel_id).catch(() => null);
   // i18n-ignore: internal error, only logged (the member gets a message of their own)
   if (!channel?.isTextBased?.() || channel.isThread?.()) throw new Error('The channel for confessions is not there any more.');
   // A picture that is only a name (`attachment://...`) needs its file in this message: with no file it goes out without the picture (Discord refuses a message that points to a file it was not given).
-  const lost = !picture && /^attachment:\/\//.test(row.image_url ?? '');
+  const lost = !pictures.length && /^attachment:\/\//.test(row.image_url ?? '');
   if (lost) logger.warn(`The picture of confession ${row.id} could not be had; it goes out without it.`);
-  const shown = picture ? { ...row, image_url: `attachment://${picture.name}` } : lost ? { ...row, image_url: null } : row;
-  const payload = await render(guild, shown, config, { pictureName: picture?.name, lang });
-  if (picture) payload.files = [...payload.files, new AttachmentBuilder(picture.buffer, { name: picture.name })];
+  const first = pictures[0] ? `attachment://${pictures[0].name}` : null;
+  const shown = pictures.length ? { ...row, image_url: first } : lost ? { ...row, image_url: null } : row;
+  const payload = await render(guild, shown, config, { pictureNames: pictures.map((picture) => picture.name), lang });
+  payload.files = [...payload.files, ...pictures.map((picture) => new AttachmentBuilder(picture.buffer, { name: picture.name }))];
   const message = await sendAnonymous(channel, config, payload, { lang });
-  const keepImage = picture ? `attachment://${picture.name}` : lost ? null : row.image_url;
+  const keepImage = pictures.length ? first : lost ? null : row.image_url;
   const posted = await db.update(row.id, { status: 'posted', channel_id: channel.id, message_id: message.id, image_url: keepImage });
   // The panel goes back to the bottom, under the confession that just came out.
   bumpPanel(guild, config, channel.id);
@@ -216,13 +254,13 @@ async function publish(guild, row, config, picture = null, lang = currentLanguag
 }
 
 /** The card the staff sees to approve or reject a confession. */
-function reviewCard(row, config, { status = 'pending', by = null, pictureName = null, lang = currentLanguage() } = {}) {
+function reviewCard(row, config, { status = 'pending', by = null, pictureNames = [], lang = currentLanguage() } = {}) {
   const color = status === 'rejected' ? RED : status === 'approved' ? config.color : YELLOW;
   const label = status === 'rejected' ? t(lang, 'confessions.review.rejectedBy', { staff: `<@${by}>` }) : status === 'approved' ? t(lang, 'confessions.review.approvedBy', { staff: `<@${by}>` }) : t(lang, 'confessions.review.waiting');
   // The staff sees who wrote it (the review channel is for them), so they know whom to talk to or sanction if it breaks a rule.
   const from = row.author_id ? `\n-# ${t(lang, 'confessions.review.from', { user: `<@${row.author_id}>`, id: row.author_id })}` : '';
   const children = [{ type: 10, content: `${t(lang, 'confessions.review.title', { number: row.number, status: label })}\n${String(row.content).slice(0, 1800)}${from}\n-# ID: \`${row.id}\`` }];
-  if (pictureName) children.push({ type: 12, items: [{ media: { url: `attachment://${pictureName}` } }] });
+  if (pictureNames.length) children.push({ type: 12, items: pictureNames.map((name) => ({ media: { url: `attachment://${name}` } })) });
   if (status === 'pending') {
     children.push({ type: 1, components: [
       { type: 2, style: 3, custom_id: `${BUTTON_PREFIX}:ok:${row.id}`, label: t(lang, 'confessions.review.approve.button') },
@@ -241,10 +279,16 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
   const config = await db.getConfig(guild.id);
   if (!config.enabled || !config.channel_id) return { error: t(lang, 'confessions.error.off') };
   if (await db.isBlocked(guild.id, user.id)) return { error: t(lang, 'confessions.error.blocked') };
-  let { content, imageUrl: found } = splitImage(text, attachments);
-  let picUrl = found ?? (imageUrl && isHttps(imageUrl) ? imageUrl : null);
-  if (picUrl && !config.allow_images) { picUrl = null; }
-  if (!content && !picUrl) return { error: t(lang, 'confessions.error.empty') };
+  // The pictures: every picture among the files sent (up to MAX_PICTURES), else a link to one written in the text or given as `imageUrl`.
+  const { content, imageUrl: found } = splitImage(text, attachments);
+  const files = Array.isArray(attachments) ? attachments : [...(attachments?.values?.() ?? [])];
+  let picUrls = files.filter((file) => String(file?.contentType ?? '').startsWith('image/') && file.url).map((file) => file.url).slice(0, MAX_PICTURES);
+  if (!picUrls.length) {
+    const link = found ?? (imageUrl && isHttps(imageUrl) ? imageUrl : null);
+    picUrls = link ? [link] : [];
+  }
+  if (!config.allow_images) picUrls = [];
+  if (!content && !picUrls.length) return { error: t(lang, 'confessions.error.empty') };
   if (content.length > MAX_CONTENT) return { error: t(lang, 'confessions.error.tooLong', { max: MAX_CONTENT, length: content.length }) };
   if (config.cooldown_seconds > 0) {
     const last = await db.lastBy(guild.id, user.id);
@@ -257,19 +301,19 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
   if (!channel?.isTextBased?.()) return { error: t(lang, 'confessions.error.noChannel') };
   if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return { error: t(lang, 'confessions.error.cannotWrite', { channel: `${channel}` }) };
 
-  const picture = picUrl ? await takePicture(picUrl) : null;
-  // A picture that was asked for and could not be copied (too big, not a picture, the link did not answer): the confession goes without it and the person is told.
-  const pictureLost = Boolean(picUrl && !picture);
-  let row = await db.create({ id: makeId(), guild_id: guild.id, number: await db.nextNumber(guild.id), author_id: config.keep_author ? user.id : null, content: content || t(lang, 'confessions.pictureOnly'), image_url: picture ? `attachment://${picture.name}` : null });
+  const { pictures, lost } = await takePictures(picUrls, guild);
+  // A picture that was asked for and could not be copied (too big, not a picture, the link did not answer, no room in one message): the confession goes without it and the person is told.
+  const pictureLost = lost > 0;
+  let row = await db.create({ id: makeId(), guild_id: guild.id, number: await db.nextNumber(guild.id), author_id: config.keep_author ? user.id : null, content: content || t(lang, 'confessions.pictureOnly'), image_url: pictures[0] ? `attachment://${pictures[0].name}` : null });
   try {
     if (config.require_review && config.review_channel_id) {
-      const card = reviewCard(row, config, { pictureName: picture?.name, lang });
-      if (picture) card.files = [new AttachmentBuilder(picture.buffer, { name: picture.name })];
+      const card = reviewCard(row, config, { pictureNames: pictures.map((picture) => picture.name), lang });
+      if (pictures.length) card.files = pictures.map((picture) => new AttachmentBuilder(picture.buffer, { name: picture.name }));
       const message = await sendAnonymous(channel, config, card, { name: t(lang, 'confessions.review.name'), lang });
-      row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: firstFileUrl(message) ?? row.image_url });
+      row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: fileUrlsOf(message)[0] ?? row.image_url });
       return { row, review: true, pictureLost };
     }
-    row = await publish(guild, row, config, picture, lang);
+    row = await publish(guild, row, config, pictures, lang);
     const link = `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}`;
     await logAction(guild, config, t(lang, 'confessions.log.posted', { number: row.number, id: row.id, link, author: authorText(lang, row) }), config.color);
     return { row, message: { url: `https://discord.com/channels/${guild.id}/${row.channel_id}/${row.message_id}` }, pictureLost };
@@ -281,7 +325,7 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
 }
 
 /** The staff approves or rejects a confession that waits. Returns `{ error }` or `{ row }`. */
-async function decide({ guild, member, id, approve }) {
+async function decide({ guild, member, id, approve, card = null }) {
   const lang = await guildLanguage(guild.id);
   const config = await db.getConfig(guild.id);
   if (!isStaff(member, config)) return { error: t(lang, 'confessions.error.staffOnly') };
@@ -291,11 +335,13 @@ async function decide({ guild, member, id, approve }) {
   let updated;
   if (approve) {
     try {
-      // The picture of a confession that waited is the file of the card the staff got.
-      // The card itself is asked first: Discord changes the signature of a link with time, so the link that was kept when the card was sent may not open any more, and the one the card has now does.
-      const fresh = await reviewPictureUrl(guild, row);
-      const link = fresh ?? (/^https?:\/\//.test(row.image_url ?? '') ? row.image_url : null);
-      const own = link ? await takePicture(link) : null;
+      // The pictures of a confession that waited are the files of the card the staff got. The card the button was pressed on (`card`, which Discord hands over with fresh links) comes first, then the card asked
+      // for by its id (Discord changes the signature of a link with time, so a link that was kept when the card was sent may not open any more), and the kept link last.
+      let urls = fileUrlsOf(card);
+      if (!urls.length) urls = await reviewPictureUrls(guild, row);
+      if (!urls.length && /^https?:\/\//.test(row.image_url ?? '')) urls = [row.image_url];
+      const { pictures: own, lost } = await takePictures(urls, guild);
+      if (urls.length && lost) logger.warn(`Confession ${row.id}: ${lost} of ${urls.length} picture(s) could not be copied at the approval.`);
       updated = await publish(guild, row, config, own, lang);
     } catch (err) {
       logger.warn(`A confession could not be published in ${guild.id}: ${err.message}`);
@@ -352,4 +398,4 @@ async function reply({ guild, user, id, text }) {
   return { row, thread };
 }
 
-module.exports = { BUTTON_PREFIX, MAX_CONTENT, makeId, confessionVars, defaultDesign, render, avatarFor, sendAnonymous, buildPanel, postPanel, bumpPanel, logAction, isStaff, publish, reviewCard, submit, decide, reply };
+module.exports = { BUTTON_PREFIX, MAX_CONTENT, MAX_PICTURES, makeId, confessionVars, defaultDesign, render, avatarFor, sendAnonymous, buildPanel, postPanel, bumpPanel, logAction, isStaff, publish, reviewCard, submit, decide, reply };

@@ -41,7 +41,8 @@ stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 const suggestionsModule = require('../src/utils/suggestions');
 let pictureReachable = false;
 const staleLinks = new Set(); // links that no longer open (Discord changes the signature of a link with time)
-suggestionsModule.copyPicture = async (url) => (pictureReachable && !staleLinks.has(url) ? { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), name: 'suggestion.jpg' } : null);
+let pictureBytes = 0; // when set, every copied picture has this size (to try the limit of one message)
+suggestionsModule.copyPicture = async (url) => (pictureReachable && !staleLinks.has(url) ? { buffer: pictureBytes ? Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(pictureBytes)]) : Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), name: 'suggestion.jpg' } : null);
 const confessions = require('../src/utils/confessions');
 const empty = () => ({ cache: new Map() });
 const makeChannel = (id) => ({
@@ -214,7 +215,7 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     await open('cfs:new');
     assert.deepEqual(parts(modals[0]).map((part) => [part.id, part.type]), [['text', 4], ['image', 19]], 'a text and a file upload (type 19)');
     const upload = modals[0].components[1].component;
-    assert.equal(upload.min_values, 0); assert.equal(upload.max_values, 1); assert.equal(upload.required, false, 'one picture, optional');
+    assert.equal(upload.min_values, 0); assert.equal(upload.max_values, 10); assert.equal(upload.required, false, 'up to 10 pictures, optional');
     assert.ok(parts(modals[0])[1].label.length <= 45 && parts(modals[0])[1].description.length <= 100, 'the label and its description fit what Discord allows');
     config = { ...base, allow_images: false };
     await open('cfs:new');
@@ -240,7 +241,7 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     sent.length = 0;
     await handlers.handleModal(submitted({ text: 'with a document' }, [{ id: '2', url: 'https://cdn.invalid/a.pdf', name: 'a.pdf', contentType: 'application/pdf' }]));
     assert.equal(sent.length, 0, 'a file that is not a picture is not posted');
-    assert.ok(replies.at(-1).includes('Only a picture can go with a confession'), 'and the person is told');
+    assert.ok(replies.at(-1).includes('Only pictures can go with a confession'), 'and the person is told');
     sent.length = 0;
     await handlers.handleModal(submitted({ text: 'no file at all' }, []));
     assert.equal(sent.length, 1, 'no file: just the text');
@@ -269,25 +270,25 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     // The webhook did not say where the file is (the case that failed): the card is asked for it, and the picture goes out with the confession.
     webhookAttachments = null;
     waitingWithPicture = (await confessions.submit({ guild, user: user('u51'), text: 'asked later', imageUrl: 'https://cdn.example/x.png' })).row;
-    assert.equal(rows.get(waitingWithPicture.id).image_url, 'attachment://suggestion.jpg', 'only the name of the file was kept');
-    reviewChannel.messages.fetch = async () => ({ id: 'mr', attachments: { first: () => ({ url: 'https://cdn.example/from-the-card.jpg' }) } });
+    assert.equal(rows.get(waitingWithPicture.id).image_url, 'attachment://confession-1.jpg', 'only the name of the file was kept');
+    reviewChannel.messages.fetch = async () => ({ id: 'mr', attachments: new Map([['1', { url: 'https://cdn.example/from-the-card.jpg' }]]) });
     sent.length = 0;
     let approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
     assert.ok(!approved.error, approved.error);
     assert.equal(sent.length, 1, 'it is posted');
-    assert.ok(sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'with the file of the picture');
-    assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://suggestion.jpg'), 'and it points to that file');
+    assert.ok(sent[0].files.some((file) => file.name === 'confession-1.jpg'), 'with the file of the picture');
+    assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://confession-1.jpg'), 'and it points to that file');
 
     // The link that was kept when the card was sent does not open any more (they expire): the card is asked first, and its link is the fresh one.
     webhookAttachments = [{ url: 'https://cdn.example/old-link.jpg' }];
     waitingWithPicture = (await confessions.submit({ guild, user: user('u54'), text: 'old link', imageUrl: 'https://cdn.example/x.png' })).row;
     assert.equal(rows.get(waitingWithPicture.id).image_url, 'https://cdn.example/old-link.jpg');
     staleLinks.add('https://cdn.example/old-link.jpg');
-    reviewChannel.messages.fetch = async () => ({ id: 'mr', attachments: { first: () => ({ url: 'https://cdn.example/fresh-link.jpg' }) } });
+    reviewChannel.messages.fetch = async () => ({ id: 'mr', attachments: new Map([['1', { url: 'https://cdn.example/fresh-link.jpg' }]]) });
     sent.length = 0;
     approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
     assert.ok(!approved.error, approved.error);
-    assert.ok(sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'the picture goes out although the kept link expired');
+    assert.ok(sent[0].files.some((file) => file.name === 'confession-1.jpg'), 'the picture goes out although the kept link expired');
     // And when the card cannot be read, the kept link is still tried.
     reviewChannel.messages.fetch = async () => null;
     staleLinks.clear();
@@ -295,7 +296,7 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     waitingWithPicture = (await confessions.submit({ guild, user: user('u55'), text: 'kept link', imageUrl: 'https://cdn.example/x.png' })).row;
     sent.length = 0;
     approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
-    assert.ok(!approved.error && sent[0].files.some((file) => file.name === 'suggestion.jpg'), 'the kept link is used when the card cannot be read');
+    assert.ok(!approved.error && sent[0].files.some((file) => file.name === 'confession-1.jpg'), 'the kept link is used when the card cannot be read');
     webhookAttachments = null;
 
     // The card cannot be read any more: the confession goes out without the picture instead of failing.
@@ -306,8 +307,8 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
     approved = await confessions.decide({ guild, member: staff, id: waitingWithPicture.id, approve: true });
     assert.ok(!approved.error, approved.error);
     assert.equal(sent.length, 1, 'it is posted anyway');
-    assert.ok(!(sent[0].files ?? []).some((file) => file.name === 'suggestion.jpg'), 'with no file');
-    assert.ok(!JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://suggestion.jpg'), 'and pointing to no file (Discord refuses that)');
+    assert.ok(!(sent[0].files ?? []).some((file) => file.name === 'confession-1.jpg'), 'with no file');
+    assert.ok(!JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('attachment://confession-1.jpg'), 'and pointing to no file (Discord refuses that)');
     assert.equal(rows.get(waitingWithPicture.id).image_url, null, 'the picture is not kept as a name with no file');
     reviewChannel.messages.fetch = realFetch;
     pictureReachable = false; webhookAttachments = null;
@@ -334,6 +335,65 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
       calls.length = 0;
       await handlers.handleButton(press('cfs:ok:nope', { member: { permissions: { has: () => false }, roles: empty() } }));
       assert.ok(calls[1].startsWith('followUp:') && calls[1].includes('Only the staff'), 'someone who is not staff gets the private error');
+    }
+
+    // The card the button was pressed on is the first place to look for the pictures: Discord hands it over with fresh links, so nothing has to be asked for (the card is not even fetched).
+    {
+      reviewChannel.messages.fetch = async () => null; // asking for the card by its id finds nothing
+      pictureReachable = true;
+      config = { ...base, require_review: true, cooldown_seconds: 0 };
+      const aCard = (await confessions.submit({ guild, user: user('u70'), text: 'from the button', imageUrl: 'https://cdn.example/x.png' })).row;
+      sent.length = 0;
+      const pressed = await confessions.decide({ guild, member: staff, id: aCard.id, approve: true, card: { attachments: new Map([['1', { url: 'https://cdn.example/card-1.jpg' }]]) } });
+      assert.ok(!pressed.error, pressed.error);
+      assert.ok(sent[0].files.some((file) => file.name === 'confession-1.jpg'), 'the picture comes from the message of the button');
+      // A card of Components V2 may list no files: the pictures its gallery shows are used (a plain object or the classes of discord.js, the same).
+      const aCard2 = (await confessions.submit({ guild, user: user('u71'), text: 'gallery only', imageUrl: 'https://cdn.example/x.png' })).row;
+      sent.length = 0;
+      const gallery = { type: 17, components: [{ type: 10, content: 'x' }, { type: 12, items: [{ media: { url: 'https://cdn.example/g-1.jpg' } }, { media: { url: 'https://cdn.example/g-2.jpg' } }] }] };
+      const viaGallery = await confessions.decide({ guild, member: staff, id: aCard2.id, approve: true, card: { attachments: new Map(), components: [gallery] } });
+      assert.ok(!viaGallery.error, viaGallery.error);
+      assert.deepEqual(sent[0].files.filter((file) => /^confession-/.test(file.name)).map((file) => file.name), ['confession-1.jpg', 'confession-2.jpg'], 'two pictures from the gallery of the card');
+      reviewChannel.messages.fetch = realFetch;
+    }
+
+    // Several pictures: up to 10, each one its own file in one gallery; a file that is not a picture is left out; the pictures that do not fit in one message are not sent.
+    {
+      pictureReachable = true;
+      const image = (n) => ({ id: String(n), url: `https://cdn.example/p-${n}.png`, name: `p-${n}.png`, contentType: 'image/png' });
+      const names = (message) => message.files.filter((file) => /^confession-/.test(file.name)).map((file) => file.name);
+      const galleryOf = (message) => message.components.map((c) => c.toJSON?.() ?? c).flatMap((c) => c.components ?? []).filter((c) => c.type === 12).flatMap((c) => c.items.map((item) => item.media.url));
+      config = { ...base, require_review: false, cooldown_seconds: 0 };
+      sent.length = 0;
+      let several = await confessions.submit({ guild, user: user('u72'), text: 'three pictures', attachments: [image(1), image(2), image(3)] });
+      assert.ok(!several.error && !several.pictureLost);
+      assert.deepEqual(names(sent[0]), ['confession-1.jpg', 'confession-2.jpg', 'confession-3.jpg'], 'three files, each with its own name');
+      assert.deepEqual(galleryOf(sent[0]), ['attachment://confession-1.jpg', 'attachment://confession-2.jpg', 'attachment://confession-3.jpg'], 'and three pictures in the gallery');
+      assert.equal(rows.get(several.row.id).image_url, 'attachment://confession-1.jpg', 'the first one is the picture of the confession');
+      sent.length = 0;
+      several = await confessions.submit({ guild, user: user('u73'), text: 'twelve pictures', attachments: Array.from({ length: 12 }, (_, i) => image(i + 1)) });
+      assert.equal(names(sent[0]).length, 10, 'no more than 10');
+      sent.length = 0;
+      await confessions.submit({ guild, user: user('u74'), text: 'a document and a picture', attachments: [{ id: 'd', url: 'https://cdn.example/a.pdf', name: 'a.pdf', contentType: 'application/pdf' }, image(1)] });
+      assert.deepEqual(names(sent[0]), ['confession-1.jpg'], 'the document is left out, the picture goes');
+      // The review card shows all of them and keeps them as files.
+      config = { ...base, require_review: true, cooldown_seconds: 0 };
+      sent.length = 0;
+      await confessions.submit({ guild, user: user('u75'), text: 'for the staff', attachments: [image(1), image(2)] });
+      assert.deepEqual(names(sent[0]), ['confession-1.jpg', 'confession-2.jpg'], 'the card of the staff carries the pictures');
+      assert.equal(galleryOf(sent[0]).length, 2);
+      // Together they have to fit in one message (9 MB in a server with no boosts): the rest are left out and the person is told.
+      config = { ...base, require_review: false, cooldown_seconds: 0 };
+      pictureBytes = 5 * 1024 * 1024;
+      sent.length = 0;
+      const heavy = await confessions.submit({ guild, user: user('u76'), text: 'two heavy pictures', attachments: [image(1), image(2)] });
+      assert.deepEqual(names(sent[0]), ['confession-1.jpg'], 'only the pictures that fit go');
+      assert.equal(heavy.pictureLost, true, 'and the person is told that one was left out');
+      guild.premiumTier = 2;
+      sent.length = 0;
+      await confessions.submit({ guild, user: user('u77'), text: 'a boosted server', attachments: [image(1), image(2)] });
+      assert.equal(names(sent[0]).length, 2, 'a boosted server accepts more in one message');
+      guild.premiumTier = 0; pictureBytes = 0; pictureReachable = false;
     }
 
     // The person is told when the picture they asked for could not be copied (the confession still goes); nothing is said when no picture was asked for.

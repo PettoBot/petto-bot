@@ -19,7 +19,7 @@ const say = (interaction, text, color = null) => interaction.reply({
 const { buildPanel } = confessions;
 
 /**
- * The form of a confession: the text and, when the server allows pictures, a place to drop or attach the picture itself (the file upload of a form, one picture, optional).
+ * The form of a confession: the text and, when the server allows pictures, a place to drop or attach the pictures themselves (the file upload of a form, up to 10, optional).
  * A link to a picture written inside the text still works. The form of an anonymous reply has no picture.
  */
 function form(customId, title, config, withImage, lang) {
@@ -28,7 +28,7 @@ function form(customId, title, config, withImage, lang) {
   );
   if (withImage && config.allow_images) {
     modal.addLabelComponents(
-      new LabelBuilder().setLabel(t(lang, 'confessions.form.image')).setDescription(t(lang, 'confessions.form.imageHint')).setFileUploadComponent(new FileUploadBuilder().setCustomId('image').setMinValues(0).setMaxValues(1).setRequired(false)),
+      new LabelBuilder().setLabel(t(lang, 'confessions.form.image')).setDescription(t(lang, 'confessions.form.imageHint')).setFileUploadComponent(new FileUploadBuilder().setCustomId('image').setMinValues(0).setMaxValues(confessions.MAX_PICTURES).setRequired(false)),
     );
   }
   return modal;
@@ -51,7 +51,7 @@ async function handleButton(interaction) {
     // Approving copies the picture and posts the confession, which can take longer than the 3 seconds Discord gives to answer a button: it is acknowledged first and the card is edited after.
     await interaction.deferUpdate();
     const member = interaction.member ?? await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-    const result = await confessions.decide({ guild: interaction.guild, member, id, approve: action === 'ok' });
+    const result = await confessions.decide({ guild: interaction.guild, member, id, approve: action === 'ok', card: interaction.message });
     if (result.error) {
       return interaction.followUp({
         components: [new ContainerBuilder().setAccentColor(semanticColor(0xff6b6b)).addTextDisplayComponents(new TextDisplayBuilder().setContent(result.error))],
@@ -59,10 +59,10 @@ async function handleButton(interaction) {
         allowedMentions: { parse: [] },
       });
     }
-    const picture = /^attachment:\/\/([\w.-]+)$/.exec(result.row.image_url ?? '')?.[1] ?? null;
-    const card = confessions.reviewCard(result.row, result.config, { status: action === 'ok' ? 'approved' : 'rejected', by: interaction.user.id, pictureName: picture, lang });
-    // The picture stays as the file of this message, so the edit keeps it.
-    return interaction.editReply({ components: card.components, flags: card.flags, attachments: [...(interaction.message?.attachments?.values?.() ?? [])], allowedMentions: card.allowedMentions });
+    // The pictures stay as the files of this message, so the edit keeps them (and the card names the ones it has).
+    const kept = [...(interaction.message?.attachments?.values?.() ?? [])];
+    const card = confessions.reviewCard(result.row, result.config, { status: action === 'ok' ? 'approved' : 'rejected', by: interaction.user.id, pictureNames: kept.map((file) => file.name), lang });
+    return interaction.editReply({ components: card.components, flags: card.flags, attachments: kept, allowedMentions: card.allowedMentions });
   }
 }
 
