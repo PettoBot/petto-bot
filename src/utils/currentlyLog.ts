@@ -1,8 +1,9 @@
 // i18n-ignore-file: the Currently log is written in English for the Petto community, it is not translated.
 // The Currently log: the changes of Petto (like the releases of a GitHub project) posted to one channel, in colors by kind, with pictures.
-// The channel is the `currently_log` variable (the ID of the channel). The changes are written in src/data/currentlyLog.json: when the bot starts it
-// posts the ones it has not posted yet, once, and remembers them (so a restart posts nothing twice). Written in TypeScript: `npm run build:ts`
-// compiles it over currentlyLog.js, which is what the bot loads.
+// The channel is the `currently_log` variable (the ID of the channel). The changes are written in the web repo (`src/data/currentlyLog.json`, served at
+// petto.sbs/api/currently-log): the bot looks at it when it starts and every ten minutes, posts the ones it has not posted yet, once each, and remembers
+// them (so a restart posts nothing twice). A change of the web or of the bot reaches the channel when the web is deployed, with no change to the bot.
+// Written in TypeScript: `npm run build:ts` compiles it over currentlyLog.js, which is what the bot loads.
 import { ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder } from 'discord.js';
 import type { Client } from 'discord.js';
 
@@ -205,15 +206,40 @@ export function channelIdFromEnv(env: NodeJS.ProcessEnv = process.env): string |
   return /^\d{15,25}$/.test(value) ? value : null;
 }
 
+/** Where the log is read from: the file of the web (`src/data/currentlyLog.json` of the web repo, served by the site). `CURRENTLY_LOG_URL` changes it. */
+export const LOG_URL = 'https://petto.sbs/api/currently-log';
+
+export interface LoadedLog {
+  entries: Entry[];
+  problems: string[];
+  /** A higher number than the one that was posted deletes the log of the channel and posts all of it again. */
+  revision: number;
+  /** The version written at the bottom of every card (`-# Petto 0.7.12`): the one the maintainer says the log is at, not the one of `package.json`. */
+  version: string;
+}
+
+/** The log as the file says it, checked (an entry with a problem is left out and said). */
+export function parseLog(file: unknown): LoadedLog {
+  const data = (file && typeof file === 'object' ? file : {}) as { entries?: unknown; revision?: unknown; version?: unknown };
+  const version = typeof data.version === 'string' && /^\d+\.\d+\.\d+$/.test(data.version) ? data.version : '';
+  return { ...validateEntries(data.entries), revision: Math.max(1, Math.floor(Number(data.revision)) || 1), version };
+}
+
 /**
- * The entries of the file, checked, with its revision and its version. The revision: a higher number than the one that was posted deletes the log of the
- * channel and posts all of it again. The version is the one written at the bottom of every card (`-# Petto 0.7.12`): it is the one the maintainer says
- * the log is at, not the one of `package.json`, and it changes when he says a new one starts.
+ * Reads the log from the web. Null when it cannot be read (the site is down or being deployed, or what it answers is not a log): nothing is posted
+ * then and it is tried again at the next look, so the log is never posted half, and a bad file of the web cannot hurt the bot.
  */
-export function loadEntries(): { entries: Entry[]; problems: string[]; revision: number; version: string } {
-  const file = require('../data/currentlyLog.json') as { entries?: unknown; revision?: unknown; version?: unknown };
-  const version = typeof file.version === 'string' && /^\d+\.\d+\.\d+$/.test(file.version) ? file.version : '';
-  return { ...validateEntries(file.entries), revision: Math.max(1, Math.floor(Number(file.revision)) || 1), version };
+export async function fetchLog(url: string = process.env.CURRENTLY_LOG_URL || LOG_URL, doFetch: typeof fetch = fetch): Promise<LoadedLog | null> {
+  try {
+    const response = await doFetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) { logger.warn(`Currently log: ${url} answered ${response.status}.`); return null; }
+    const body = await response.json() as unknown;
+    if (!body || typeof body !== 'object' || !Array.isArray((body as { entries?: unknown }).entries)) { logger.warn(`Currently log: ${url} is not a log.`); return null; }
+    return parseLog(body);
+  } catch (error) {
+    logger.warn(`Currently log: could not read ${url} (${(error as Error)?.message ?? error}).`);
+    return null;
+  }
 }
 
 /** Whether a picture can be read from its link as an image, the way Discord will read it. */
@@ -228,6 +254,8 @@ export async function imageReachable(url: string): Promise<boolean> {
 
 export interface AnnounceOptions {
   entries?: Entry[];
+  /** Reads the log (the web's, by default). */
+  load?: () => Promise<LoadedLog | null>;
   /** The revision of the entries (the file's, by default). */
   revision?: number;
   channelId?: string | null;
@@ -252,7 +280,7 @@ export interface Announced {
   /** How many old messages of the log were deleted to post it all again. */
   removed?: number;
   /** Why nothing was posted, when it was not. */
-  skipped?: 'no-channel' | 'nothing-new' | 'channel-unavailable' | 'store-failed';
+  skipped?: 'no-channel' | 'nothing-new' | 'channel-unavailable' | 'store-failed' | 'log-unavailable';
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
@@ -300,7 +328,8 @@ export async function announceNewEntries(client: Pick<Client, 'channels'>, optio
   const channelId = options.channelId === undefined ? channelIdFromEnv() : options.channelId;
   if (!channelId) return { cards: 0, entries: 0, skipped: 'no-channel' };
   try {
-    const loaded = options.entries ? { entries: options.entries, problems: [] as string[], revision: options.revision ?? 1, version: '' } : loadEntries();
+    const loaded = options.entries ? { entries: options.entries, problems: [] as string[], revision: options.revision ?? 1, version: '' } : await (options.load ?? (() => fetchLog()))();
+    if (!loaded) return { cards: 0, entries: 0, skipped: 'log-unavailable' };
     for (const problem of loaded.problems) logger.warn(`Currently log: ${problem}`);
     const revision = options.revision ?? loaded.revision;
     const store = options.store ?? databaseStore();
@@ -365,16 +394,27 @@ export async function announceNewEntries(client: Pick<Client, 'channels'>, optio
   }
 }
 
-/** How often, and how many times, the entries that wait for a picture are tried again. */
-const RETRY_EVERY_MS = 10 * 60_000;
-const RETRIES = 6;
+/** How often the log of the web is looked at: a change of the web or of the bot is in the channel within this time of the web being deployed. */
+const POLL_EVERY_MS = 10 * 60_000;
 
-/** Posts the log and, while an entry waits for its pictures, tries again every ten minutes (an hour at most). */
-export async function startCurrentlyLog(client: Client, options: AnnounceOptions = {}, attempt = 1): Promise<Announced> {
-  const result = await announceNewEntries(client, { botId: client.user?.id ?? null, ...options });
-  if (result.waiting && attempt < RETRIES) {
-    const timer = setTimeout(() => { void startCurrentlyLog(client, options, attempt + 1); }, options.pauseMs === undefined ? RETRY_EVERY_MS : Math.max(1, options.pauseMs));
-    timer.unref?.();
-  }
-  return result;
+/**
+ * Posts the log and keeps looking at the web every ten minutes (`pollMs`): what is new is posted, and what waits for a picture (the web is still being
+ * deployed) is posted when the picture answers. Answers the first result and a function that stops the looking.
+ */
+export async function startCurrentlyLog(client: Client, options: AnnounceOptions & { pollMs?: number } = {}): Promise<{ result: Announced; stop(): void }> {
+  const { pollMs, ...announce } = options;
+  let running = false;
+  const look = async (): Promise<Announced> => {
+    if (running) return { cards: 0, entries: 0, skipped: 'nothing-new' };
+    running = true;
+    try {
+      return await announceNewEntries(client, { botId: client.user?.id ?? null, ...announce });
+    } finally {
+      running = false;
+    }
+  };
+  const result = await look();
+  const timer = setInterval(() => { look().catch((error) => logger.warn(`Currently log: ${(error as Error)?.message ?? error}`)); }, pollMs ?? POLL_EVERY_MS);
+  timer.unref?.();
+  return { result, stop: () => clearInterval(timer) };
 }
