@@ -8,6 +8,7 @@ exports.databaseStore = databaseStore;
 exports.channelIdFromEnv = channelIdFromEnv;
 exports.parseLog = parseLog;
 exports.fetchLog = fetchLog;
+exports.lastLogProblem = lastLogProblem;
 exports.imageReachable = imageReachable;
 exports.announceNewEntries = announceNewEntries;
 exports.startCurrentlyLog = startCurrentlyLog;
@@ -188,24 +189,30 @@ function parseLog(file) {
  * then and it is tried again at the next look, so the log is never posted half, and a bad file of the web cannot hurt the bot.
  */
 async function fetchLog(url = process.env.CURRENTLY_LOG_URL || exports.LOG_URL, doFetch = fetch) {
+    // The reason is kept, not said: while the web is being deployed it answers 404 for a minute, and that is not a warning for the team. `startCurrentlyLog`
+    // says it once when the web has not answered for a while.
     try {
         const response = await doFetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
         if (!response.ok) {
-            logger.warn(`Currently log: ${url} answered ${response.status}.`);
+            lastProblem = `${url} answered ${response.status}`;
             return null;
         }
         const body = await response.json();
         if (!body || typeof body !== 'object' || !Array.isArray(body.entries)) {
-            logger.warn(`Currently log: ${url} is not a log.`);
+            lastProblem = `${url} is not a log`;
             return null;
         }
+        lastProblem = '';
         return parseLog(body);
     }
     catch (error) {
-        logger.warn(`Currently log: could not read ${url} (${error?.message ?? error}).`);
+        lastProblem = `could not read ${url} (${error?.message ?? error})`;
         return null;
     }
 }
+/** Why the last reading of the log of the web failed (empty when it worked). */
+let lastProblem = '';
+function lastLogProblem() { return lastProblem; }
 /** Whether a picture can be read from its link as an image, the way Discord will read it. */
 async function imageReachable(url) {
     try {
@@ -335,16 +342,24 @@ async function announceNewEntries(client, options = {}) {
 }
 /** How often the log of the web is looked at: a change of the web or of the bot is in the channel within this time of the web being deployed. */
 const POLL_EVERY_MS = 10 * 60_000;
+/** When the web cannot be read (it is being deployed, most of the time) the bot asks again after these waits, and then every ten minutes. */
+const RETRY_AFTER_MS = [20_000, 60_000, 120_000, 300_000];
 /**
  * Posts the log and keeps looking at the web every ten minutes (`pollMs`): what is new is posted, and what waits for a picture (the web is still being
- * deployed) is posted when the picture answers. Answers the first result and a function that stops the looking.
+ * deployed) is posted when the picture answers. When the web cannot be read (the bot starts while the web is being deployed) it asks again after 20 s,
+ * 1 min, 2 min and 5 min (`retryMs`) without a warning; only when it still cannot be read after all of them is it said once in the log of the team.
+ * Answers the first result and a function that stops the looking.
  */
 async function startCurrentlyLog(client, options = {}) {
-    const { pollMs, ...announce } = options;
+    const { pollMs, retryMs = RETRY_AFTER_MS, ...announce } = options;
     let running = false;
+    let stopped = false;
+    let failures = 0;
+    let retryTimer;
+    let waiting = false;
     const look = async () => {
         if (running)
-            return { cards: 0, entries: 0, skipped: 'nothing-new' };
+            return null;
         running = true;
         try {
             return await announceNewEntries(client, { botId: client.user?.id ?? null, ...announce });
@@ -353,8 +368,37 @@ async function startCurrentlyLog(client, options = {}) {
             running = false;
         }
     };
-    const result = await look();
-    const timer = setInterval(() => { look().catch((error) => logger.warn(`Currently log: ${error?.message ?? error}`)); }, pollMs ?? POLL_EVERY_MS);
+    const afterLook = (result) => {
+        if (!result || stopped)
+            return;
+        if (result.skipped !== 'log-unavailable') {
+            failures = 0;
+            return;
+        }
+        failures += 1;
+        const wait = retryMs[failures - 1];
+        if (wait === undefined) {
+            if (failures === retryMs.length + 1)
+                logger.warn(`Currently log: the web has not given the log for a while (${lastProblem || 'no answer'}); it is still tried every ten minutes.`);
+            return;
+        }
+        waiting = true;
+        retryTimer = setTimeout(() => {
+            waiting = false;
+            look().then(afterLook).catch((error) => logger.warn(`Currently log: ${error?.message ?? error}`));
+        }, wait);
+        retryTimer.unref?.();
+    };
+    const first = await look();
+    const result = first ?? { cards: 0, entries: 0, skipped: 'nothing-new' };
+    afterLook(first);
+    // The look of every ten minutes leaves the quick retries alone while they are going on.
+    const timer = setInterval(() => {
+        if (waiting)
+            return;
+        look().then(afterLook).catch((error) => logger.warn(`Currently log: ${error?.message ?? error}`));
+    }, pollMs ?? POLL_EVERY_MS);
     timer.unref?.();
-    return { result, stop: () => clearInterval(timer) };
+    return { result, stop: () => { stopped = true; clearInterval(timer); if (retryTimer)
+            clearTimeout(retryTimer); } };
 }
