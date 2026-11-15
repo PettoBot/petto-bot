@@ -88,6 +88,9 @@ module.exports = {
   },
 };
 
+/** The cases a moderator has given, for `/mhistory` (the same answer as `/case search moderator:<them>`). */
+module.exports.searchByModerator = (interaction) => search(interaction, { moderatorId: interaction.options.getUser('moderator', true).id });
+
 async function list(interaction) {
   const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', false);
@@ -411,14 +414,14 @@ async function deleteAll(interaction) {
   await click.update({ components: [textCard(tn(lang, 'moderation.case.deleteAll.done', deleted, { emoji: EMOJI.APPROVE, count: deleted, user: `${targetUser}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function search(interaction) {
+async function search(interaction, preset = null) {
   const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const filters = {
-    userId: interaction.options.getUser('user')?.id ?? null,
-    moderatorId: interaction.options.getUser('moderator')?.id ?? null,
-    type: interaction.options.getString('type'),
-    text: interaction.options.getString('text'),
+    userId: preset ? null : interaction.options.getUser('user')?.id ?? null,
+    moderatorId: preset ? preset.moderatorId : interaction.options.getUser('moderator')?.id ?? null,
+    type: preset ? null : interaction.options.getString('type'),
+    text: preset ? null : interaction.options.getString('text'),
     limit: 10,
   };
   if (!filters.userId && !filters.moderatorId && !filters.type && !filters.text) {

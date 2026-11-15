@@ -160,10 +160,16 @@ const lastText = (interaction) => {
     assert.ok(resolveSubcommandOptions(json, subArgs), `${route.alias} reaches ${route.command} ${subArgs.join(' ')}`);
     for (const [word, target] of Object.entries(route.words ?? {})) assert.ok(resolveSubcommandOptions(json, target.args), `${route.alias} ${word} reaches ${route.command} ${target.args.join(' ')}`);
   }
-  for (const alias of ['lock', 'unlock', 'topic', 'nsfw', 'drag', 'reason', 'warns', 'mhistory', 'modstats', 'iunmute', 'runmute', 'forcenick', 'temprole', 'timeouts', 'newmembers', 'picperms']) {
+  for (const alias of ['lock', 'unlock', 'topic', 'nsfw', 'drag', 'reason', 'warns', 'modstats', 'iunmute', 'runmute', 'forcenick', 'temprole', 'timeouts', 'newmembers', 'picperms']) {
     assert.ok(client.commandRoutes.has(alias), `!${alias} is a shortcut`);
   }
   assert.equal(client.commandRoutes.get('lock').command, 'channel', '!lock locks the channel (lockdown no longer takes the name)');
+  // `!c` is the short way of `!case` (it was the calculator's: `!c 2935047265057312` opened the calculator), and `!mhistory` is a command of its own.
+  assert.equal(client.commandAliases.get('c'), 'case', '!c is !case');
+  assert.notEqual(client.commandAliases.get('c'), 'calc', 'the calculator does not take !c');
+  assert.equal(client.commandAliases.get('calculate'), 'calc', '!calculate is still the calculator');
+  assert.ok(client.commands.has('mhistory') && client.commands.get('mhistory').guildScoped === true, '/mhistory is a command of its own, in the second set (the 9 free global slots stay free)');
+  assert.equal(client.commandAliases.get('moderationhistory'), 'mhistory');
   for (const [alias, target] of [['unbanall', 'massunban'], ['hb', 'hardban'], ['nick', 'nickname'], ['untimeout', 'unmute'], ['antiraid', 'automod'], ['rc', 'restrictcommand'], ['recentban', 'raid'], ['strip', 'stripstaff']]) {
     assert.equal(client.commandAliases.get(alias), target, `!${alias} is ${target}`);
   }

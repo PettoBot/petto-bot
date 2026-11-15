@@ -70,7 +70,7 @@ function formatResult(value) {
 }
 
 module.exports = {
-  aliases: ['c', 'calculate'],
+  aliases: ['calculate'],
   data: new SlashCommandBuilder()
     .setName('calc')
     .setDescription('Calculate a simple arithmetic expression.')

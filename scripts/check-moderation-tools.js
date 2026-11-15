@@ -83,7 +83,7 @@ const actor = { id: 'mod', username: 'mod' };
   assert.equal(stats.byType.ban, 2);
 
   // the proof appears in the case
-  const { formatCaseDetail } = require('../src/utils/caseFormat');
+  const { formatCaseDetail, formatCaseLine } = require('../src/utils/caseFormat');
   assert.match(formatCaseDetail({ case_number: 1, type: 'ban', user_id: '1', moderator_id: '2', created_at: new Date().toISOString(), active: true, reason: 'x', evidence: ['https://a.png', 'https://b.png'] }), /\*\*Evidence:\*\* \[1\]\(https:\/\/a\.png\) · \[2\]/);
   assert.doesNotMatch(formatCaseDetail({ case_number: 1, type: 'ban', user_id: '1', moderator_id: '2', created_at: new Date().toISOString(), active: true, reason: 'x', evidence: [] }), /Evidence/);
 
@@ -94,6 +94,16 @@ const actor = { id: 'mod', username: 'mod' };
   assert.match(formatCaseDetail(row, 'es'), /^### .*Caso #7 · Baneo\n\*\*Usuario:\*\* <@1>[\s\S]*\*\*Activo:\*\* Sí\n\*\*Razón:\*\* Vencimiento automático$/);
   assert.match(formatCaseDetail({ ...row, reason: null }, 'pt-BR'), /\*\*Motivo:\*\* Nenhum motivo informado\.$/);
   assert.equal(formatCaseDetail(row), formatCaseDetail(row, 'en'), 'outside a server the case is in English');
+
+  // the detail of a case (`/case view`, `/case edit`) uses the same generic icons as the list: the hammer for a sanction, the alert for a warning
+  const { EMOJI: ICONS, TYPE_EMOJI } = require('../src/utils/emojis');
+  for (const type of ['ban', 'tempban', 'kick', 'mute', 'tempmute', 'jail', 'unban']) {
+    const detail = formatCaseDetail({ ...row, type }, 'en');
+    assert.ok(detail.startsWith(`### ${ICONS.HAMMER} `), `${type}: the hammer`);
+    assert.ok(!detail.includes(TYPE_EMOJI[type]) || TYPE_EMOJI[type] === ICONS.HAMMER, `${type}: not the old icon of its type`);
+  }
+  assert.ok(formatCaseDetail({ ...row, type: 'warn' }, 'en').startsWith(`### ${ICONS.PETTO_ALERT} `), 'a warning: the alert');
+  assert.ok(formatCaseLine({ ...row, type: 'tempban' }, 'en').startsWith(ICONS.HAMMER), 'the one-line case uses the hammer too');
   assert.equal(displayReason('Automatic escalation: reached 3 warning(s).', 'es'), 'Escalado automático: llegó a 3 advertencias.');
   assert.equal(displayReason('Automatic escalation: reached 1 warning(s).', 'pt-BR'), 'Escalonamento automático: chegou a 1 advertência.');
   assert.equal(displayReason('spam in #general', 'es'), 'spam in #general', 'a reason someone wrote is never translated');

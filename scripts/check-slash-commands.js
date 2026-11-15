@@ -56,7 +56,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  'appeals', 'banlist', 'cmdconfig', 'customize', 'disablecommand', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'warnescalation',
+  'appeals', 'banlist', 'cmdconfig', 'customize', 'disablecommand', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'warnescalation',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;

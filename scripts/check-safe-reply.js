@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const { PermissionFlagsBits } = require('discord.js');
 const { installSafeReply, isReferenceProblem, withoutQuote } = require('../src/utils/safeReply');
-const { isPermissionError, permissionHelp } = require('../src/utils/permissionErrors');
+const { isPermissionError, permissionHelp, userFacingText } = require('../src/utils/permissionErrors');
 const { isRoutineNoise } = require('../src/utils/discordErrorLog');
 
 assert.equal(isReferenceProblem({ code: 160002 }), true);
@@ -17,6 +17,12 @@ assert.equal(isPermissionError({ code: 160002 }), true);
 assert.equal(isPermissionError({ code: 50013 }), true);
 assert.equal(isPermissionError({ code: 10062 }), false);
 assert.match(permissionHelp({ code: 160002 }), /Read Message History/);
+// An error a command throws on purpose for the member (`/forum` outside a post) is shown to them as it is, and is not a bug for the channel of errors.
+assert.equal(userFacingText(Object.assign(new Error('This is not a forum post.'), { userFacing: true })), 'This is not a forum post.');
+assert.equal(userFacingText(new Error('boom')), null, 'any other error stays an error');
+assert.equal(userFacingText(Object.assign(new Error('  '), { userFacing: true })), null, 'with nothing to say it is the generic answer');
+assert.equal(userFacingText(null), null);
+assert.ok(userFacingText(Object.assign(new Error('x'.repeat(5000)), { userFacing: true })).length <= 1900, 'it fits in a message');
 assert.equal(isRoutineNoise('warn', ['Missing permission running !serverinfo: Cannot reply without permission to read message history (code 160002)']), true);
 assert.equal(isRoutineNoise('error', ['Missing Permissions']), false, 'an error is always sent');
 

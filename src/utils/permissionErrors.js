@@ -20,4 +20,7 @@ function permissionHelp(error, lang = currentLanguage()) {
   return t(lang, 'core.permission.generic');
 }
 
-module.exports = { isPermissionError, permissionHelp };
+/** The text of an error a command threw on purpose to tell the member something (`userFacing`, already in their language), or null for any other error. It is not a bug: it is shown, and kept out of the channel of errors. */
+const userFacingText = (error) => (error?.userFacing && typeof error.message === 'string' && error.message.trim() ? error.message.slice(0, 1900) : null);
+
+module.exports = { isPermissionError, permissionHelp, userFacingText };
