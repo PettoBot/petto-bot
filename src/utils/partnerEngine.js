@@ -114,10 +114,13 @@ function counts(rows, now = new Date()) {
  * Where a Partner Manager stands, for the variables of the replies: their place and the best one this week and in total, and the
  * numbers of the whole server. `rows` are every counted partnership of the server.
  */
+const TOP_LIST_SIZE = 5;
+
 function standings(rows, managerId, now = new Date()) {
   const weekStart = periodStart('week', now).getTime();
   const dayStart = periodStart('day', now).getTime();
   const week = rank(rows.filter((row) => new Date(row.created_at).getTime() >= weekStart));
+  const day = rank(rows.filter((row) => new Date(row.created_at).getTime() >= dayStart));
   const total = rank(rows);
   const place = (list) => { const index = list.findIndex((entry) => entry.managerId === String(managerId)); return index === -1 ? null : index + 1; };
   return {
@@ -125,6 +128,10 @@ function standings(rows, managerId, now = new Date()) {
     rankTotal: place(total),
     topWeek: week[0] ?? null,
     topTotal: total[0] ?? null,
+    // The best managers of each period as a list (`{partner.top_list_day|week|total}`), as many as `TOP_LIST_SIZE`.
+    listDay: day.slice(0, TOP_LIST_SIZE),
+    listWeek: week.slice(0, TOP_LIST_SIZE),
+    listTotal: total.slice(0, TOP_LIST_SIZE),
     serverDay: rows.filter((row) => new Date(row.created_at).getTime() >= dayStart).length,
     serverWeek: week.reduce((sum, entry) => sum + entry.count, 0),
     serverTotal: rows.length,

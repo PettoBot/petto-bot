@@ -75,6 +75,11 @@ module.exports = {
         .catch((err) => logger.localWarn(`DM reports: could not refresh the open cards: ${err?.message ?? err}`));
     }, 20_000).unref?.();
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
+    // The changes of this version are posted in the channel of the `currently_log` variable, once each (a little after the start, so the start is not slowed down).
+    setTimeout(() => {
+      require('../utils/currentlyLog').announceNewEntries(client, { version: require('../../package.json').version })
+        .catch((err) => logger.warn(`Currently log: ${err?.message ?? err}`));
+    }, 45_000).unref?.();
     startOmniplexStatsJob(client);
     startServerTagCheckJob(client);
     // Role triggers only see a role given to a member Petto has in memory: the members of the servers that have rules are loaded, one server at a

@@ -107,5 +107,20 @@ if (problems.length) {
   assert.equal(await out('{server_member_count}'), '1204');
   assert.equal(await out('{servermembercount}'), '1204');
   assert.equal(await out('{nothing.here}'), '{nothing.here}', 'an unknown variable stays as written');
+  // The variables added together: roles of a member, and the facts of a server.
+  const roles = new Collection([['9', { id: '9', name: '@everyone' }], ['r1', { id: 'r1', name: 'Mod' }], ['r2', { id: 'r2', name: 'Helper' }]]);
+  const rich = { ...member, roles: { cache: roles, highest: { id: 'r1', name: 'Mod' } } };
+  const server = { ...guild, ownerId: '1', createdTimestamp: Date.now() - 400 * day, description: 'A calm place', vanityURLCode: 'petto', rulesChannelId: '55', verificationLevel: 2, preferredLocale: 'es-ES', emojis: { cache: new Collection([['a', {}], ['b', {}]]) }, stickers: { cache: new Collection([['s', {}]]) }, bannerURL: () => 'https://cdn.example/banner.png' };
+  const ask = (text, lang) => resolve(text, { member: rich, user, guild: server, lang });
+  assert.equal(await ask('{user.role_count}|{user.top_role_mention}|{user.is_owner}|{user.joined_age_days}'), '2|<@&r1>|Yes|3', 'two roles without @everyone; the owner is the user 1');
+  assert.equal(await ask('{user.is_owner}', 'es'), 'Sí');
+  assert.equal(await resolve('{user.role_count}|{user.top_role_mention}|{user.is_owner}|{user.joined_age_days}', {}), '||No|', 'without a member the roles are empty');
+  assert.equal(await ask('{server_age_days}|{server_emojicount}|{server_stickercount}|{server_description}'), '400|2|1|A calm place');
+  assert.equal(await ask('{server_vanity}|{server_banner}|{server_rules_channel}|{server_locale}'), 'https://discord.gg/petto|https://cdn.example/banner.png|<#55>|es-ES');
+  assert.equal(await ask('{server_verification}'), 'Medium');
+  assert.equal(await ask('{server_verification}', 'es'), 'Medio');
+  assert.equal(await ask('{server_verification}', 'pt-BR'), 'Médio');
+  assert.match(await ask('{server_createdate_timestamp}'), /^\d{10}$/);
+  assert.equal(await resolve('{server_vanity}|{server_description}|{server_banner}|{server_rules_channel}|{server_verification}', { guild: { ...guild, vanityURLCode: null, description: null, rulesChannelId: null, bannerURL: () => null } }), '||||', 'a server with none of them says nothing, never "null"');
   console.log('Checked close spellings and ages.');
 })().catch((error) => { console.error(error); process.exit(1); });
