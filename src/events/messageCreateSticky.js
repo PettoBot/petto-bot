@@ -27,7 +27,8 @@ function getReposter() {
 module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
-    if (message.author.bot || !message.guild) return;
+    // Everybody brings the sticky back down: members, bots and webhooks (the sticky of Petto itself is told apart in `isOwn`).
+    if (!message.guild) return;
     const sticky = await stickyDb.getSticky(message.guild.id, message.channel.id).catch(() => null);
     if (!sticky || message.id === sticky.message_id) return;
     const active = getReposter();

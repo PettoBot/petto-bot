@@ -14,6 +14,25 @@
 // Channels never wait for each other (the state is per channel); the requests of all of them still share the bot's own request
 // limit in discord.js, which also waits out a 429 by itself.
 
+// The channels where this process is sending a sticky right now. Messages of bots now bring the sticky back too, so the sticky itself must never
+// start another pass: the gateway can announce it before the request that sent it has answered (and its id is known), and until then it is ignored.
+const sending = new Map();
+/** Marks that a sticky is being sent in a channel; call the returned function when it is sent and remembered. */
+function markSending(channelId) {
+  sending.set(channelId, (sending.get(channelId) ?? 0) + 1);
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    const left = (sending.get(channelId) ?? 1) - 1;
+    if (left > 0) sending.set(channelId, left); else sending.delete(channelId);
+  };
+}
+/** Whether a message of the bot itself in this channel is the sticky that is being sent. */
+function isSendingSticky(message) {
+  return message.author?.id != null && message.author.id === message.client?.user?.id && sending.has(message.channel?.id);
+}
+
 const GONE_CODES = new Set([10003, 10004, 50001, 50013]); // unknown channel or guild, no access, missing permission: nothing to do here
 const UNKNOWN_MESSAGE = 10008;
 const MAX_RATE_LIMIT_RETRIES = 2;
@@ -80,9 +99,16 @@ function createStickyReposter({
       const payload = await buildPayload(sticky, message);
       if (!payload) return;
 
-      const sent = await channel.send(payload);
-      const old = [...new Set([sticky.message_id, posted.get(channel.id)].filter((id) => id && id !== sent.id))];
-      remember(channel.id, sent.id);
+      const doneSending = markSending(channel.id);
+      let sent;
+      let old;
+      try {
+        sent = await channel.send(payload);
+        old = [...new Set([sticky.message_id, posted.get(channel.id)].filter((id) => id && id !== sent.id))];
+        remember(channel.id, sent.id);
+      } finally {
+        doneSending();
+      }
       // The database write and the deletion of the old sticky do not wait for each other.
       await Promise.all([
         Promise.resolve(setMessageId(guild.id, channel.id, sent.id)).catch((error) => logger.error(`Sticky: the new message id of channel ${channel.id} was not saved:`, error)),
@@ -126,10 +152,10 @@ function createStickyReposter({
     },
     /** True for the message the reposter itself posted (the sticky), which must not start another pass. */
     isOwn(message) {
-      return posted.get(message.channel?.id) === message.id;
+      return posted.get(message.channel?.id) === message.id || isSendingSticky(message);
     },
     pending() { return states.size; },
   };
 }
 
-module.exports = { createStickyReposter, rateLimitWaitMs };
+module.exports = { createStickyReposter, rateLimitWaitMs, markSending, isSendingSticky };
