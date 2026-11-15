@@ -864,4 +864,11 @@ def('dbBottom', 2, 2, async (env, key, count) => {
   return needStore(env).call('bottom', storeKey(key), limit);
 });
 
+// ── The functions written in TypeScript: the ones that reach beyond the message (actions.ts) and the ones that only work on values (more.ts) ──
+const helpers = { fail, what, expected, text, num, list, str, snowflake, isTruthy, equals, messageOf, hasBody, needLookup, FORBIDDEN_KEYS };
+// A name that was already taken is a mistake of the bot, not something to quietly replace.
+const defNew = (name, min, max, run) => { if (functions.has(name)) throw new Error(`The Petto Code function "${name}" is defined twice`); def(name, min, max, run); }; // i18n-ignore: for the team of the bot, never shown to a member
+require('./actions').register({ ...helpers, def: defNew });
+require('./more').register({ ...helpers, def: defNew });
+
 module.exports = { functions, EMBEDS, COMPLEX, BUTTONS, SELECTS, ROWS };

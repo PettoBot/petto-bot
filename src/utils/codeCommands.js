@@ -13,6 +13,8 @@ const commandData = require('../db/commandData');
 const ccDb = require('../db/customCommands');
 const { t, currentLanguage, languageOf } = require('../i18n');
 const { sendDm } = require('./dmOrigin');
+const { applyAction, isActionEffect, extraLookups } = require('./codeActions');
+const { httpRequest } = require('./codeHttp');
 
 const COOLDOWN_MS = 2000;
 const MAX_MESSAGE = 2000;
@@ -101,14 +103,25 @@ function channelData(channel) {
  * What getMember, getRole and getChannel can read: members, roles and channels of this server only, never of another one.
  * Members come from the cache first and are fetched when they are not there; nothing is ever changed.
  */
-function lookupFor(guild) {
+function lookupFor(guild, executor = null) {
   return {
+    ...extraLookups(guild, executor, { userData, memberData, roleData, channelData, guildData }, httpRequest),
     async member(id) {
       const member = guild.members?.cache?.get(id) ?? await guild.members?.fetch?.({ user: id, force: false }).catch(() => null) ?? null;
       return member ? memberData(member) : null;
     },
     async role(id) { const role = guild.roles?.cache?.get(id); return role && role.id !== guild.id ? roleData(role) : null; },
     async channel(id) { const channel = guild.channels?.cache?.get(id); return channel ? channelData(channel) : null; },
+  };
+}
+
+/** The server the way the code reads it, in .Guild and guildInfo. */
+function guildData(guild) {
+  return {
+    ID: guild.id, Name: guild.name, MemberCount: guild.memberCount ?? null, Icon: guild.iconURL?.({ extension: 'png', size: 256 }) ?? null,
+    OwnerID: guild.ownerId ?? null, CreatedAt: createdAt(guild.id), BoostCount: guild.premiumSubscriptionCount ?? 0, BoostTier: guild.premiumTier ?? 0,
+    Banner: guild.bannerURL?.({ extension: 'png', size: 1024 }) ?? null, Description: guild.description ?? null,
+    RoleCount: guild.roles?.cache ? Math.max(0, guild.roles.cache.size - 1) : null, ChannelCount: guild.channels?.cache?.size ?? null, EmojiCount: guild.emojis?.cache?.size ?? null,
   };
 }
 
@@ -128,12 +141,7 @@ function buildData(message, commandName, argText, prefix, serverPrefix = prefix)
       BoostingSince: seconds(member?.premiumSinceTimestamp),
       IsOwner: guild.ownerId === author.id,
     },
-    Guild: {
-      ID: guild.id, Name: guild.name, MemberCount: guild.memberCount ?? null, Icon: guild.iconURL?.({ extension: 'png', size: 256 }) ?? null,
-      OwnerID: guild.ownerId ?? null, CreatedAt: createdAt(guild.id), BoostCount: guild.premiumSubscriptionCount ?? 0, BoostTier: guild.premiumTier ?? 0,
-      Banner: guild.bannerURL?.({ extension: 'png', size: 1024 }) ?? null, Description: guild.description ?? null,
-      RoleCount: guild.roles?.cache ? Math.max(0, guild.roles.cache.size - 1) : null, ChannelCount: guild.channels?.cache?.size ?? null, EmojiCount: guild.emojis?.cache?.size ?? null,
-    },
+    Guild: guildData(guild),
     Channel: { ID: channel.id, Name: channel.name ?? null, Mention: `<#${channel.id}>`, Topic: channel.topic ?? null, NSFW: Boolean(channel.nsfw), ParentID: channel.parentId ?? null, Type: CHANNEL_TYPES[channel.type] ?? 'other', IsThread: Boolean(channel.isThread?.()) },
     Message: {
       ID: message.id, Content: message.content ?? '', Link: message.url ?? null, CreatedAt: createdAt(message.id),
@@ -330,6 +338,10 @@ async function applyEffects(message, effects, commandName = null, { code = '', l
         if (effect.type === 'addRole') await member.roles.add(role, reason); else await member.roles.remove(role, reason);
       } else if (effect.type === 'reaction') {
         await message.react(effect.emoji).catch(() => skipped.push(t(lang, 'customcommands.run.skip.reaction', { emoji: effect.emoji })));
+      } else if (isActionEffect(effect.type)) {
+        // Messages, channels, threads, roles, moderation and scheduling: done as the member, with their permissions (codeActions.ts).
+        const reason = await applyAction(message, effect, { lang, commandName, toPayload, schedule: commandData.schedule, commands: ccDb });
+        if (reason) skipped.push(reason);
       }
     } catch (error) {
       logger.warn(`A custom command action failed (${effect.type}) in guild ${guild.id}: ${error.message}`);
@@ -422,7 +434,7 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
   data.Message.CommandUserID = context.commandUserId ?? null;
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 }, lang });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, source.member), limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -443,6 +455,27 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
   await runExecs(context, result.effects, row.name, 'exec', depth);
 }
 
+/**
+ * Runs a command that code scheduled with scheduleUniqueCC, when its time comes: as the member who scheduled it, in the channel where it was
+ * scheduled, with `.Trigger` "exec" and `.ExecData`. What it can do is judged now, with what the member can do now. Nothing is said when the member
+ * or the channel is gone (the server left, the member left): there is nobody to run it for.
+ */
+async function runScheduled(client, entry) {
+  const guild = client.guilds.cache.get(entry.guildId);
+  if (!guild) return false;
+  const member = guild.members.cache.get(entry.userId) ?? await guild.members.fetch(entry.userId).catch(() => null);
+  const channel = guild.channels.cache.get(entry.channelId);
+  if (!member || !channel?.isTextBased?.()) return false;
+  const lang = await languageOf({ guild });
+  const source = {
+    id: '0', content: '', url: null, embeds: [], guild, channel, member, author: member.user,
+    // i18n-ignore: internal, the action is only listed as not done
+    react: async () => { throw new Error('A reaction needs the message of a command'); }, delete: async () => {},
+  };
+  await runExec({ source, prefix: '!', serverPrefix: '!', commandUserId: entry.userId, lang }, { name: entry.name, delay: 0, data: entry.data ?? null }, 'scheduleUniqueCC', 'schedule', 1);
+  return true;
+}
+
 /** Runs the code of a custom command for the message that used it. Returns true when the message was handled. */
 async function runCodeCommand(message, row, argText, prefix, serverPrefix = prefix) {
   const key = `${message.guild.id}:${message.author.id}:${row.name}`;
@@ -456,7 +489,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text, lang });
   let result;
   try {
-    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild), lang });
+    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild, message.member), lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -517,7 +550,7 @@ async function runComponent(interaction, row, parsed) {
 
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 }, lang });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) { problem(error.toPhrase()); return ephemeralReply(mistakeText(error, lang)); }
     problem(CRASHED);
@@ -581,7 +614,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang });
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 }, lang });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -669,4 +702,4 @@ function decodeShare(text, lang = currentLanguage()) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { runScheduled, guildData, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

@@ -9,12 +9,23 @@ const DEFAULT_LIMITS = {
   maxMillis: 3_000, // all the time, counting the time spent waiting for the data
   maxCpuMillis: 250, // the time spent running the code itself, without the waiting
   maxStoreCalls: 25, // reads and writes of the stored data
-  maxLookups: 10, // members, roles and channels read with getMember, getRole and getChannel
+  maxLookups: 10, // members, roles, channels, messages... read with getMember, getRole, getChannel, getMessage and the other functions that read the server
+  maxHttp: 3, // the web pages asked with httpGet and httpPost
   maxLoopRuns: 1_000, // the turns of every range together
   maxOutput: 20_000, // characters printed while running; the bot cuts a message to Discord's limit later
   maxValueSize: 20_000, // the longest text a function may make
   maxListSize: 2_000,
-  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1, execCC: 2 },
+  effects: {
+    message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1, execCC: 2,
+    // Messages, channels and threads
+    editMessage: 3, deleteMessage: 5, pinMessage: 3, unpinMessage: 3, purgeMessages: 1, reactToMessage: 5,
+    createChannel: 3, editChannel: 3, deleteChannel: 2, lockChannel: 2, unlockChannel: 2, createThread: 2, lockThread: 2, archiveThread: 2,
+    // Moderation, roles and nicknames
+    ban: 3, tempban: 3, unban: 3, kick: 3, mute: 3, unmute: 3, warn: 3,
+    createRole: 3, editRole: 3, deleteRole: 2, addRoleTo: 5, removeRoleFrom: 5, setNickname: 3,
+    // Later
+    schedule: 2, cancelSchedule: 2,
+  },
 };
 
 /**
@@ -85,6 +96,7 @@ async function run(codeOrTree, data = {}, options = {}) {
   let waitedMillis = 0; // time spent waiting for something outside the code, that does not count as running it
   let storeCalls = 0;
   let lookups = 0;
+  let httpCalls = 0;
   let loopRuns = 0;
   let output = '';
   const effectList = [];
@@ -104,11 +116,16 @@ async function run(codeOrTree, data = {}, options = {}) {
     } : null,
     // Members, roles and channels of the server, read (never changed) through `options.lookup`, like the stored data.
     lookup: options.lookup ? {
-      async call(kind, id) {
-        lookups += 1;
-        if (lookups > limits.maxLookups) throw new CodeProblem('scripting.run.tooManyLookups', { max: limits.maxLookups }, { limit: true, lang });
+      async call(kind, ...args) {
+        if (kind === 'http') {
+          httpCalls += 1;
+          if (httpCalls > limits.maxHttp) throw new CodeProblem('scripting.run.tooManyHttp', { max: limits.maxHttp }, { limit: true, lang });
+        } else {
+          lookups += 1;
+          if (lookups > limits.maxLookups) throw new CodeProblem('scripting.run.tooManyLookups', { max: limits.maxLookups }, { limit: true, lang });
+        }
         const before = now();
-        try { return await options.lookup[kind](id); } finally { waitedMillis += now() - before; }
+        try { return await options.lookup[kind](...args); } finally { waitedMillis += now() - before; }
       },
     } : null,
     effects: {

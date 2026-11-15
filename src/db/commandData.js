@@ -21,6 +21,18 @@ const SCHEMA = `
   );
   create index if not exists idx_custom_command_data_top on custom_command_data(guild_id, key);
   create index if not exists idx_custom_command_data_expires on custom_command_data(expires_at) where expires_at is not null;
+  create table if not exists custom_command_schedule (
+    guild_id   text not null,
+    name       text not null,
+    id         text not null,
+    run_at     timestamptz not null,
+    user_id    text not null,
+    channel_id text not null default '',
+    data       jsonb not null default 'null'::jsonb,
+    created_at timestamptz not null default now(),
+    primary key (guild_id, name, id)
+  );
+  create index if not exists idx_custom_command_schedule_due on custom_command_schedule(run_at);
 `;
 
 let dedicatedPool;
@@ -149,10 +161,43 @@ async function purgeExpired() {
   return rowCount;
 }
 
-/** Removes everything a server stored (when Petto leaves it, or when the server asks). */
+/** Removes everything a server stored (when Petto leaves it, or when the server asks), the commands it scheduled too. */
 async function deleteGuildData(guildId) {
-  const { rowCount } = await (await db()).query('delete from custom_command_data where guild_id = $1', [String(guildId)]);
+  const pool = await db();
+  const { rowCount } = await pool.query('delete from custom_command_data where guild_id = $1', [String(guildId)]);
+  await pool.query('delete from custom_command_schedule where guild_id = $1', [String(guildId)]);
   return rowCount;
 }
 
-module.exports = { forGuild, purgeExpired, deleteGuildData, MAX_ENTRIES_PER_GUILD, SCHEMA };
+/**
+ * The commands that code asked to run later (scheduleUniqueCC). They are kept here, so a restart does not lose them. A command and an id are one
+ * schedule: setting it again replaces the first. `claimDue` takes the ones that are due and removes them in one step, so two processes never run one twice.
+ */
+const schedule = {
+  async set({ guildId, name, id, runAt, userId, channelId, data }) {
+    await (await db()).query(
+      `insert into custom_command_schedule (guild_id, name, id, run_at, user_id, channel_id, data) values ($1, $2, $3, to_timestamp($4 / 1000.0), $5, $6, $7::jsonb)
+       on conflict (guild_id, name, id) do update set run_at = excluded.run_at, user_id = excluded.user_id, channel_id = excluded.channel_id, data = excluded.data`,
+      [String(guildId), name, id, runAt, String(userId), String(channelId ?? ''), JSON.stringify(data ?? null)],
+    );
+  },
+  async cancel(guildId, name, id) {
+    const { rowCount } = await (await db()).query('delete from custom_command_schedule where guild_id = $1 and name = $2 and id = $3', [String(guildId), name, id]);
+    return rowCount > 0;
+  },
+  async count(guildId) {
+    const { rows } = await (await db()).query('select count(*)::int as total from custom_command_schedule where guild_id = $1', [String(guildId)]);
+    return rows[0].total;
+  },
+  async claimDue(limit = 20) {
+    const { rows } = await (await db()).query(
+      `delete from custom_command_schedule where (guild_id, name, id) in (
+         select guild_id, name, id from custom_command_schedule where run_at <= now() order by run_at limit $1 for update skip locked
+       ) returning guild_id, name, id, user_id, channel_id, data`,
+      [limit],
+    );
+    return rows.map((row) => ({ guildId: row.guild_id, name: row.name, id: row.id, userId: row.user_id, channelId: row.channel_id, data: row.data }));
+  },
+};
+
+module.exports = { forGuild, purgeExpired, deleteGuildData, schedule, MAX_ENTRIES_PER_GUILD, SCHEMA };
