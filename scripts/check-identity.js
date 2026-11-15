@@ -456,7 +456,7 @@ function roleClient(log) {
 
   // ---- A typed command (the prefix) gives only the user for an option, never the member
   const commandsModule = require('../src/utils/identity/commands');
-  const typed = (values = {}, sub = 'sync') => {
+  const typed = (values = {}, sub = 'sync', allowed = true) => {
     const edits = [];
     const guildObj = {
       id: 'g', iconURL: () => null,
@@ -476,8 +476,9 @@ function roleClient(log) {
     const replies = [];
     const interaction = {
       guild: guildObj, member: fakeMember('me'), user: { id: 'me' },
+      memberPermissions: { has: () => allowed },
       options: { getSubcommand: () => sub, getUser: (name) => (values[name] ? { id: values[name] } : null), getString: () => null, getBoolean: () => null, getRole: () => null, getChannel: () => null },
-      deferReply: async () => {}, editReply: async (payload) => { replies.push(payload); },
+      deferReply: async () => {}, reply: async (payload) => { replies.push(payload); }, editReply: async (payload) => { replies.push(payload); },
     };
     return { interaction, replies, edits };
   };
@@ -487,6 +488,28 @@ function roleClient(log) {
   await commandsModule.execute(run.interaction, 'vanity');
   assert.deepEqual(run.edits, ['add:role1'], 'sync with no member given checks everyone and gives the role to the one who matches');
   assert.ok(run.replies.length >= 1);
+  reset();
+  // The commands are in the menu for everybody, so the permission is asked when they run: a member without Manage Server changes nothing and is told which permission is missing.
+  for (const kind of ['vanity', 'guildtag']) {
+    for (const sub of ['sync', 'list', 'add', 'remove']) {
+      const denied = typed({}, sub, false);
+      await require(`../src/commands/automation/${kind}`).execute(denied.interaction);
+      assert.deepEqual(denied.edits, [], `${kind} ${sub}: nothing changes without the permission`);
+      assert.equal(denied.replies.length, 1, `${kind} ${sub}: one answer`);
+      assert.match(JSON.stringify(denied.replies[0]), /Manage Server/, `${kind} ${sub}: it says which permission is missing`);
+    }
+  }
+  // Typed with the prefix there is no `memberPermissions`, only the member: an administrator is let in and a plain member is not.
+  for (const [allowed, expectedReplies] of [[true, 0], [false, 1]]) {
+    reset();
+    const prefix = typed({}, 'sync', true);
+    delete prefix.interaction.memberPermissions;
+    prefix.interaction.member.permissions = { has: () => allowed };
+    prefix.interaction.fromPrefix = true;
+    await require('../src/commands/automation/vanity').execute(prefix.interaction);
+    assert.equal(prefix.replies.filter((payload) => /Manage Server/.test(JSON.stringify(payload))).length, expectedReplies, `with the prefix, a member ${allowed ? 'with' : 'without'} Manage Server is ${allowed ? 'let in' : 'refused'}`);
+  }
+  for (const name of ['vanity', 'guildtag']) assert.equal(require(`../src/commands/automation/${name}`).data.toJSON().default_member_permissions ?? null, null, `/${name} is in the menu for everybody`);
   reset();
   run = typed({ user: 'u1' }, 'sync');
   await commandsModule.execute(run.interaction, 'vanity');
