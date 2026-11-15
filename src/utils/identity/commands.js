@@ -295,6 +295,17 @@ async function setOffline(interaction, lang) {
   await ok(interaction, t(lang, `identity.offline.set.${mode}`));
 }
 
+/**
+ * `!vanity` and `!guildtag` are in the menu for everybody (no default permission, so Discord does not hide them from the staff without Manage Server):
+ * Manage Server is asked when they run, before anything is answered in public or changed. False when it was refused (the member is told which permission).
+ */
+async function requireManageGuild(interaction) {
+  if (interaction.memberPermissions?.has(PERMISSION)) return true;
+  const lang = await languageOf(interaction);
+  await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: t(lang, 'core.perm.ManageGuild') }), flags: MessageFlags.Ephemeral });
+  return false;
+}
+
 /** The handler of `!vanity` and `!guildtag`. */
 async function execute(interaction, kind) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -328,4 +339,4 @@ async function execute(interaction, kind) {
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;
 
-module.exports = { addSubcommands, autocomplete, execute, memberOption, memberChecked, notifyText, progressPayload, resultPayload, runSync, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
+module.exports = { addSubcommands, autocomplete, execute, requireManageGuild, memberOption, memberChecked, notifyText, progressPayload, resultPayload, runSync, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };

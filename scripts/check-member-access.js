@@ -145,6 +145,8 @@ const SELF_GATED = {
   boosterrole: { MEMBER: ['create', 'color', 'rename', 'icon', 'random', 'remove', 'share', 'unshare', 'shared'], why: 'boosters manage their own role; admin and filter are for the staff' },
   report: { MEMBER: ['send'], why: 'anybody reports; the setup and the review are for the staff' },
   rep: { MEMBER: ['give', 'view', 'leaderboard'], why: 'reputation is given by members; reset is for Manage Server' },
+  vanity: { MEMBER: [], why: 'shown in the menu for everybody; every subcommand asks for Manage Server when it runs' },
+  guildtag: { MEMBER: [], why: 'shown in the menu for everybody; every subcommand asks for Manage Server when it runs' },
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
