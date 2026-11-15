@@ -499,6 +499,16 @@ function roleClient(log) {
       assert.match(JSON.stringify(denied.replies[0]), /Manage Server/, `${kind} ${sub}: it says which permission is missing`);
     }
   }
+  // Typed with the prefix there is no `memberPermissions`, only the member: an administrator is let in and a plain member is not.
+  for (const [allowed, expectedReplies] of [[true, 0], [false, 1]]) {
+    reset();
+    const prefix = typed({}, 'sync', true);
+    delete prefix.interaction.memberPermissions;
+    prefix.interaction.member.permissions = { has: () => allowed };
+    prefix.interaction.fromPrefix = true;
+    await require('../src/commands/automation/vanity').execute(prefix.interaction);
+    assert.equal(prefix.replies.filter((payload) => /Manage Server/.test(JSON.stringify(payload))).length, expectedReplies, `with the prefix, a member ${allowed ? 'with' : 'without'} Manage Server is ${allowed ? 'let in' : 'refused'}`);
+  }
   for (const name of ['vanity', 'guildtag']) assert.equal(require(`../src/commands/automation/${name}`).data.toJSON().default_member_permissions ?? null, null, `/${name} is in the menu for everybody`);
   reset();
   run = typed({ user: 'u1' }, 'sync');
