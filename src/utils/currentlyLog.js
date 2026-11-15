@@ -1,33 +1,37 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LIMITS = exports.CATEGORY_ORDER = exports.CATEGORIES = void 0;
+exports.LOG_URL = exports.LIMITS = exports.CATEGORY_ORDER = exports.CATEGORIES = void 0;
 exports.validateEntries = validateEntries;
 exports.buildCards = buildCards;
 exports.voteEmojis = voteEmojis;
 exports.databaseStore = databaseStore;
 exports.channelIdFromEnv = channelIdFromEnv;
-exports.loadEntries = loadEntries;
+exports.parseLog = parseLog;
+exports.fetchLog = fetchLog;
 exports.imageReachable = imageReachable;
 exports.announceNewEntries = announceNewEntries;
 exports.startCurrentlyLog = startCurrentlyLog;
 // i18n-ignore-file: the Currently log is written in English for the Petto community, it is not translated.
 // The Currently log: the changes of Petto (like the releases of a GitHub project) posted to one channel, in colors by kind, with pictures.
-// The channel is the `currently_log` variable (the ID of the channel). The changes are written in src/data/currentlyLog.json: when the bot starts it
-// posts the ones it has not posted yet, once, and remembers them (so a restart posts nothing twice). Written in TypeScript: `npm run build:ts`
-// compiles it over currentlyLog.js, which is what the bot loads.
+// The channel is the `currently_log` variable (the ID of the channel). The changes are written in the web repo (`src/data/currentlyLog.json`, served at
+// petto.sbs/api/currently-log): the bot looks at it when it starts and every ten minutes, posts the ones it has not posted yet, once each, and remembers
+// them (so a restart posts nothing twice). A change of the web or of the bot reaches the channel when the web is deployed, with no change to the bot.
+// Written in TypeScript: `npm run build:ts` compiles it over currentlyLog.js, which is what the bot loads.
 const discord_js_1 = require("discord.js");
 // The project is JavaScript: its modules are read with `require` and given the shape that is used here.
 const logger = require('./logger');
+// The flat gray emojis of Petto (the same ones its panels use), one for each kind of change.
+const { EMOJI } = require('./emojis');
 /** The kinds of change, in the order their cards are posted (the most important first). */
 exports.CATEGORIES = {
-    security: { color: 0xe03131, dot: '🔴', one: 'Security fix', many: 'Security fixes' },
-    feature: { color: 0xfcc419, dot: '🟡', one: 'New feature', many: 'New features' },
-    addition: { color: 0x2f9e44, dot: '🟢', one: 'Added to a feature', many: 'Added to features' },
-    improvement: { color: 0x1c7ed6, dot: '🔵', one: 'Improvement', many: 'Improvements' },
-    fix: { color: 0xf76707, dot: '🟠', one: 'Fix', many: 'Fixes' },
-    web: { color: 0x9c36b5, dot: '🟣', one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
-    removal: { color: 0x868e96, dot: '⚪', one: 'Removed from a feature', many: 'Removed from features' },
-    'removed-feature': { color: 0x000000, dot: '⚫', one: 'Feature removed', many: 'Features removed' },
+    security: { color: 0xfe6465, dot: EMOJI.SAFETY, one: 'Security fix', many: 'Security fixes' },
+    feature: { color: 0xfed53c, dot: EMOJI.RELEASE_ROCKET, one: 'New feature', many: 'New features' },
+    addition: { color: 0xa5ea7a, dot: EMOJI.VOICE_PERMIT, one: 'Added to a feature', many: 'Added to features' },
+    improvement: { color: 0x74c0fc, dot: EMOJI.RELEASE_RELOAD, one: 'Improvement', many: 'Improvements' },
+    fix: { color: 0xffa45c, dot: EMOJI.RELEASE_SETTINGS, one: 'Fix', many: 'Fixes' },
+    web: { color: 0xc4a3ff, dot: EMOJI.ROLLOUT_PLATFORMS, one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
+    removal: { color: 0xc3c7cf, dot: EMOJI.VOICE_DENY, one: 'Removed from a feature', many: 'Removed from features' },
+    'removed-feature': { color: 0x4b4f59, dot: EMOJI.TICKET_DELETE, one: 'Feature removed', many: 'Features removed' },
 };
 exports.CATEGORY_ORDER = Object.keys(exports.CATEGORIES);
 exports.LIMITS = { title: 100, area: 80, summary: 700, images: 3, perCard: 5, id: 80 };
@@ -171,15 +175,36 @@ function channelIdFromEnv(env = process.env) {
     const value = String(env.currently_log ?? env.CURRENTLY_LOG ?? '').trim();
     return /^\d{15,25}$/.test(value) ? value : null;
 }
+/** Where the log is read from: the file of the web (`src/data/currentlyLog.json` of the web repo, served by the site). `CURRENTLY_LOG_URL` changes it. */
+exports.LOG_URL = 'https://petto.sbs/api/currently-log';
+/** The log as the file says it, checked (an entry with a problem is left out and said). */
+function parseLog(file) {
+    const data = (file && typeof file === 'object' ? file : {});
+    const version = typeof data.version === 'string' && /^\d+\.\d+\.\d+$/.test(data.version) ? data.version : '';
+    return { ...validateEntries(data.entries), revision: Math.max(1, Math.floor(Number(data.revision)) || 1), version };
+}
 /**
- * The entries of the file, checked, with its revision and its version. The revision: a higher number than the one that was posted deletes the log of the
- * channel and posts all of it again. The version is the one written at the bottom of every card (`-# Petto 0.7.12`): it is the one the maintainer says
- * the log is at, not the one of `package.json`, and it changes when he says a new one starts.
+ * Reads the log from the web. Null when it cannot be read (the site is down or being deployed, or what it answers is not a log): nothing is posted
+ * then and it is tried again at the next look, so the log is never posted half, and a bad file of the web cannot hurt the bot.
  */
-function loadEntries() {
-    const file = require('../data/currentlyLog.json');
-    const version = typeof file.version === 'string' && /^\d+\.\d+\.\d+$/.test(file.version) ? file.version : '';
-    return { ...validateEntries(file.entries), revision: Math.max(1, Math.floor(Number(file.revision)) || 1), version };
+async function fetchLog(url = process.env.CURRENTLY_LOG_URL || exports.LOG_URL, doFetch = fetch) {
+    try {
+        const response = await doFetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+        if (!response.ok) {
+            logger.warn(`Currently log: ${url} answered ${response.status}.`);
+            return null;
+        }
+        const body = await response.json();
+        if (!body || typeof body !== 'object' || !Array.isArray(body.entries)) {
+            logger.warn(`Currently log: ${url} is not a log.`);
+            return null;
+        }
+        return parseLog(body);
+    }
+    catch (error) {
+        logger.warn(`Currently log: could not read ${url} (${error?.message ?? error}).`);
+        return null;
+    }
 }
 /** Whether a picture can be read from its link as an image, the way Discord will read it. */
 async function imageReachable(url) {
@@ -233,7 +258,9 @@ async function announceNewEntries(client, options = {}) {
     if (!channelId)
         return { cards: 0, entries: 0, skipped: 'no-channel' };
     try {
-        const loaded = options.entries ? { entries: options.entries, problems: [], revision: options.revision ?? 1, version: '' } : loadEntries();
+        const loaded = options.entries ? { entries: options.entries, problems: [], revision: options.revision ?? 1, version: '' } : await (options.load ?? (() => fetchLog()))();
+        if (!loaded)
+            return { cards: 0, entries: 0, skipped: 'log-unavailable' };
         for (const problem of loaded.problems)
             logger.warn(`Currently log: ${problem}`);
         const revision = options.revision ?? loaded.revision;
@@ -306,15 +333,28 @@ async function announceNewEntries(client, options = {}) {
         return { cards: 0, entries: 0, skipped: 'store-failed' };
     }
 }
-/** How often, and how many times, the entries that wait for a picture are tried again. */
-const RETRY_EVERY_MS = 10 * 60_000;
-const RETRIES = 6;
-/** Posts the log and, while an entry waits for its pictures, tries again every ten minutes (an hour at most). */
-async function startCurrentlyLog(client, options = {}, attempt = 1) {
-    const result = await announceNewEntries(client, { botId: client.user?.id ?? null, ...options });
-    if (result.waiting && attempt < RETRIES) {
-        const timer = setTimeout(() => { void startCurrentlyLog(client, options, attempt + 1); }, options.pauseMs === undefined ? RETRY_EVERY_MS : Math.max(1, options.pauseMs));
-        timer.unref?.();
-    }
-    return result;
+/** How often the log of the web is looked at: a change of the web or of the bot is in the channel within this time of the web being deployed. */
+const POLL_EVERY_MS = 10 * 60_000;
+/**
+ * Posts the log and keeps looking at the web every ten minutes (`pollMs`): what is new is posted, and what waits for a picture (the web is still being
+ * deployed) is posted when the picture answers. Answers the first result and a function that stops the looking.
+ */
+async function startCurrentlyLog(client, options = {}) {
+    const { pollMs, ...announce } = options;
+    let running = false;
+    const look = async () => {
+        if (running)
+            return { cards: 0, entries: 0, skipped: 'nothing-new' };
+        running = true;
+        try {
+            return await announceNewEntries(client, { botId: client.user?.id ?? null, ...announce });
+        }
+        finally {
+            running = false;
+        }
+    };
+    const result = await look();
+    const timer = setInterval(() => { look().catch((error) => logger.warn(`Currently log: ${error?.message ?? error}`)); }, pollMs ?? POLL_EVERY_MS);
+    timer.unref?.();
+    return { result, stop: () => clearInterval(timer) };
 }

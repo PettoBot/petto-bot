@@ -324,6 +324,7 @@ module.exports = {
   'tickets.html.poll': 'Enquete',
   'tickets.html.option': 'Opção',
   'tickets.html.edited': 'editada',
+  'tickets.html.forwarded': 'Encaminhada',
   'tickets.html.noText': 'Sem texto',
   'tickets.html.discordServer': 'Servidor do Discord',
   'tickets.html.title': 'Ticket #{number}',

@@ -10,15 +10,16 @@ assert.equal(purgePrefixArgs('everywhere'), 'everywhere', 'alone it stays as it 
 
 const names = (payload) => JSON.stringify(payload);
 
-function channel(id, { count, allowed = true, recent = true }) {
+function channel(id, { count, allowed = true, recent = true, archived = false }) {
   const deleted = [];
   const messages = Array.from({ length: count }, (_, i) => ({
     id: String(1000000000000000000n + BigInt(id.charCodeAt(0) * 1000 + i)),
     pinned: false, content: 'x', author: { id: 'u', bot: false }, attachments: new Map(), embeds: [], mentions: { everyone: false, users: new Map(), roles: new Map() },
     createdTimestamp: recent ? Date.now() - 1000 : Date.now() - 40 * 24 * 3600 * 1000,
+    delete: async () => { deleted.push('one'); },
   }));
   return {
-    id, deleted,
+    id, deleted, archived,
     isTextBased: () => true, isThread: () => false, isDMBased: () => false,
     permissionsFor: () => ({ has: (flag) => allowed || flag === PermissionFlagsBits.ViewChannel }),
     messages: { fetch: async ({ limit }) => new Collection(messages.slice(0, limit).map((m) => [m.id, m])) },
@@ -26,11 +27,15 @@ function channel(id, { count, allowed = true, recent = true }) {
   };
 }
 
-function run({ answer, channels }) {
+function run({ answer, channels, threads = [], slowThreads = false }) {
   const replies = [];
   const interaction = {
     user: { id: 'mod' }, member: { id: 'mod' }, client: {}, channel: channels[0],
-    guild: { id: 'g1', preferredLocale: 'en-US', members: { me: { id: 'me' } }, channels: { cache: new Map(channels.map((c) => [c.id, c])) } },
+    guild: { id: 'g1', preferredLocale: 'en-US', members: { me: { id: 'me' } }, channels: {
+        cache: new Map(channels.map((c) => [c.id, c])),
+        // The open threads (and the posts of forums) are not in the list of channels: Discord is asked for them.
+        fetchActiveThreads: async () => { if (slowThreads) await new Promise((resolve) => setTimeout(resolve, 2600)); return { threads: new Map(threads.map((c) => [c.id, c])) }; },
+      } },
     options: {
       getInteger: () => 5, getUser: () => null, getString: (name) => (name === 'filter' ? 'all' : null),
       getBoolean: (name) => name === 'all_channels',
@@ -58,6 +63,22 @@ function run({ answer, channels }) {
   assert.match(result, /Channels left out/);
   assert.match(names(replies[0]), /This would delete 5 messages in the server/, 'it asked before deleting');
   assert.match(names(replies[0]), /purge_confirm/);
+
+  // The open threads and the posts of forums are scanned too (they are threads); an archived one is left alone, and so is a thread where the member cannot delete.
+  const withThreads = [channel('a', { count: 2 })];
+  const posts = [channel('f', { count: 3 }), channel('g', { count: 1 }), channel('h', { count: 5, archived: true }), channel('i', { count: 4, allowed: false })];
+  const threadRun = await run({ answer: 'purge_confirm', channels: withThreads, threads: posts });
+  assert.equal(withThreads[0].deleted.length, 2);
+  assert.equal(posts[0].deleted.length, 3, 'a forum post (a thread) is purged');
+  assert.equal(posts[1].deleted.length, 1, 'so is a thread');
+  assert.equal(posts[2].deleted.length, 0, 'an archived thread is not touched');
+  assert.equal(posts[3].deleted.length, 0, 'a thread without permission is not touched');
+  assert.match(names(threadRun[0]), /This would delete 6 messages/, 'the question counts the threads');
+  assert.match(names(threadRun.at(-1)), /Deleted 6 messages/);
+  assert.match(names(threadRun[0]), new RegExp(`<#f>|\\\\<#f>|#f`), 'and lists them by channel');
+  // Discord taking too long to list the threads does not stop the purge of the channels.
+  const slowRun = await run({ answer: 'purge_confirm', channels: [channel('a', { count: 1 })], threads: [channel('t', { count: 1 })], slowThreads: true });
+  assert.match(names(slowRun.at(-1)), /Deleted 1 message/, 'only the channel: the threads were not ready in time');
 
   // Cancelled and no answer: nothing is deleted.
   channels = mk();

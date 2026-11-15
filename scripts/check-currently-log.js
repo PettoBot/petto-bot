@@ -6,16 +6,25 @@ const log = require('../src/utils/currentlyLog');
 
 const entry = (id, category = 'feature', extra = {}) => ({ id, category, title: `Title ${id}`, area: 'Partners › Variables', summary: 'It does this and it changes that.', ...extra });
 
-// The colors asked for: red security, green added to a feature, yellow a new feature, black a feature removed, gray something removed, orange a fix.
+// The colors asked for, all of them bright and soft like the green of the dashboard: red security, green added to a feature, yellow a new feature,
+// dark (the dark of Petto) a feature removed, light gray something removed, orange a fix.
 assert.deepEqual(Object.keys(log.CATEGORIES).sort(), ['addition', 'feature', 'fix', 'improvement', 'removal', 'removed-feature', 'security', 'web']);
 const hue = (key) => log.CATEGORIES[key].color;
-assert.ok(hue('security') >> 16 > 0xc0 && (hue('security') & 0xffff) < 0x4000, 'security is red');
-assert.ok(((hue('addition') >> 8) & 0xff) > (hue('addition') >> 16) && ((hue('addition') >> 8) & 0xff) > (hue('addition') & 0xff), 'added to a feature is green');
-assert.ok((hue('feature') >> 16) > 0xe0 && ((hue('feature') >> 8) & 0xff) > 0xb0 && (hue('feature') & 0xff) < 0x40, 'a new feature is yellow');
-assert.equal(hue('removed-feature'), 0x000000, 'a feature removed is black');
-assert.ok(Math.abs((hue('removal') >> 16) - ((hue('removal') >> 8) & 0xff)) < 0x18 && Math.abs(((hue('removal') >> 8) & 0xff) - (hue('removal') & 0xff)) < 0x18, 'something removed is gray (the three channels are close)');
-assert.ok((hue('fix') >> 16) > 0xe0 && ((hue('fix') >> 8) & 0xff) > 0x40 && ((hue('fix') >> 8) & 0xff) < 0x90 && (hue('fix') & 0xff) < 0x20, 'a fix is orange');
+const channels = (key) => [hue(key) >> 16, (hue(key) >> 8) & 0xff, hue(key) & 0xff];
+assert.equal(hue('addition'), 0xa5ea7a, 'added to a feature is the green of the dashboard');
+assert.equal(hue('security'), 0xfe6465, 'security is the red of Petto');
+assert.equal(hue('feature'), 0xfed53c, 'a new feature is the yellow of Petto');
+{
+  const [r, g, b] = channels('fix');
+  assert.ok(r > 0xe0 && g > 0x80 && g < 0xc0 && b < 0x90, 'a fix is orange');
+  const [gr, gg, gb] = channels('removal');
+  assert.ok(Math.max(gr, gg, gb) - Math.min(gr, gg, gb) < 0x18 && gr > 0xa0, 'something removed is a light gray');
+  for (const key of ['security', 'feature', 'addition', 'improvement', 'fix', 'web', 'removal']) assert.ok(Math.max(...channels(key)) >= 0xa0, `${key} is a bright color, not a dark one`);
+}
+assert.equal(hue('removed-feature'), 0x4b4f59, 'a feature removed is the dark of Petto');
 assert.equal(new Set(Object.values(log.CATEGORIES).map((each) => each.color)).size, 8, 'no two kinds share a color');
+for (const each of Object.values(log.CATEGORIES)) assert.match(each.dot, /^<:[a-z_]+:\d+>$/i, 'the mark of each kind is an emoji of Petto');
+assert.equal(new Set(Object.values(log.CATEGORIES).map((each) => each.dot)).size, 8, 'no two kinds share an emoji');
 
 // Entries: the good one passes, each mistake skips only its own entry and says why.
 const good = entry('partner-top-lists', 'addition', { images: ['https://petto.sbs/assets/log/a.png'], docs: 'https://petto.sbs/blog/x' });
@@ -36,9 +45,11 @@ assert.match(checked.problems.join('\n'), /used twice/);
 assert.deepEqual(log.validateEntries('nope').entries, [], 'a file that is not a list posts nothing');
 assert.ok(log.validateEntries('nope').problems.length === 1);
 
-// The real file of changes is well made.
-const real = log.loadEntries();
-assert.deepEqual(real.problems, [], 'src/data/currentlyLog.json has a problem');
+// The log is read from the web: its version and revision, the entries that are well made, and what is wrong with the rest.
+const parsed = log.parseLog({ revision: 4, version: '0.7.12', entries: [entry('ok-one'), entry('Bad Id')] });
+assert.deepEqual([parsed.revision, parsed.version, parsed.entries.map((each) => each.id), parsed.problems.length], [4, '0.7.12', ['ok-one'], 1]);
+assert.deepEqual([log.parseLog({ entries: [] }).revision, log.parseLog({ entries: [] }).version], [1, ''], 'no revision is 1, and a version that is not a version is nothing');
+assert.equal(log.parseLog({ version: 'next', entries: [] }).version, '');
 
 // Cards: one kind at a time, five entries each, the most important first.
 const many = [...Array.from({ length: 10 }, (_, i) => entry(`f${i}`, 'feature')), entry('s1', 'security'), entry('x1', 'fix'), entry('x2', 'fix')];
@@ -101,6 +112,13 @@ function memory(start = {}) {
 const loaded = async () => true;
 const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
 (async () => {
+  const answer = (status, body) => async () => ({ ok: status < 400, status, json: async () => { if (body === undefined) throw new Error('not JSON'); return body; } });
+  assert.equal((await log.fetchLog('https://web.example/log', answer(200, { revision: 2, version: '0.7.12', entries: [entry('w1')] }))).entries[0].id, 'w1', 'a good answer is read');
+  assert.equal(await log.fetchLog('https://web.example/log', answer(500, {})), null, 'the site is down or being deployed: nothing is posted, it is tried again');
+  assert.equal(await log.fetchLog('https://web.example/log', answer(200, undefined)), null, 'an answer that is not JSON');
+  assert.equal(await log.fetchLog('https://web.example/log', answer(200, { hello: 1 })), null, 'JSON that is not a log');
+  assert.equal(await log.fetchLog('https://web.example/log', async () => { throw new Error('ECONNREFUSED'); }), null, 'the network fails');
+  assert.equal(log.LOG_URL, 'https://petto.sbs/api/currently-log');
   const entries = [entry('a', 'feature'), entry('b', 'fix'), entry('c', 'fix'), entry('d', 'security')];
   const none = fake();
   assert.deepEqual(await log.announceNewEntries(none.client, { ...base, entries, channelId: null, store: memory() }), { cards: 0, entries: 0, skipped: 'no-channel' }, 'no variable: nothing is posted');
@@ -172,30 +190,43 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
   assert.deepEqual(await log.announceNewEntries(later.client, { ...base, entries: withPicture, store: pictureStore, reachable }), { cards: 1, entries: 1 }, 'once the picture answers it is posted');
   assert.deepEqual([...pictureStore.state.posted].sort(), ['p', 'q']);
 
-  // `startCurrentlyLog` tries again by itself while an entry waits.
+  // `startCurrentlyLog` keeps looking by itself: an entry that waits for its picture, and a change that the web gets later, are posted at a later look.
   up = false;
   const retried = fake();
   const retryingStore = memory();
   const bot = { channels: retried.client.channels, user: { id: BOT } };
-  const started = await log.startCurrentlyLog(bot, { ...base, entries: withPicture, store: retryingStore, reachable, pauseMs: 5 });
-  assert.equal(started.waiting, 1);
+  let published = [withPicture[0]];
+  const looking = await log.startCurrentlyLog(bot, { channelId: CHANNEL, pauseMs: 0, store: retryingStore, reachable, pollMs: 5, load: async () => log.parseLog({ revision: 1, version: '0.7.12', entries: published }) });
+  assert.equal(looking.result.waiting, 1);
   up = true;
+  published = withPicture;
   await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.deepEqual([...retryingStore.state.posted].sort(), ['p', 'q'], 'the second try posted it');
+  looking.stop();
+  assert.deepEqual([...retryingStore.state.posted].sort(), ['p', 'q'], 'a later look posted the picture that was missing and the new entry');
 
   // A channel that is not there, and a store that fails: a line in the log, no crash.
   assert.equal((await log.announceNewEntries(fake({ channel: false }).client, { ...base, entries, store: memory() })).skipped, 'channel-unavailable');
   const broken = { read: async () => { throw new Error('db down'); }, write: async () => {} };
   assert.equal((await log.announceNewEntries(fake().client, { ...base, entries, store: broken })).skipped, 'store-failed');
 
-  // The real file: its revision is a number from 1, and the loaded entries carry it.
-  assert.ok(Number.isInteger(real.revision) && real.revision >= 1);
-  // The version at the bottom of the cards is the one of the file (0.7.12 from the start the maintainer marked), not the one of package.json.
-  assert.equal(real.version, '0.7.12', 'the log is at 0.7.12');
-  assert.notEqual(real.version, require('../package.json').version, 'it does not follow package.json');
+  // The version at the bottom of the cards is the one of the log of the web (0.7.12 from the start the maintainer marked), not the one of package.json.
+  const web = (over = {}) => ({ revision: 1, version: '0.7.12', entries: [entry('v1')], ...over });
+  const loadWeb = (current) => async () => log.parseLog(current());
+  let current = web();
   const versioned = fake();
-  await log.announceNewEntries(versioned.client, { ...base, entries: [entry('v1')], store: memory(), version: '0.7.13' });
-  assert.match(JSON.stringify(versioned.sent[0].components[0].toJSON()), /-# Petto 0\.7\.13/, 'the footer says the version it was given');
+  const versionedStore = memory();
+  await log.announceNewEntries(versioned.client, { channelId: CHANNEL, pauseMs: 0, reachable: loaded, store: versionedStore, load: loadWeb(() => current) });
+  assert.match(JSON.stringify(versioned.sent[0].components[0].toJSON()), /-# Petto 0\.7\.12/, 'the footer says the version of the log');
+  assert.notEqual('0.7.12', require('../package.json').version, 'it does not follow package.json');
+  // The web is not there: nothing is posted and nothing is forgotten.
+  const down = fake();
+  assert.equal((await log.announceNewEntries(down.client, { channelId: CHANNEL, pauseMs: 0, store: memory(), load: async () => null })).skipped, 'log-unavailable');
+  assert.equal(down.sent.length, 0);
+  // A change that only the web has: the web is deployed with a new entry and the next look posts it (and only it), with no change to the bot.
+  current = web({ entries: [entry('v1'), entry('only-web', 'web')] });
+  const webOnly = fake();
+  assert.deepEqual(await log.announceNewEntries(webOnly.client, { channelId: CHANNEL, pauseMs: 0, reachable: loaded, store: versionedStore, load: loadWeb(() => current) }), { cards: 1, entries: 1 });
+  assert.deepEqual([...versionedStore.state.posted].sort(), ['only-web', 'v1']);
 
   console.log('Checked the Currently log: the entries, the colors, the cards, each change once, the pictures that wait and the log posted again.');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -721,7 +721,7 @@ module.exports = {
   'moderation.purge.inChannels.one': "{count} canal",
   'moderation.purge.inChannels.other': "{count} canais",
   'moderation.purge.skippedChannels': "Canais ignorados (faltam permissões)",
-  'moderation.purge.notScanned': "Canais não verificados (o limite é 100)",
+  'moderation.purge.notScanned': "Canais e tópicos não verificados (o limite é 100 de cada um)",
   'moderation.purge.byChannel': "Por canal",
   'moderation.purge.andMoreChannels': "…e mais {count} canais",
   'moderation.purge.ask.one': "Isso apagaria {count} mensagem no servidor. Apago?",

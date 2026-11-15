@@ -248,6 +248,32 @@ function checkEmojis() {
   for (const stock of ['🎫', '🔒', '🔓', '📄', '⭐', '➕', '➖', '🗑']) assert.ok(!all.includes(stock), `no ${stock} left on the ticket buttons`);
 }
 
+/** A forwarded message has no text of its own: the transcript (and the live view of the ticket) shows what the forward carries. */
+async function checkForwardedInTranscript() {
+  const { summarizeMessage } = require('../src/utils/ticketLive');
+  const guildStub = { id: '10', name: 'Luna', members: { cache: new Map(), me: null }, roles: { cache: new Map() }, channels: { cache: new Map() }, iconURL: () => null, bannerURL: () => null, client: { user: { id: '99' } } };
+  const person = { id: '5', username: 'ana', bot: false, displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/5/a.png' };
+  const snapshot = { content: 'The payment went through **twice**', createdTimestamp: Date.parse('2026-10-20T14:00:00Z'), embeds: [{ title: 'Receipt', description: 'Order 42', toJSON() { return { title: this.title, description: this.description }; } }], attachments: new Map([['1', { name: 'proof.png', url: 'https://cdn.discordapp.com/attachments/1/2/proof.png', contentType: 'image/png', size: 100 }]]), stickers: new Map(), components: [] };
+  const forward = { id: '2', author: person, member: null, guild: guildStub, content: '', createdTimestamp: Date.parse('2026-10-20T15:00:00Z'), attachments: new Map(), embeds: [], stickers: new Map(), components: [], reactions: { cache: new Map() }, messageSnapshots: new Map([['x', snapshot]]) };
+  const plain = { ...forward, id: '3', messageSnapshots: new Map() };
+  const reply = { id: '4', author: person, member: null, guild: guildStub, content: 'See this', createdTimestamp: Date.parse('2026-10-20T15:05:00Z'), attachments: new Map(), embeds: [], stickers: new Map(), components: [], reactions: { cache: new Map() }, reference: { messageId: '2' } };
+  const { html } = renderTranscriptHtml({ messages: [forward, reply], guild: guildStub, channelName: 'ticket-0001', lang: 'en', info: { number: 1 } });
+  assert.ok(html.includes('class="forwarded"') && html.includes('Forwarded') && html.includes('The payment went through'), 'the text of the forward is in the transcript, marked as forwarded');
+  assert.ok(html.includes('Receipt') && html.includes('Order 42'), 'its embed too');
+  assert.ok(html.includes('proof.png'), 'and its file');
+  assert.ok(!html.includes('No text content'), 'a forward is not shown as a message without text');
+  assert.ok(html.includes('class="reply-text">The payment went through'), 'a reply to a forward quotes what it carries');
+  const empty = renderTranscriptHtml({ messages: [plain], guild: guildStub, lang: 'en', info: { number: 1 } }).html;
+  assert.ok(empty.includes('No text content') && !empty.includes('class="forwarded"'), 'a message with nothing at all still says so');
+  const es = renderTranscriptHtml({ messages: [forward], guild: guildStub, lang: 'es', info: { number: 1 } }).html;
+  assert.ok(es.includes('Reenviado'), 'in the language of the server');
+  const live = summarizeMessage({ ...forward, cleanContent: '' });
+  assert.equal(live.content, '\u21AA The payment went through **twice**', 'the live view shows the text of the forward');
+  assert.equal(live.attachments.length, 1, 'with its file');
+  assert.equal(live.embeds.length, 1, 'and its embed');
+  assert.equal(summarizeMessage({ ...forward, content: 'my own words', cleanContent: 'my own words' }).content, 'my own words', 'a message with its own text keeps it');
+}
+
 /** The transcript draws the pictures and lists the files of the answers of a ticket form, once, and the answers card is in it. */
 async function checkFormAnswersInTranscript() {
   const answers = require('../src/utils/ticketAnswers');
@@ -290,6 +316,7 @@ async function checkFormAnswersInTranscript() {
   checkEmojis();
   await checkTranscript();
   await checkFormAnswersInTranscript();
+  await checkForwardedInTranscript();
   await checkChannelDelete();
   await checkReconcile();
   await checkRating();
