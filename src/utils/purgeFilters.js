@@ -100,6 +100,8 @@ function purgePrefixArgs(argText) {
   const list = tokens(argText);
   const first = list[0]?.toLowerCase();
   if (!first) return argText;
+  // purge everywhere 50 bots: the whole server, then the usual forms.
+  if ((first === 'everywhere' || first === 'server') && list.length > 1) return ['--all_channels', purgePrefixArgs(list.slice(1).map((token) => (/\s/.test(token) ? quote(token) : token)).join(' '))].join(' ');
   if (FILTER_WORDS[first]) return ['--filter', FILTER_WORDS[first], ...list.slice(1).map((token) => (/\s/.test(token) ? quote(token) : token))].join(' ');
   if (TEXT_WORDS[first]) {
     const rest = list.slice(1);
