@@ -1,0 +1,125 @@
+{
+  "entries": [
+    {
+      "id": "currently-log",
+      "category": "feature",
+      "title": "The Currently log",
+      "area": "Petto › Announcements",
+      "summary": "Every change of Petto is posted in this channel when it goes live: a color for each kind of change, a short explanation, and pictures. React with the like or the dislike to tell us what you think. Red is security, yellow a new feature, green something added to a feature, blue an improvement, orange a fix, purple the web and docs, gray something removed and black a feature removed.",
+      "images": [
+        "https://petto.sbs/assets/log/currently-log-1.png",
+        "https://petto.sbs/assets/log/currently-log-2.png"
+      ],
+      "docs": "https://petto.sbs/blog/currently-log"
+    },
+    {
+      "id": "partner-top-lists",
+      "category": "addition",
+      "title": "Top lists of the best partner managers",
+      "area": "Partners › Variables",
+      "summary": "`{partner.top_list_day}`, `{partner.top_list_week}` and `{partner.top_list_total}` write the five best managers of the day, the week and all time, one per line with their partnerships. Use them in any partner message.",
+      "images": [
+        "https://petto.sbs/assets/log/partner-top-lists.png"
+      ],
+      "docs": "https://wiki.petto.sbs/resources/scripting/variables"
+    },
+    {
+      "id": "server-member-variables",
+      "category": "addition",
+      "title": "14 new server and member variables",
+      "area": "Embeds › Variables",
+      "summary": "Server: `{server_age_days}`, `{server_createdate_timestamp}`, `{server_emojicount}`, `{server_stickercount}`, `{server_description}`, `{server_vanity}`, `{server_banner}`, `{server_verification}`, `{server_locale}` and `{server_rules_channel}`. Member: `{user.role_count}`, `{user.top_role_mention}`, `{user.is_owner}` and `{user.joined_age_days}`.",
+      "images": [
+        "https://petto.sbs/assets/log/new-variables.png"
+      ],
+      "docs": "https://wiki.petto.sbs/resources/scripting/variables"
+    },
+    {
+      "id": "purge-all-channels",
+      "category": "addition",
+      "title": "Purge in every channel",
+      "area": "Moderation › Purge",
+      "summary": "`/purge` and `!purge` have a new option, `all_channels` (or `!purge everywhere 50 bots`). It scans every text channel where you and Petto can delete, shows how many messages it would delete in each one, and waits for a Confirm click before deleting anything.",
+      "images": [
+        "https://petto.sbs/assets/log/purge-all-channels.png"
+      ]
+    },
+    {
+      "id": "mhistory-command",
+      "category": "addition",
+      "title": "New command: /mhistory",
+      "area": "Moderation › Cases",
+      "summary": "`/mhistory moderator:<member>` and `!mhistory <moderator>` show the cases a moderator has given. The line of `/case stats` that pointed to it now names a command that exists.",
+      "images": [
+        "https://petto.sbs/assets/log/mhistory.png"
+      ]
+    },
+    {
+      "id": "case-icons",
+      "category": "fix",
+      "title": "A case shows the same icon everywhere",
+      "area": "Moderation › Cases",
+      "summary": "The card of a case (`/case view`, `/case edit`) and the one-line case still used the old icon of each sanction type. They now use the hammer, or the alert for a warning, like the list of cases.",
+      "images": [
+        "https://petto.sbs/assets/log/case-detail.png"
+      ]
+    },
+    {
+      "id": "forum-outside-post",
+      "category": "fix",
+      "title": "/forum outside a post says why",
+      "area": "Tickets › Forums",
+      "summary": "Using `/forum` in a channel that is not a forum post answered with a generic error. It now tells you to use it inside a post."
+    },
+    {
+      "id": "identity-menu",
+      "category": "fix",
+      "title": "/guildtag and /vanity show in the menu",
+      "area": "Automation › Identity",
+      "summary": "Discord hid both commands from members without Manage Server, so a moderator could not find them. They now show for everybody and ask for Manage Server when they run."
+    },
+    {
+      "id": "short-c-case",
+      "category": "improvement",
+      "title": "!c opens the cases",
+      "area": "Moderation › Cases",
+      "summary": "`!c <member>` is now a short way of `!case`: it shows the cases of that member."
+    },
+    {
+      "id": "calc-short-c",
+      "category": "removal",
+      "title": "!c is no longer the calculator",
+      "area": "Utility › Calc",
+      "summary": "`c` was a short word of the calculator, so `!c <id>` answered with a calculation. `!calc` and `!calculate` still work."
+    },
+    {
+      "id": "blog-currently-log",
+      "category": "web",
+      "title": "New blog post: Introducing the Currently log",
+      "area": "Web › Blog",
+      "summary": "What the Currently log is, what each color means, how a post looks and what is in the first one. Available in English, Spanish and Portuguese.",
+      "docs": "https://petto.sbs/blog/currently-log"
+    },
+    {
+      "id": "sticky-posted-on-save",
+      "category": "improvement",
+      "title": "A sticky message is posted when you save it",
+      "area": "Automation › Sticky messages",
+      "summary": "Saving a sticky message in the dashboard now posts it in the channel right away, like `!stickymessage set` does, instead of waiting for somebody to write there first. If you change it, the old message is replaced."
+    },
+    {
+      "id": "text-fields-fit",
+      "category": "web",
+      "title": "Text fields fit their text",
+      "area": "Web › Dashboard",
+      "summary": "Every text field of the site has the height of its text: no corner to drag, it grows as you write and shrinks as you delete, and an empty one is four lines high. Chat boxes keep their own size."
+    },
+    {
+      "id": "new-label-expires",
+      "category": "web",
+      "title": "The \"New\" label goes away by itself",
+      "area": "Web › Dashboard and menus",
+      "summary": "The \"New\" label on the tabs of the dashboard, the modules, the menu and the footer now lasts ten days from the day something comes out. The ones that were still showing it after weeks are gone."
+    }
+  ]
+}

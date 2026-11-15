@@ -105,6 +105,21 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.deepEqual([stand.rankWeek, stand.rankTotal, stand.topWeek.managerId, stand.topWeek.count, stand.topTotal.managerId, stand.topTotal.count, stand.serverDay, stand.serverWeek, stand.serverTotal], [2, 2, 'b', 4, 'b', 4, 1, 6, 7]);
   assert.equal(engine.standings(standingsRows, 'nobody', new Date('2026-10-03T20:00:00Z')).rankWeek, null, 'somebody with no partnerships has no place'); assert.equal(engine.standings([], 'a').topWeek, null);
 
+  // The top lists (`{partner.top_list_day|week|total}`): the best managers of each period in order, one per line, up to five.
+  assert.deepEqual(stand.listTotal.map((entry) => [entry.managerId, entry.count]), [['b', 4], ['a', 3]]);
+  assert.deepEqual(stand.listWeek.map((entry) => [entry.managerId, entry.count]), [['b', 4], ['a', 2]]);
+  assert.deepEqual(stand.listDay.map((entry) => [entry.managerId, entry.count]), [['a', 1]]);
+  const many = Array.from({ length: 8 }, (_, index) => ({ manager_id: `m${index}`, created_at: '2026-10-03T10:00:00Z' }));
+  assert.equal(engine.standings(many, 'm0', new Date('2026-10-03T20:00:00Z')).listTotal.length, 5, 'the list has five at most');
+  assert.deepEqual(engine.standings([], 'a').listTotal, [], 'nobody: an empty list');
+  const messages = require('../src/utils/partnerMessages');
+  const context = messages.partnerContext({ standings: stand }, 'en');
+  assert.equal(context.top_list_total, '1. <@b> · 4\n2. <@a> · 3');
+  assert.equal(context.top_list_day, '1. <@a> · 1');
+  assert.equal(messages.partnerContext({ standings: engine.standings([], 'a') }, 'en').top_list_week, '', 'no partnerships: empty text');
+  const { resolve } = require('../src/utils/embedVariables');
+  assert.equal(await resolve('{partner.top_list_total}', { partner: context }), '1. <@b> · 4\n2. <@a> · 3', 'the variable gives the list');
+
   // Periods and numbers: Saturday 2026-10-03, the week started on Monday 2026-09-28.
   const saturday = new Date('2026-10-03T20:00:00Z');
   assert.equal(engine.periodStart('day', saturday).toISOString(), '2026-10-03T05:00:00.000Z', 'the day starts at midnight in Colombia (GMT-5)');

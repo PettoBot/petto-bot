@@ -225,6 +225,47 @@ const event = require('../src/events/messageCreateSticky');
     assert.ok(w.sent.length >= 4 && w.sent.length <= 7, `${w.sent.length} reposts in 10 s of constant talk`);
     assert.ok(w.sent.every((s, n) => n === 0 || s.at - w.sent[n - 1].at >= 1500), 'no more than about one repost per 2 s');
   }
+  // A sticky is posted at once: when it is set (the old message goes, the new one is remembered) and when the dashboard asks (`petto:sticky`).
+  {
+    const { sendStickyNow, handleStickyNow } = require('../src/utils/stickyPayload');
+    const deleted = [];
+    const posted = [];
+    const channel = {
+      id: '222222222222222222',
+      messages: { fetch: async (id) => (id === 'old1' ? { delete: async () => { deleted.push('old1'); } } : null) },
+      send: async (payload) => { posted.push(payload); return { id: 'new1' }; },
+      permissionsFor: () => ({ has: () => true }),
+    };
+    const guild = { id: '111111111111111111', members: { me: { id: 'me' } }, channels: { cache: new Map([[channel.id, channel]]), fetch: async () => null } };
+    written.length = 0;
+    const sent = await sendStickyNow({ content: 'Read the rules', embed_template: null, message_id: 'old1' }, { guild, channel });
+    assert.equal(sent.id, 'new1');
+    assert.deepEqual(deleted, ['old1'], 'the old message goes');
+    assert.deepEqual(posted, [{ content: 'Read the rules' }], 'the new one is posted');
+    assert.deepEqual(written, ['new1'], 'and remembered');
+    assert.equal(await sendStickyNow({ content: '', embed_template: null, message_id: null }, { guild, channel }), null, 'an empty sticky posts nothing');
+    assert.equal(posted.length, 1);
+
+    const client = { guilds: { cache: new Map([[guild.id, guild]]) }, user: { id: 'bot' } };
+    const row = { content: 'Hi', embed_template: null, message_id: null };
+    const asked = [];
+    const deps = (over = {}) => ({ claim: async () => 0, stickyDb: { getSticky: async () => row }, invalidate: (table, id) => asked.push([table, id]), send: async (r, where) => { asked.push(['send', where.channel.id, where.user.id]); return { id: 'x' }; }, ...over });
+    const message = JSON.stringify({ guildId: guild.id, channelId: channel.id });
+    assert.equal(await handleStickyNow(client, message, deps()), true, 'the dashboard saved a sticky: it is posted');
+    assert.deepEqual(asked, [['sticky_messages', guild.id], ['send', channel.id, 'bot']], 'the cache is forgotten first, and the bot is the person of the variables');
+    for (const [why, raw, over] of [
+      ['not JSON', 'nope', {}], ['no ids', '{}', {}], ['a bad id', JSON.stringify({ guildId: 'x', channelId: channel.id }), {}],
+      ['a server this process does not have', JSON.stringify({ guildId: '999999999999999999', channelId: channel.id }), {}],
+      ['somebody else took it (another process, a double click)', message, { claim: async () => 3000 }],
+      ['the sticky is not there any more', message, { stickyDb: { getSticky: async () => null } }],
+    ]) {
+      asked.length = 0;
+      assert.equal(await handleStickyNow(client, raw, deps(over)), false, why);
+      assert.ok(!asked.some((entry) => entry[0] === 'send'), `${why}: nothing is posted`);
+    }
+    const blind = { ...guild, channels: { cache: new Map([[channel.id, { ...channel, permissionsFor: () => ({ has: () => false }) }]]), fetch: async () => null } };
+    assert.equal(await handleStickyNow({ ...client, guilds: { cache: new Map([[guild.id, blind]]) } }, message, deps()), false, 'without View Channel and Send Messages nothing is posted');
+  }
   void Collection;
   console.log('Checked the sticky messages: text, saved embeds, V2 designs, the fallback, the repost flow and its timings.');
 })().catch((error) => { console.error(error); process.exit(1); });

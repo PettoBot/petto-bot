@@ -35,6 +35,11 @@ function textOf(config, key, lang = currentLanguage()) {
   return text ? text.slice(0, MAX_TEXT) : defaultText(key, lang);
 }
 
+/** The best managers as lines: `1. <@id> · 12`. Empty when nobody has a partnership in that period. */
+function topList(list) {
+  return (list ?? []).map((entry, index) => `${index + 1}. <@${entry.managerId}> · ${entry.count}`).join('\n');
+}
+
 /** What `{partner.*}` gives. `info` is `{ name, id, members, invite, managerId, managerName, counts, standings, config, cooldownEndsUnix }`. */
 function partnerContext(info, lang = currentLanguage()) {
   const counts = info.counts ?? {};
@@ -60,6 +65,9 @@ function partnerContext(info, lang = currentLanguage()) {
     top_week_count: stand.topWeek ? String(stand.topWeek.count) : '',
     top_total: stand.topTotal ? `<@${stand.topTotal.managerId}>` : '',
     top_total_count: stand.topTotal ? String(stand.topTotal.count) : '',
+    top_list_day: topList(stand.listDay),
+    top_list_week: topList(stand.listWeek),
+    top_list_total: topList(stand.listTotal),
     server_day: String(stand.serverDay ?? 0),
     server_week: String(stand.serverWeek ?? 0),
     server_total: String(stand.serverTotal ?? 0),
