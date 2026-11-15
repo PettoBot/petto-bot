@@ -151,6 +151,9 @@ const EMOJI = {
   GIVEAWAY: '<:pe_give:1533211659911303358>',
   GAME: '<:pe_f_game:1564469175487959050>',
   AUTOMOD: '<:pe_auto:1533211330734194810>',
+  // The Voice Master panel buttons: allow a member to join and deny a member to join (the Currently log uses them for what is added and removed).
+  VOICE_PERMIT: '<:pe_permit:1533574862436569228>',
+  VOICE_DENY: '<:pe_deny:1533574864198172772>',
 };
 
 // Which emoji represents each mod_actions.type, for DMs and case embeds.
