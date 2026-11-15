@@ -171,10 +171,15 @@ function channelIdFromEnv(env = process.env) {
     const value = String(env.currently_log ?? env.CURRENTLY_LOG ?? '').trim();
     return /^\d{15,25}$/.test(value) ? value : null;
 }
-/** The entries of the file, checked, and its revision: a higher number than the one that was posted deletes the log of the channel and posts all of it again. */
+/**
+ * The entries of the file, checked, with its revision and its version. The revision: a higher number than the one that was posted deletes the log of the
+ * channel and posts all of it again. The version is the one written at the bottom of every card (`-# Petto 0.7.12`): it is the one the maintainer says
+ * the log is at, not the one of `package.json`, and it changes when he says a new one starts.
+ */
 function loadEntries() {
     const file = require('../data/currentlyLog.json');
-    return { ...validateEntries(file.entries), revision: Math.max(1, Math.floor(Number(file.revision)) || 1) };
+    const version = typeof file.version === 'string' && /^\d+\.\d+\.\d+$/.test(file.version) ? file.version : '';
+    return { ...validateEntries(file.entries), revision: Math.max(1, Math.floor(Number(file.revision)) || 1), version };
 }
 /** Whether a picture can be read from its link as an image, the way Discord will read it. */
 async function imageReachable(url) {
@@ -228,7 +233,7 @@ async function announceNewEntries(client, options = {}) {
     if (!channelId)
         return { cards: 0, entries: 0, skipped: 'no-channel' };
     try {
-        const loaded = options.entries ? { entries: options.entries, problems: [], revision: options.revision ?? 1 } : loadEntries();
+        const loaded = options.entries ? { entries: options.entries, problems: [], revision: options.revision ?? 1, version: '' } : loadEntries();
         for (const problem of loaded.problems)
             logger.warn(`Currently log: ${problem}`);
         const revision = options.revision ?? loaded.revision;
@@ -263,7 +268,7 @@ async function announceNewEntries(client, options = {}) {
         }
         if (waiting)
             logger.warn(`Currently log: ${waiting} change(s) wait until their pictures can be loaded.`);
-        const cards = buildCards(ready, options.version ?? '');
+        const cards = buildCards(ready, options.version ?? loaded.version);
         let sentCards = 0;
         let sentEntries = 0;
         const posted = [...state.posted];

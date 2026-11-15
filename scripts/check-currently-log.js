@@ -190,6 +190,12 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
 
   // The real file: its revision is a number from 1, and the loaded entries carry it.
   assert.ok(Number.isInteger(real.revision) && real.revision >= 1);
+  // The version at the bottom of the cards is the one of the file (0.7.12 from the start the maintainer marked), not the one of package.json.
+  assert.equal(real.version, '0.7.12', 'the log is at 0.7.12');
+  assert.notEqual(real.version, require('../package.json').version, 'it does not follow package.json');
+  const versioned = fake();
+  await log.announceNewEntries(versioned.client, { ...base, entries: [entry('v1')], store: memory(), version: '0.7.13' });
+  assert.match(JSON.stringify(versioned.sent[0].components[0].toJSON()), /-# Petto 0\.7\.13/, 'the footer says the version it was given');
 
   console.log('Checked the Currently log: the entries, the colors, the cards, each change once, the pictures that wait and the log posted again.');
 })().catch((error) => { console.error(error); process.exit(1); });
