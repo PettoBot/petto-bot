@@ -14,6 +14,9 @@ const BULK_DELETE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const RESULT_LIFETIME_MS = 8_000;
 // `all_channels` goes through the text channels of the server, up to this many, and waits for a confirmation this long.
 const MAX_ALL_CHANNELS = 100;
+const MAX_ALL_THREADS = 100;
+// Asking Discord for the open threads must not take the three seconds that a command has to answer.
+const THREADS_WAIT_MS = 2_000;
 const CONFIRM_MS = 60_000;
 const CHANNEL_LINES = 10;
 
@@ -79,10 +82,15 @@ module.exports = {
     if (allChannels) {
       // Every text channel where the member and Petto both can read, see the history and delete. The others are left out and counted.
       const all = [...interaction.guild.channels.cache.values()].filter((candidate) => candidate.isTextBased() && !candidate.isThread() && !candidate.isDMBased() && candidate.messages);
-      const usable = all.filter((candidate) => !missingIn(candidate, interaction.member).length && !missingIn(candidate, interaction.guild.members.me).length);
-      skipped = all.length - usable.length;
-      targets = usable.slice(0, MAX_ALL_CHANNELS);
-      notScanned = usable.length - targets.length;
+      // The open threads too, and with them the posts of the forums (a post is a thread): they are not in the list of channels. An archived thread cannot be written
+      // in until it is opened again, so it is left alone.
+      const threads = await activeThreads(interaction.guild);
+      const allowed = (candidate) => !missingIn(candidate, interaction.member).length && !missingIn(candidate, interaction.guild.members.me).length;
+      const usable = all.filter(allowed);
+      const usableThreads = threads.filter(allowed);
+      skipped = all.length - usable.length + threads.length - usableThreads.length;
+      targets = [...usable.slice(0, MAX_ALL_CHANNELS), ...usableThreads.slice(0, MAX_ALL_THREADS)];
+      notScanned = usable.length - Math.min(usable.length, MAX_ALL_CHANNELS) + usableThreads.length - Math.min(usableThreads.length, MAX_ALL_THREADS);
       if (!targets.length) {
         await interaction.reply({ content: t(lang, 'moderation.purge.noChannels', { permissions: NEEDED.map((flag) => t(lang, `core.perm.${flag}`)).join(', ') }), flags: MessageFlags.Ephemeral });
         return;
@@ -175,6 +183,14 @@ function describeFilters({ lang, filter, user, text, startsWith, endsWith, befor
     afterId ? t(lang, 'moderation.purge.afterMessage', { id: afterId }) : null,
     beforeId ? t(lang, 'moderation.purge.beforeMessage', { id: beforeId }) : null,
   ].filter(Boolean).join(' · ');
+}
+
+/** The open threads of the server (and the posts of its forums), where messages can be read and deleted. Empty when Discord does not answer in time. */
+async function activeThreads(guild) {
+  if (typeof guild.channels?.fetchActiveThreads !== 'function') return [];
+  const timeout = new Promise((resolve) => { setTimeout(() => resolve(null), THREADS_WAIT_MS).unref?.(); });
+  const found = await Promise.race([guild.channels.fetchActiveThreads().catch(() => null), timeout]);
+  return found ? [...found.threads.values()].filter((thread) => !thread.archived && thread.messages) : [];
 }
 
 const sum = (list, pick) => list.reduce((total, item) => total + pick(item), 0);

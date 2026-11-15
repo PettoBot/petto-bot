@@ -721,7 +721,7 @@ module.exports = {
   'moderation.purge.inChannels.one': "{count} channel",
   'moderation.purge.inChannels.other': "{count} channels",
   'moderation.purge.skippedChannels': "Channels left out (missing permissions)",
-  'moderation.purge.notScanned': "Channels not scanned (the limit is 100)",
+  'moderation.purge.notScanned': "Channels and threads not scanned (the limit is 100 of each)",
   'moderation.purge.byChannel': "By channel",
   'moderation.purge.andMoreChannels': "…and {count} more channels",
   'moderation.purge.ask.one': "This would delete {count} message in the server. Delete it?",

@@ -130,7 +130,8 @@ async function banUser(rawInteraction, { hard = false } = {}) {
   }
 
   try {
-    await interaction.guild.members.ban(targetUser.id, { reason: reason ?? undefined, deleteMessageSeconds: deleteDays * 86400 });
+    // The ban goes alone, fast: the messages are deleted after the answer and the log (deleteMessagesAfter).
+    await interaction.guild.members.ban(targetUser.id, { reason: reason ?? undefined });
   } catch (err) {
     logger.error('Failed to ban member:', err);
     await interaction.editReply({
@@ -147,6 +148,7 @@ async function banUser(rawInteraction, { hard = false } = {}) {
 
   await sanctionReply(interaction, { modCase, type, target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
+  deleteMessagesAfter(interaction.guild, targetUser.id, deleteDays, reason);
 }
 
 async function banUsers(interaction) {
@@ -208,6 +210,17 @@ async function banUsers(interaction) {
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }
 
+/**
+ * Deletes the recent messages of a banned member (`delete_message_days`), after everything else is done: the notice in DM, the ban, the answer and
+ * the log. Discord deletes the messages while it sets the ban, and that can take a long time, so the ban is not asked to do it: the same ban is set
+ * again in the background with the days of messages, which deletes them. Nothing waits for it and it never throws.
+ */
+function deleteMessagesAfter(guild, userId, days, reason) {
+  if (!days) return;
+  guild.members.ban(userId, { reason: reason ?? undefined, deleteMessageSeconds: days * 86400 })
+    .catch((err) => logger.warn(`Could not delete the messages of ${userId} after the ban in guild ${guild.id}: ${err?.message ?? err}`));
+}
+
 async function tempBan(interaction) {
   const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
@@ -240,7 +253,8 @@ async function tempBan(interaction) {
   }
 
   try {
-    await interaction.guild.members.ban(targetUser.id, { reason: reason ?? undefined, deleteMessageSeconds: deleteDays * 86400 });
+    // The ban goes alone, fast: the messages are deleted after the answer and the log (deleteMessagesAfter).
+    await interaction.guild.members.ban(targetUser.id, { reason: reason ?? undefined });
   } catch (err) {
     logger.error('Failed to ban member:', err);
     await interaction.editReply({
@@ -257,6 +271,7 @@ async function tempBan(interaction) {
 
   await sanctionReply(interaction, { modCase, type: 'tempban', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason, duration });
+  deleteMessagesAfter(interaction.guild, targetUser.id, deleteDays, reason);
 }
 
 async function unban(interaction) {
