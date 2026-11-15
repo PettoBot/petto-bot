@@ -14,9 +14,22 @@ const store = new Map();
 stub('src/config.js', settings);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/handlers/prefixInteraction.js', { tokenize: (text) => String(text).match(/"[^"]*"|\S+/g)?.map((word) => word.replace(/^"|"$/g, '')) ?? [] });
-stub('src/db/commandData.js', { forGuild: () => ({}) });
+const waiting = new Map();
+const zones = new Map();
+stub('src/db/commandData.js', {
+  forGuild: () => ({}),
+  settings: { get: async (guildId) => (zones.has(guildId) ? { timezone: zones.get(guildId) } : null), setTimeZone: async (guildId, timezone) => { zones.set(guildId, timezone); } },
+  schedule: {
+    set: async (entry) => { waiting.set(`${entry.guildId}:${entry.name}:${entry.id}`, entry); },
+    cancel: async (guildId, name, id) => waiting.delete(`${guildId}:${name}:${id}`),
+    count: async (guildId) => [...waiting.values()].filter((entry) => entry.guildId === guildId).length,
+    list: async (guildId) => [...waiting.values()].filter((entry) => entry.guildId === guildId),
+  },
+});
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
 stub('src/db/customCommands.js', {
+  normalizeName: (name) => name.toLowerCase().trim().replace(/\s+/g, ''),
+  setLinks: async (guildId, name, links) => { const row = store.get(`${guildId}:${name}`); if (!row) return false; row.links = links; return true; },
   getCommand: async (guildId, name) => store.get(`${guildId}:${name}`) ?? null,
   upsertCommand: async (guildId, name, values) => { store.set(`${guildId}:${name}`, { name, trigger_type: 'command', trigger_text: null, ...values }); },
   listCommands: async (guildId) => [...store.entries()].filter(([key]) => key.startsWith(`${guildId}:`)).map(([, value]) => value),
@@ -35,7 +48,7 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   const makeMember = (id) => ({ user: { id, username: 'Liam', globalName: null, bot: false, displayAvatarURL: () => 'https://cdn.example/a.png' }, nickname: null, displayName: 'Liam', joinedTimestamp: 1_700_000_000_000, roles: { cache: new Map() } });
   const app = express();
   app.use(express.json());
-  registerCodeRoutes(app, { authorize: async (req) => ({ guild, member: makeMember(String(req.query.user_id || req.body?.user_id)), userId: String(req.query.user_id || req.body?.user_id) }) });
+  registerCodeRoutes(app, { limit: 1000, authorize: async (req) => ({ guild, member: makeMember(String(req.query.user_id || req.body?.user_id)), userId: String(req.query.user_id || req.body?.user_id) }) });
   const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}/api/dashboard/guild/${guild.id}/code`;
   const call = async (route, body, userId = 'tester') => {
@@ -117,10 +130,58 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   r = await call('trigger', { name: 'greet', type: 'nope', text: 'x' }); assert.equal(r.status, 400);
   r = await call('trigger', { name: 'missing', type: 'command' }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('does not exist'));
 
+  // The time zone of the server: what `.TimeZone` says in the code, the zone of the reminders that do not say one.
+  r = await call('meta'); assert.equal(r.json.timezone, 'UTC'); assert.equal(r.json.limits.reminders, 25); assert.equal(r.json.limits.links, 3);
+  r = await call('timezone', { timezone: 'Mars/Base' }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('not a time zone'));
+  r = await call('timezone', { timezone: 'America/Bogota' }); assert.equal(r.status, 200); assert.equal(r.json.timezone, 'America/Bogota');
+  r = await call('meta'); assert.equal(r.json.timezone, 'America/Bogota');
+  r = await call('test', { code: '{{ .TimeZone }}' }); assert.equal(r.json.output, 'America/Bogota', 'a test reads the zone of the server');
+  r = await call('timezone', { timezone: 'UTC-5' }); assert.equal(r.json.timezone, 'UTC-5');
+
+  // Connecting commands from the settings of one (the ones that also run after it).
+  r = await call('save', { name: 'second', code: 'two' }); assert.equal(r.status, 200);
+  r = await call('save', { name: 'third', code: 'three' }); assert.equal(r.status, 200);
+  r = await call('links', { name: 'greet', links: ['second', 'third'] }); assert.equal(r.status, 200); assert.deepEqual(r.json.links, ['second', 'third']);
+  assert.deepEqual(store.get(`${guild.id}:greet`).links, ['second', 'third']);
+  r = await call('links', { name: 'greet', links: ['greet'] }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('cannot start itself'));
+  r = await call('links', { name: 'greet', links: ['ghost'] }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('no command in code called ghost'));
+  r = await call('links', { name: 'second', links: ['greet'] }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('runs in circles'), 'a link that leads back is refused');
+  r = await call('links', { name: 'greet', links: ['second', 'third', 'a', 'b'] }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('at most 3'));
+  r = await call('links', { name: 'greet', links: [] }); assert.deepEqual(r.json.links, [], 'no links is allowed');
+  r = await call('links', { name: 'nothing', links: [] }); assert.equal(r.status, 400);
+
+  // Reminders from the dashboard: every X time, every day, every week.
+  const remind = (extra) => call('reminder', { name: 'greet', id: 'r1', channelId: '200000000000000001', kind: 'daily', time: '20:00', timezone: 'America/Bogota', ...extra });
+  r = await remind({}); assert.equal(r.status, 200); assert.equal(new Date(r.json.runAt).getUTCHours(), 1, '20:00 of Bogota is 01:00 UTC');
+  const stored = waiting.get(`${guild.id}:greet:r1`);
+  assert.deepEqual(stored.repeat, { kind: 'daily', atTime: '20:00', timezone: 'America/Bogota', weekday: null }); assert.equal(stored.userId, 'tester');
+  r = await remind({ id: 'r2', kind: 'weekly', weekday: 'lunes', time: '9:30', timezone: '' });
+  assert.equal(r.status, 200); assert.deepEqual(waiting.get(`${guild.id}:greet:r2`).repeat, { kind: 'weekly', atTime: '09:30', timezone: 'UTC-5', weekday: 1 }, 'without a zone it takes the one of the server');
+  r = await remind({ id: 'r3', kind: 'interval', everySeconds: 3600 }); assert.equal(r.status, 200);
+  assert.ok(Math.abs(r.json.runAt - (Date.now() + 3_600_000)) < 5000); assert.deepEqual(waiting.get(`${guild.id}:greet:r3`).repeat, { kind: 'interval', everyMs: 3_600_000 });
+  r = await remind({ id: 'r3', kind: 'interval', everySeconds: 7200 }); assert.equal(r.json.replaced, true, 'the same id replaces');
+  r = await remind({ kind: 'interval', everySeconds: 299 }); assert.equal(r.status, 400); assert.equal(r.json.field, 'every');
+  r = await remind({ time: '25:00' }); assert.equal(r.json.field, 'time');
+  r = await remind({ timezone: 'Mars/Base' }); assert.equal(r.json.field, 'timezone');
+  r = await remind({ kind: 'weekly', weekday: 'someday' }); assert.equal(r.json.field, 'weekday');
+  r = await remind({ kind: 'yearly' }); assert.equal(r.json.field, 'kind');
+  r = await remind({ id: 'bad id' }); assert.equal(r.json.field, 'id');
+  r = await remind({ channelId: 'general' }); assert.equal(r.json.field, 'channel');
+  r = await remind({ name: 'ghost' }); assert.equal(r.json.field, 'name');
+  r = await remind({ data: 'x'.repeat(2100) }); assert.equal(r.json.field, 'data');
+  r = await call('overview', null);
+  assert.equal(r.json.timezone, 'UTC-5'); assert.deepEqual(r.json.reminders.map((entry) => entry.id).sort(), ['r1', 'r2', 'r3']);
+  assert.ok(r.json.commands.some((command) => command.name === 'greet' && Array.isArray(command.links)));
+  r = await call('reminder/cancel', { name: 'greet', id: 'r1' }); assert.equal(r.json.removed, true);
+  r = await call('reminder/cancel', { name: 'greet', id: 'r1' }); assert.equal(r.json.removed, false);
+  for (let n = 0; n < 25; n += 1) waiting.set(`${guild.id}:greet:many${n}`, { guildId: guild.id, name: 'greet', id: `many${n}` });
+  r = await remind({ id: 'one-more', kind: 'interval', everySeconds: 600 }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('already has 25 reminders'));
+  waiting.clear();
+
   // Everyone who manages the server writes and tests, until it is turned off.
   r = await call('test', { code: 'ok' }, 'someone'); assert.equal(r.status, 200, 'anyone who manages the server can');
   settings.codeCommandsDisabled = true;
-  for (const [route, body] of [['test', { code: 'x' }], ['save', { name: 'x', code: 'x' }], ['trigger', { name: 'greet', type: 'command' }]]) {
+  for (const [route, body] of [['test', { code: 'x' }], ['save', { name: 'x', code: 'x' }], ['trigger', { name: 'greet', type: 'command' }], ['timezone', { timezone: 'UTC' }], ['links', { name: 'greet', links: [] }], ['reminder', { name: 'greet' }], ['reminder/cancel', { name: 'greet', id: 'x' }]]) {
     r = await call(route, body, 'someone');
     assert.equal(r.status, 403, route); assert.equal(r.json.error, 'turned_off');
   }

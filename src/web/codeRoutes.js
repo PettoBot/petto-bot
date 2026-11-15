@@ -10,8 +10,8 @@ const codeCommands = require('../utils/codeCommands');
 const admin = require('../utils/codeCommandAdmin');
 const logger = require('../utils/logger');
 const { t, requestLanguage, peekGuildLanguage } = require('../i18n');
+const ccDb = require('../db/customCommands');
 
-const limiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 
 /** The data a test run reads: the member who is testing, the server, and a channel to stand for the one it would run in. */
 function sampleData(guild, member, args) {
@@ -22,7 +22,8 @@ function sampleData(guild, member, args) {
   }, 'test', args, '!');
 }
 
-function registerCodeRoutes(app, { authorize }) {
+function registerCodeRoutes(app, { authorize, limit = 60 }) {
+  const limiter = rateLimit({ windowMs: 60_000, limit, standardHeaders: true, legacyHeaders: false });
   const route = (handler) => async (req, res) => {
     const access = await authorize(req, res);
     if (!access) return;
@@ -50,7 +51,8 @@ function registerCodeRoutes(app, { authorize }) {
       functions: [...functions.entries()].map(([name, entry]) => ({ name, min: entry.min, max: entry.max })).sort((a, b) => a.name.localeCompare(b.name)),
       templates: TEMPLATES.map((template) => ({ ...templateIn(template, lang), code: templateCode(template, serverLang) })),
       triggerTypes: TRIGGER_TYPES,
-      limits: { source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: allowed.limit, premium: allowed.premium, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
+      timezone: await codeCommands.zoneOf(String(req.params.guildId)),
+      limits: { reminders: admin.MAX_REMINDERS, links: admin.MAX_LINKS, source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: allowed.limit, premium: allowed.premium, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
     });
   }));
 
@@ -75,6 +77,7 @@ function registerCodeRoutes(app, { authorize }) {
     if (problem) { res.json({ ok: true, error: { kind: 'syntax', message: problem }, hints: [] }); return; }
     const hints = admin.codeHints(code, lang);
     const data = sampleData(guild, member, args);
+    data.TimeZone = await codeCommands.zoneOf(guild.id);
     if (trigger !== 'command') {
       data.Trigger = trigger;
       data.Button = { ID: String(req.body?.handler ?? '').slice(0, 20), Data: String(req.body?.data ?? '').slice(0, 20) };
@@ -97,6 +100,47 @@ function registerCodeRoutes(app, { authorize }) {
     const code = typeof req.body?.code === 'string' ? req.body.code.replace(/\r\n/g, '\n') : '';
     const saved = await admin.saveCodeCommand({ guild, client: guild.client, userId, name, code, lang: languageOf(req) });
     res.status(saved.ok ? 200 : 400).json(saved);
+  }));
+
+  // What the page of the code shows at a glance: the time zone of the server, every command (with the ones that also run after it) and the reminders waiting.
+  app.get('/api/dashboard/guild/:guildId/code/overview', limiter, route(async (req, res, { guild }) => {
+    const rows = await ccDb.listCommands(guild.id);
+    res.json({
+      ok: true,
+      timezone: await codeCommands.zoneOf(guild.id),
+      commands: rows.filter((row) => row.code).map((row) => ({ number: row.number ?? null, name: row.name, triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? null, links: Array.isArray(row.links) ? row.links : [] })),
+      reminders: await admin.listReminders(guild.id),
+    });
+  }));
+
+  app.post('/api/dashboard/guild/:guildId/code/timezone', limiter, route(async (req, res, { guild }) => {
+    if (!needWrite(req, res)) return;
+    const saved = await admin.setServerTimeZone({ guild, zone: req.body?.timezone, lang: languageOf(req) });
+    res.status(saved.ok ? 200 : 400).json(saved);
+  }));
+
+  // Connects commands from the settings of one: the ones that also run after it.
+  app.post('/api/dashboard/guild/:guildId/code/links', limiter, route(async (req, res, { guild }) => {
+    if (!needWrite(req, res)) return;
+    const name = String(req.body?.name ?? '').toLowerCase().trim();
+    const saved = await admin.setCommandLinks({ guild, name, links: Array.isArray(req.body?.links) ? req.body.links.slice(0, 20) : [], lang: languageOf(req) });
+    res.status(saved.ok ? 200 : 400).json(saved);
+  }));
+
+  // A reminder: a command that runs every X time, every day or every week, as the person who makes it.
+  app.post('/api/dashboard/guild/:guildId/code/reminder', limiter, route(async (req, res, { guild, userId }) => {
+    if (!needWrite(req, res)) return;
+    const body = req.body ?? {};
+    const created = await admin.createReminder({
+      guild, userId, name: String(body.name ?? '').toLowerCase().trim(), id: body.id, channelId: body.channelId, kind: body.kind, everySeconds: body.everySeconds,
+      time: body.time, timezone: body.timezone, weekday: body.weekday, data: body.data ?? null, lang: languageOf(req),
+    });
+    res.status(created.ok ? 200 : 400).json(created);
+  }));
+
+  app.post('/api/dashboard/guild/:guildId/code/reminder/cancel', limiter, route(async (req, res, { guild }) => {
+    if (!needWrite(req, res)) return;
+    res.json(await admin.cancelReminder({ guild, name: req.body?.name, id: req.body?.id }));
   }));
 
   app.post('/api/dashboard/guild/:guildId/code/trigger', limiter, route(async (req, res, { guild, userId }) => {

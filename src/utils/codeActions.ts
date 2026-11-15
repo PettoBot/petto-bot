@@ -48,7 +48,10 @@ export interface ActionContext {
   now?: () => number;
 }
 export interface ScheduleStore {
-  set(entry: { guildId: string; name: string; id: string; runAt: number; userId: string; channelId: string; data: unknown; origin?: string }): Promise<void>;
+  set(entry: {
+    guildId: string; name: string; id: string; runAt: number; userId: string; channelId: string; data: unknown; origin?: string;
+    repeat?: { kind: 'interval' | 'daily' | 'weekly'; everyMs?: number; atTime?: string; timezone?: string; weekday?: number | null } | null;
+  }): Promise<void>;
   cancel(guildId: string, name: string, id: string): Promise<boolean>;
   count(guildId: string): Promise<number>;
 }
@@ -459,7 +462,13 @@ export async function applyAction(source: Any, effect: Any, ctx: ActionContext):
         const pending = await ctx.schedule.count(guild.id);
         const replaced = await ctx.schedule.cancel(guild.id, effect.name, effect.id);
         if (!replaced && pending >= MAX_PENDING_SCHEDULES) return skip(lang, type, 'tooManyScheduled', { max: MAX_PENDING_SCHEDULES });
-        await ctx.schedule.set({ guildId: guild.id, name: effect.name, id: effect.id, runAt: now + effect.seconds * 1000, userId: author.id, channelId: source.channel?.id ?? '', data: effect.data ?? null, origin: effect.origin ?? 'command' });
+        const repeat = effect.repeat ?? null;
+        // A reminder that is every day or every week starts at the next time of its zone, one that is every X time starts after X.
+        const first = repeat && repeat.kind !== 'interval'
+          ? require('./timerSchedule').nextScheduledRun({ schedule: repeat.kind, at_time: repeat.atTime, timezone: repeat.timezone, weekday: repeat.weekday }, now)?.getTime()
+          : now + effect.seconds * 1000;
+        if (!first) return skip(lang, type, 'failed', { detail: 'no time' });
+        await ctx.schedule.set({ guildId: guild.id, name: effect.name, id: effect.id, runAt: first, userId: author.id, channelId: source.channel?.id ?? '', data: effect.data ?? null, origin: effect.origin ?? 'command', repeat });
         return null;
       }
       case 'cancelSchedule': {

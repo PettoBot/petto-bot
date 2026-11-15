@@ -33,6 +33,16 @@ const SCHEMA = `
     primary key (guild_id, name, id)
   );
   alter table custom_command_schedule add column if not exists origin text not null default 'command';
+  alter table custom_command_schedule add column if not exists repeat_kind text;
+  alter table custom_command_schedule add column if not exists repeat_every_ms bigint;
+  alter table custom_command_schedule add column if not exists at_time text;
+  alter table custom_command_schedule add column if not exists timezone text;
+  alter table custom_command_schedule add column if not exists weekday integer;
+  create table if not exists custom_command_settings (
+    guild_id   text primary key,
+    timezone   text,
+    updated_at timestamptz not null default now()
+  );
   create index if not exists idx_custom_command_schedule_due on custom_command_schedule(run_at);
 `;
 
@@ -167,6 +177,7 @@ async function deleteGuildData(guildId) {
   const pool = await db();
   const { rowCount } = await pool.query('delete from custom_command_data where guild_id = $1', [String(guildId)]);
   await pool.query('delete from custom_command_schedule where guild_id = $1', [String(guildId)]);
+  await pool.query('delete from custom_command_settings where guild_id = $1', [String(guildId)]);
   return rowCount;
 }
 
@@ -174,12 +185,32 @@ async function deleteGuildData(guildId) {
  * The commands that code asked to run later (scheduleUniqueCC). They are kept here, so a restart does not lose them. A command and an id are one
  * schedule: setting it again replaces the first. `claimDue` takes the ones that are due and removes them in one step, so two processes never run one twice.
  */
+const { nextScheduledRun } = require('../utils/timerSchedule');
+
+/**
+ * When a repeating command runs next after a run, counted from now (a bot that was off does not run all the runs it missed): `repeat_kind` is 'interval' (every
+ * `repeat_every_ms`), 'daily' or 'weekly' (at `at_time` of `timezone`, on `weekday` for weekly). Null when it cannot be worked out.
+ */
+function nextRepeat(row, now = Date.now()) {
+  if (row.repeat_kind === 'interval') return Number(row.repeat_every_ms) > 0 ? now + Number(row.repeat_every_ms) : null;
+  if (row.repeat_kind === 'daily' || row.repeat_kind === 'weekly') return nextScheduledRun({ schedule: row.repeat_kind, at_time: row.at_time, timezone: row.timezone, weekday: row.weekday }, now)?.getTime() ?? null;
+  return null;
+}
+
+const scheduleFrom = (row) => ({
+  guildId: row.guild_id, name: row.name, id: row.id, userId: row.user_id, channelId: row.channel_id, data: row.data, origin: row.origin,
+  runAt: row.run_at instanceof Date ? row.run_at.getTime() : Number(new Date(row.run_at)),
+  repeat: row.repeat_kind ? { kind: row.repeat_kind, everyMs: row.repeat_every_ms === null ? null : Number(row.repeat_every_ms), atTime: row.at_time, timezone: row.timezone, weekday: row.weekday } : null,
+});
+
 const schedule = {
-  async set({ guildId, name, id, runAt, userId, channelId, data, origin = 'command' }) {
+  async set({ guildId, name, id, runAt, userId, channelId, data, origin = 'command', repeat = null }) {
     await (await db()).query(
-      `insert into custom_command_schedule (guild_id, name, id, run_at, user_id, channel_id, data, origin) values ($1, $2, $3, to_timestamp($4 / 1000.0), $5, $6, $7::jsonb, $8)
-       on conflict (guild_id, name, id) do update set run_at = excluded.run_at, user_id = excluded.user_id, channel_id = excluded.channel_id, data = excluded.data, origin = excluded.origin`,
-      [String(guildId), name, id, runAt, String(userId), String(channelId ?? ''), JSON.stringify(data ?? null), origin],
+      `insert into custom_command_schedule (guild_id, name, id, run_at, user_id, channel_id, data, origin, repeat_kind, repeat_every_ms, at_time, timezone, weekday)
+       values ($1, $2, $3, to_timestamp($4 / 1000.0), $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
+       on conflict (guild_id, name, id) do update set run_at = excluded.run_at, user_id = excluded.user_id, channel_id = excluded.channel_id, data = excluded.data, origin = excluded.origin,
+         repeat_kind = excluded.repeat_kind, repeat_every_ms = excluded.repeat_every_ms, at_time = excluded.at_time, timezone = excluded.timezone, weekday = excluded.weekday`,
+      [String(guildId), name, id, runAt, String(userId), String(channelId ?? ''), JSON.stringify(data ?? null), origin, repeat?.kind ?? null, repeat?.everyMs ?? null, repeat?.atTime ?? null, repeat?.timezone ?? null, repeat?.weekday ?? null],
     );
   },
   async cancel(guildId, name, id) {
@@ -190,15 +221,49 @@ const schedule = {
     const { rows } = await (await db()).query('select count(*)::int as total from custom_command_schedule where guild_id = $1', [String(guildId)]);
     return rows[0].total;
   },
+  /** What a server has waiting, the soonest first (for the dashboard). */
+  async list(guildId) {
+    const { rows } = await (await db()).query('select * from custom_command_schedule where guild_id = $1 order by run_at, name, id limit 100', [String(guildId)]);
+    return rows.map(scheduleFrom);
+  },
+  /**
+   * Takes the commands that are due. One that runs once is removed; one that repeats is moved to its next time, in the same step, so it is never lost and two processes
+   * never run it twice. The rows come back as they were when they were due.
+   */
   async claimDue(limit = 20) {
-    const { rows } = await (await db()).query(
-      `delete from custom_command_schedule where (guild_id, name, id) in (
-         select guild_id, name, id from custom_command_schedule where run_at <= now() order by run_at limit $1 for update skip locked
-       ) returning guild_id, name, id, user_id, channel_id, data, origin`,
-      [limit],
-    );
-    return rows.map((row) => ({ guildId: row.guild_id, name: row.name, id: row.id, userId: row.user_id, channelId: row.channel_id, data: row.data, origin: row.origin }));
+    const pool = await db();
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const { rows } = await client.query('select * from custom_command_schedule where run_at <= now() order by run_at limit $1 for update skip locked', [limit]);
+      for (const row of rows) {
+        const next = nextRepeat(row);
+        if (next) await client.query('update custom_command_schedule set run_at = to_timestamp($4 / 1000.0) where guild_id = $1 and name = $2 and id = $3', [row.guild_id, row.name, row.id, next]);
+        else await client.query('delete from custom_command_schedule where guild_id = $1 and name = $2 and id = $3', [row.guild_id, row.name, row.id]);
+      }
+      await client.query('commit');
+      return rows.map(scheduleFrom);
+    } catch (error) {
+      await client.query('rollback').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   },
 };
 
-module.exports = { forGuild, purgeExpired, deleteGuildData, schedule, MAX_ENTRIES_PER_GUILD, SCHEMA };
+/** The settings of the code of a server: for now its time zone. */
+const settings = {
+  async get(guildId) {
+    const { rows } = await (await db()).query('select timezone from custom_command_settings where guild_id = $1', [String(guildId)]);
+    return rows[0] ?? null;
+  },
+  async setTimeZone(guildId, timezone) {
+    await (await db()).query(
+      'insert into custom_command_settings (guild_id, timezone) values ($1, $2) on conflict (guild_id) do update set timezone = excluded.timezone, updated_at = now()',
+      [String(guildId), timezone],
+    );
+  },
+};
+
+module.exports = { forGuild, purgeExpired, deleteGuildData, schedule, settings, nextRepeat, MAX_ENTRIES_PER_GUILD, SCHEMA };

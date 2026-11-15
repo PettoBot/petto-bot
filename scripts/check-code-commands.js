@@ -476,6 +476,19 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   await codeCommands.runCodeCommand(t.message, store.get(`${G}:caller3`), '', '!');
   assert.match(problemsOf('caller3')[0].text, /already running/, 'a command cannot call itself');
   for (const name of ['helper', 'triple', 'caller3']) store.delete(`${G}:${name}`);
+  // Connected from the settings of a command (not in its code): the commands in `links` run after it, in order, as the same member.
+  store.set(`${G}:thanks`, { name: 'thanks', code: 'thanks {{ .Trigger }} {{ .ExecBy }}{{ sendMessage nil "t" }}' });
+  store.set(`${G}:log2`, { name: 'log2', code: 'log {{ .Trigger }}{{ sendMessage nil "l" }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, { ...row('main', 'linked'), links: ['thanks', 'ghost', 'log2'] }, '', '!');
+  assert.deepEqual(t.replies.map((r) => r.content), ['main']);
+  assert.deepEqual(t.sent.map((e) => e.payload.content), ['thanks exec linked', 't', 'log exec', 'l'], 'the connected ones run after it, in order, and one that is gone does not stop the others');
+  assert.match(problemsOf('linked')[0].text, /no command with code called ghost/, 'a connection to a missing command is written down');
+  // The time zone of the server is in the data of the code.
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ .TimeZone }}', 'zoned'), '', '!');
+  assert.equal(t.replies[0].content, 'UTC', 'UTC until the server picks another');
+  for (const name of ['thanks', 'log2']) store.delete(`${G}:${name}`);
   // What copies a command of Petto (here `lockChannel`, like `!channel lock`) does not work in a typed command, nor in what a typed command starts (execCC).
   store.set(`${G}:locker`, { name: 'locker', code: '{{ lockChannel }}' });
   t = makeMessage();

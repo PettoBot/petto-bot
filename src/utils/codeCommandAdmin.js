@@ -8,6 +8,8 @@ const { dataFields } = require('./codeCommands');
 const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../db/premium');
 const { validateTrigger, invalidateTriggers, triggersFor, MAX_TRIGGERS_PER_GUILD } = require('./codeTriggers');
 const { t, tn, currentLanguage } = require('../i18n');
+const commandData = require('../db/commandData');
+const { normalizeTime, normalizeTimeZone, parseWeekday, nextScheduledRun } = require('./timerSchedule');
 
 const MAX_PER_GUILD = PREMIUM_LIMITS.customCommands; // the most any server can have (Premium); a Free server has less, see commandLimit
 const NAME_SHAPE = /^[a-z0-9_-]{1,32}$/;
@@ -265,4 +267,103 @@ async function setCommandTrigger({ guild, client, name, type, text, lang = curre
   return { ok: true, type, text: checked.text };
 }
 
-module.exports = { MAX_PER_GUILD, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, isRealCommand, prefixHint };
+const MAX_LINKS = 3; // the commands that can start after one
+const MAX_REMINDERS = 25;
+const MIN_REPEAT_MS = 5 * 60_000;
+const MAX_REPEAT_MS = 7 * 86_400_000;
+
+/**
+ * Connects commands from the settings of one: `links` are the names of the commands that also run after it (without writing code). They are checked like the
+ * ones in code: they exist, none is the command itself and none leads back to it. Returns { ok: true, links } or { ok: false, message }.
+ */
+async function setCommandLinks({ guild, name, links, lang = currentLanguage() }) {
+  const row = await ccDb.getCommand(guild.id, name);
+  if (!row) return { ok: false, message: t(lang, 'customcommands.notExist', { name }) };
+  const wanted = [...new Set((Array.isArray(links) ? links : []).map((link) => ccDb.normalizeName(String(link ?? ''))).filter(Boolean))];
+  if (wanted.length > MAX_LINKS) return { ok: false, message: t(lang, 'customcommands.links.tooMany', { max: MAX_LINKS }) };
+  const all = await ccDb.listCommands(guild.id);
+  const byName = new Map(all.map((entry) => [entry.name, entry]));
+  for (const link of wanted) {
+    if (link === row.name) return { ok: false, message: t(lang, 'customcommands.links.self') };
+    if (!byName.get(link)?.code) return { ok: false, message: t(lang, 'customcommands.links.missing', { name: link }) };
+  }
+  // A link that leads back to this command (through the links of the others) would run in circles.
+  const leadsBack = (from, seen = new Set()) => {
+    if (from === row.name) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    return (Array.isArray(byName.get(from)?.links) ? byName.get(from).links : []).some((next) => leadsBack(next, seen));
+  };
+  for (const link of wanted) if (leadsBack(link)) return { ok: false, message: t(lang, 'customcommands.links.loop', { name: link }) };
+  await ccDb.setLinks(guild.id, row.name, wanted);
+  return { ok: true, links: wanted };
+}
+
+/** The time zone of the code of a server (what `.TimeZone` says and what the reminders use when they do not say one). */
+async function setServerTimeZone({ guild, zone, lang = currentLanguage() }) {
+  const normalized = normalizeTimeZone(String(zone ?? '').trim());
+  if (!normalized) return { ok: false, message: t(lang, 'customcommands.zone.invalid') };
+  await ensureGuild(guild.id);
+  await commandData.settings.setTimeZone(guild.id, normalized);
+  require('./codeCommands').forgetZone(guild.id);
+  return { ok: true, timezone: normalized };
+}
+
+/** What a server has waiting (reminders and commands scheduled by code), as plain data for the dashboard. */
+async function listReminders(guildId) {
+  const rows = await commandData.schedule.list(guildId);
+  return rows.map((row) => ({
+    name: row.name, id: row.id, userId: row.userId, channelId: row.channelId, runAt: row.runAt,
+    repeat: row.repeat ? { kind: row.repeat.kind, everyMs: row.repeat.everyMs, atTime: row.repeat.atTime, timezone: row.repeat.timezone, weekday: row.repeat.weekday } : null,
+  }));
+}
+
+/**
+ * A reminder made from the dashboard: a command that runs every X time, every day or every week at a time of a time zone, as the member who made it, in
+ * a channel. `kind` is 'interval' (`everySeconds`), 'daily' or 'weekly' (`time`, `timezone` and, weekly, `weekday`).
+ */
+async function createReminder({ guild, userId, channelId, name, id, kind, everySeconds, time, timezone, weekday, data, lang = currentLanguage() }) {
+  const row = await ccDb.getCommand(guild.id, String(name ?? ''));
+  if (!row?.code) return { ok: false, field: 'name', message: t(lang, 'customcommands.remind.noCommand', { name: String(name ?? '') }) };
+  const reminderId = String(id ?? '').trim();
+  if (!/^[A-Za-z0-9_-]{1,50}$/.test(reminderId)) return { ok: false, field: 'id', message: t(lang, 'customcommands.remind.badId') };
+  if (!channelId || !/^\d{15,25}$/.test(String(channelId))) return { ok: false, field: 'channel', message: t(lang, 'customcommands.remind.noChannel') };
+  let repeat;
+  let first;
+  const now = Date.now();
+  if (kind === 'interval') {
+    const everyMs = Math.trunc(Number(everySeconds)) * 1000;
+    if (!(everyMs >= MIN_REPEAT_MS && everyMs <= MAX_REPEAT_MS)) return { ok: false, field: 'every', message: t(lang, 'customcommands.remind.badEvery') };
+    repeat = { kind: 'interval', everyMs };
+    first = now + everyMs;
+  } else if (kind === 'daily' || kind === 'weekly') {
+    const atTime = normalizeTime(time);
+    if (!atTime) return { ok: false, field: 'time', message: t(lang, 'customcommands.remind.badTime') };
+    const zone = normalizeTimeZone(String(timezone ?? '').trim() || (await commandData.settings.get(guild.id).catch(() => null))?.timezone || 'UTC');
+    if (!zone) return { ok: false, field: 'timezone', message: t(lang, 'customcommands.zone.invalid') };
+    let day = null;
+    if (kind === 'weekly') {
+      day = parseWeekday(weekday);
+      if (day === null) return { ok: false, field: 'weekday', message: t(lang, 'customcommands.remind.badWeekday') };
+    }
+    repeat = { kind, atTime, timezone: zone, weekday: day };
+    first = nextScheduledRun({ schedule: kind, at_time: atTime, timezone: zone, weekday: day }, now)?.getTime();
+    if (!first) return { ok: false, field: 'time', message: t(lang, 'customcommands.remind.badTime') };
+  } else {
+    return { ok: false, field: 'kind', message: t(lang, 'customcommands.remind.badKind') };
+  }
+  const json = JSON.stringify(data ?? null) ?? 'null';
+  if (json.length > 2000) return { ok: false, field: 'data', message: t(lang, 'customcommands.remind.dataTooBig', { max: 2000 }) };
+  const pending = await commandData.schedule.count(guild.id);
+  const replaced = await commandData.schedule.cancel(guild.id, row.name, reminderId);
+  if (!replaced && pending >= MAX_REMINDERS) return { ok: false, field: 'id', message: t(lang, 'customcommands.remind.tooMany', { max: MAX_REMINDERS }) };
+  await ensureGuild(guild.id);
+  await commandData.schedule.set({ guildId: guild.id, name: row.name, id: reminderId, runAt: first, userId, channelId: String(channelId), data: JSON.parse(json), origin: 'command', repeat });
+  return { ok: true, runAt: first, replaced };
+}
+
+async function cancelReminder({ guild, name, id }) {
+  return { ok: true, removed: await commandData.schedule.cancel(guild.id, ccDb.normalizeName(String(name ?? '')), String(id ?? '')) };
+}
+
+module.exports = { MAX_PER_GUILD, MAX_LINKS, MAX_REMINDERS, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, setCommandLinks, setServerTimeZone, listReminders, createReminder, cancelReminder, isRealCommand, prefixHint };

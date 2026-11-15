@@ -125,6 +125,19 @@ function guildData(guild) {
   };
 }
 
+const zoneCache = new Map(); // guildId -> { zone, at }
+/** The time zone of a server for its code ('UTC' when it has not set one). Kept for a minute, never throws. */
+async function zoneOf(guildId) {
+  const cached = zoneCache.get(guildId);
+  if (cached && Date.now() - cached.at < 60_000) return cached.zone;
+  let zone = 'UTC';
+  try { zone = (await commandData.settings?.get(guildId))?.timezone ?? 'UTC'; } catch { zone = 'UTC'; }
+  zoneCache.set(guildId, { zone, at: Date.now() });
+  return zone;
+}
+/** Forgets the zone of a server that was just changed. */
+const forgetZone = (guildId) => zoneCache.delete(guildId);
+
 /**
  * The other commands of the server for the code that calls them (callCC, getCC, listCC): by name or by number. `code` gives the code of a command that has some;
  * `get` and `list` give maps (Number, Name, HasCode, Trigger, TriggerText), never the code itself.
@@ -185,6 +198,8 @@ function buildData(message, commandName, argText, prefix, serverPrefix = prefix)
     Trigger: 'command',
     // What started the code, kept through execCC and scheduled commands: the functions that copy a command of Petto only work when it was not a typed command.
     Origin: 'command',
+    // The time zone of the server for the code (set in the dashboard): the time functions and the repeating reminders use it when none is given.
+    TimeZone: 'UTC',
     Button: null,
     Values: [],
   };
@@ -426,9 +441,11 @@ const skippedText = (skipped, lang) => t(lang, 'customcommands.run.skipped', { l
  * with: its message (or the message of the button or the reaction), its prefixes and who used the command. A refused call is
  * not a mistake of the command that asked, so it only goes to `!customcommand logs`.
  */
-async function runExecs(context, effects, callerName, callerTrigger, depth) {
+async function runExecs(context, effects, callerName, callerTrigger, depth, links = []) {
   const { guild, author } = context.source;
-  for (const effect of effects) {
+  // The commands connected to this one from its settings run after the ones its code asked for, like an execCC without delay or data.
+  const connected = (Array.isArray(links) ? links : []).filter((name) => typeof name === 'string').map((name) => ({ type: 'execCC', name, delay: 0, data: null }));
+  for (const effect of [...effects, ...connected]) {
     if (effect.type !== 'execCC') continue;
     if (depth >= MAX_EXEC_DEPTH) {
       logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: phrase('customcommands.run.execTooDeep', { max: MAX_EXEC_DEPTH }), lang: context.lang });
@@ -454,7 +471,7 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
     return;
   }
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text, lang });
-  const data = { ...buildData(source, row.name, '', prefix, serverPrefix), Trigger: 'exec', Origin: context.origin ?? 'command', ExecData: effect.data ?? null, ExecBy: callerName };
+  const data = { ...buildData(source, row.name, '', prefix, serverPrefix), Trigger: 'exec', Origin: context.origin ?? 'command', TimeZone: await zoneOf(guild.id), ExecData: effect.data ?? null, ExecBy: callerName };
   data.Message.CommandUserID = context.commandUserId ?? null;
   let result;
   try {
@@ -476,7 +493,7 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
   if (answer && deleteResponse) setTimeout(() => answer.delete().catch(() => {}), deleteResponse.delay * 1000).unref?.();
   const skipped = await applyEffects(source, result.effects, row.name, { code: row.code, lang });
   if (skipped.length) problem(skippedText(skipped, lang));
-  await runExecs(context, result.effects, row.name, 'exec', depth);
+  await runExecs(context, result.effects, row.name, 'exec', depth, row.links);
 }
 
 /**
@@ -513,7 +530,9 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text, lang });
   let result;
   try {
-    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild, message.member), cc: ccFor(message.guild.id), command: row.name, lang });
+    const typedData = buildData(message, row.name, argText, prefix, serverPrefix);
+    typedData.TimeZone = await zoneOf(message.guild.id);
+    result = await run(row.code, typedData, { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild, message.member), cc: ccFor(message.guild.id), command: row.name, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -534,7 +553,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
     await message.reply({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
   }
   // The commands it runs with execCC go last, once everything it did itself is done.
-  await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id, lang, origin: 'command' }, result.effects, row.name, 'command', 1);
+  await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id, lang, origin: 'command' }, result.effects, row.name, 'command', 1, row.links);
   return true;
 }
 
@@ -563,6 +582,7 @@ async function runComponent(interaction, row, parsed) {
   };
   const data = {
     ...buildData(source, row.name, '', '!'),
+    TimeZone: await zoneOf(guild.id),
     Trigger: submitted ? 'modal' : interaction.isStringSelectMenu?.() ? 'select' : 'button',
     Button: { ID: parsed.handler, Data: parsed.data },
     Values: interaction.isStringSelectMenu?.() ? [...interaction.values] : [],
@@ -609,7 +629,7 @@ async function runComponent(interaction, row, parsed) {
     problem(skippedText(skipped, lang));
     await interaction.followUp({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
   }
-  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang, origin: data.Trigger }, rest, row.name, data.Trigger, 1);
+  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang, origin: data.Trigger }, rest, row.name, data.Trigger, 1, row.links);
   return null;
 }
 
@@ -634,7 +654,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
     guild, channel, member, author: user,
     react: (emoji) => message.react(emoji), delete: async () => {},
   };
-  const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Origin: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
+  const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Origin: 'reaction', TimeZone: await zoneOf(guild.id), Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
   data.Message.CommandUserID = watched?.user ?? null;
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang });
   let result;
@@ -665,7 +685,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   if (rest.some((effect) => effect.type === 'removeReaction')) await reaction.users.remove(user.id).catch(() => {});
   const skipped = await applyEffects(source, rest.filter((effect) => effect.type !== 'removeReaction'), row.name, { code: row.code, lang });
   if (skipped.length) problem(skippedText(skipped, lang));
-  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang, origin: 'reaction' }, rest, row.name, 'reaction', 1);
+  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang, origin: 'reaction' }, rest, row.name, 'reaction', 1, row.links);
   return null;
 }
 
@@ -727,4 +747,4 @@ function decodeShare(text, lang = currentLanguage()) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { runScheduled, guildData, ccFor, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { runScheduled, guildData, ccFor, zoneOf, forgetZone, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

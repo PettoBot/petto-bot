@@ -52,6 +52,13 @@ async function setTrigger(guildId, name, type, text) {
   return data.length > 0;
 }
 
+/** The commands that also run after this one (their names). */
+async function setLinks(guildId, name, links) {
+  const { data, error } = await database.from('custom_commands').update({ links }).eq('guild_id', guildId).eq('name', normalizeName(name)).select('name');
+  if (error) throw error;
+  return data.length > 0;
+}
+
 /** Changes the name of a command. Returns false when there is no command with the old name, and throws when the new name is taken. */
 async function renameCommand(guildId, oldName, newName) {
   const { data, error } = await database.from('custom_commands').update({ name: normalizeName(newName) }).eq('guild_id', guildId).eq('name', normalizeName(oldName)).select('name');
@@ -66,9 +73,9 @@ async function removeCommand(guildId, name) {
 }
 
 async function listCommands(guildId) {
-  const { data, error } = await database.from('custom_commands').select('number, name, response, embed_template, code, trigger_type, trigger_text').eq('guild_id', guildId).order('name', { ascending: true });
+  const { data, error } = await database.from('custom_commands').select('number, name, response, embed_template, code, trigger_type, trigger_text, links').eq('guild_id', guildId).order('name', { ascending: true });
   if (error) throw error;
   return data;
 }
 
-module.exports = { normalizeName, getCommand, getByRef, upsertCommand, renameCommand, removeCommand, listCommands, listTriggers, setTrigger };
+module.exports = { normalizeName, getCommand, getByRef, upsertCommand, renameCommand, removeCommand, listCommands, listTriggers, setTrigger, setLinks };

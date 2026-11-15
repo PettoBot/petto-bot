@@ -47,7 +47,7 @@ const NEW_FUNCTIONS = [
   'editMessage', 'deleteMessage', 'pinMessage', 'unpinMessage', 'purgeMessages', 'reactToMessage',
   'createChannel', 'editChannel', 'deleteChannel', 'setSlowmode', 'lockChannel', 'unlockChannel', 'createThread', 'lockThread', 'archiveThread',
   'ban', 'tempban', 'unban', 'kick', 'mute', 'unmute', 'warn',
-  'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname', 'scheduleUniqueCC', 'cancelScheduledCC',
+  'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname', 'scheduleUniqueCC', 'cancelScheduledCC', 'scheduleRepeatCC', 'scheduleDailyCC', 'scheduleWeeklyCC',
   'wordCount', 'lines', 'slug', 'initials', 'bar', 'randomString', 'uuid', 'sha256', 'base64Encode', 'base64Decode',
   'avg', 'median', 'percent', 'between', 'sign', 'trunc', 'lerp', 'chunk', 'flatten', 'pluck', 'take', 'drop', 'without', 'zip', 'upTo', 'countOf', 'minOf', 'maxOf',
   'coalesce', 'ternary', 'startOfDay', 'daysBetween', 'isWeekend', 'addDays',
@@ -231,6 +231,28 @@ const out = async (code, options) => (await run(code, data, options)).output;
   await failsWith('{{ scheduleUniqueCC "remind" "bad id" 60 }}', '1 to 50 letters');
   await failsWith('{{ scheduleUniqueCC "re mind" "r" 60 }}', 'name');
   await failsWith(`{{ scheduleUniqueCC "remind" "r" 60 "${'x'.repeat(2100)}" }}`, '2000');
+
+  // One message to several channels (up to 5) with one code.
+  assert.deepEqual(await effects(`{{ sendMessage (cslice "${ID(601)}" "${ID(602)}" nil) "hi" }}`), [
+    { type: 'message', channelId: ID(601), content: 'hi' }, { type: 'message', channelId: ID(602), content: 'hi' }, { type: 'message', channelId: null, content: 'hi' },
+  ]);
+  await failsWith('{{ sendMessage (cslice) "hi" }}', 'at least one channel');
+  await failsWith(`{{ sendMessage (cslice ${[1, 2, 3, 4, 5, 6].map((n) => `"${ID(600 + n)}"`).join(' ')}) "hi" }}`, 'at most 5 channels');
+
+  // Reminders that repeat: every X time, every day or every week at a time of a time zone (the one of the server when it is not said).
+  assert.deepEqual(await effects('{{ scheduleRepeatCC "remind" "every" 3600 (dict "a" 1) }}'), [
+    { type: 'schedule', name: 'remind', id: 'every', seconds: 3600, repeat: { kind: 'interval', everyMs: 3_600_000 }, data: { a: 1 }, origin: 'command' },
+  ]);
+  assert.deepEqual(await effects('{{ scheduleDailyCC "remind" "d" "9:05" "America/Bogota" }}{{ scheduleWeeklyCC "remind" "w" "lunes" "20:00" "UTC-3" nil }}'), [
+    { type: 'schedule', name: 'remind', id: 'd', seconds: 0, repeat: { kind: 'daily', atTime: '09:05', timezone: 'America/Bogota', weekday: null }, data: null, origin: 'command' },
+    { type: 'schedule', name: 'remind', id: 'w', seconds: 0, repeat: { kind: 'weekly', atTime: '20:00', timezone: 'UTC-3', weekday: 1 }, data: null, origin: 'command' },
+  ]);
+  assert.equal((await run('{{ scheduleDailyCC "remind" "d" "20:00" }}', { ...data, TimeZone: 'Europe/Madrid' })).effects[0].repeat.timezone, 'Europe/Madrid', 'the zone of the server is the one that is used');
+  await failsWith('{{ scheduleRepeatCC "remind" "r" 299 }}', '5 minutes to 7 days');
+  await failsWith('{{ scheduleRepeatCC "remind" "r" 604801 }}', '5 minutes to 7 days');
+  await failsWith('{{ scheduleDailyCC "remind" "r" "25:00" }}', 'like 20:00');
+  await failsWith('{{ scheduleDailyCC "remind" "r" "20:00" "Mars/Base" }}', 'time zone');
+  await failsWith('{{ scheduleWeeklyCC "remind" "r" "someday" "20:00" }}', 'from 0 (Sunday) to 6');
   assert.equal(scriptingActions.permissionName('manage_messages'), 'ManageMessages');
   assert.equal(scriptingActions.permissionName('Ban Members'), 'BanMembers');
   assert.equal(scriptingActions.permissionName('nope'), null);
@@ -503,7 +525,13 @@ const out = async (code, options) => (await run(code, data, options)).output;
   // ── Scheduling ──
   w = world({ member: [] });
   assert.equal(await act(w, ofType('schedule', { name: 'remind', id: 'a', seconds: 60, data: { x: 1 } }), { now: () => 1_000_000 }), null, 'nobody needs a permission to schedule: what runs is judged when it runs');
-  assert.deepEqual(w.stored, [{ guildId: GUILD, name: 'remind', id: 'a', runAt: 1_060_000, userId: MEMBER, channelId: ID(500), data: { x: 1 }, origin: 'command' }]);
+  assert.deepEqual(w.stored, [{ guildId: GUILD, name: 'remind', id: 'a', runAt: 1_060_000, userId: MEMBER, channelId: ID(500), data: { x: 1 }, origin: 'command', repeat: null }]);
+  // A reminder every day starts at the next time of its zone: 20:00 in Bogota (UTC-5) is 01:00 UTC.
+  const noon = Date.UTC(2026, 10, 15, 18, 0, 0);
+  await act(w, ofType('schedule', { name: 'remind', id: 'daily', seconds: 0, repeat: { kind: 'daily', atTime: '20:00', timezone: 'America/Bogota', weekday: null }, data: null }), { now: () => noon });
+  assert.equal(new Date(w.stored.find((entry) => entry.id === 'daily').runAt).toISOString(), '2026-11-16T01:00:00.000Z');
+  assert.equal(w.stored.find((entry) => entry.id === 'daily').repeat.kind, 'daily');
+  await act(w, ofType('cancelSchedule', { name: 'remind', id: 'daily' }));
   await act(w, ofType('schedule', { name: 'remind', id: 'a', seconds: 120, data: null }), { now: () => 1_000_000 });
   assert.equal(w.stored.length, 1, 'the same id replaces the first');
   assert.equal(w.stored[0].runAt, 1_120_000);

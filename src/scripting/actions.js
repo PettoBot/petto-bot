@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.EVENT_ORIGINS = exports.EVENT_ONLY = exports.MAX_REASON = exports.MAX_TIMEOUT_SECONDS = exports.MIN_SCHEDULE_SECONDS = exports.MAX_SCHEDULE_SECONDS = exports.ROLE_EDIT_KEYS = exports.CHANNEL_EDIT_KEYS = exports.LIST_KINDS = exports.CREATE_KINDS = void 0;
+exports.EVENT_ORIGINS = exports.EVENT_ONLY = exports.MAX_REASON = exports.MAX_TIMEOUT_SECONDS = exports.MIN_REPEAT_SECONDS = exports.MIN_SCHEDULE_SECONDS = exports.MAX_SCHEDULE_SECONDS = exports.ROLE_EDIT_KEYS = exports.CHANNEL_EDIT_KEYS = exports.LIST_KINDS = exports.CREATE_KINDS = void 0;
 exports.permissionName = permissionName;
 exports.register = register;
 // i18n-ignore-file: function names, the keys of the maps and the options of the functions stay as they are in every language; the mistakes are phrases.
@@ -9,6 +9,8 @@ exports.register = register;
 // later (scheduleUniqueCC). The ones that change something do not do it: they note an effect, and the bot decides in src/utils/codeActions
 // whether to do it, as the member who used the command, never as more than that member could.
 const discord_js_1 = require("discord.js");
+// The zones and the times of the timers are the ones of the repeating reminders.
+const { normalizeTime, normalizeTimeZone, parseWeekday } = require('../utils/timerSchedule');
 /** The kinds of channel that createChannel makes, and the ones listChannels can filter by. */
 exports.CREATE_KINDS = { text: 0, voice: 2, category: 4, announcement: 5, stage: 13, forum: 15 };
 exports.LIST_KINDS = ['text', 'voice', 'category', 'announcement', 'thread', 'stage', 'forum', 'media'];
@@ -16,6 +18,8 @@ exports.CHANNEL_EDIT_KEYS = ['name', 'topic', 'slowmode', 'nsfw', 'parent'];
 exports.ROLE_EDIT_KEYS = ['name', 'color', 'hoist', 'mentionable'];
 exports.MAX_SCHEDULE_SECONDS = 7 * 86_400;
 exports.MIN_SCHEDULE_SECONDS = 5;
+/** A reminder that repeats may not come more often than this (5 minutes), nor less than once in 7 days. */
+exports.MIN_REPEAT_SECONDS = 300;
 exports.MAX_TIMEOUT_SECONDS = 28 * 86_400;
 exports.MAX_REASON = 400;
 /**
@@ -331,6 +335,45 @@ function register(h) {
         if (seconds < exports.MIN_SCHEDULE_SECONDS || seconds > exports.MAX_SCHEDULE_SECONDS)
             fail('scheduleDelay');
         env.effects.add('schedule', { name: scheduleName(name), id: scheduleId(id), seconds, data: JSON.parse(json), origin: env.data?.Origin ?? 'command' });
+        return null;
+    });
+    const dataOf = (value) => {
+        const json = JSON.stringify(value ?? null) ?? 'null';
+        if (json.length > 2000)
+            fail('execDataTooBig', { max: 2000 });
+        return JSON.parse(json);
+    };
+    const zoneArg = (env, zone) => {
+        const wanted = zone === undefined || zone === null || zone === '' ? (env.data?.TimeZone ?? 'UTC') : zone;
+        return normalizeTimeZone(wanted) ?? fail('timeZone');
+    };
+    const timeArg = (value) => normalizeTime(value) ?? fail('timeOfDay');
+    // Runs the command `name` again and again: every `seconds` (5 minutes to 7 days). Scheduling again with the same id replaces it, and cancelScheduledCC stops it.
+    // It runs as the member who set it up, in the same channel; a command that sends to several channels (`sendMessage ["#a" "#b"] ...`) is one reminder for all of them.
+    def('scheduleRepeatCC', 3, 4, (env, name, id, every, value) => {
+        const seconds = Math.trunc(num(every));
+        if (seconds < exports.MIN_REPEAT_SECONDS || seconds > exports.MAX_SCHEDULE_SECONDS)
+            fail('repeatEvery');
+        env.effects.add('schedule', { name: scheduleName(name), id: scheduleId(id), seconds, repeat: { kind: 'interval', everyMs: seconds * 1000 }, data: dataOf(value), origin: env.data?.Origin ?? 'command' });
+        return null;
+    });
+    // Every day at a time ("20:00") of a time zone (the one of the server when it is not said): `scheduleDailyCC "daily" "d1" "20:00" "America/Bogota"`.
+    def('scheduleDailyCC', 3, 5, (env, name, id, time, zone, value) => {
+        env.effects.add('schedule', {
+            name: scheduleName(name), id: scheduleId(id), seconds: 0, repeat: { kind: 'daily', atTime: timeArg(time), timezone: zoneArg(env, zone), weekday: null },
+            data: dataOf(value), origin: env.data?.Origin ?? 'command',
+        });
+        return null;
+    });
+    // Every week on a day (a name or 0 to 6, Sunday is 0) at a time of a time zone.
+    def('scheduleWeeklyCC', 4, 6, (env, name, id, day, time, zone, value) => {
+        const weekday = parseWeekday(text(day));
+        if (weekday === null)
+            fail('weekday');
+        env.effects.add('schedule', {
+            name: scheduleName(name), id: scheduleId(id), seconds: 0, repeat: { kind: 'weekly', atTime: timeArg(time), timezone: zoneArg(env, zone), weekday },
+            data: dataOf(value), origin: env.data?.Origin ?? 'command',
+        });
         return null;
     });
     def('cancelScheduledCC', 2, 2, (env, name, id) => { env.effects.add('cancelSchedule', { name: scheduleName(name), id: scheduleId(id) }); return null; });

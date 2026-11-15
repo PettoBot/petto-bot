@@ -3,7 +3,14 @@
 // They never change anything, so they have no effects and no limits other than the size of what they make.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-type Env = { rng: () => number };
+// The time zones are the ones of the timers (`utils/timerSchedule`): hours from UTC, `UTC+5`, or a name like `America/Bogota`.
+const { normalizeTimeZone, zoneOffsetMs, zonedTimeToUtc } = require('../utils/timerSchedule') as {
+  normalizeTimeZone(input: unknown): string | null;
+  zoneOffsetMs(zone: string, ms: number): number;
+  zonedTimeToUtc(zone: string, year: number, month: number, day: number, hour: number, minute: number): number;
+};
+
+type Env = { rng: () => number; data: { TimeZone?: string } };
 type Run = (env: Env, ...args: any[]) => unknown; // eslint-disable-line @typescript-eslint/no-explicit-any
 export interface PureHelpers {
   def(name: string, min: number, max: number | null, run: Run): void;
@@ -30,10 +37,22 @@ export function register(h: PureHelpers): void {
     return number;
   };
   const numbers = (items: unknown[]): number[] => items.map((item) => num(item));
-  const shifted = (seconds: unknown, offset: unknown): number => {
-    const hours = offset === undefined ? 0 : num(offset);
-    if (hours < -14 || hours > 14) fail('timeZone');
-    return Math.trunc(num(seconds)) + Math.round(hours * 3600);
+  /** The zone asked for (hours from UTC, or a name), or the zone of the server: as a name of a zone, or the hours. */
+  const zoneOf = (env: Env, zone: unknown): { name: string } | { hours: number } => {
+    const wanted = zone === undefined || zone === null ? (env.data?.TimeZone ?? 'UTC') : zone;
+    if (typeof wanted === 'number' || (typeof wanted === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(wanted))) {
+      const hours = num(wanted);
+      if (hours < -14 || hours > 14) fail('timeZone');
+      return { hours };
+    }
+    const name = normalizeTimeZone(wanted);
+    return name ? { name } : fail('timeZone');
+  };
+  /** The seconds of a time moved to the zone, as if the zone were UTC. */
+  const shifted = (env: Env, seconds: unknown, zone: unknown): number => {
+    const base = Math.trunc(num(seconds));
+    const found = zoneOf(env, zone);
+    return 'hours' in found ? base + Math.round(found.hours * 3600) : base + Math.round(zoneOffsetMs(found.name, base * 1000) / 1000);
   };
 
   // ── Text ─────────────────────────────────────────────────────────────────
@@ -129,8 +148,14 @@ export function register(h: PureHelpers): void {
   def('ternary', 3, 3, (env, condition, yes, no) => (isTruthy(condition) ? yes : no));
 
   // ── Dates (the time is in seconds, and the offset in hours from UTC) ─────
-  def('startOfDay', 1, 2, (env, seconds, offset) => { const moved = shifted(seconds, offset); return moved - (((moved % DAY) + DAY) % DAY) - Math.round((offset === undefined ? 0 : num(offset)) * 3600); });
+  def('startOfDay', 1, 2, (env, seconds, zone) => {
+    const base = Math.trunc(num(seconds));
+    const found = zoneOf(env, zone);
+    if ('hours' in found) { const moved = base + Math.round(found.hours * 3600); return moved - (((moved % DAY) + DAY) % DAY) - Math.round(found.hours * 3600); }
+    const local = new Date(base * 1000 + zoneOffsetMs(found.name, base * 1000));
+    return Math.floor(zonedTimeToUtc(found.name, local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 0, 0) / 1000);
+  });
   def('daysBetween', 2, 2, (env, from, to) => Math.floor((Math.trunc(num(to)) - Math.trunc(num(from))) / DAY));
-  def('isWeekend', 1, 2, (env, seconds, offset) => { const day = new Date(shifted(seconds, offset) * 1000).getUTCDay(); return day === 0 || day === 6; });
+  def('isWeekend', 1, 2, (env, seconds, zone) => { const day = new Date(shifted(env, seconds, zone) * 1000).getUTCDay(); return day === 0 || day === 6; });
   def('addDays', 2, 2, (env, seconds, days) => Math.trunc(num(seconds)) + Math.trunc(num(days)) * DAY);
 }

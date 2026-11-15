@@ -2108,6 +2108,8 @@ alter table custom_commands add column if not exists trigger_text text;
 alter table custom_commands add column if not exists number integer;
 update custom_commands c set number = r.n from (select id, row_number() over (partition by guild_id order by id) as n from custom_commands where number is null) r where c.id = r.id and c.number is null;
 create unique index if not exists idx_custom_commands_number on custom_commands(guild_id, number);
+-- The commands that also run after this one (set from the dashboard, without writing code): their names.
+alter table custom_commands add column if not exists links jsonb not null default '[]'::jsonb;
 alter table custom_commands drop constraint if exists custom_commands_trigger_type_check;
 alter table custom_commands add constraint custom_commands_trigger_type_check check (trigger_type in ('command', 'prefix', 'startswith', 'exact', 'contains'));
 
