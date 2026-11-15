@@ -113,6 +113,13 @@
       "title": "Text fields fit their text",
       "area": "Web › Dashboard",
       "summary": "Every text field of the site has the height of its text: no corner to drag, it grows as you write and shrinks as you delete, and an empty one is four lines high. Chat boxes keep their own size."
+    },
+    {
+      "id": "new-label-expires",
+      "category": "web",
+      "title": "The \"New\" label goes away by itself",
+      "area": "Web › Dashboard and menus",
+      "summary": "The \"New\" label on the tabs of the dashboard, the modules, the menu and the footer now lasts ten days from the day something comes out. The ones that were still showing it after weeks are gone."
     }
   ]
 }
