@@ -13,22 +13,25 @@ exports.announceNewEntries = announceNewEntries;
 exports.startCurrentlyLog = startCurrentlyLog;
 // i18n-ignore-file: the Currently log is written in English for the Petto community, it is not translated.
 // The Currently log: the changes of Petto (like the releases of a GitHub project) posted to one channel, in colors by kind, with pictures.
-// The channel is the `currently_log` variable (the ID of the channel). The changes are written in src/data/currentlyLog.json: when the bot starts it
-// posts the ones it has not posted yet, once, and remembers them (so a restart posts nothing twice). Written in TypeScript: `npm run build:ts`
-// compiles it over currentlyLog.js, which is what the bot loads.
+// The channel is the `currently_log` variable (the ID of the channel). The changes are written in the web repo (`src/data/currentlyLog.json`, served at
+// petto.sbs/api/currently-log): the bot looks at it when it starts and every ten minutes, posts the ones it has not posted yet, once each, and remembers
+// them (so a restart posts nothing twice). A change of the web or of the bot reaches the channel when the web is deployed, with no change to the bot.
+// Written in TypeScript: `npm run build:ts` compiles it over currentlyLog.js, which is what the bot loads.
 const discord_js_1 = require("discord.js");
 // The project is JavaScript: its modules are read with `require` and given the shape that is used here.
 const logger = require('./logger');
+// The flat gray emojis of Petto (the same ones its panels use), one for each kind of change.
+const { EMOJI } = require('./emojis');
 /** The kinds of change, in the order their cards are posted (the most important first). */
 exports.CATEGORIES = {
-    security: { color: 0xe03131, dot: '🔴', one: 'Security fix', many: 'Security fixes' },
-    feature: { color: 0xfcc419, dot: '🟡', one: 'New feature', many: 'New features' },
-    addition: { color: 0x2f9e44, dot: '🟢', one: 'Added to a feature', many: 'Added to features' },
-    improvement: { color: 0x1c7ed6, dot: '🔵', one: 'Improvement', many: 'Improvements' },
-    fix: { color: 0xf76707, dot: '🟠', one: 'Fix', many: 'Fixes' },
-    web: { color: 0x9c36b5, dot: '🟣', one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
-    removal: { color: 0x868e96, dot: '⚪', one: 'Removed from a feature', many: 'Removed from features' },
-    'removed-feature': { color: 0x000000, dot: '⚫', one: 'Feature removed', many: 'Features removed' },
+    security: { color: 0xfe6465, dot: EMOJI.SAFETY, one: 'Security fix', many: 'Security fixes' },
+    feature: { color: 0xfed53c, dot: EMOJI.RELEASE_ROCKET, one: 'New feature', many: 'New features' },
+    addition: { color: 0xa5ea7a, dot: EMOJI.ROLLOUT_UP, one: 'Added to a feature', many: 'Added to features' },
+    improvement: { color: 0x74c0fc, dot: EMOJI.RELEASE_RELOAD, one: 'Improvement', many: 'Improvements' },
+    fix: { color: 0xffa45c, dot: EMOJI.RELEASE_SETTINGS, one: 'Fix', many: 'Fixes' },
+    web: { color: 0xc4a3ff, dot: EMOJI.ROLLOUT_PLATFORMS, one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
+    removal: { color: 0xc3c7cf, dot: EMOJI.ROLLOUT_DOWN, one: 'Removed from a feature', many: 'Removed from features' },
+    'removed-feature': { color: 0x4b4f59, dot: EMOJI.TICKET_DELETE, one: 'Feature removed', many: 'Features removed' },
 };
 exports.CATEGORY_ORDER = Object.keys(exports.CATEGORIES);
 exports.LIMITS = { title: 100, area: 80, summary: 700, images: 3, perCard: 5, id: 80 };

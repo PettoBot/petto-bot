@@ -9,13 +9,15 @@ import type { Client } from 'discord.js';
 
 // The project is JavaScript: its modules are read with `require` and given the shape that is used here.
 const logger = require('./logger') as { info(text: string): void; warn(text: string): void };
+// The flat gray emojis of Petto (the same ones its panels use), one for each kind of change.
+const { EMOJI } = require('./emojis') as { EMOJI: Record<string, string> };
 
 export type CategoryKey = 'security' | 'feature' | 'addition' | 'improvement' | 'fix' | 'web' | 'removal' | 'removed-feature';
 
 export interface Category {
   /** The color of the card. */
   color: number;
-  /** The colored dot in front of the title. */
+  /** The emoji of Petto in front of the title. */
   dot: string;
   /** The title of a card with one change, and with several. */
   one: string;
@@ -24,14 +26,14 @@ export interface Category {
 
 /** The kinds of change, in the order their cards are posted (the most important first). */
 export const CATEGORIES: Record<CategoryKey, Category> = {
-  security: { color: 0xe03131, dot: '🔴', one: 'Security fix', many: 'Security fixes' },
-  feature: { color: 0xfcc419, dot: '🟡', one: 'New feature', many: 'New features' },
-  addition: { color: 0x2f9e44, dot: '🟢', one: 'Added to a feature', many: 'Added to features' },
-  improvement: { color: 0x1c7ed6, dot: '🔵', one: 'Improvement', many: 'Improvements' },
-  fix: { color: 0xf76707, dot: '🟠', one: 'Fix', many: 'Fixes' },
-  web: { color: 0x9c36b5, dot: '🟣', one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
-  removal: { color: 0x868e96, dot: '⚪', one: 'Removed from a feature', many: 'Removed from features' },
-  'removed-feature': { color: 0x000000, dot: '⚫', one: 'Feature removed', many: 'Features removed' },
+  security: { color: 0xfe6465, dot: EMOJI.SAFETY, one: 'Security fix', many: 'Security fixes' },
+  feature: { color: 0xfed53c, dot: EMOJI.RELEASE_ROCKET, one: 'New feature', many: 'New features' },
+  addition: { color: 0xa5ea7a, dot: EMOJI.ROLLOUT_UP, one: 'Added to a feature', many: 'Added to features' },
+  improvement: { color: 0x74c0fc, dot: EMOJI.RELEASE_RELOAD, one: 'Improvement', many: 'Improvements' },
+  fix: { color: 0xffa45c, dot: EMOJI.RELEASE_SETTINGS, one: 'Fix', many: 'Fixes' },
+  web: { color: 0xc4a3ff, dot: EMOJI.ROLLOUT_PLATFORMS, one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
+  removal: { color: 0xc3c7cf, dot: EMOJI.ROLLOUT_DOWN, one: 'Removed from a feature', many: 'Removed from features' },
+  'removed-feature': { color: 0x4b4f59, dot: EMOJI.TICKET_DELETE, one: 'Feature removed', many: 'Features removed' },
 };
 
 export const CATEGORY_ORDER = Object.keys(CATEGORIES) as CategoryKey[];

@@ -6,16 +6,25 @@ const log = require('../src/utils/currentlyLog');
 
 const entry = (id, category = 'feature', extra = {}) => ({ id, category, title: `Title ${id}`, area: 'Partners › Variables', summary: 'It does this and it changes that.', ...extra });
 
-// The colors asked for: red security, green added to a feature, yellow a new feature, black a feature removed, gray something removed, orange a fix.
+// The colors asked for, all of them bright and soft like the green of the dashboard: red security, green added to a feature, yellow a new feature,
+// dark (the dark of Petto) a feature removed, light gray something removed, orange a fix.
 assert.deepEqual(Object.keys(log.CATEGORIES).sort(), ['addition', 'feature', 'fix', 'improvement', 'removal', 'removed-feature', 'security', 'web']);
 const hue = (key) => log.CATEGORIES[key].color;
-assert.ok(hue('security') >> 16 > 0xc0 && (hue('security') & 0xffff) < 0x4000, 'security is red');
-assert.ok(((hue('addition') >> 8) & 0xff) > (hue('addition') >> 16) && ((hue('addition') >> 8) & 0xff) > (hue('addition') & 0xff), 'added to a feature is green');
-assert.ok((hue('feature') >> 16) > 0xe0 && ((hue('feature') >> 8) & 0xff) > 0xb0 && (hue('feature') & 0xff) < 0x40, 'a new feature is yellow');
-assert.equal(hue('removed-feature'), 0x000000, 'a feature removed is black');
-assert.ok(Math.abs((hue('removal') >> 16) - ((hue('removal') >> 8) & 0xff)) < 0x18 && Math.abs(((hue('removal') >> 8) & 0xff) - (hue('removal') & 0xff)) < 0x18, 'something removed is gray (the three channels are close)');
-assert.ok((hue('fix') >> 16) > 0xe0 && ((hue('fix') >> 8) & 0xff) > 0x40 && ((hue('fix') >> 8) & 0xff) < 0x90 && (hue('fix') & 0xff) < 0x20, 'a fix is orange');
+const channels = (key) => [hue(key) >> 16, (hue(key) >> 8) & 0xff, hue(key) & 0xff];
+assert.equal(hue('addition'), 0xa5ea7a, 'added to a feature is the green of the dashboard');
+assert.equal(hue('security'), 0xfe6465, 'security is the red of Petto');
+assert.equal(hue('feature'), 0xfed53c, 'a new feature is the yellow of Petto');
+{
+  const [r, g, b] = channels('fix');
+  assert.ok(r > 0xe0 && g > 0x80 && g < 0xc0 && b < 0x90, 'a fix is orange');
+  const [gr, gg, gb] = channels('removal');
+  assert.ok(Math.max(gr, gg, gb) - Math.min(gr, gg, gb) < 0x18 && gr > 0xa0, 'something removed is a light gray');
+  for (const key of ['security', 'feature', 'addition', 'improvement', 'fix', 'web', 'removal']) assert.ok(Math.max(...channels(key)) >= 0xa0, `${key} is a bright color, not a dark one`);
+}
+assert.equal(hue('removed-feature'), 0x4b4f59, 'a feature removed is the dark of Petto');
 assert.equal(new Set(Object.values(log.CATEGORIES).map((each) => each.color)).size, 8, 'no two kinds share a color');
+for (const each of Object.values(log.CATEGORIES)) assert.match(each.dot, /^<:[a-z_]+:\d+>$/i, 'the mark of each kind is an emoji of Petto');
+assert.equal(new Set(Object.values(log.CATEGORIES).map((each) => each.dot)).size, 8, 'no two kinds share an emoji');
 
 // Entries: the good one passes, each mistake skips only its own entry and says why.
 const good = entry('partner-top-lists', 'addition', { images: ['https://petto.sbs/assets/log/a.png'], docs: 'https://petto.sbs/blog/x' });
