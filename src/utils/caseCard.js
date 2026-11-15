@@ -13,7 +13,7 @@ const { EMOJI, TYPE_EMOJI } = require('./emojis');
 const { addBlocks } = require('./cardBlocks');
 const { semanticColor, colorFromText } = require('./colors');
 const { t, tn, currentLanguage } = require('../i18n');
-const { typeName, displayReason, reasonText, capitalize } = require('./caseFormat');
+const { typeName, displayReason, reasonText, capitalize, caseIcon } = require('./caseFormat');
 
 const COLORS = {
   ban: 0xfe6465,
@@ -73,12 +73,6 @@ function caseStatus(row, lang) {
 }
 
 const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
-
-/** The icon of a case: the alert for a warning, the hammer for every other sanction, and the question coin for a type that is not known. */
-function caseIcon(row) {
-  if (!TYPE_EMOJI[row.type]) return EMOJI.PETTO_QUESTION;
-  return row.type === 'warn' ? EMOJI.PETTO_ALERT : EMOJI.HAMMER;
-}
 
 /** A person of a case: their mention, or the question coin and "unknown" when Discord has no one by that id any more. */
 function personText(id, people, unknownKey, lang) {

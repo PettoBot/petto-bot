@@ -1,4 +1,4 @@
-const { TYPE_EMOJI } = require('./emojis');
+const { EMOJI, TYPE_EMOJI } = require('./emojis');
 const { t, tn, currentLanguage } = require('../i18n');
 
 function capitalize(str) {
@@ -36,9 +36,15 @@ function reasonText(reason, lang = currentLanguage()) {
   return displayReason(reason, lang) || t(lang, 'moderation.reason.none');
 }
 
+/** The icon of a case: the alert for a warning, the hammer for every other sanction, and the question coin for a type that is not known. */
+function caseIcon(row) {
+  if (!TYPE_EMOJI[row.type]) return EMOJI.PETTO_QUESTION;
+  return row.type === 'warn' ? EMOJI.PETTO_ALERT : EMOJI.HAMMER;
+}
+
 /** One-line summary of a case, for list views like /infrs. */
 function formatCaseLine(row, lang = currentLanguage()) {
-  const emoji = TYPE_EMOJI[row.type] ?? '';
+  const emoji = caseIcon(row);
   const ts = Math.floor(new Date(row.created_at).getTime() / 1000);
   const activeTag = row.active === false ? t(lang, 'moderation.case.inactiveTag') : '';
   return `${emoji} \`#${row.case_number}\` **${typeName(row.type, lang)}** · <@${row.user_id}> · <t:${ts}:R>${activeTag}\n> ${reasonText(row.reason, lang)}`;
@@ -46,7 +52,7 @@ function formatCaseLine(row, lang = currentLanguage()) {
 
 /** Full detail block for a single case, for /linfr, /searchinf, and pre-delete/modify confirmations. */
 function formatCaseDetail(row, lang = currentLanguage()) {
-  const emoji = TYPE_EMOJI[row.type] ?? '';
+  const emoji = caseIcon(row);
   const ts = Math.floor(new Date(row.created_at).getTime() / 1000);
   const lines = [
     `### ${emoji} ${t(lang, 'moderation.case.detail.title', { number: row.case_number, type: capitalize(typeName(row.type, lang)) })}`.trim(),
@@ -66,4 +72,4 @@ function formatCaseDetail(row, lang = currentLanguage()) {
   return lines.join('\n');
 }
 
-module.exports = { formatCaseLine, formatCaseDetail, typeName, displayReason, reasonText, capitalize };
+module.exports = { caseIcon, formatCaseLine, formatCaseDetail, typeName, displayReason, reasonText, capitalize };
