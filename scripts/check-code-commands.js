@@ -429,6 +429,22 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   assert.deepEqual(t.sent.map((e) => e.payload.content), ['chain2', 'chain3'], 'A runs B and B runs C, but C cannot run D');
   assert.equal(problemsOf('chain3')[0].text, 'execCC: too many commands in a chain (at most 3)');
   assert.equal(problemsOf('chain3')[0].trigger, 'exec');
+  // A command that code scheduled (scheduleUniqueCC) runs when its time comes: as the member who scheduled it, in the channel where it was
+  // scheduled, with .Trigger "exec" and .ExecData. Nobody to run it for (the member or the channel is gone): nothing happens.
+  const sched = makeMessage();
+  sched.message.guild.members.cache = new Collection([[sched.message.author.id, sched.message.member]]);
+  sched.message.guild.channels.cache.set('200000000000000009', { id: '200000000000000009', isTextBased: () => false });
+  sched.message.member.user = sched.message.author;
+  sched.message.guild.members.fetch = async () => { throw new Error('Unknown Member'); };
+  const botClient = { guilds: { cache: new Collection([[sched.message.guild.id, sched.message.guild]]) } };
+  const due = { guildId: G, name: 'shop', id: 'later', userId: sched.message.author.id, channelId: '200000000000000001', data: { item: 'tea' } };
+  assert.equal(await codeCommands.runScheduled(botClient, due), true);
+  assert.deepEqual(sched.sent.map((e) => e.payload.content), ['exec scheduleUniqueCC {"item":"tea"} Liam 0 200000000000000001', 'from shop'], 'it runs as the member, in the channel, with its data');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, userId: '999999999999999999' }), false, 'the member is gone');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, channelId: '200000000000000009' }), false, 'the channel is not a text channel');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, guildId: '399999999999999999' }), false, 'the server is gone');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, name: 'ghost' }), true, 'a command that was deleted is written down like any execCC that finds nothing');
+  assert.equal(problemsOf('scheduleUniqueCC')[0].text, 'execCC: there is no command with code called ghost');
   // A command that does not exist, or that is not in code, is not a mistake of the one that asked: it is written down.
   store.set(`${G}:plain`, { name: 'plain', code: null, response: 'hi' });
   t = makeMessage();

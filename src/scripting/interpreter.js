@@ -18,7 +18,7 @@ const DEFAULT_LIMITS = {
   effects: {
     message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1, execCC: 2,
     // Messages, channels and threads
-    editMessage: 3, deleteMessage: 5, pinMessage: 3, unpinMessage: 3, purgeMessages: 1, reactToMessage: 5,
+    editMessage: 3, deleteMessage: 5, pinMessage: 3, unpinMessage: 3, purgeMessages: 2, reactToMessage: 5,
     createChannel: 3, editChannel: 3, deleteChannel: 2, lockChannel: 2, unlockChannel: 2, createThread: 2, lockThread: 2, archiveThread: 2,
     // Moderation, roles and nicknames
     ban: 3, tempban: 3, unban: 3, kick: 3, mute: 3, unmute: 3, warn: 3,

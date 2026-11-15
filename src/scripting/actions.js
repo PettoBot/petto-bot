@@ -61,6 +61,8 @@ function register(h) {
     };
     const reasonOf = (value) => (value === undefined || value === null || value === '' ? null : textOf(value, 'reason', exports.MAX_REASON));
     const colorOf = (value) => {
+        if (typeof value === 'string' && !/^#?[0-9a-f]{6}$/i.test(value) && !/^\d+$/.test(value.trim()))
+            fail('color');
         const color = typeof value === 'string' && /^#?[0-9a-f]{6}$/i.test(value) ? parseInt(value.replace('#', ''), 16) : Math.trunc(num(value));
         if (color < 0 || color > 0xffffff)
             fail('color');
@@ -213,8 +215,10 @@ function register(h) {
         return null;
     });
     def('deleteChannel', 1, 1, (env, channel) => { env.effects.add('deleteChannel', { channelId: channelArg(channel) }); return null; });
-    def('setSlowmode', 2, 2, (env, channel, seconds) => {
-        env.effects.add('editChannel', { channelId: channelOrHere(env, channel), changes: { slowmode: whole(seconds, 'setSlowmode', 0, 21_600) } });
+    // `setSlowmode 5` is for the channel of the command, `setSlowmode channel 5` for another one.
+    def('setSlowmode', 1, 2, (env, first, second) => {
+        const withChannel = second !== undefined;
+        env.effects.add('editChannel', { channelId: withChannel ? channelArg(first) : channelOrHere(env, null), changes: { slowmode: whole(withChannel ? second : first, 'setSlowmode', 0, 21_600) } });
         return null;
     });
     // Nobody can write in the channel (everyone) / the lock is taken off.
