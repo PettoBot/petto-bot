@@ -222,6 +222,36 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
   const down = fake();
   assert.equal((await log.announceNewEntries(down.client, { channelId: CHANNEL, pauseMs: 0, store: memory(), load: async () => null })).skipped, 'log-unavailable');
   assert.equal(down.sent.length, 0);
+  // The bot starts while the web is being deployed (it answers 404 for a minute): nothing is said in the log of the team, the bot asks again soon
+  // by itself and posts as soon as the web answers, without waiting ten minutes. Only a web that never answers is said, once.
+  {
+    const logger = require('../src/utils/logger');
+    const warnings = [];
+    const warn = logger.warn;
+    logger.warn = (text) => { warnings.push(String(text)); };
+    try {
+      let answers = 0;
+      const deploying = async () => { answers += 1; return answers <= 2 ? { ok: false, status: 404 } : { ok: true, status: 200, json: async () => ({ revision: 1, version: '0.7.12', entries: [entry('late')] }) }; };
+      const early = fake();
+      const earlyStore = memory();
+      const looking = await log.startCurrentlyLog({ channels: early.client.channels, user: { id: BOT } }, { channelId: CHANNEL, pauseMs: 0, store: earlyStore, reachable: loaded, pollMs: 60_000, retryMs: [5, 5, 5], load: () => log.fetchLog('https://web.example/log', deploying) });
+      assert.equal(looking.result.skipped, 'log-unavailable', 'the first look found the web deploying');
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      looking.stop();
+      assert.deepEqual(earlyStore.state.posted, ['late'], 'the quick retry posted it as soon as the web answered, long before the look of every ten minutes');
+      assert.deepEqual(warnings, [], 'a web that is being deployed is not a warning');
+
+      const never = fake();
+      const lost = await log.startCurrentlyLog({ channels: never.client.channels, user: { id: BOT } }, { channelId: CHANNEL, pauseMs: 0, store: memory(), pollMs: 60_000, retryMs: [5, 5], load: () => log.fetchLog('https://web.example/log', async () => ({ ok: false, status: 404 })) });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      lost.stop();
+      assert.equal(warnings.length, 1, 'a web that never answers is said once');
+      assert.match(warnings[0], /answered 404/, 'and it says why');
+      assert.equal(never.sent.length, 0);
+    } finally {
+      logger.warn = warn;
+    }
+  }
   // A change that only the web has: the web is deployed with a new entry and the next look posts it (and only it), with no change to the bot.
   current = web({ entries: [entry('v1'), entry('only-web', 'web')] });
   const webOnly = fake();
