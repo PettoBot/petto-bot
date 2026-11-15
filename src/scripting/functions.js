@@ -870,5 +870,6 @@ const helpers = { fail, what, expected, text, num, list, str, snowflake, isTruth
 const defNew = (name, min, max, run) => { if (functions.has(name)) throw new Error(`The Petto Code function "${name}" is defined twice`); def(name, min, max, run); }; // i18n-ignore: for the team of the bot, never shown to a member
 require('./actions').register({ ...helpers, def: defNew });
 require('./more').register({ ...helpers, def: defNew });
+require('./connect').register({ ...helpers, def: defNew });
 
 module.exports = { functions, EMBEDS, COMPLEX, BUTTONS, SELECTS, ROWS };

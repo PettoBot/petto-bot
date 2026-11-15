@@ -1,7 +1,7 @@
 const { PettoCodeError, phrase } = require('./errors');
 const { currentLanguage } = require('../i18n');
 
-const KEYWORDS = new Set(['if', 'else', 'end', 'range', 'with', 'break', 'continue', 'return']);
+const KEYWORDS = new Set(['if', 'else', 'end', 'range', 'with', 'break', 'continue', 'return', 'define', 'template']);
 
 /** Line and column (both from 1) of an offset in the source. */
 function locate(source, offset) {

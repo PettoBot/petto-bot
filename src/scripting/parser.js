@@ -7,7 +7,8 @@ const MAX_NESTING = 20;
 
 /**
  * Turns the source into a tree.
- *   Text, Print(pipeline), Assign(names, declare, pipeline), If(branches, otherwise), Range, With, Break, Continue, Return.
+ *   Text, Print(pipeline), Assign(names, declare, pipeline), If(branches, otherwise), Range, With, Break, Continue, Return(pipeline?), Template(name, pipeline?).
+ * `{{ define "name" }}...{{ end }}` blocks are not nodes: they are kept apart (`defs`) and run with `{{ template "name" value }}` or `execTemplate`.
  * A pipeline is a list of commands joined by `|`; a command is a list of operands, the first one a function name or a value.
  */
 function parse(source, lang = currentLanguage()) {
@@ -16,6 +17,7 @@ function parse(source, lang = currentLanguage()) {
   if (source.length > MAX_SOURCE_LENGTH) throw new PettoCodeError('limit', said('tooLong', { count: source.length, max: MAX_SOURCE_LENGTH }), {}, lang);
   const parts = splitActions(source, lang);
   let cursor = 0;
+  const defs = Object.create(null);
 
   const fail = (key, token, vars) => { throw new PettoCodeError('syntax', said(key, vars), token ?? {}, lang); };
   // A piece of the code that was not expected there, as it is written: "else", "x", 5.
@@ -89,7 +91,33 @@ function parse(source, lang = currentLanguage()) {
           return { nodes, stop: 'else' };
         }
         if (first.value === 'break' || first.value === 'continue') { done(); nodes.push({ type: first.value === 'break' ? 'Break' : 'Continue', ...where }); continue; }
-        if (first.value === 'return') { done(); nodes.push({ type: 'Return', ...where }); continue; }
+        if (first.value === 'return') {
+          // `return` ends the code; `return value` also gives that value back to whoever called this code (callCC, execTemplate).
+          if (state.i >= tokens.length) { nodes.push({ type: 'Return', ...where }); continue; }
+          const pipeline = parsePipeline(tokens, state, 0);
+          done();
+          nodes.push({ type: 'Return', pipeline, ...where });
+          continue;
+        }
+        if (first.value === 'define') {
+          if (depth !== 0 || stops.length) fail('defineTop', first);
+          if (tokens[1]?.type !== 'string') fail('defineName', first);
+          const name = tokens[1].value;
+          state.i = 2; done();
+          if (name in defs) fail('defineTwice', first, { name });
+          const body = parseList(['end'], depth + 1);
+          if (body.stop !== 'end') fail('defineNotClosed', where);
+          defs[name] = body.nodes;
+          continue;
+        }
+        if (first.value === 'template') {
+          if (tokens[1]?.type !== 'string') fail('templateName', first);
+          state.i = 2;
+          const pipeline = state.i < tokens.length ? parsePipeline(tokens, state, 0) : null;
+          done();
+          nodes.push({ type: 'Template', name: tokens[1].value, pipeline, ...where });
+          continue;
+        }
         if (first.value === 'if') nodes.push(parseIf(tokens, state, where, depth));
         else if (first.value === 'with') nodes.push(parseWith(tokens, state, where, depth));
         else nodes.push(parseRange(tokens, state, where, depth));
@@ -180,7 +208,7 @@ function parse(source, lang = currentLanguage()) {
   }
 
   const result = parseList([], 0);
-  return { type: 'Root', nodes: result.nodes };
+  return { type: 'Root', nodes: result.nodes, defs };
 }
 
 module.exports = { parse, MAX_SOURCE_LENGTH };

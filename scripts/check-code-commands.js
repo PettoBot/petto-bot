@@ -19,6 +19,7 @@ stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 stub('src/db/customCommands.js', {
   normalizeName: (name) => name.toLowerCase().trim().replace(/\s+/g, ''),
   getCommand: async (guildId, name) => store.get(`${guildId}:${name}`) ?? null,
+  getByRef: async (guildId, ref) => (/^\d+$/.test(String(ref)) ? [...store.entries()].find(([key, value]) => key.startsWith(`${guildId}:`) && value.number === Number(ref))?.[1] ?? null : store.get(`${guildId}:${ref}`) ?? null),
   upsertCommand: async (guildId, name, values) => { store.set(`${guildId}:${name}`, { name, ...values, code: values.code ?? null, created_by: values.createdBy }); return store.get(`${guildId}:${name}`); },
   removeCommand: async () => true,
   listCommands: async (guildId) => [...store.entries()].filter(([key]) => key.startsWith(`${guildId}:`)).map(([, value]) => value),
@@ -464,6 +465,17 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   t = makeMessage();
   await codeCommands.runCodeCommand(t.message, row('{{ add 1 "x" }}', 'typedbad'), '', '!');
   assert.equal(problemsOf('typedbad')[0].trigger, 'command');
+  // callCC: a typed command uses the code of another one (by name or by number), and what it returns or prints is a value in the caller.
+  store.set(`${G}:helper`, { name: 'helper', number: 7, code: '{{ define "x" }}ok{{ end }}help {{ index .Args 0 }} {{ template "x" }}' });
+  store.set(`${G}:triple`, { name: 'triple', number: 8, code: '{{ return (mult (index .Args 0) 3) }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ callCC "helper" "me" }} {{ callCC 8 5 }} {{ (getCC 7).Name }} {{ (getCC "triple").Number }}', 'caller2'), '', '!');
+  assert.equal(t.replies[0].content, 'help me ok 15 helper 8', 'by name and by number, with the return value, getCC and the templates of the called command');
+  t = makeMessage();
+  store.set(`${G}:caller3`, { name: 'caller3', number: 9, code: '{{ callCC "caller3" }}' });
+  await codeCommands.runCodeCommand(t.message, store.get(`${G}:caller3`), '', '!');
+  assert.match(problemsOf('caller3')[0].text, /already running/, 'a command cannot call itself');
+  for (const name of ['helper', 'triple', 'caller3']) store.delete(`${G}:${name}`);
   // What copies a command of Petto (here `lockChannel`, like `!channel lock`) does not work in a typed command, nor in what a typed command starts (execCC).
   store.set(`${G}:locker`, { name: 'locker', code: '{{ lockChannel }}' });
   t = makeMessage();

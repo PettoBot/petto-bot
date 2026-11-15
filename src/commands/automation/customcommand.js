@@ -416,7 +416,7 @@ async function codeCmd(interaction, sub) {
     const hints = codeHintList(code, lang);
     try {
       const data = codeCommands.buildData(interaction.rawMessage, 'test', args, '!');
-      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(interaction.guild), lang });
+      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(interaction.guild), cc: codeCommands.ccFor(interaction.guild.id), lang });
       const output = result.output.trim();
       const actions = result.effects.map((effect) => [`• ${describeEffect(effect, lang)}`, ...effectDetails(effect, lang).map((line) => `  ↳ ${line}`)].join('\n')).join('\n');
       return reply(interaction, [

@@ -81,7 +81,7 @@ function registerCodeRoutes(app, { authorize }) {
       data.Values = trigger === 'select' ? [String(req.body?.value ?? '').slice(0, 100)].filter(Boolean) : [];
     }
     try {
-      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(guild), lang });
+      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(guild), cc: codeCommands.ccFor(guild.id), lang });
       // `actions` says each effect as a sentence; `effects` are the effects themselves (what run gives), for a preview that
       // draws the messages like Discord does.
       res.json({ ok: true, output: result.output, actions: result.effects.map((effect) => admin.describeEffect(effect, lang)), effects: result.effects, hints, steps: result.steps, millis: result.millis });

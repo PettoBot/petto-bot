@@ -125,6 +125,28 @@ function guildData(guild) {
   };
 }
 
+/**
+ * The other commands of the server for the code that calls them (callCC, getCC, listCC): by name or by number. `code` gives the code of a command that has some;
+ * `get` and `list` give maps (Number, Name, HasCode, Trigger, TriggerText), never the code itself.
+ */
+function ccFor(guildId) {
+  const mapOf = (row) => ({ Number: row.number ?? null, Name: row.name, HasCode: Boolean(row.code), Trigger: row.trigger_type ?? 'command', TriggerText: row.trigger_text ?? null });
+  return {
+    async code(ref) {
+      const row = await ccDb.getByRef(guildId, ref);
+      return row?.code ? { number: row.number ?? null, name: row.name, code: row.code } : null;
+    },
+    async get(ref) {
+      const row = await ccDb.getByRef(guildId, ref);
+      return row ? mapOf(row) : null;
+    },
+    async list() {
+      const rows = await ccDb.listCommands(guildId);
+      return rows.map(mapOf).sort((a, b) => (a.Number ?? 1e9) - (b.Number ?? 1e9)).slice(0, 100);
+    },
+  };
+}
+
 /** The data the code can read (docs: data.md), taken from the message that used the command. */
 function buildData(message, commandName, argText, prefix, serverPrefix = prefix) {
   const { guild, channel, author, member } = message;
@@ -436,7 +458,7 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
   data.Message.CommandUserID = context.commandUserId ?? null;
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, source.member), limits: { maxMillis: 2000 }, lang });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, source.member), cc: ccFor(guild.id), command: row.name, limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -491,7 +513,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text, lang });
   let result;
   try {
-    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild, message.member), lang });
+    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild, message.member), cc: ccFor(message.guild.id), command: row.name, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -553,7 +575,7 @@ async function runComponent(interaction, row, parsed) {
 
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), limits: { maxMillis: 2000 }, lang });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), cc: ccFor(guild.id), command: row.name, limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) { problem(error.toPhrase()); return ephemeralReply(mistakeText(error, lang)); }
     problem(CRASHED);
@@ -617,7 +639,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang });
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), limits: { maxMillis: 2000 }, lang });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), cc: ccFor(guild.id), command: row.name, limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
@@ -705,4 +727,4 @@ function decodeShare(text, lang = currentLanguage()) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { runScheduled, guildData, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { runScheduled, guildData, ccFor, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

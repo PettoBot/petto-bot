@@ -11,6 +11,9 @@ const DEFAULT_LIMITS = {
   maxStoreCalls: 25, // reads and writes of the stored data
   maxLookups: 10, // members, roles, channels, messages... read with getMember, getRole, getChannel, getMessage and the other functions that read the server
   maxHttp: 3, // the web pages asked with httpGet and httpPost
+  maxCalls: 5, // the commands that this one calls with callCC (and the ones they call), all together
+  maxCallDepth: 3, // commands inside commands inside commands (A calls B, B calls C, C calls D)
+  maxTemplateDepth: 8, // templates inside templates
   maxLoopRuns: 1_000, // the turns of every range together
   maxOutput: 20_000, // characters printed while running; the bot cuts a message to Discord's limit later
   maxValueSize: 20_000, // the longest text a function may make
@@ -97,6 +100,11 @@ async function run(codeOrTree, data = {}, options = {}) {
   let storeCalls = 0;
   let lookups = 0;
   let httpCalls = 0;
+  let callCount = 0; // commands called with callCC
+  let templateDepth = 0;
+  let returnValue; // what `return value` gave, for whoever called this code or this template
+  let currentDefs = tree.defs ?? {};
+  const stack = options.command ? [String(options.command)] : []; // the commands that are running inside each other
   let loopRuns = 0;
   let output = '';
   const effectList = [];
@@ -134,6 +142,46 @@ async function run(codeOrTree, data = {}, options = {}) {
         if (effectCount[kind] > (limits.effects[kind] ?? 0)) throw new CodeProblem('scripting.run.tooManyActions', { max: limits.effects[kind] ?? 0 }, { limit: true, lang });
         effectList.push({ type: kind, ...payload });
       },
+    },
+    // The other commands of the server, to read and to call from inside this code (callCC, getCC, listCC).
+    cc: options.cc ? {
+      async read(kind, ref) {
+        lookups += 1;
+        if (lookups > limits.maxLookups) throw new CodeProblem('scripting.run.tooManyLookups', { max: limits.maxLookups }, { limit: true, lang });
+        const before = now();
+        try { return await options.cc[kind](ref); } finally { waitedMillis += now() - before; }
+      },
+      async code(ref) { return options.cc.code(ref); },
+    } : null,
+    /** Runs the code of another command inside this one: its text (or what it returns) is the answer. It has its own variables and shares the limits and the actions. */
+    async include(code, includeData, name) {
+      if (stack.includes(name)) throw new CodeProblem('scripting.run.callLoop', { name }, { limit: true, lang });
+      callCount += 1;
+      if (callCount > limits.maxCalls) throw new CodeProblem('scripting.run.tooManyCalls', { max: limits.maxCalls }, { limit: true, lang });
+      if (stack.length > limits.maxCallDepth) throw new CodeProblem('scripting.run.callTooDeep', { max: limits.maxCallDepth }, { limit: true, lang });
+      const savedOutput = output; const savedReturn = returnValue; const savedDefs = currentDefs;
+      stack.push(name);
+      output = ''; returnValue = undefined;
+      try {
+        const inner = parse(code, lang);
+        currentDefs = inner.defs ?? {};
+        await execList(inner.nodes, new Scope(null, includeData), includeData, false);
+        return returnValue !== undefined ? returnValue : output;
+      } catch (error) {
+        if (error instanceof PettoCodeError) throw new CodeProblem('scripting.run.inCommand', { name, message: error.toPhrase() }, { limit: error.kind === 'limit', bare: true, lang });
+        throw error;
+      } finally {
+        stack.pop(); output = savedOutput; returnValue = savedReturn; currentDefs = savedDefs;
+      }
+    },
+    /** Runs a `{{ define "name" }}` of this code and answers its text, or what it returns. */
+    async execTemplate(name, arg) {
+      const savedOutput = output;
+      output = '';
+      try {
+        const value = await runTemplate(name, arg, {});
+        return value !== undefined ? value : output;
+      } finally { output = savedOutput; }
     },
   };
 
@@ -262,9 +310,30 @@ async function run(codeOrTree, data = {}, options = {}) {
       case 'Range': return await execRange(node, scope, dot);
       case 'Break': if (!inLoop) failWith('runtime', 'breakOutside', {}, node); return 'break';
       case 'Continue': if (!inLoop) failWith('runtime', 'continueOutside', {}, node); return 'continue';
-      case 'Return': return 'return';
+      case 'Return':
+        if (node.pipeline) returnValue = await evalPipeline(node.pipeline, scope, dot);
+        return 'return';
+      case 'Template': {
+        const arg = node.pipeline ? await evalPipeline(node.pipeline, scope, dot) : null;
+        await runTemplate(node.name, arg, node);
+        return null;
+      }
       default: return failWith('runtime', 'unknownNode', { type: node.type }, node);
     }
+  }
+
+  /** Runs a `define` of the code with `arg` as `.` and `$`: what it prints goes where it was called, and `return` ends only the template. */
+  async function runTemplate(name, arg, node) {
+    const body = currentDefs[name];
+    if (!body) failWith('runtime', 'noTemplate', { name }, node);
+    templateDepth += 1;
+    if (templateDepth > limits.maxTemplateDepth) failWith('limit', 'templateTooDeep', { max: limits.maxTemplateDepth }, node);
+    const savedReturn = returnValue;
+    returnValue = undefined;
+    try {
+      await execList(body, new Scope(null, arg), arg, false);
+      return returnValue;
+    } finally { returnValue = savedReturn; templateDepth -= 1; }
   }
 
   async function execRange(node, scope, dot) {
