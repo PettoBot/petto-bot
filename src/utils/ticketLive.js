@@ -188,19 +188,27 @@ const cut = (text, limit) => {
  * a Components V2 card in short.
  * @param {any} message
  */
+/** The files, embeds or stickers of the messages that a forward carries (`messageSnapshots`). */
+function forwardedParts(message, key) {
+  return [...(message.messageSnapshots?.values?.() ?? [])].flatMap((snapshot) => {
+    const part = snapshot?.[key];
+    return typeof part?.values === 'function' ? [...part.values()] : Array.isArray(part) ? part : [];
+  });
+}
+
 function summarizeMessage(message) {
   const author = message.author ?? {};
   const member = message.member ?? null;
   const name = member?.displayName ?? author.globalName ?? author.username ?? '?';
   const avatar = (typeof member?.displayAvatarURL === 'function' ? member.displayAvatarURL({ size: 64 }) : null)
     ?? (typeof author.displayAvatarURL === 'function' ? author.displayAvatarURL({ size: 64 }) : null);
-  const attachments = [...(message.attachments?.values?.() ?? [])].slice(0, 10).map((file) => ({
+  const attachments = [...(message.attachments?.values?.() ?? []), ...forwardedParts(message, 'attachments')].slice(0, 10).map((file) => ({
     name: cut(file.name ?? 'file', 120),
     url: String(file.url ?? ''),
     size: Number(file.size) || 0,
     image: /^image\//.test(String(file.contentType ?? '')) || /\.(png|jpe?g|gif|webp)$/i.test(String(file.name ?? '')),
   })).filter((file) => /^https:\/\//.test(file.url));
-  const embeds = (message.embeds ?? []).slice(0, 5).map((embed) => {
+  const embeds = [...(message.embeds ?? []), ...forwardedParts(message, 'embeds')].slice(0, 5).map((embed) => {
     const data = typeof embed?.toJSON === 'function' ? embed.toJSON() : embed?.data ?? embed ?? {};
     return {
       title: cut(data.title ?? data.author?.name ?? '', 256),
@@ -210,7 +218,10 @@ function summarizeMessage(message) {
     };
   }).filter((embed) => embed.title || embed.description || embed.fields);
   const card = componentText(message.components).join('\n');
-  const content = typeof message.cleanContent === 'string' && message.cleanContent ? message.cleanContent : String(message.content ?? '');
+  const own = typeof message.cleanContent === 'string' && message.cleanContent ? message.cleanContent : String(message.content ?? '');
+  // A forward has no text of its own: what it carries is the copy of the original messages (`messageSnapshots`), marked with an arrow.
+  const forwarded = [...(message.messageSnapshots?.values?.() ?? [])];
+  const content = own || forwarded.map((snapshot) => `\u21AA ${String(snapshot.content ?? '')}`.trim()).filter((text) => text !== '\u21AA').join('\n');
   return {
     id: String(message.id),
     author: { id: String(author.id ?? ''), name: cut(name, 80), avatar: avatar ?? null, bot: Boolean(author.bot || message.webhookId) },
@@ -218,7 +229,7 @@ function summarizeMessage(message) {
     card: cut(card, 1000),
     attachments,
     embeds,
-    stickers: [...(message.stickers?.values?.() ?? [])].slice(0, 3).map((sticker) => cut(sticker.name ?? '', 40)),
+    stickers: [...(message.stickers?.values?.() ?? []), ...forwardedParts(message, 'stickers')].slice(0, 3).map((sticker) => cut(sticker.name ?? '', 40)),
     createdAt: new Date(Number(message.createdTimestamp) || Date.now()).toISOString(),
     edited: Boolean(message.editedTimestamp),
   };

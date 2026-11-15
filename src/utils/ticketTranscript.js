@@ -321,11 +321,34 @@ function authorLook(msg, bot, lang) {
   };
 }
 
+/**
+ * What a forward carries. A forwarded message has no text of its own: Discord gives the original message as a copy (`messageSnapshots`), with its text,
+ * embeds, files and stickers. The snippet of a reply to a forward reads the first of them.
+ */
+function forwardedOf(msg) {
+  return collectionValues(msg?.messageSnapshots);
+}
+
+function renderForwarded(msg, lang) {
+  return forwardedOf(msg).map((snapshot) => {
+    const text = snapshot.content ? `<div class="content">${renderRichText(snapshot.content, msg.guild, lang)}</div>` : '';
+    const components = renderComponents(snapshot.components, msg.guild, lang);
+    const shown = shownByComponents(snapshot.components);
+    const attachments = collectionValues(snapshot.attachments).filter((attachment) => !shown.has(linkKey(attachment.url))).map((attachment) => renderAttachment(attachment, lang)).join('');
+    const embeds = (snapshot.embeds ?? []).map((embed) => renderEmbed(embed, msg.guild, lang)).join('');
+    const stickers = collectionValues(snapshot.stickers).map((sticker) => renderSticker(sticker, lang)).join('');
+    const inside = `${text}${components}${attachments}${embeds}${stickers}` || `<div class="empty-content">${escapeHtml(t(lang, 'tickets.html.noText'))}</div>`;
+    const iso = isoDate(snapshot.createdTimestamp);
+    const when = iso ? ` <time datetime="${escapeHtml(iso)}">${escapeHtml(formatDate(snapshot.createdTimestamp, lang))}</time>` : '';
+    return `<div class="forwarded"><div class="forwarded-label">\u21AA ${escapeHtml(t(lang, 'tickets.html.forwarded'))}${when}</div>${inside}</div>`;
+  }).join('');
+}
+
 function renderReply(msg, messageMap, bot, lang) {
   const reference = msg.reference?.messageId ? messageMap.get(msg.reference.messageId) : null;
   if (!reference) return '';
   const look = authorLook(reference, bot, lang);
-  const snippet = reference.content || t(lang, reference.embeds?.length ? 'tickets.html.snippet.embed' : reference.attachments?.size ? 'tickets.html.snippet.attachment' : 'tickets.html.snippet.message');
+  const snippet = reference.content || forwardedOf(reference).find((snapshot) => snapshot.content)?.content || t(lang, reference.embeds?.length || forwardedOf(reference).some((snapshot) => snapshot.embeds?.length) ? 'tickets.html.snippet.embed' : reference.attachments?.size ? 'tickets.html.snippet.attachment' : 'tickets.html.snippet.message');
   const replying = escapeHtml(t(lang, 'tickets.html.replyingTo', { user: '\u0002' })).replace('\u0002', `<b>${escapeHtml(look.name)}</b>`);
   return `<a class="reply" href="#message-${escapeHtml(reference.id)}">${look.avatar ? `<img src="${look.avatar}" alt="" loading="lazy">` : ''}<span>${replying}</span><span class="reply-text">${escapeHtml(String(snippet).slice(0, 180))}</span></a>`;
 }
@@ -378,9 +401,10 @@ function renderMessage(msg, previous, messageMap, bot, lang) {
   const stickers = collectionValues(msg.stickers).map((sticker) => renderSticker(sticker, lang)).join('');
   const reactions = collectionValues(msg.reactions?.cache).map(renderReaction).join('');
   const poll = renderPoll(msg.poll, msg.guild, lang);
-  const hasRichContent = content || components || attachments || embeds || stickers || poll;
+  const forwarded = renderForwarded(msg, lang);
+  const hasRichContent = content || forwarded || components || attachments || embeds || stickers || poll;
   const edited = msg.editedTimestamp ? `<span class="edited">${escapeHtml(t(lang, 'tickets.html.edited'))}</span>` : '';
-  const body = `${content}${components}${attachments}${embeds}${stickers}${poll}${reactions ? `<div class="reactions">${reactions}</div>` : ''}${hasRichContent ? '' : `<div class="empty-content">${escapeHtml(t(lang, 'tickets.html.noText'))}</div>`}`;
+  const body = `${content}${forwarded}${components}${attachments}${embeds}${stickers}${poll}${reactions ? `<div class="reactions">${reactions}</div>` : ''}${hasRichContent ? '' : `<div class="empty-content">${escapeHtml(t(lang, 'tickets.html.noText'))}</div>`}`;
 
   // Like Discord: the messages one person sends close together go under one name.
   const previousLook = previous && !previous.system ? authorLook(previous, bot, lang) : null;
@@ -475,7 +499,7 @@ const STYLE = `
   .reply { display:flex; align-items:center; gap:6px; min-width:0; margin:0 0 3px 34px; padding-left:20px; position:relative; color:var(--dim); font-size:13px; } .reply::before { content:""; position:absolute; left:2px; top:50%; width:16px; height:10px; border-left:2px solid var(--border); border-top:2px solid var(--border); border-top-left-radius:6px; } .reply img { width:16px; height:16px; border-radius:50%; } .reply b { color:var(--muted); font-weight:600; } .reply-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; } .reply:hover { text-decoration:none; color:var(--muted); } .command { color:var(--accent); }
   .attachment,.audio-attachment { display:flex; align-items:center; gap:8px; width:fit-content; max-width:100%; margin-top:6px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); overflow-wrap:anywhere; } .file-icon { display:grid; place-items:center; width:26px; height:26px; border-radius:6px; color:var(--accent); background:var(--accent-soft); } audio { max-width:min(420px,100%); } .media { width:fit-content; max-width:100%; margin:6px 0 0; } .media img,.media video { display:block; max-width:min(520px,100%); max-height:380px; border-radius:8px; object-fit:contain; } .media figcaption,.sticker figcaption,.media-link { display:block; margin-top:4px; color:var(--dim); font-size:11px; }
   .embed { display:flex; gap:14px; max-width:520px; margin-top:6px; padding:10px 14px 14px 12px; border-left:4px solid var(--embed-color); border-radius:4px; background:var(--surface-2); } .embed-main { min-width:0; flex:1; } .embed-author { display:flex; align-items:center; gap:7px; margin-top:4px; font-size:13px; font-weight:600; } .embed-author img,.embed-footer img { width:20px; height:20px; border-radius:50%; object-fit:cover; } .embed-title { margin-top:6px; font-size:15px; font-weight:700; } .embed-title a { color:var(--accent); } .embed-provider,.embed-timestamp { color:var(--dim); font-size:12px; } .embed-description { margin-top:6px; font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; } .embed-fields { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:8px; } .embed-field { flex:1 1 100%; min-width:120px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; } .embed-field.inline { flex-basis:28%; } .embed-field-name { margin-bottom:2px; font-weight:600; } .embed-image { display:block; max-width:100%; max-height:300px; margin-top:12px; border-radius:4px; object-fit:contain; } .embed-thumbnail { width:80px; height:80px; flex:0 0 80px; margin-top:8px; border-radius:4px; object-fit:cover; } .embed-video { display:inline-block; margin-top:8px; } .embed-footer { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px; color:var(--dim); font-size:12px; }
-  .sticker { width:fit-content; margin:6px 0 0; color:var(--dim); font-size:11px; } .sticker img { display:block; max-width:160px; max-height:160px; object-fit:contain; }
+  .sticker { width:fit-content; margin:6px 0 0; color:var(--dim); font-size:11px; } .sticker img { display:block; max-width:160px; max-height:160px; object-fit:contain; } .forwarded { margin-top:4px; padding:2px 0 4px 12px; border-left:4px solid var(--border); } .forwarded-label { color:var(--dim); font-size:12px; font-weight:600; margin-bottom:2px; } .forwarded-label time { font-weight:400; margin-left:4px; }
   .component-container { max-width:520px; margin-top:6px; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); } .component-text + .component-text { margin-top:8px; } .component-text { white-space:pre-wrap; overflow-wrap:anywhere; } .component-section { display:flex; align-items:center; gap:14px; } .component-section > :first-child { flex:1; } .component-thumb { width:72px; height:72px; border-radius:8px; object-fit:cover; } .component-separator { height:1px; margin:10px 0; background:var(--border); } .component-button { display:inline-block; margin:6px 6px 0 0; padding:6px 14px; border-radius:8px; color:var(--text); background:var(--surface-3); border:1px solid var(--border); font-size:14px; font-weight:500; } .component-button.disabled { opacity:.6; } .media-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:4px; margin-top:6px; max-width:520px; } .media-gallery img { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:4px; } .media-gallery a { display:block; } .media-gallery.single img { aspect-ratio:auto; max-height:380px; object-fit:contain; }
   .poll { max-width:520px; margin-top:6px; padding:12px 14px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); } .poll-answer { display:flex; justify-content:space-between; gap:12px; margin-top:8px; padding:8px 10px; border-radius:6px; background:var(--surface-3); color:var(--muted); } .poll-answer b { color:var(--text); }
   .reactions { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; } .reaction { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); font-size:13px; } .reaction b { font-weight:600; }
