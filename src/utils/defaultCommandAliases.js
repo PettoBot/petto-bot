@@ -7,12 +7,12 @@ const { actionRoutes } = require('./actions');
 const { shortAliasRoutes } = require('./shortAliases');
 
 const DEFAULT_COMMAND_ALIASES = {
-  avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['c', 'calculate'], channelinfo: ['ci'],
+  avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['calculate'], channelinfo: ['ci'],
   color: ['hexcolor'], emojiinfo: ['ei'], firstmessage: ['fm'], inviteinfo: ['ii'], invites: ['invs'],
   roleinfo: ['ri'], roles: ['rolelist'], serverinfo: ['si'], snipe: ['sniped'], snowflake: ['sf'], spotify: ['sp'], time: ['tz', 'clock'], uptime: ['up'], userinfo: ['ui'], usercosmetics: ['uc'], wiki: ['wk'],
   autothread: ['at'], reaction: ['react'], reactionrole: ['rr'], stickymessage: ['sticky'], stickyroles: ['sr'], timer: ['tmr'], voicemaster: ['vm'],
   bumpreminder: ['bump'], embed: ['emb'], logs: ['log'], prefix: ['pfx'], giveaway: ['gw'], giveawaypreset: ['gwp'], counter: ['cnt'],
-  ban: ['banish'], unban: ['ub'], unmute: ['um'], unjail: ['uj'], lockdown: ['ld'], case: ['cs'], channel: ['ch'], kick: ['k'], mute: [], note: ['notes'], nuke: ['nuk'], pauseinvites: ['pause'], softban: ['sban'], voice: ['vcmod'], afk: ['away'],
+  ban: ['banish'], unban: ['ub'], unmute: ['um'], unjail: ['uj'], lockdown: ['ld'], case: ['cs', 'c'], channel: ['ch'], kick: ['k'], mute: [], note: ['notes'], nuke: ['nuk'], pauseinvites: ['pause'], softban: ['sban'], voice: ['vcmod'], afk: ['away'],
 };
 
 // Prefix-only shortcuts for high-frequency channel actions. These expand to the
@@ -44,8 +44,6 @@ const BASE_PREFIX_ROUTES = [
   { alias: 'drag', command: 'voice', args: ['drag'], subcommand: 'drag' },
   { alias: 'timeouts', command: 'mute', args: ['list'], subcommand: 'list' },
   { alias: 'modstats', command: 'case', args: ['stats'], subcommand: 'stats' },
-  { alias: 'mhistory', command: 'case', args: ['search', '--moderator'], subcommand: 'search' },
-  { alias: 'moderationhistory', command: 'case', args: ['search', '--moderator'], subcommand: 'search' },
   { alias: 'warnings', command: 'case', args: ['search', '--type', 'warn'], subcommand: 'search' },
   { alias: 'warns', command: 'case', args: ['search', '--type', 'warn'], subcommand: 'search' },
   { alias: 'caselog', command: 'case', args: ['view'], subcommand: 'view' },

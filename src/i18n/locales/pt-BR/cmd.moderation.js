@@ -371,6 +371,8 @@ module.exports = {
   'cmd.moderation.nuke.desc': 'Clona este canal (mesmas configurações, vazio) e exclui o original para limpá-lo na hora.',
   'cmd.moderation.pauseinvites.desc': 'Apaga todos os convites do servidor e bloqueia novos por um tempo definido.',
   'cmd.moderation.pauseinvites.opt.duration.desc': 'ex.: 1h, 30m, 1d',
+  'cmd.moderation.mhistory.desc': "Mostra os casos que um moderador aplicou.",
+  'cmd.moderation.mhistory.opt.moderator.desc': "O moderador",
   'cmd.moderation.purge.desc': 'Verifica as mensagens recentes deste canal e apaga as que correspondem.',
   'cmd.moderation.purge.opt.amount.desc': 'Quantas mensagens recentes verificar (1-500, padrão 100)',
   'cmd.moderation.purge.opt.user.desc': 'Só mensagens deste membro',
