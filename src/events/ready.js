@@ -80,6 +80,8 @@ module.exports = {
       require('../utils/currentlyLog').announceNewEntries(client, { version: require('../../package.json').version })
         .catch((err) => logger.warn(`Currently log: ${err?.message ?? err}`));
     }, 45_000).unref?.();
+    // A sticky saved in the dashboard is posted at once (the dashboard says so on `petto:sticky`) instead of when somebody next writes in the channel.
+    require('../utils/stickyPayload').startStickyNowListener(client);
     startOmniplexStatsJob(client);
     startServerTagCheckJob(client);
     // Role triggers only see a role given to a member Petto has in memory: the members of the servers that have rules are loaded, one server at a

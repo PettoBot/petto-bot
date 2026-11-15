@@ -2,11 +2,9 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const stickyDb = require('../../db/stickyMessages');
 const { getTemplate } = require('../../db/embedTemplates');
-const { stickyPayload } = require('../../utils/stickyPayload');
-const { applyReactReplies } = require('../../utils/messageFlags');
+const { sendStickyNow } = require('../../utils/stickyPayload');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
-const logger = require('../../utils/logger');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
@@ -55,23 +53,9 @@ async function setCmd(interaction) {
   }
 
   const existing = await stickyDb.getSticky(interaction.guild.id, channel.id);
-  if (existing?.message_id) {
-    const old = await channel.messages.fetch(existing.message_id).catch(() => null);
-    if (old) await old.delete().catch(() => {});
-  }
-
   const row = await stickyDb.setSticky(interaction.guild.id, channel.id, content, templateName || null);
-
-  const payload = await stickyPayload(row, { guild: interaction.guild, channel, member: interaction.member, user: interaction.user });
-  const sent = !payload ? null : await channel.send(payload).catch((err) => {
-    logger.error('Failed to post sticky message:', err);
-    return null;
-  });
-
-  if (sent) {
-    await stickyDb.setMessageId(interaction.guild.id, channel.id, sent.id);
-    if (payload?.reactions?.length) await applyReactReplies(sent, payload.reactions);
-  }
+  // The old message goes and the new one is posted at once, the same as when the dashboard saves one.
+  await sendStickyNow(row, { guild: interaction.guild, channel, member: interaction.member, user: interaction.user, oldMessageId: existing?.message_id ?? null });
 
   await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.set', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

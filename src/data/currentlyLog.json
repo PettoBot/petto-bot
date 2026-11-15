@@ -99,6 +99,20 @@
       "area": "Web › Blog",
       "summary": "What the Currently log is, what each color means, how a post looks and what is in the first one. Available in English, Spanish and Portuguese.",
       "docs": "https://petto.sbs/blog/currently-log"
+    },
+    {
+      "id": "sticky-posted-on-save",
+      "category": "improvement",
+      "title": "A sticky message is posted when you save it",
+      "area": "Automation › Sticky messages",
+      "summary": "Saving a sticky message in the dashboard now posts it in the channel right away, like `!stickymessage set` does, instead of waiting for somebody to write there first. If you change it, the old message is replaced."
+    },
+    {
+      "id": "text-fields-fit",
+      "category": "web",
+      "title": "Text fields fit their text",
+      "area": "Web › Dashboard",
+      "summary": "Every text field of the site has the height of its text: no corner to drag, it grows as you write and shrinks as you delete, and an empty one is four lines high. Chat boxes keep their own size."
     }
   ]
 }
