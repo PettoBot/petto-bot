@@ -300,7 +300,8 @@ async function setOffline(interaction, lang) {
  * Manage Server is asked when they run, before anything is answered in public or changed. False when it was refused (the member is told which permission).
  */
 async function requireManageGuild(interaction) {
-  if (interaction.memberPermissions?.has(PERMISSION)) return true;
+  // A command typed with the prefix has no `memberPermissions`: the permissions of the member are read.
+  if ((interaction.memberPermissions ?? interaction.member?.permissions)?.has(PERMISSION)) return true;
   const lang = await languageOf(interaction);
   await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: t(lang, 'core.perm.ManageGuild') }), flags: MessageFlags.Ephemeral });
   return false;
