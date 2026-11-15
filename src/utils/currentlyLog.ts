@@ -162,31 +162,39 @@ async function addVotes(message: unknown): Promise<void> {
   }
 }
 
-/** Where the ids of what was already posted are kept. */
-export interface Store {
-  read(): Promise<string[]>;
-  write(ids: string[]): Promise<void>;
+/** What the log remembers: the revision of the file it was posted from, the entries it posted, and the messages those went in. */
+export interface State {
+  revision: number;
+  posted: string[];
+  messages: string[];
 }
 
-const SETTING_KEY = 'currently_log.posted';
+/** Where that is kept. */
+export interface Store {
+  read(): Promise<State>;
+  write(state: State): Promise<void>;
+}
+
+const STATE_KEY = 'currently_log.state';
+/** The first version of the log kept only the ids of the entries (and no revision, and not the messages). */
+const LEGACY_KEY = 'currently_log.posted';
 /** The ids kept; the oldest go first, an id is only needed while its entry is in the file. */
 const KEEP_IDS = 1000;
 
-/** The usual store: one row of `bot_settings` with the ids as JSON. */
+const textsOf = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
+
+/** The usual store: one row of `bot_settings` with the state as JSON. */
 export function databaseStore(): Store {
   const settings = require('../db/botSettings') as { getSetting(key: string): Promise<string | null>; setSetting(key: string, value: string): Promise<void> };
+  const parse = (value: string | null): unknown => { try { return value ? JSON.parse(value) : null; } catch { return null; } };
   return {
     async read() {
-      const value = await settings.getSetting(SETTING_KEY);
-      try {
-        const parsed = value ? JSON.parse(value) : [];
-        return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-      } catch {
-        return [];
-      }
+      const saved = parse(await settings.getSetting(STATE_KEY)) as Partial<State> | null;
+      if (saved && typeof saved === 'object') return { revision: Number(saved.revision) || 0, posted: textsOf(saved.posted), messages: textsOf(saved.messages) };
+      return { revision: 0, posted: textsOf(parse(await settings.getSetting(LEGACY_KEY))), messages: [] };
     },
-    async write(ids) {
-      await settings.setSetting(SETTING_KEY, JSON.stringify(ids.slice(-KEEP_IDS)));
+    async write(state) {
+      await settings.setSetting(STATE_KEY, JSON.stringify({ revision: state.revision, posted: state.posted.slice(-KEEP_IDS), messages: state.messages.slice(-KEEP_IDS) }));
     },
   };
 }
@@ -197,16 +205,39 @@ export function channelIdFromEnv(env: NodeJS.ProcessEnv = process.env): string |
   return /^\d{15,25}$/.test(value) ? value : null;
 }
 
-/** The entries of the file, checked. */
-export function loadEntries(): { entries: Entry[]; problems: string[] } {
-  return validateEntries((require('../data/currentlyLog.json') as { entries?: unknown }).entries);
+/**
+ * The entries of the file, checked, with its revision and its version. The revision: a higher number than the one that was posted deletes the log of the
+ * channel and posts all of it again. The version is the one written at the bottom of every card (`-# Petto 0.7.12`): it is the one the maintainer says
+ * the log is at, not the one of `package.json`, and it changes when he says a new one starts.
+ */
+export function loadEntries(): { entries: Entry[]; problems: string[]; revision: number; version: string } {
+  const file = require('../data/currentlyLog.json') as { entries?: unknown; revision?: unknown; version?: unknown };
+  const version = typeof file.version === 'string' && /^\d+\.\d+\.\d+$/.test(file.version) ? file.version : '';
+  return { ...validateEntries(file.entries), revision: Math.max(1, Math.floor(Number(file.revision)) || 1), version };
+}
+
+/** Whether a picture can be read from its link as an image, the way Discord will read it. */
+export async function imageReachable(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8_000) });
+    return response.ok && /^image\//i.test(response.headers.get('content-type') ?? '');
+  } catch {
+    return false;
+  }
 }
 
 export interface AnnounceOptions {
   entries?: Entry[];
+  /** The revision of the entries (the file's, by default). */
+  revision?: number;
   channelId?: string | null;
   store?: Store;
+  /** The version written at the bottom of the cards (the one of the file by default). */
   version?: string;
+  /** The ID of the bot: its old log cards are the ones that go when the log is posted again. */
+  botId?: string | null;
+  /** Whether a picture can be loaded (a check gives its own). */
+  reachable?: (url: string) => Promise<boolean>;
   /** The wait between two cards, so they come in order and without rushing Discord. */
   pauseMs?: number;
 }
@@ -216,27 +247,66 @@ export interface Announced {
   cards: number;
   /** How many entries were posted. */
   entries: number;
+  /** How many entries wait because a picture of theirs cannot be loaded yet (the web is still being deployed). */
+  waiting?: number;
+  /** How many old messages of the log were deleted to post it all again. */
+  removed?: number;
   /** Why nothing was posted, when it was not. */
   skipped?: 'no-channel' | 'nothing-new' | 'channel-unavailable' | 'store-failed';
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
 
+interface LogChannel {
+  send(payload: unknown): Promise<unknown>;
+  messages?: { fetch(options: unknown): Promise<Iterable<[string, unknown]> | Map<string, unknown>>; delete(id: string): Promise<unknown> };
+}
+
+/** The footer every card of the log ends with (`-# Petto 0.7.11`): what tells them apart from anything else the bot wrote in the channel. */
+const FOOTER = '"-# Petto ';
+
+/**
+ * Deletes the cards of the log in the channel: the messages it remembers, and (for the posts of before it remembered them) the recent
+ * messages of the bot that are Components V2 and end with the footer of the log. Answers how many went.
+ */
+async function removeOldCards(channel: LogChannel, known: readonly string[], botId: string | null): Promise<number> {
+  const gone = new Set<string>();
+  const drop = async (id: string): Promise<void> => {
+    if (gone.has(id)) return;
+    gone.add(id);
+    await channel.messages?.delete(id).catch(() => undefined);
+  };
+  for (const id of known) await drop(id);
+  if (botId && channel.messages) {
+    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+    for (const [id, item] of recent ? [...recent] : []) {
+      const message = item as { author?: { id?: string }; flags?: { has(flag: number): boolean }; components?: unknown[] };
+      if (message.author?.id !== botId || !message.flags?.has(MessageFlags.IsComponentsV2)) continue;
+      const json = JSON.stringify((message.components ?? []).map((part) => (part as { toJSON?: () => unknown })?.toJSON?.() ?? part));
+      if (json.includes(FOOTER)) await drop(id);
+    }
+  }
+  return gone.size;
+}
+
 /**
  * Posts the entries that were not posted yet, in the channel of the `currently_log` variable. Each card is remembered before it is sent, so two bots
  * starting together do not post it twice; if Discord refuses a card, the entries of it and of the cards after it are forgotten and come again at
- * the next start. Never throws: a problem is said in the log and the bot goes on.
+ * the next start. An entry whose picture cannot be loaded waits (Discord keeps a picture that was not there when it looked, and shows it broken):
+ * it is posted when the picture answers. When the file has a higher revision than the one posted, the old cards are deleted and all is posted
+ * again. Never throws: a problem is said in the log and the bot goes on.
  */
 export async function announceNewEntries(client: Pick<Client, 'channels'>, options: AnnounceOptions = {}): Promise<Announced> {
   const channelId = options.channelId === undefined ? channelIdFromEnv() : options.channelId;
   if (!channelId) return { cards: 0, entries: 0, skipped: 'no-channel' };
   try {
-    const loaded = options.entries ? { entries: options.entries, problems: [] as string[] } : loadEntries();
+    const loaded = options.entries ? { entries: options.entries, problems: [] as string[], revision: options.revision ?? 1, version: '' } : loadEntries();
     for (const problem of loaded.problems) logger.warn(`Currently log: ${problem}`);
+    const revision = options.revision ?? loaded.revision;
     const store = options.store ?? databaseStore();
-    const posted = new Set(await store.read());
-    const fresh = loaded.entries.filter((entry) => !posted.has(entry.id));
-    if (!fresh.length) return { cards: 0, entries: 0, skipped: 'nothing-new' };
+    let state = await store.read();
+    const again = state.revision < revision;
+    if (!again && !loaded.entries.some((entry) => !state.posted.includes(entry.id))) return { cards: 0, entries: 0, skipped: 'nothing-new' };
 
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel || !('send' in channel) || typeof channel.send !== 'function') {
@@ -244,32 +314,67 @@ export async function announceNewEntries(client: Pick<Client, 'channels'>, optio
       return { cards: 0, entries: 0, skipped: 'channel-unavailable' };
     }
 
-    const cards = buildCards(fresh, options.version ?? '');
+    let removed = 0;
+    if (again) {
+      removed = await removeOldCards(channel as unknown as LogChannel, state.messages, options.botId ?? null);
+      state = { revision, posted: [], messages: [] };
+      await store.write(state);
+      logger.info(`Currently log: revision ${revision}: ${removed} old message(s) deleted, the log is posted again.`);
+    }
+    const fresh = loaded.entries.filter((entry) => !state.posted.includes(entry.id));
+
+    // A picture that cannot be loaded now would stay broken in Discord for good: that entry waits for the next try.
+    const reachable = options.reachable ?? imageReachable;
+    const ready: Entry[] = [];
+    let waiting = 0;
+    for (const entry of fresh) {
+      const loadable = !entry.images?.length || (await Promise.all(entry.images.map((url) => reachable(url)))).every(Boolean);
+      if (loadable) ready.push(entry); else waiting += 1;
+    }
+    if (waiting) logger.warn(`Currently log: ${waiting} change(s) wait until their pictures can be loaded.`);
+
+    const cards = buildCards(ready, options.version ?? loaded.version);
     let sentCards = 0;
     let sentEntries = 0;
-    const remembered = [...posted];
+    const posted = [...state.posted];
+    const messages = [...state.messages];
     for (const [index, card] of cards.entries()) {
-      remembered.push(...card.ids);
-      await store.write(remembered);
+      posted.push(...card.ids);
+      await store.write({ revision, posted, messages });
       try {
-        const message = await channel.send(card.payload);
+        const message = await channel.send(card.payload) as { id?: string };
         sentCards += 1;
         sentEntries += card.ids.length;
+        if (message?.id) { messages.push(message.id); await store.write({ revision, posted, messages }); }
         // The two votes of the feedback board, so people say whether they like the change with one click. A reaction that fails (the emoji of the server is gone) never stops the log.
         await addVotes(message);
       } catch (error) {
         // This card and the next ones are forgotten again: they are tried at the next start.
         const failed = new Set(cards.slice(index).flatMap((each) => each.ids));
-        await store.write(remembered.filter((id) => !failed.has(id))).catch(() => undefined);
+        await store.write({ revision, posted: posted.filter((id) => !failed.has(id)), messages }).catch(() => undefined);
         logger.warn(`Currently log: could not post a card (${(error as Error)?.message ?? error}); ${failed.size} change(s) wait for the next start.`);
         break;
       }
       if (index < cards.length - 1) await sleep(options.pauseMs ?? 2500);
     }
     if (sentCards) logger.info(`Currently log: posted ${sentEntries} change(s) in ${sentCards} card(s).`);
-    return { cards: sentCards, entries: sentEntries };
+    return { cards: sentCards, entries: sentEntries, ...(waiting ? { waiting } : {}), ...(removed ? { removed } : {}) };
   } catch (error) {
     logger.warn(`Currently log: ${(error as Error)?.message ?? error}`);
     return { cards: 0, entries: 0, skipped: 'store-failed' };
   }
+}
+
+/** How often, and how many times, the entries that wait for a picture are tried again. */
+const RETRY_EVERY_MS = 10 * 60_000;
+const RETRIES = 6;
+
+/** Posts the log and, while an entry waits for its pictures, tries again every ten minutes (an hour at most). */
+export async function startCurrentlyLog(client: Client, options: AnnounceOptions = {}, attempt = 1): Promise<Announced> {
+  const result = await announceNewEntries(client, { botId: client.user?.id ?? null, ...options });
+  if (result.waiting && attempt < RETRIES) {
+    const timer = setTimeout(() => { void startCurrentlyLog(client, options, attempt + 1); }, options.pauseMs === undefined ? RETRY_EVERY_MS : Math.max(1, options.pauseMs));
+    timer.unref?.();
+  }
+  return result;
 }

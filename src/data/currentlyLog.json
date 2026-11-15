@@ -1,4 +1,6 @@
 {
+  "revision": 3,
+  "version": "0.7.12",
   "entries": [
     {
       "id": "currently-log",
@@ -120,6 +122,13 @@
       "title": "The \"New\" label goes away by itself",
       "area": "Web › Dashboard and menus",
       "summary": "The \"New\" label on the tabs of the dashboard, the modules, the menu and the footer now lasts ten days from the day something comes out. The ones that were still showing it after weeks are gone."
+    },
+    {
+      "id": "sticky-follows-bots",
+      "category": "fix",
+      "title": "Sticky messages come back down for bots too",
+      "area": "Automation › Sticky messages",
+      "summary": "A sticky message used to ignore what bots wrote, so in a channel where bots do the talking it stayed far above. Now a message from anybody (members, bots and webhooks) brings it back to the bottom."
     }
   ]
 }

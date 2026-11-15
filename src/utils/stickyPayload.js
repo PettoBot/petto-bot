@@ -28,12 +28,19 @@ async function sendStickyNow(row, { guild, channel, member = null, user = null, 
     if (old) await old.delete().catch(() => {});
   }
   const payload = await stickyPayload(row, { guild, channel, member, user });
-  const sent = !payload ? null : await channel.send(payload).catch((err) => {
-    logger.error('Failed to post sticky message:', err);
-    return null;
-  });
+  // While it is sent, a message of the bot in the channel is this sticky (messages of bots bring the sticky back down too, and this one must not).
+  const doneSending = require('./stickyRepost').markSending(channel.id);
+  let sent = null;
+  try {
+    sent = !payload ? null : await channel.send(payload).catch((err) => {
+      logger.error('Failed to post sticky message:', err);
+      return null;
+    });
+    if (sent) await stickyDb.setMessageId(guild.id, channel.id, sent.id);
+  } finally {
+    doneSending();
+  }
   if (sent) {
-    await stickyDb.setMessageId(guild.id, channel.id, sent.id);
     if (payload?.reactions?.length) await require('./messageFlags').applyReactReplies(sent, payload.reactions);
   }
   return sent;

@@ -77,7 +77,7 @@ module.exports = {
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
     // The changes of this version are posted in the channel of the `currently_log` variable, once each (a little after the start, so the start is not slowed down).
     setTimeout(() => {
-      require('../utils/currentlyLog').announceNewEntries(client, { version: require('../../package.json').version })
+      require('../utils/currentlyLog').startCurrentlyLog(client)
         .catch((err) => logger.warn(`Currently log: ${err?.message ?? err}`));
     }, 45_000).unref?.();
     // A sticky saved in the dashboard is posted at once (the dashboard says so on `petto:sticky`) instead of when somebody next writes in the channel.

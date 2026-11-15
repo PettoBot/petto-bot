@@ -49,9 +49,20 @@ const event = require('../src/events/messageCreateSticky');
   assert.deepEqual(log, ['send:new1', 'delete:5'], 'the new sticky is sent first, the old one deleted after');
   assert.deepEqual(sent[0].embeds, [{ title: 'Rules' }]); assert.deepEqual(written, ['1001']); assert.deepEqual(reacted, ['🌸'], 'the reactions of the embed go on the sticky');
   await event.execute(post({ id: '1001' })); await settle(); assert.equal(sent.length, 1, 'the sticky itself does not make another');
-  await event.execute(post({ id: '11', author: { id: 'b', bot: true } })); await settle(); assert.equal(sent.length, 1, 'bots do not make another');
+  // Messages of bots and of webhooks bring the sticky back down like anybody else's.
+  await event.execute(post({ id: '11', author: { id: 'b', bot: true } })); await settle(); assert.equal(sent.length, 2, 'a bot brings the sticky back down too');
+  await event.execute(post({ id: '13', author: { id: 'w', bot: true }, webhookId: '77' })); await settle(); assert.equal(sent.length, 3, 'a webhook too');
+  // The sticky itself, announced by the gateway before the request that sent it has answered (its id is not known yet), is not taken for a message of a bot.
+  {
+    const me = { id: 'me', bot: true };
+    sticky = { message_id: '1003', content: 'Rules', embed_template: 'rules' };
+    const racing = { ...channel, send: async (payload) => { await event.execute(post({ id: '3001', author: me, client: { user: me }, channel: racing })); return channel.send(payload); } };
+    const before = sent.length;
+    await event.execute(post({ id: '14', channel: racing })); await settle(); await settle(); // long enough for a second pass to happen if its own message started one
+    assert.equal(sent.length, before + 1, 'one sticky, not two: its own message does not start another pass');
+  }
   sticky = { message_id: null, content: '', embed_template: 'gone' };
-  await event.execute(post({ id: '12' })); await settle(); assert.equal(sent.length, 1, 'nothing is sent when there is nothing to send');
+  await event.execute(post({ id: '12' })); await settle(); assert.equal(sent.length, 4, 'nothing is sent when there is nothing to send');
 
   // The flow with a fake clock and a fake channel that takes time to answer.
   const { createStickyReposter, rateLimitWaitMs } = require('../src/utils/stickyRepost');
@@ -196,7 +207,7 @@ const event = require('../src/events/messageCreateSticky');
     w.release(); await w.run(5000); assert.equal(w.sent.length, 2); assert.equal(w.reposter.pending(), 0);
   }
 
-  // The sticky and bots do not start a loop: the sticky's own id is ignored, and a bot never reaches the reposter.
+  // The sticky does not start a loop: its own id is ignored.
   {
     const w = world();
     w.reposter.schedule(w.message(100)); await w.run(1000);
