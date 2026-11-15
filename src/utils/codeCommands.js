@@ -161,6 +161,8 @@ function buildData(message, commandName, argText, prefix, serverPrefix = prefix)
     ServerPrefix: serverPrefix || prefix,
     Now: Math.floor(Date.now() / 1000),
     Trigger: 'command',
+    // What started the code, kept through execCC and scheduled commands: the functions that copy a command of Petto only work when it was not a typed command.
+    Origin: 'command',
     Button: null,
     Values: [],
   };
@@ -430,7 +432,7 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
     return;
   }
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text, lang });
-  const data = { ...buildData(source, row.name, '', prefix, serverPrefix), Trigger: 'exec', ExecData: effect.data ?? null, ExecBy: callerName };
+  const data = { ...buildData(source, row.name, '', prefix, serverPrefix), Trigger: 'exec', Origin: context.origin ?? 'command', ExecData: effect.data ?? null, ExecBy: callerName };
   data.Message.CommandUserID = context.commandUserId ?? null;
   let result;
   try {
@@ -472,7 +474,7 @@ async function runScheduled(client, entry) {
     // i18n-ignore: internal, the action is only listed as not done
     react: async () => { throw new Error('A reaction needs the message of a command'); }, delete: async () => {},
   };
-  await runExec({ source, prefix: '!', serverPrefix: '!', commandUserId: entry.userId, lang }, { name: entry.name, delay: 0, data: entry.data ?? null }, 'scheduleUniqueCC', 'schedule', 1);
+  await runExec({ source, prefix: '!', serverPrefix: '!', commandUserId: entry.userId, lang, origin: entry.origin ?? 'command' }, { name: entry.name, delay: 0, data: entry.data ?? null }, 'scheduleUniqueCC', 'schedule', 1);
   return true;
 }
 
@@ -510,7 +512,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
     await message.reply({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
   }
   // The commands it runs with execCC go last, once everything it did itself is done.
-  await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id, lang }, result.effects, row.name, 'command', 1);
+  await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id, lang, origin: 'command' }, result.effects, row.name, 'command', 1);
   return true;
 }
 
@@ -546,6 +548,7 @@ async function runComponent(interaction, row, parsed) {
   };
   // A button or a menu locked to a member knows who it is for; otherwise who sent the command is not known here.
   data.Message.CommandUserID = parsed.userId ?? null;
+  data.Origin = data.Trigger;
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: data.Trigger, userId: user.id, text, lang });
 
   let result;
@@ -584,7 +587,7 @@ async function runComponent(interaction, row, parsed) {
     problem(skippedText(skipped, lang));
     await interaction.followUp({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
   }
-  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang }, rest, row.name, data.Trigger, 1);
+  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang, origin: data.Trigger }, rest, row.name, data.Trigger, 1);
   return null;
 }
 
@@ -609,7 +612,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
     guild, channel, member, author: user,
     react: (emoji) => message.react(emoji), delete: async () => {},
   };
-  const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
+  const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Origin: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
   data.Message.CommandUserID = watched?.user ?? null;
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang });
   let result;
@@ -640,7 +643,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   if (rest.some((effect) => effect.type === 'removeReaction')) await reaction.users.remove(user.id).catch(() => {});
   const skipped = await applyEffects(source, rest.filter((effect) => effect.type !== 'removeReaction'), row.name, { code: row.code, lang });
   if (skipped.length) problem(skippedText(skipped, lang));
-  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang }, rest, row.name, 'reaction', 1);
+  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang, origin: 'reaction' }, rest, row.name, 'reaction', 1);
   return null;
 }
 

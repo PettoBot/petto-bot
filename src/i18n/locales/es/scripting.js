@@ -374,4 +374,5 @@ module.exports = {
   'scripting.fn.scheduleDelay': 'El tiempo va de 5 segundos a 7 días',
   'scripting.fn.scheduleId': 'El id de un comando programado tiene de 1 a 50 letras, números, - o _',
   'scripting.fn.notBase64': 'Eso no es un texto en base64',
+  'scripting.fn.eventOnly': '{name} solo funciona en un botón, un menú, un formulario o una reacción, no en un comando escrito: Petto ya tiene {command} para eso',
 };

@@ -6,7 +6,7 @@
 import { PermissionFlagsBits } from 'discord.js';
 
 type Env = {
-  data: { Channel?: { ID?: string }; Cmd?: string };
+  data: { Channel?: { ID?: string }; Cmd?: string; Origin?: string };
   effects: { add(kind: string, payload: Record<string, unknown>): void };
   lookup: { call(kind: string, ...args: unknown[]): Promise<unknown> } | null;
 };
@@ -37,6 +37,21 @@ export const MIN_SCHEDULE_SECONDS = 5;
 export const MAX_TIMEOUT_SECONDS = 28 * 86_400;
 export const MAX_REASON = 400;
 
+/**
+ * The functions that do what a command of Petto already does (`!ban`, `!mute`, `!channel lock`, `!purge`, `!role`, `!thread`, `!nickname`...). A command that someone
+ * types must not be a copy of those, so these only work when code is started by a button, a menu, a form or a reaction (and by what those start: execCC, callCC,
+ * a scheduled command). The value is the command of Petto that does the same, said in the mistake.
+ */
+export const EVENT_ONLY: Record<string, string> = {
+  ban: '!ban', tempban: '!tempban', unban: '!unban', kick: '!kick', mute: '!mute', unmute: '!unmute', warn: '!warn',
+  lockChannel: '!channel lock', unlockChannel: '!channel unlock', purgeMessages: '!purge', setSlowmode: '!channel slowmode',
+  createChannel: '!channel create', editChannel: '!channel', deleteChannel: '!channel',
+  createThread: '!thread', lockThread: '!thread lock', archiveThread: '!thread',
+  createRole: '!role create', editRole: '!role edit', deleteRole: '!role delete', addRoleTo: '!role add', removeRoleFrom: '!role remove', setNickname: '!nickname',
+};
+/** What started the code: only these may use the functions of EVENT_ONLY. (A preview that has no origin is allowed: it changes nothing.) */
+export const EVENT_ORIGINS = new Set(['reaction', 'button', 'select', 'modal']);
+
 const PERMISSION_NAMES = new Map<string, string>(Object.keys(PermissionFlagsBits).map((name) => [name.toLowerCase(), name]));
 /** The name of a permission as discord.js spells it (`ManageMessages`), from how a person may write it ("manage messages", "manage_messages"), or null. */
 export function permissionName(value: string): string | null {
@@ -46,7 +61,17 @@ export function permissionName(value: string): string | null {
 const ID = /^(?:<[@#]&?!?)?(\d{15,22})>?$/;
 
 export function register(h: Helpers): void {
-  const { def, fail, what, expected, text, num, str, snowflake, isTruthy, FORBIDDEN_KEYS } = h;
+  const { fail, what, expected, text, num, str, snowflake, isTruthy, FORBIDDEN_KEYS } = h;
+  // The functions of EVENT_ONLY are checked before they note anything.
+  const def: Helpers['def'] = (name, min, max, run) => {
+    const command = EVENT_ONLY[name];
+    if (!command) { h.def(name, min, max, run); return; }
+    h.def(name, min, max, (env, ...args) => {
+      const origin = (env.data as { Origin?: string }).Origin;
+      if (origin !== undefined && !EVENT_ORIGINS.has(origin)) fail('eventOnly', { name, command });
+      return run(env, ...args);
+    });
+  };
 
   // ── Reading the arguments ────────────────────────────────────────────────
   const idOf = (value: unknown, wanted: string): string => {
@@ -291,7 +316,7 @@ export function register(h: Helpers): void {
     if (json.length > 2000) fail('execDataTooBig', { max: 2000 });
     const seconds = Math.trunc(num(delay));
     if (seconds < MIN_SCHEDULE_SECONDS || seconds > MAX_SCHEDULE_SECONDS) fail('scheduleDelay');
-    env.effects.add('schedule', { name: scheduleName(name), id: scheduleId(id), seconds, data: JSON.parse(json) });
+    env.effects.add('schedule', { name: scheduleName(name), id: scheduleId(id), seconds, data: JSON.parse(json), origin: env.data?.Origin ?? 'command' });
     return null;
   });
   def('cancelScheduledCC', 2, 2, (env, name, id) => { env.effects.add('cancelSchedule', { name: scheduleName(name), id: scheduleId(id) }); return null; });

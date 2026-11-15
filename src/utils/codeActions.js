@@ -541,7 +541,7 @@ async function applyAction(source, effect, ctx) {
                 const replaced = await ctx.schedule.cancel(guild.id, effect.name, effect.id);
                 if (!replaced && pending >= MAX_PENDING_SCHEDULES)
                     return skip(lang, type, 'tooManyScheduled', { max: MAX_PENDING_SCHEDULES });
-                await ctx.schedule.set({ guildId: guild.id, name: effect.name, id: effect.id, runAt: now + effect.seconds * 1000, userId: author.id, channelId: source.channel?.id ?? '', data: effect.data ?? null });
+                await ctx.schedule.set({ guildId: guild.id, name: effect.name, id: effect.id, runAt: now + effect.seconds * 1000, userId: author.id, channelId: source.channel?.id ?? '', data: effect.data ?? null, origin: effect.origin ?? 'command' });
                 return null;
             }
             case 'cancelSchedule': {

@@ -464,6 +464,15 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   t = makeMessage();
   await codeCommands.runCodeCommand(t.message, row('{{ add 1 "x" }}', 'typedbad'), '', '!');
   assert.equal(problemsOf('typedbad')[0].trigger, 'command');
+  // What copies a command of Petto (here `lockChannel`, like `!channel lock`) does not work in a typed command, nor in what a typed command starts (execCC).
+  store.set(`${G}:locker`, { name: 'locker', code: '{{ lockChannel }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ lockChannel }}', 'typedlock'), '', '!');
+  assert.match(problemsOf('typedlock')[0].text, /lockChannel only works in a button, a menu, a form or a reaction, not in a typed command: Petto already has !channel lock/);
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ execCC "locker" }}', 'calllock'), '', '!');
+  assert.match(problemsOf('locker')[0].text, /lockChannel only works in a button/, 'a typed command cannot get around it with execCC');
+  assert.equal(t.sent.length, 0);
   // From a button: the other command runs in the channel of the button, as who clicked.
   const execBits = makeGuild();
   const execClick = makeMessage({ guildBits: execBits });

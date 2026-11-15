@@ -374,4 +374,5 @@ module.exports = {
   'scripting.fn.scheduleDelay': 'O tempo vai de 5 segundos a 7 dias',
   'scripting.fn.scheduleId': 'O id de um comando agendado tem de 1 a 50 letras, números, - ou _',
   'scripting.fn.notBase64': 'Isso não é um texto em base64',
+  'scripting.fn.eventOnly': '{name} só funciona em um botão, um menu, um formulário ou uma reação, não em um comando digitado: o Petto já tem {command} para isso',
 };

@@ -32,6 +32,7 @@ const SCHEMA = `
     created_at timestamptz not null default now(),
     primary key (guild_id, name, id)
   );
+  alter table custom_command_schedule add column if not exists origin text not null default 'command';
   create index if not exists idx_custom_command_schedule_due on custom_command_schedule(run_at);
 `;
 
@@ -174,11 +175,11 @@ async function deleteGuildData(guildId) {
  * schedule: setting it again replaces the first. `claimDue` takes the ones that are due and removes them in one step, so two processes never run one twice.
  */
 const schedule = {
-  async set({ guildId, name, id, runAt, userId, channelId, data }) {
+  async set({ guildId, name, id, runAt, userId, channelId, data, origin = 'command' }) {
     await (await db()).query(
-      `insert into custom_command_schedule (guild_id, name, id, run_at, user_id, channel_id, data) values ($1, $2, $3, to_timestamp($4 / 1000.0), $5, $6, $7::jsonb)
-       on conflict (guild_id, name, id) do update set run_at = excluded.run_at, user_id = excluded.user_id, channel_id = excluded.channel_id, data = excluded.data`,
-      [String(guildId), name, id, runAt, String(userId), String(channelId ?? ''), JSON.stringify(data ?? null)],
+      `insert into custom_command_schedule (guild_id, name, id, run_at, user_id, channel_id, data, origin) values ($1, $2, $3, to_timestamp($4 / 1000.0), $5, $6, $7::jsonb, $8)
+       on conflict (guild_id, name, id) do update set run_at = excluded.run_at, user_id = excluded.user_id, channel_id = excluded.channel_id, data = excluded.data, origin = excluded.origin`,
+      [String(guildId), name, id, runAt, String(userId), String(channelId ?? ''), JSON.stringify(data ?? null), origin],
     );
   },
   async cancel(guildId, name, id) {
@@ -193,10 +194,10 @@ const schedule = {
     const { rows } = await (await db()).query(
       `delete from custom_command_schedule where (guild_id, name, id) in (
          select guild_id, name, id from custom_command_schedule where run_at <= now() order by run_at limit $1 for update skip locked
-       ) returning guild_id, name, id, user_id, channel_id, data`,
+       ) returning guild_id, name, id, user_id, channel_id, data, origin`,
       [limit],
     );
-    return rows.map((row) => ({ guildId: row.guild_id, name: row.name, id: row.id, userId: row.user_id, channelId: row.channel_id, data: row.data }));
+    return rows.map((row) => ({ guildId: row.guild_id, name: row.name, id: row.id, userId: row.user_id, channelId: row.channel_id, data: row.data, origin: row.origin }));
   },
 };
 

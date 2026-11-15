@@ -127,6 +127,31 @@ const out = async (code, options) => (await run(code, data, options)).output;
   await failsWith(`{{ httpPost "https://example.com" "${'x'.repeat(5001)}" }}`, '5000', viaLookup);
   await failsWith(`{{ range seq 0 4 }}{{ httpGet "https://example.com" }}{{ end }}`, 'at most 3', viaLookup);
 
+  // ── What copies a command of Petto only works when a button, a menu, a form or a reaction started the code ──
+  const COPIES = ['ban', 'tempban', 'unban', 'kick', 'mute', 'unmute', 'warn', 'lockChannel', 'unlockChannel', 'purgeMessages', 'setSlowmode', 'createChannel', 'editChannel', 'deleteChannel', 'createThread', 'lockThread', 'archiveThread', 'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname'];
+  assert.deepEqual(Object.keys(scriptingActions.EVENT_ONLY).sort(), [...COPIES].sort(), 'the list of what copies a command');
+  const sample = {
+    ban: `{{ ban "${TARGET}" }}`, tempban: `{{ tempban "${TARGET}" 120 }}`, unban: `{{ unban "${TARGET}" }}`, kick: `{{ kick "${TARGET}" }}`, mute: `{{ mute "${TARGET}" 60 }}`, unmute: `{{ unmute "${TARGET}" }}`, warn: `{{ warn "${TARGET}" "x" }}`,
+    lockChannel: '{{ lockChannel }}', unlockChannel: '{{ unlockChannel }}', purgeMessages: '{{ purgeMessages 5 }}', setSlowmode: '{{ setSlowmode 5 }}', createChannel: '{{ createChannel "x" "text" }}',
+    editChannel: `{{ editChannel "${ID(501)}" (dict "name" "x") }}`, deleteChannel: `{{ deleteChannel "${ID(501)}" }}`, createThread: '{{ createThread nil "x" }}', lockThread: `{{ lockThread "${ID(520)}" }}`, archiveThread: `{{ archiveThread "${ID(520)}" }}`,
+    createRole: '{{ createRole "x" }}', editRole: `{{ editRole "${ID(40)}" (dict "name" "x") }}`, deleteRole: `{{ deleteRole "${ID(40)}" }}`, addRoleTo: `{{ addRoleTo "${TARGET}" "${ID(40)}" }}`, removeRoleFrom: `{{ removeRoleFrom "${TARGET}" "${ID(40)}" }}`, setNickname: `{{ setNickname "${TARGET}" "x" }}`,
+  };
+  for (const name of COPIES) {
+    for (const origin of ['command', 'exec']) {
+      try { await run(sample[name], { ...data, Origin: origin }); assert.fail(`${name} must not work in a typed command (${origin})`); } catch (error) {
+        assert.match(error.message, new RegExp(`${name} only works in a button, a menu, a form or a reaction, not in a typed command: Petto already has !`), `${name} says what to use instead`);
+      }
+    }
+    for (const origin of ['reaction', 'button', 'select', 'modal']) assert.equal((await run(sample[name], { ...data, Origin: origin })).effects.length, 1, `${name} works when a ${origin} started the code`);
+    assert.equal((await run(sample[name], data)).effects.length, 1, `${name} in a preview (no origin) only notes the action`);
+  }
+  // The others have no command of Petto that does the same, so they work everywhere.
+  for (const code of [`{{ editMessage nil "${ID(700)}" "x" }}`, `{{ deleteMessage nil "${ID(700)}" }}`, `{{ pinMessage nil "${ID(700)}" }}`, `{{ reactToMessage nil "${ID(700)}" "👍" }}`, '{{ scheduleUniqueCC "remind" "a" 60 }}']) {
+    assert.equal((await run(code, { ...data, Origin: 'command' })).effects.length, 1, `${code} works in a typed command`);
+  }
+  assert.equal((await run('{{ scheduleUniqueCC "remind" "a" 60 }}', { ...data, Origin: 'button' })).effects[0].origin, 'button', 'what is scheduled remembers what started it');
+  assert.equal((await run('{{ scheduleUniqueCC "remind" "a" 60 }}', data)).effects[0].origin, 'command');
+
   // ── The functions that act: what they note, and their mistakes ───────────
   assert.deepEqual(await effects(`{{ editMessage nil "${ID(700)}" "new" }}{{ deleteMessage "${ID(501)}" "${ID(701)}" 30 }}{{ pinMessage nil "${ID(700)}" }}{{ unpinMessage nil "${ID(700)}" }}{{ purgeMessages 20 }}{{ purgeMessages "${ID(501)}" 5 }}{{ reactToMessage nil "${ID(700)}" "🔥" }}`), [
     { type: 'editMessage', channelId: ID(500), messageId: ID(700), content: 'new' },
@@ -197,8 +222,8 @@ const out = async (code, options) => (await run(code, data, options)).output;
   await failsWith(`{{ setNickname "${TARGET}" "${'n'.repeat(33)}" }}`, 'longer than 32');
 
   assert.deepEqual(await effects(`{{ scheduleUniqueCC "Remind" "r-1" 60 (dict "a" 1) }}{{ scheduleUniqueCC "remind" "r-2" 5 }}{{ cancelScheduledCC "remind" "r-1" }}`), [
-    { type: 'schedule', name: 'remind', id: 'r-1', seconds: 60, data: { a: 1 } },
-    { type: 'schedule', name: 'remind', id: 'r-2', seconds: 5, data: null },
+    { type: 'schedule', name: 'remind', id: 'r-1', seconds: 60, data: { a: 1 }, origin: 'command' },
+    { type: 'schedule', name: 'remind', id: 'r-2', seconds: 5, data: null, origin: 'command' },
     { type: 'cancelSchedule', name: 'remind', id: 'r-1' },
   ]);
   await failsWith('{{ scheduleUniqueCC "remind" "r" 4 }}', '5 seconds to 7 days');
@@ -478,7 +503,7 @@ const out = async (code, options) => (await run(code, data, options)).output;
   // ── Scheduling ──
   w = world({ member: [] });
   assert.equal(await act(w, ofType('schedule', { name: 'remind', id: 'a', seconds: 60, data: { x: 1 } }), { now: () => 1_000_000 }), null, 'nobody needs a permission to schedule: what runs is judged when it runs');
-  assert.deepEqual(w.stored, [{ guildId: GUILD, name: 'remind', id: 'a', runAt: 1_060_000, userId: MEMBER, channelId: ID(500), data: { x: 1 } }]);
+  assert.deepEqual(w.stored, [{ guildId: GUILD, name: 'remind', id: 'a', runAt: 1_060_000, userId: MEMBER, channelId: ID(500), data: { x: 1 }, origin: 'command' }]);
   await act(w, ofType('schedule', { name: 'remind', id: 'a', seconds: 120, data: null }), { now: () => 1_000_000 });
   assert.equal(w.stored.length, 1, 'the same id replaces the first');
   assert.equal(w.stored[0].runAt, 1_120_000);

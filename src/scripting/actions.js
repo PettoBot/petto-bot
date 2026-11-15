@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_REASON = exports.MAX_TIMEOUT_SECONDS = exports.MIN_SCHEDULE_SECONDS = exports.MAX_SCHEDULE_SECONDS = exports.ROLE_EDIT_KEYS = exports.CHANNEL_EDIT_KEYS = exports.LIST_KINDS = exports.CREATE_KINDS = void 0;
+exports.EVENT_ORIGINS = exports.EVENT_ONLY = exports.MAX_REASON = exports.MAX_TIMEOUT_SECONDS = exports.MIN_SCHEDULE_SECONDS = exports.MAX_SCHEDULE_SECONDS = exports.ROLE_EDIT_KEYS = exports.CHANNEL_EDIT_KEYS = exports.LIST_KINDS = exports.CREATE_KINDS = void 0;
 exports.permissionName = permissionName;
 exports.register = register;
 // i18n-ignore-file: function names, the keys of the maps and the options of the functions stay as they are in every language; the mistakes are phrases.
@@ -18,6 +18,20 @@ exports.MAX_SCHEDULE_SECONDS = 7 * 86_400;
 exports.MIN_SCHEDULE_SECONDS = 5;
 exports.MAX_TIMEOUT_SECONDS = 28 * 86_400;
 exports.MAX_REASON = 400;
+/**
+ * The functions that do what a command of Petto already does (`!ban`, `!mute`, `!channel lock`, `!purge`, `!role`, `!thread`, `!nickname`...). A command that someone
+ * types must not be a copy of those, so these only work when code is started by a button, a menu, a form or a reaction (and by what those start: execCC, callCC,
+ * a scheduled command). The value is the command of Petto that does the same, said in the mistake.
+ */
+exports.EVENT_ONLY = {
+    ban: '!ban', tempban: '!tempban', unban: '!unban', kick: '!kick', mute: '!mute', unmute: '!unmute', warn: '!warn',
+    lockChannel: '!channel lock', unlockChannel: '!channel unlock', purgeMessages: '!purge', setSlowmode: '!channel slowmode',
+    createChannel: '!channel create', editChannel: '!channel', deleteChannel: '!channel',
+    createThread: '!thread', lockThread: '!thread lock', archiveThread: '!thread',
+    createRole: '!role create', editRole: '!role edit', deleteRole: '!role delete', addRoleTo: '!role add', removeRoleFrom: '!role remove', setNickname: '!nickname',
+};
+/** What started the code: only these may use the functions of EVENT_ONLY. (A preview that has no origin is allowed: it changes nothing.) */
+exports.EVENT_ORIGINS = new Set(['reaction', 'button', 'select', 'modal']);
 const PERMISSION_NAMES = new Map(Object.keys(discord_js_1.PermissionFlagsBits).map((name) => [name.toLowerCase(), name]));
 /** The name of a permission as discord.js spells it (`ManageMessages`), from how a person may write it ("manage messages", "manage_messages"), or null. */
 function permissionName(value) {
@@ -25,7 +39,21 @@ function permissionName(value) {
 }
 const ID = /^(?:<[@#]&?!?)?(\d{15,22})>?$/;
 function register(h) {
-    const { def, fail, what, expected, text, num, str, snowflake, isTruthy, FORBIDDEN_KEYS } = h;
+    const { fail, what, expected, text, num, str, snowflake, isTruthy, FORBIDDEN_KEYS } = h;
+    // The functions of EVENT_ONLY are checked before they note anything.
+    const def = (name, min, max, run) => {
+        const command = exports.EVENT_ONLY[name];
+        if (!command) {
+            h.def(name, min, max, run);
+            return;
+        }
+        h.def(name, min, max, (env, ...args) => {
+            const origin = env.data.Origin;
+            if (origin !== undefined && !exports.EVENT_ORIGINS.has(origin))
+                fail('eventOnly', { name, command });
+            return run(env, ...args);
+        });
+    };
     // ── Reading the arguments ────────────────────────────────────────────────
     const idOf = (value, wanted) => {
         const match = ID.exec(text(value).trim());
@@ -302,7 +330,7 @@ function register(h) {
         const seconds = Math.trunc(num(delay));
         if (seconds < exports.MIN_SCHEDULE_SECONDS || seconds > exports.MAX_SCHEDULE_SECONDS)
             fail('scheduleDelay');
-        env.effects.add('schedule', { name: scheduleName(name), id: scheduleId(id), seconds, data: JSON.parse(json) });
+        env.effects.add('schedule', { name: scheduleName(name), id: scheduleId(id), seconds, data: JSON.parse(json), origin: env.data?.Origin ?? 'command' });
         return null;
     });
     def('cancelScheduledCC', 2, 2, (env, name, id) => { env.effects.add('cancelSchedule', { name: scheduleName(name), id: scheduleId(id) }); return null; });
