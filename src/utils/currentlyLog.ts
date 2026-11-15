@@ -28,11 +28,11 @@ export interface Category {
 export const CATEGORIES: Record<CategoryKey, Category> = {
   security: { color: 0xfe6465, dot: EMOJI.SAFETY, one: 'Security fix', many: 'Security fixes' },
   feature: { color: 0xfed53c, dot: EMOJI.RELEASE_ROCKET, one: 'New feature', many: 'New features' },
-  addition: { color: 0xa5ea7a, dot: EMOJI.ROLLOUT_UP, one: 'Added to a feature', many: 'Added to features' },
+  addition: { color: 0xa5ea7a, dot: EMOJI.APPROVE, one: 'Added to a feature', many: 'Added to features' },
   improvement: { color: 0x74c0fc, dot: EMOJI.RELEASE_RELOAD, one: 'Improvement', many: 'Improvements' },
   fix: { color: 0xffa45c, dot: EMOJI.RELEASE_SETTINGS, one: 'Fix', many: 'Fixes' },
   web: { color: 0xc4a3ff, dot: EMOJI.ROLLOUT_PLATFORMS, one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
-  removal: { color: 0xc3c7cf, dot: EMOJI.ROLLOUT_DOWN, one: 'Removed from a feature', many: 'Removed from features' },
+  removal: { color: 0xc3c7cf, dot: EMOJI.DENY, one: 'Removed from a feature', many: 'Removed from features' },
   'removed-feature': { color: 0x4b4f59, dot: EMOJI.TICKET_DELETE, one: 'Feature removed', many: 'Features removed' },
 };
 
