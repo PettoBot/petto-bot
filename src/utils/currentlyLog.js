@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LIMITS = exports.CATEGORY_ORDER = exports.CATEGORIES = void 0;
 exports.validateEntries = validateEntries;
 exports.buildCards = buildCards;
+exports.voteEmojis = voteEmojis;
 exports.databaseStore = databaseStore;
 exports.channelIdFromEnv = channelIdFromEnv;
 exports.loadEntries = loadEntries;
@@ -116,6 +117,26 @@ function buildCards(entries, version = '') {
     }
     return cards;
 }
+/** The emojis of the feedback board (like and dislike, of the Petto server): the same two the buttons of a feedback post use. */
+function voteEmojis() {
+    const { EMOJI } = require('../feedback/card');
+    return [EMOJI.like, EMOJI.dislike].map((emoji) => `${emoji.name}:${emoji.id}`);
+}
+/** Puts the like and the dislike on a posted card, in that order. Never throws. */
+async function addVotes(message) {
+    const target = message;
+    if (typeof target?.react !== 'function')
+        return;
+    for (const emoji of voteEmojis()) {
+        try {
+            await target.react(emoji);
+        }
+        catch (error) {
+            logger.warn(`Currently log: could not react with ${emoji} (${error?.message ?? error}).`);
+            return;
+        }
+    }
+}
 const SETTING_KEY = 'currently_log.posted';
 /** The ids kept; the oldest go first, an id is only needed while its entry is in the file. */
 const KEEP_IDS = 1000;
@@ -179,9 +200,11 @@ async function announceNewEntries(client, options = {}) {
             remembered.push(...card.ids);
             await store.write(remembered);
             try {
-                await channel.send(card.payload);
+                const message = await channel.send(card.payload);
                 sentCards += 1;
                 sentEntries += card.ids.length;
+                // The two votes of the feedback board, so people say whether they like the change with one click. A reaction that fails (the emoji of the server is gone) never stops the log.
+                await addVotes(message);
             }
             catch (error) {
                 // This card and the next ones are forgotten again: they are tried at the next start.

@@ -75,10 +75,11 @@ assert.equal(log.channelIdFromEnv({ currently_log: 'general' }), null);
 assert.equal(log.channelIdFromEnv({}), null);
 
 // Posting.
-function fake({ failOnCall = 0, channel = true } = {}) {
+function fake({ failOnCall = 0, channel = true, reactFails = false } = {}) {
   const sent = [];
-  const target = { send: async (payload) => { if (failOnCall && sent.length + 1 === failOnCall && !target.failed) { target.failed = true; throw new Error('Missing Permissions'); } sent.push(payload); } };
-  return { sent, client: { channels: { fetch: async () => (channel ? target : null) } } };
+  const reactions = [];
+  const target = { send: async (payload) => { if (failOnCall && sent.length + 1 === failOnCall && !target.failed) { target.failed = true; throw new Error('Missing Permissions'); } sent.push(payload); return { react: async (emoji) => { if (reactFails) throw new Error('Unknown Emoji'); reactions.push(emoji); } }; } };
+  return { sent, reactions, client: { channels: { fetch: async () => (channel ? target : null) } } };
 }
 function memory(start = []) {
   const state = { ids: [...start], writes: 0 };
@@ -96,6 +97,14 @@ function memory(start = []) {
   assert.deepEqual(result, { cards: 3, entries: 4 });
   assert.deepEqual([...store.state.ids].sort(), ['a', 'b', 'c', 'd']);
   assert.match(JSON.stringify(first.sent[0].components[0].toJSON()), /Security fix/, 'security goes first');
+
+  // Every card gets the like and the dislike of the feedback board, in that order (3 cards, 2 reactions each).
+  const { EMOJI: board } = require('../src/feedback/card');
+  assert.deepEqual(first.reactions, Array.from({ length: 3 }, () => [`${board.like.name}:${board.like.id}`, `${board.dislike.name}:${board.dislike.id}`]).flat());
+  assert.deepEqual(log.voteEmojis(), [`like:${board.like.id}`, `dislike:${board.dislike.id}`], 'they are the emojis of the feedback buttons');
+  // A reaction that fails never stops the log.
+  const noReact = fake({ reactFails: true });
+  assert.deepEqual(await log.announceNewEntries(noReact.client, { entries, channelId: '1234567890123456789', store: memory(), pauseMs: 0 }), { cards: 3, entries: 4 });
 
   const again = fake();
   assert.deepEqual(await log.announceNewEntries(again.client, { entries, channelId: '1234567890123456789', store, pauseMs: 0 }), { cards: 0, entries: 0, skipped: 'nothing-new' }, 'a restart posts nothing twice');

@@ -5,6 +5,7 @@ All notable changes to Petto are documented here.
 ## [Unreleased]
 
 ### Changed
+- **Every card of the Currently log gets the like and the dislike of the feedback board as reactions.** Why: so people can say whether they like a change with one click. They are the same two emojis the buttons of a feedback post use; if a reaction fails, the log goes on.
 - **A sticky message saved in the dashboard is posted right away.** Why: the dashboard only saved the row, so the message appeared the next time somebody wrote in the channel (`!stickymessage set` already posted at once). The dashboard now tells the bot on `petto:sticky`; the bot forgets the cached sticky, deletes the old message and posts the new one. Only one process does it, once per burst. Without Redis it works as before.
 - **`/guildtag` and `/vanity` are in the menu for everybody, and ask for Manage Server when they run.** Why: with the permission set in the command, Discord hid them from every member who does not have Manage Server (a moderator saw no `/guildtag` and thought it did not exist). Now it is the bot who checks, with the slash and with the prefix, and says which permission is missing.
 - **The card of a case (`/case view`, `/case edit`, and the one-line case) shows the hammer for a sanction and the alert for a warning, not the old icon of each type.** Why: the list and the confirmation of a sanction already used the generic icons, but the detail of a case still drew the old ones (the ban, kick, mute... icons), so the same case looked different in each place.

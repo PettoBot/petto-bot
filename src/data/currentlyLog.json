@@ -5,7 +5,7 @@
       "category": "feature",
       "title": "The Currently log",
       "area": "Petto › Announcements",
-      "summary": "Every change of Petto is posted in this channel when it goes live: a color for each kind of change, a short explanation, and pictures. Red is security, yellow a new feature, green something added to a feature, blue an improvement, orange a fix, purple the web and docs, gray something removed and black a feature removed.",
+      "summary": "Every change of Petto is posted in this channel when it goes live: a color for each kind of change, a short explanation, and pictures. React with the like or the dislike to tell us what you think. Red is security, yellow a new feature, green something added to a feature, blue an improvement, orange a fix, purple the web and docs, gray something removed and black a feature removed.",
       "images": [
         "https://petto.sbs/assets/log/currently-log-1.png",
         "https://petto.sbs/assets/log/currently-log-2.png"
@@ -69,7 +69,7 @@
       "category": "fix",
       "title": "/forum outside a post says why",
       "area": "Tickets › Forums",
-      "summary": "Using `/forum` in a channel that is not a forum post answered with a generic error and was reported to the team as a bug. It now tells the member to use it inside a post, and nothing is reported."
+      "summary": "Using `/forum` in a channel that is not a forum post answered with a generic error. It now tells you to use it inside a post."
     },
     {
       "id": "identity-menu",

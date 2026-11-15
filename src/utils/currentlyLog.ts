@@ -142,6 +142,26 @@ export function buildCards(entries: readonly Entry[], version = ''): Card[] {
   return cards;
 }
 
+/** The emojis of the feedback board (like and dislike, of the Petto server): the same two the buttons of a feedback post use. */
+export function voteEmojis(): string[] {
+  const { EMOJI } = require('../feedback/card') as { EMOJI: { like: { id: string; name: string }; dislike: { id: string; name: string } } };
+  return [EMOJI.like, EMOJI.dislike].map((emoji) => `${emoji.name}:${emoji.id}`);
+}
+
+/** Puts the like and the dislike on a posted card, in that order. Never throws. */
+async function addVotes(message: unknown): Promise<void> {
+  const target = message as { react?: (emoji: string) => Promise<unknown> } | null;
+  if (typeof target?.react !== 'function') return;
+  for (const emoji of voteEmojis()) {
+    try {
+      await target.react(emoji);
+    } catch (error) {
+      logger.warn(`Currently log: could not react with ${emoji} (${(error as Error)?.message ?? error}).`);
+      return;
+    }
+  }
+}
+
 /** Where the ids of what was already posted are kept. */
 export interface Store {
   read(): Promise<string[]>;
@@ -232,9 +252,11 @@ export async function announceNewEntries(client: Pick<Client, 'channels'>, optio
       remembered.push(...card.ids);
       await store.write(remembered);
       try {
-        await channel.send(card.payload);
+        const message = await channel.send(card.payload);
         sentCards += 1;
         sentEntries += card.ids.length;
+        // The two votes of the feedback board, so people say whether they like the change with one click. A reaction that fails (the emoji of the server is gone) never stops the log.
+        await addVotes(message);
       } catch (error) {
         // This card and the next ones are forgotten again: they are tried at the next start.
         const failed = new Set(cards.slice(index).flatMap((each) => each.ids));
