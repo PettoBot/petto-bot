@@ -19,6 +19,15 @@ function userMention(userId) {
   return { id: userId, toString: () => `<@${userId}>` };
 }
 
+/**
+ * The person the log is about, with their name and avatar: a member who left or a banned user is not in the cache, so the user is asked to
+ * Discord. Only when Discord cannot answer (the account is gone) the stand-in with the ID is used.
+ */
+async function resolveTarget(client, userId) {
+  const user = await client.users.fetch(userId).catch(() => null);
+  return user ?? userMention(userId);
+}
+
 async function processExpiredSanctions(client) {
   const expired = await getExpiredSanctions();
 
@@ -65,7 +74,7 @@ async function expireSanction(client, guild, sanction, lang) {
     source: 'expiry',
   });
 
-  await logSanction(client, guild, { modCase, target: userMention(sanction.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
+  await logSanction(client, guild, { modCase, target: await resolveTarget(client, sanction.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
 }
 
 /** Releases members whose jail timer has run out and gives their roles back. */
@@ -84,7 +93,7 @@ async function processExpiredJails(client) {
       const result = await runWithLanguage(lang, () => unjailMember({ guild, userId: jail.user_id, moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' }));
       if (!result.ok) return;
 
-      await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
+      await logSanction(client, guild, { modCase: result.modCase, target: await resolveTarget(client, jail.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
       await sendDm(result.member, await sanctionDM({ type: 'unjail', guild, client, reason: EXPIRY_REASON, member: result.member, caseNumber: result.modCase.case_number, source: 'expiry' }))
         .catch(() => {});
     } catch (err) {
