@@ -1,5 +1,6 @@
 const { typeOf, kindPhrase, isTruthy, toText, equals, toNumber, FORBIDDEN_KEYS } = require('./values');
 const { CodeProblem, phrase } = require('./errors');
+const { normalizeTimeZone, zoneOffsetMs } = require('../utils/timerSchedule');
 
 // The functions of Petto Code. Each one is a name, the least and the most arguments it takes (null: any number), and the
 // function itself, which gets the environment first. The ones that change something in Discord do not do it: they note it
@@ -529,11 +530,17 @@ function messageOf(value) {
 }
 const hasBody = (message) => Boolean((message.content ?? '').trim() || message.embed || message.components?.length);
 
+// `channel` is nil (this channel), one channel, or a list of channels (up to 5): the same message goes to each, and each one counts as a message of the run.
 def('sendMessage', 2, 2, (env, channel, value) => {
   const message = messageOf(value);
   if (!hasBody(message)) fail('messageEmpty');
-  const channelId = channel === null || channel === undefined || channel === '' || channel === 0 ? null : snowflake(channel, what('theChannel'));
-  env.effects.add('message', { channelId, ...message });
+  const targets = Array.isArray(channel) ? channel : [channel];
+  if (!targets.length) fail('noChannels');
+  if (targets.length > 5) fail('tooManyChannels');
+  for (const each of targets) {
+    const channelId = each === null || each === undefined || each === '' || each === 0 ? null : snowflake(each, what('theChannel'));
+    env.effects.add('message', { channelId, ...message });
+  }
   return null;
 });
 def('sendDM', 1, 1, (env, value) => {
@@ -755,14 +762,22 @@ def('newDate', 3, 6, (env, year, month, day, hour = 0, minute = 0, second = 0) =
 });
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const shifted = (seconds, offset) => {
-  const hours = offset === undefined ? 0 : num(offset);
-  if (hours < -14 || hours > 14) fail('timeZone');
-  return new Date((Math.trunc(num(seconds)) + Math.round(hours * 3600)) * 1000);
+// A time moved to a time zone: hours from UTC (`-5`, `5.5`), or the name of a zone (`"America/Bogota"`, `"UTC-5"`). Without one, the time zone of the server (`.TimeZone`, UTC if not set).
+const shifted = (env, seconds, zone) => {
+  const wanted = zone === undefined || zone === null ? (env.data?.TimeZone ?? 'UTC') : zone;
+  const base = Math.trunc(num(seconds));
+  if (typeof wanted === 'number' || (typeof wanted === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(wanted))) {
+    const hours = num(wanted);
+    if (hours < -14 || hours > 14) fail('timeZone');
+    return new Date((base + Math.round(hours * 3600)) * 1000);
+  }
+  const name = normalizeTimeZone(wanted);
+  if (!name) fail('timeZone');
+  return new Date(base * 1000 + zoneOffsetMs(name, base * 1000));
 };
 /** A date as text with a layout of YYYY, MM, DD, HH, mm, ss, MMMM (month) and dddd (day), in UTC or with an offset in hours. */
 def('formatTime', 1, 3, (env, seconds, layout, offset) => {
-  const date = shifted(seconds, offset);
+  const date = shifted(env, seconds, offset);
   if (Number.isNaN(date.getTime())) fail('noSuchTime');
   const two = (n) => String(n).padStart(2, '0');
   const parts = {
@@ -776,7 +791,7 @@ def('formatTime', 1, 3, (env, seconds, layout, offset) => {
   // Only a whole word that is a code changes, so "Day D" keeps its word: "Day 8".
   return format.replace(/\p{L}+/gu, (word) => (Object.prototype.hasOwnProperty.call(parts, word) ? parts[word] : word));
 });
-def('weekday', 1, 2, (env, seconds, offset) => shifted(seconds, offset).getUTCDay());
+def('weekday', 1, 2, (env, seconds, offset) => shifted(env, seconds, offset).getUTCDay());
 
 // ── More lists and maps ─────────────────────────────────────────────────────
 const plainMap = (value) => { if (!value || typeof value !== 'object' || Array.isArray(value)) expected(what('aMap'), value); return value; };
@@ -863,5 +878,13 @@ def('dbBottom', 2, 2, async (env, key, count) => {
   if (limit < 1 || limit > 25) fail('dbCountRange', { name: 'dbBottom' });
   return needStore(env).call('bottom', storeKey(key), limit);
 });
+
+// ── The functions written in TypeScript: the ones that reach beyond the message (actions.ts) and the ones that only work on values (more.ts) ──
+const helpers = { fail, what, expected, text, num, list, str, snowflake, isTruthy, equals, messageOf, hasBody, needLookup, FORBIDDEN_KEYS };
+// A name that was already taken is a mistake of the bot, not something to quietly replace.
+const defNew = (name, min, max, run) => { if (functions.has(name)) throw new Error(`The Petto Code function "${name}" is defined twice`); def(name, min, max, run); }; // i18n-ignore: for the team of the bot, never shown to a member
+require('./actions').register({ ...helpers, def: defNew });
+require('./more').register({ ...helpers, def: defNew });
+require('./connect').register({ ...helpers, def: defNew });
 
 module.exports = { functions, EMBEDS, COMPLEX, BUTTONS, SELECTS, ROWS };

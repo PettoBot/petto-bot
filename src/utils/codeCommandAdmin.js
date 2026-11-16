@@ -8,6 +8,8 @@ const { dataFields } = require('./codeCommands');
 const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../db/premium');
 const { validateTrigger, invalidateTriggers, triggersFor, MAX_TRIGGERS_PER_GUILD } = require('./codeTriggers');
 const { t, tn, currentLanguage } = require('../i18n');
+const commandData = require('../db/commandData');
+const { normalizeTime, normalizeTimeZone, parseWeekday, nextScheduledRun } = require('./timerSchedule');
 
 const MAX_PER_GUILD = PREMIUM_LIMITS.customCommands; // the most any server can have (Premium); a Free server has less, see commandLimit
 const NAME_SHAPE = /^[a-z0-9_-]{1,32}$/;
@@ -53,6 +55,7 @@ function describeEffect(effect, lang = currentLanguage()) {
       const key = effect.delay ? (hasData ? 'execLaterData' : 'execLater') : (hasData ? 'execData' : 'exec');
       return t(lang, `customcommands.effect.${key}`, { name: effect.name, seconds: effect.delay });
     }
+    case 'runCommand': return t(lang, 'customcommands.effect.runCommand', { line: clip(effect.line, 120) });
     default: return effect.type;
   }
 }
@@ -229,7 +232,37 @@ const isRealCommand = (client, name, userId = null) => !isHiddenWordFor(client, 
  * Saves the code of a command after checking everything. Returns { ok: true, created } or { ok: false, message, field? }.
  * The person who asked must already have been allowed to write code.
  */
-async function saveCodeCommand({ guild, client, userId, name, code, lang = currentLanguage() }) {
+const MAX_FILES = 5; // the files of one command (all of them together have the same limit of characters as one code)
+const FILE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_ -]{0,19}$/;
+
+/**
+ * A command written in several files (the "+" of the editor): the files are one code cut in pieces. The first one is `main`; the others have a name of 1 to 20
+ * characters. They are joined with a line break into the code that runs, and the command remembers where each one starts. Returns { code, meta } or { error }.
+ */
+function joinFiles(files, lang = currentLanguage()) {
+  if (!Array.isArray(files) || !files.length) return { error: t(lang, 'customcommands.files.none') };
+  if (files.length > MAX_FILES) return { error: t(lang, 'customcommands.files.tooMany', { max: MAX_FILES }) };
+  const seen = new Set();
+  const meta = [];
+  const parts = [];
+  for (const [index, file] of files.entries()) {
+    const text = typeof file?.code === 'string' ? file.code.replace(/\r\n/g, '\n') : '';
+    const fileName = index === 0 ? 'main' : String(file?.name ?? '').trim();
+    if (!FILE_NAME.test(fileName) || seen.has(fileName.toLowerCase())) return { error: t(lang, 'customcommands.files.badName') };
+    seen.add(fileName.toLowerCase());
+    meta.push({ name: fileName, size: text.length });
+    parts.push(text);
+  }
+  return { code: parts.join('\n'), meta };
+}
+
+async function saveCodeCommand({ guild, client, userId, name, code, files = null, lang = currentLanguage() }) {
+  if (files) {
+    const joined = joinFiles(files, lang);
+    if (joined.error) return { ok: false, field: 'code', message: joined.error };
+    code = joined.code;
+    files = joined.meta.length > 1 ? joined.meta : [];
+  }
   if (isRealCommand(client, name, userId)) return { ok: false, field: 'name', message: t(lang, 'customcommands.realCommand', { name }) };
   if (!NAME_SHAPE.test(name)) return { ok: false, field: 'name', message: t(lang, 'customcommands.nameShape') };
   const problem = codeProblem(code, lang);
@@ -241,7 +274,7 @@ async function saveCodeCommand({ guild, client, userId, name, code, lang = curre
     const allowed = await commandLimit(guild.id);
     if (current.length >= allowed.limit) return { ok: false, field: 'name', message: fullMessage(allowed, lang) };
   }
-  await ccDb.upsertCommand(guild.id, name, { response: null, embedTemplate: null, code, createdBy: userId });
+  await ccDb.upsertCommand(guild.id, name, { response: null, embedTemplate: null, code, createdBy: userId, files: files ?? [] });
   return { ok: true, created: !existing };
 }
 
@@ -265,4 +298,134 @@ async function setCommandTrigger({ guild, client, name, type, text, lang = curre
   return { ok: true, type, text: checked.text };
 }
 
-module.exports = { MAX_PER_GUILD, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, isRealCommand, prefixHint };
+const MAX_LINKS = 3; // the commands that can start after one
+const MAX_REMINDERS = 25;
+const MIN_REPEAT_MS = 5 * 60_000;
+const MAX_REPEAT_MS = 7 * 86_400_000;
+
+/**
+ * Connects commands from the settings of one: `links` are the names of the commands that also run after it (without writing code). They are checked like the
+ * ones in code: they exist, none is the command itself and none leads back to it. Returns { ok: true, links } or { ok: false, message }.
+ */
+async function setCommandLinks({ guild, name, links, lang = currentLanguage() }) {
+  const row = await ccDb.getCommand(guild.id, name);
+  if (!row) return { ok: false, message: t(lang, 'customcommands.notExist', { name }) };
+  const wanted = [...new Set((Array.isArray(links) ? links : []).map((link) => ccDb.normalizeName(String(link ?? ''))).filter(Boolean))];
+  if (wanted.length > MAX_LINKS) return { ok: false, message: t(lang, 'customcommands.links.tooMany', { max: MAX_LINKS }) };
+  const all = await ccDb.listCommands(guild.id);
+  const byName = new Map(all.map((entry) => [entry.name, entry]));
+  for (const link of wanted) {
+    if (link === row.name) return { ok: false, message: t(lang, 'customcommands.links.self') };
+    if (!byName.get(link)?.code) return { ok: false, message: t(lang, 'customcommands.links.missing', { name: link }) };
+  }
+  // A link that leads back to this command (through the links of the others) would run in circles.
+  const leadsBack = (from, seen = new Set()) => {
+    if (from === row.name) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    return (Array.isArray(byName.get(from)?.links) ? byName.get(from).links : []).some((next) => leadsBack(next, seen));
+  };
+  for (const link of wanted) if (leadsBack(link)) return { ok: false, message: t(lang, 'customcommands.links.loop', { name: link }) };
+  await ccDb.setLinks(guild.id, row.name, wanted);
+  return { ok: true, links: wanted };
+}
+
+/**
+ * The options of a command (from its settings in the dashboard): whether its mistakes are shown as the answer, the channel they are also sent to, and the roles and
+ * channels it is for (`require` or `ignore` some roles, `only` or `ignore` some channels). Everything is checked against the server. Returns { ok: true, options } or { ok: false, message }.
+ */
+async function setCommandOptions({ guild, name, options, lang = currentLanguage() }) {
+  const row = await ccDb.getCommand(guild.id, name);
+  if (!row) return { ok: false, message: t(lang, 'customcommands.notExist', { name }) };
+  const raw = options && typeof options === 'object' ? options : {};
+  const MAX = 25;
+  const idsOf = (value) => [...new Set((Array.isArray(value) ? value : []).map(String))];
+  const roleIds = idsOf(raw.roles?.ids);
+  const channelIds = idsOf(raw.channels?.ids);
+  if (roleIds.length > MAX || channelIds.length > MAX) return { ok: false, message: t(lang, 'customcommands.options.tooMany', { max: MAX }) };
+  for (const id of roleIds) if (!guild.roles.cache.has(id)) return { ok: false, message: t(lang, 'customcommands.options.noRole') };
+  for (const id of channelIds) if (!guild.channels.cache.has(id)) return { ok: false, message: t(lang, 'customcommands.options.noChannel') };
+  let errorChannel = null;
+  if (raw.errorChannel) {
+    const channel = guild.channels.cache.get(String(raw.errorChannel));
+    if (!channel?.isTextBased?.() || channel.isDMBased?.()) return { ok: false, message: t(lang, 'customcommands.options.noChannel') };
+    errorChannel = channel.id;
+  }
+  const clean = {
+    errorsAsResponse: raw.errorsAsResponse !== false,
+    errorChannel,
+    roles: { mode: raw.roles?.mode === 'ignore' ? 'ignore' : 'require', ids: roleIds },
+    channels: { mode: raw.channels?.mode === 'ignore' ? 'ignore' : 'only', ids: channelIds },
+  };
+  await ccDb.setOptions(guild.id, row.name, clean);
+  return { ok: true, options: clean };
+}
+
+/** The time zone of the code of a server (what `.TimeZone` says and what the reminders use when they do not say one). */
+async function setServerTimeZone({ guild, zone, lang = currentLanguage() }) {
+  const normalized = normalizeTimeZone(String(zone ?? '').trim());
+  if (!normalized) return { ok: false, message: t(lang, 'customcommands.zone.invalid') };
+  await ensureGuild(guild.id);
+  await commandData.settings.setTimeZone(guild.id, normalized);
+  require('./codeCommands').forgetZone(guild.id);
+  return { ok: true, timezone: normalized };
+}
+
+/** What a server has waiting (reminders and commands scheduled by code), as plain data for the dashboard. */
+async function listReminders(guildId) {
+  const rows = await commandData.schedule.list(guildId);
+  return rows.map((row) => ({
+    name: row.name, id: row.id, userId: row.userId, channelId: row.channelId, runAt: row.runAt,
+    repeat: row.repeat ? { kind: row.repeat.kind, everyMs: row.repeat.everyMs, atTime: row.repeat.atTime, timezone: row.repeat.timezone, weekday: row.repeat.weekday } : null,
+  }));
+}
+
+/**
+ * A reminder made from the dashboard: a command that runs every X time, every day or every week at a time of a time zone, as the member who made it, in
+ * a channel. `kind` is 'interval' (`everySeconds`), 'daily' or 'weekly' (`time`, `timezone` and, weekly, `weekday`).
+ */
+async function createReminder({ guild, userId, channelId, name, id, kind, everySeconds, time, timezone, weekday, data, lang = currentLanguage() }) {
+  const row = await ccDb.getCommand(guild.id, String(name ?? ''));
+  if (!row?.code) return { ok: false, field: 'name', message: t(lang, 'customcommands.remind.noCommand', { name: String(name ?? '') }) };
+  const reminderId = String(id ?? '').trim();
+  if (!/^[A-Za-z0-9_-]{1,50}$/.test(reminderId)) return { ok: false, field: 'id', message: t(lang, 'customcommands.remind.badId') };
+  if (!channelId || !/^\d{15,25}$/.test(String(channelId))) return { ok: false, field: 'channel', message: t(lang, 'customcommands.remind.noChannel') };
+  let repeat;
+  let first;
+  const now = Date.now();
+  if (kind === 'interval') {
+    const everyMs = Math.trunc(Number(everySeconds)) * 1000;
+    if (!(everyMs >= MIN_REPEAT_MS && everyMs <= MAX_REPEAT_MS)) return { ok: false, field: 'every', message: t(lang, 'customcommands.remind.badEvery') };
+    repeat = { kind: 'interval', everyMs };
+    first = now + everyMs;
+  } else if (kind === 'daily' || kind === 'weekly') {
+    const atTime = normalizeTime(time);
+    if (!atTime) return { ok: false, field: 'time', message: t(lang, 'customcommands.remind.badTime') };
+    const zone = normalizeTimeZone(String(timezone ?? '').trim() || (await commandData.settings.get(guild.id).catch(() => null))?.timezone || 'UTC');
+    if (!zone) return { ok: false, field: 'timezone', message: t(lang, 'customcommands.zone.invalid') };
+    let day = null;
+    if (kind === 'weekly') {
+      day = parseWeekday(weekday);
+      if (day === null) return { ok: false, field: 'weekday', message: t(lang, 'customcommands.remind.badWeekday') };
+    }
+    repeat = { kind, atTime, timezone: zone, weekday: day };
+    first = nextScheduledRun({ schedule: kind, at_time: atTime, timezone: zone, weekday: day }, now)?.getTime();
+    if (!first) return { ok: false, field: 'time', message: t(lang, 'customcommands.remind.badTime') };
+  } else {
+    return { ok: false, field: 'kind', message: t(lang, 'customcommands.remind.badKind') };
+  }
+  const json = JSON.stringify(data ?? null) ?? 'null';
+  if (json.length > 2000) return { ok: false, field: 'data', message: t(lang, 'customcommands.remind.dataTooBig', { max: 2000 }) };
+  const pending = await commandData.schedule.count(guild.id);
+  const replaced = await commandData.schedule.cancel(guild.id, row.name, reminderId);
+  if (!replaced && pending >= MAX_REMINDERS) return { ok: false, field: 'id', message: t(lang, 'customcommands.remind.tooMany', { max: MAX_REMINDERS }) };
+  await ensureGuild(guild.id);
+  await commandData.schedule.set({ guildId: guild.id, name: row.name, id: reminderId, runAt: first, userId, channelId: String(channelId), data: JSON.parse(json), origin: 'command', repeat });
+  return { ok: true, runAt: first, replaced };
+}
+
+async function cancelReminder({ guild, name, id }) {
+  return { ok: true, removed: await commandData.schedule.cancel(guild.id, ccDb.normalizeName(String(name ?? '')), String(id ?? '')) };
+}
+
+module.exports = { MAX_PER_GUILD, MAX_LINKS, MAX_REMINDERS, MAX_FILES, joinFiles, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, setCommandLinks, setCommandOptions, setServerTimeZone, listReminders, createReminder, cancelReminder, isRealCommand, prefixHint };

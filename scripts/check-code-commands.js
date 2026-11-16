@@ -19,6 +19,7 @@ stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 stub('src/db/customCommands.js', {
   normalizeName: (name) => name.toLowerCase().trim().replace(/\s+/g, ''),
   getCommand: async (guildId, name) => store.get(`${guildId}:${name}`) ?? null,
+  getByRef: async (guildId, ref) => (/^\d+$/.test(String(ref)) ? [...store.entries()].find(([key, value]) => key.startsWith(`${guildId}:`) && value.number === Number(ref))?.[1] ?? null : store.get(`${guildId}:${ref}`) ?? null),
   upsertCommand: async (guildId, name, values) => { store.set(`${guildId}:${name}`, { name, ...values, code: values.code ?? null, created_by: values.createdBy }); return store.get(`${guildId}:${name}`); },
   removeCommand: async () => true,
   listCommands: async (guildId) => [...store.entries()].filter(([key]) => key.startsWith(`${guildId}:`)).map(([, value]) => value),
@@ -429,6 +430,22 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   assert.deepEqual(t.sent.map((e) => e.payload.content), ['chain2', 'chain3'], 'A runs B and B runs C, but C cannot run D');
   assert.equal(problemsOf('chain3')[0].text, 'execCC: too many commands in a chain (at most 3)');
   assert.equal(problemsOf('chain3')[0].trigger, 'exec');
+  // A command that code scheduled (scheduleUniqueCC) runs when its time comes: as the member who scheduled it, in the channel where it was
+  // scheduled, with .Trigger "exec" and .ExecData. Nobody to run it for (the member or the channel is gone): nothing happens.
+  const sched = makeMessage();
+  sched.message.guild.members.cache = new Collection([[sched.message.author.id, sched.message.member]]);
+  sched.message.guild.channels.cache.set('200000000000000009', { id: '200000000000000009', isTextBased: () => false });
+  sched.message.member.user = sched.message.author;
+  sched.message.guild.members.fetch = async () => { throw new Error('Unknown Member'); };
+  const botClient = { guilds: { cache: new Collection([[sched.message.guild.id, sched.message.guild]]) } };
+  const due = { guildId: G, name: 'shop', id: 'later', userId: sched.message.author.id, channelId: '200000000000000001', data: { item: 'tea' } };
+  assert.equal(await codeCommands.runScheduled(botClient, due), true);
+  assert.deepEqual(sched.sent.map((e) => e.payload.content), ['exec scheduleUniqueCC {"item":"tea"} Liam 0 200000000000000001', 'from shop'], 'it runs as the member, in the channel, with its data');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, userId: '999999999999999999' }), false, 'the member is gone');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, channelId: '200000000000000009' }), false, 'the channel is not a text channel');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, guildId: '399999999999999999' }), false, 'the server is gone');
+  assert.equal(await codeCommands.runScheduled(botClient, { ...due, name: 'ghost' }), true, 'a command that was deleted is written down like any execCC that finds nothing');
+  assert.equal(problemsOf('scheduleUniqueCC')[0].text, 'execCC: there is no command with code called ghost');
   // A command that does not exist, or that is not in code, is not a mistake of the one that asked: it is written down.
   store.set(`${G}:plain`, { name: 'plain', code: null, response: 'hi' });
   t = makeMessage();
@@ -448,6 +465,119 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   t = makeMessage();
   await codeCommands.runCodeCommand(t.message, row('{{ add 1 "x" }}', 'typedbad'), '', '!');
   assert.equal(problemsOf('typedbad')[0].trigger, 'command');
+  // callCC: a typed command uses the code of another one (by name or by number), and what it returns or prints is a value in the caller.
+  store.set(`${G}:helper`, { name: 'helper', number: 7, code: '{{ define "x" }}ok{{ end }}help {{ index .Args 0 }} {{ template "x" }}' });
+  store.set(`${G}:triple`, { name: 'triple', number: 8, code: '{{ return (mult (index .Args 0) 3) }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ callCC "helper" "me" }} {{ callCC 8 5 }} {{ (getCC 7).Name }} {{ (getCC "triple").Number }}', 'caller2'), '', '!');
+  assert.equal(t.replies[0].content, 'help me ok 15 helper 8', 'by name and by number, with the return value, getCC and the templates of the called command');
+  t = makeMessage();
+  store.set(`${G}:caller3`, { name: 'caller3', number: 9, code: '{{ callCC "caller3" }}' });
+  await codeCommands.runCodeCommand(t.message, store.get(`${G}:caller3`), '', '!');
+  assert.match(problemsOf('caller3')[0].text, /already running/, 'a command cannot call itself');
+  for (const name of ['helper', 'triple', 'caller3']) store.delete(`${G}:${name}`);
+  // runCommand: a command of Petto typed by the member, through the same door as a typed message.
+  {
+    const ran = [];
+    // The handler of typed messages is replaced by one that writes down what it gets (the real one needs the whole bot).
+    const aliasesPath = require.resolve('../src/db/commandAliases');
+    require.cache[aliasesPath] = { id: aliasesPath, filename: aliasesPath, loaded: true, exports: { get: async () => null } };
+    const handlerPath = require.resolve('../src/events/messageCreateCommands');
+    const handler = { getPrefixes: async () => ['!'], execute: null };
+    require.cache[handlerPath] = { id: handlerPath, filename: handlerPath, loaded: true, exports: handler };
+    handler.execute = async (typed) => { ran.push({ content: typed.content, author: typed.author.id, member: typed.member === t.message.member, channel: typed.channelId, reply: typeof typed.reply }); await typed.reply({ content: 'pong' }); };
+    t = makeMessage();
+    const client = t.message.guild.client ?? (t.message.guild.client = {});
+    client.commands = new Map([['ping', {}], ['customcommand', {}], ['ban', {}]]); client.commandAliases = new Map([['cc', 'customcommand'], ['p', 'ping']]); client.commandRoutes = new Map();
+    store.set(`${G}:ban`, { name: 'ban', code: 'mine' }); // a server that wrote its own !ban
+    try {
+      await codeCommands.runCodeCommand(t.message, row('{{ runCommand "!ping now" }}{{ runCommand "p" }}', 'runner2'), '', '!');
+      assert.deepEqual(ran.map((entry) => entry.content), ['!ping now', '!p'], 'the commands of Petto run, as typed with the prefix of the server');
+      assert.ok(ran.every((entry) => entry.author === t.message.author.id && entry.member && entry.channel === '200000000000000001'), 'as the member, in the channel');
+      assert.equal(t.replies.length, 2, 'the answers of the commands go as replies to the message of the member');
+      ran.length = 0;
+      const shown = () => JSON.stringify([...t.replies, ...t.sent.map((entry) => entry.payload)]);
+      t = makeMessage(); client.commands = client.commands; Object.assign(t.message.guild, { client });
+      await codeCommands.runCodeCommand(t.message, row('{{ runCommand "nothere" }}{{ runCommand "cc code x y" }}', 'runner3'), '', '!');
+      assert.deepEqual(ran, [], 'a word that is not a command of Petto, and the command that writes code, are not run');
+      assert.match(shown(), /no command called nothere/); assert.match(shown(), /cc cannot be run from code/);
+      t = makeMessage(); Object.assign(t.message.guild, { client });
+      await codeCommands.runCodeCommand(t.message, row('{{ runCommand "ban <@1> x" }}', 'runner4'), '', '!');
+      assert.deepEqual(ran, [], 'a word that the server made its own with a command is not the command of Petto');
+      assert.match(shown(), /ban cannot be run from code/);
+    } finally { delete require.cache[handlerPath]; delete require.cache[aliasesPath]; store.delete(`${G}:ban`); }
+  }
+
+  // The options of a command: the roles and channels it is for, and where its mistakes go.
+  {
+    const withOptions = (code, options, name) => ({ ...row(code, name), options });
+    const R1 = '100000000000000001';
+    const run = async (options, { memberRoles = [], code = 'ran' } = {}) => {
+      const x = makeMessage({ memberRoles });
+      await codeCommands.runCodeCommand(x.message, withOptions(code, options), '', '!');
+      return x;
+    };
+    assert.equal((await run({})).replies.length, 1, 'no options: it runs anywhere for anyone');
+    assert.equal((await run({ roles: { mode: 'require', ids: [R1] } }, { memberRoles: [R1] })).replies.length, 1, 'a member with the role it is for');
+    assert.equal((await run({ roles: { mode: 'require', ids: [R1] } })).replies.length, 0, 'a member without the role it is for: silence');
+    assert.equal((await run({ roles: { mode: 'ignore', ids: [R1] } }, { memberRoles: [R1] })).replies.length, 0, 'a member with a role that is ignored: silence');
+    assert.equal((await run({ roles: { mode: 'ignore', ids: [R1] } })).replies.length, 1, 'a member without the ignored role');
+    assert.equal((await run({ channels: { mode: 'only', ids: ['200000000000000001'] } })).replies.length, 1, 'the channel it is for');
+    assert.equal((await run({ channels: { mode: 'only', ids: ['200000000000000002'] } })).replies.length, 0, 'another channel than the one it is for: silence');
+    assert.equal((await run({ channels: { mode: 'ignore', ids: ['200000000000000001'] } })).replies.length, 0, 'a channel that is ignored: silence');
+    assert.equal((await run({ channels: { mode: 'ignore', ids: ['200000000000000002'] } })).replies.length, 1, 'another channel than the ignored one');
+    // A thread counts as its channel.
+    const inThread = makeMessage(); inThread.message.channel = { ...inThread.message.channel, id: '200000000000000099', parentId: '200000000000000001' };
+    await codeCommands.runCodeCommand(inThread.message, withOptions('ran', { channels: { mode: 'only', ids: ['200000000000000001'] } }), '', '!');
+    assert.equal(inThread.replies.length, 1, 'a thread of the channel it is for');
+    assert.deepEqual(codeCommands.optionsOf({ options: { roles: { mode: 'x', ids: ['1', 'nope', R1] }, errorChannel: 'bad' } }), { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [R1] }, channels: { mode: 'only', ids: [] } }, 'what is saved is cleaned');
+    // A button of a command that is not for the member says so, and does not run.
+    const clicks = [];
+    const click = async (options) => {
+      const x = makeMessage();
+      const replies = [];
+      const interaction = { guild: x.message.guild, guildId: x.message.guild.id, channel: x.message.channel, member: x.message.member, user: x.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async (payload) => { replies.push(payload); }, update: async () => {}, deferUpdate: async () => { clicks.push('ack'); }, followUp: async () => {} };
+      await codeCommands.runComponent(interaction, withOptions('clicked', options), { command: 'btn', handler: 'h', data: '', userId: null });
+      return replies;
+    };
+    assert.match(JSON.stringify(await click({ roles: { mode: 'require', ids: [R1] } })), /cannot use this here/, 'a click of someone it is not for');
+    // Mistakes: not shown as the answer, and sent to a channel.
+    let bad = await run({ errorsAsResponse: false }, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 0, 'the mistake is not shown as the answer');
+    bad = await run({}, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 1, 'by default it is');
+    bad = await run({ errorsAsResponse: false, errorChannel: '200000000000000003' }, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 0);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(bad.sent.some((entry) => entry.channel === '200000000000000003' && /nope/.test(entry.payload.content) && entry.payload.allowedMentions.parse.length === 0), 'the mistake goes to the channel of the mistakes, pinging nobody');
+    bad = await run({ errorChannel: '200000000000000003' }, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 1, 'as the answer and in the channel too');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(bad.sent.some((entry) => entry.channel === '200000000000000003'));
+  }
+
+  // Connected from the settings of a command (not in its code): the commands in `links` run after it, in order, as the same member.
+  store.set(`${G}:thanks`, { name: 'thanks', code: 'thanks {{ .Trigger }} {{ .ExecBy }}{{ sendMessage nil "t" }}' });
+  store.set(`${G}:log2`, { name: 'log2', code: 'log {{ .Trigger }}{{ sendMessage nil "l" }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, { ...row('main', 'linked'), links: ['thanks', 'ghost', 'log2'] }, '', '!');
+  assert.deepEqual(t.replies.map((r) => r.content), ['main']);
+  assert.deepEqual(t.sent.map((e) => e.payload.content), ['thanks exec linked', 't', 'log exec', 'l'], 'the connected ones run after it, in order, and one that is gone does not stop the others');
+  assert.match(problemsOf('linked')[0].text, /no command with code called ghost/, 'a connection to a missing command is written down');
+  // The time zone of the server is in the data of the code.
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ .TimeZone }}', 'zoned'), '', '!');
+  assert.equal(t.replies[0].content, 'UTC', 'UTC until the server picks another');
+  for (const name of ['thanks', 'log2']) store.delete(`${G}:${name}`);
+  // What copies a command of Petto (here `lockChannel`, like `!channel lock`) does not work in a typed command, nor in what a typed command starts (execCC).
+  store.set(`${G}:locker`, { name: 'locker', code: '{{ lockChannel }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ lockChannel }}', 'typedlock'), '', '!');
+  assert.match(problemsOf('typedlock')[0].text, /lockChannel only works in a button, a menu, a form or a reaction, not in a typed command: Petto already has !channel lock/);
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ execCC "locker" }}', 'calllock'), '', '!');
+  assert.match(problemsOf('locker')[0].text, /lockChannel only works in a button/, 'a typed command cannot get around it with execCC');
+  assert.equal(t.sent.length, 0);
   // From a button: the other command runs in the channel of the button, as who clicked.
   const execBits = makeGuild();
   const execClick = makeMessage({ guildBits: execBits });

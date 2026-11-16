@@ -78,6 +78,43 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   assert.equal(await b.get('k1', ''), 2, 'a key that exists can still change when the server is full');
   assert.equal(await commandData.deleteGuildData('100000000000000002'), commandData.MAX_ENTRIES_PER_GUILD);
 
+  // Scheduled commands: one that runs once is taken and removed, one that repeats is moved to its next time in the same step, and they live in their server.
+  await pool.query('delete from custom_command_schedule');
+  const G = '100000000000000003';
+  const past = Date.now() - 60_000;
+  const base = { guildId: G, name: 'remind', userId: '200000000000000001', channelId: '300000000000000001', data: { a: 1 }, origin: 'command' };
+  await commandData.schedule.set({ ...base, id: 'once', runAt: past });
+  await commandData.schedule.set({ ...base, id: 'every', runAt: past, repeat: { kind: 'interval', everyMs: 3_600_000 } });
+  await commandData.schedule.set({ ...base, id: 'daily', runAt: past, repeat: { kind: 'daily', atTime: '20:00', timezone: 'America/Bogota', weekday: null } });
+  await commandData.schedule.set({ ...base, id: 'later', runAt: Date.now() + 3_600_000 });
+  assert.equal(await commandData.schedule.count(G), 4);
+  const taken = await commandData.schedule.claimDue(20);
+  assert.deepEqual(taken.map((entry) => entry.id).sort(), ['daily', 'every', 'once'], 'only what is due');
+  assert.deepEqual(taken.find((entry) => entry.id === 'every').repeat, { kind: 'interval', everyMs: 3_600_000, atTime: null, timezone: null, weekday: null });
+  assert.deepEqual(taken.find((entry) => entry.id === 'once').repeat, null);
+  assert.deepEqual(taken.find((entry) => entry.id === 'every').data, { a: 1 });
+  assert.equal(await commandData.schedule.count(G), 3, 'the one that runs once is gone, the ones that repeat stay');
+  assert.deepEqual(await commandData.schedule.claimDue(20), [], 'nothing is taken twice');
+  const waiting = await commandData.schedule.list(G);
+  assert.deepEqual(waiting.map((entry) => entry.id).sort(), ['daily', 'every', 'later']);
+  const every = waiting.find((entry) => entry.id === 'every');
+  assert.ok(every.runAt > Date.now() + 3_500_000 && every.runAt < Date.now() + 3_700_000, 'moved an hour on, counted from now');
+  const daily = waiting.find((entry) => entry.id === 'daily');
+  assert.ok(daily.runAt > Date.now() && daily.runAt <= Date.now() + 86_400_000 + 1000, 'the next 20:00 of Bogota');
+  assert.equal(new Date(daily.runAt).getUTCHours(), 1, '20:00 of Bogota is 01:00 UTC');
+  assert.equal(await commandData.schedule.cancel(G, 'remind', 'every'), true);
+  assert.equal(await commandData.schedule.cancel(G, 'remind', 'every'), false);
+
+  // The time zone of a server.
+  assert.equal(await commandData.settings.get(G), null);
+  await commandData.settings.setTimeZone(G, 'America/Bogota');
+  assert.equal((await commandData.settings.get(G)).timezone, 'America/Bogota');
+  await commandData.settings.setTimeZone(G, 'UTC');
+  assert.equal((await commandData.settings.get(G)).timezone, 'UTC');
+  await commandData.deleteGuildData(G);
+  assert.equal(await commandData.schedule.count(G), 0, 'what a server leaves behind goes with it');
+  assert.equal(await commandData.settings.get(G), null);
+
   await pool.query('drop table custom_command_data');
   await closePools();
   console.log('Checked the stored data of custom commands against a real database.');
