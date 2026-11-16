@@ -339,6 +339,41 @@ async function watchReactions(sent, emojis, commandName, guild, userId = null) {
 
 /** Does what the code asked, as far as it is allowed. Returns the reasons for what was left undone. */
 
+// ── The options of a command: where it may be used, and where its mistakes go ─────────────────────────────────────────
+const MAX_OPTION_IDS = 25;
+/** The options of a command as they are used (a command saved before they existed has none: it may be used anywhere and shows its mistakes as the answer). */
+function optionsOf(row) {
+  const raw = row?.options && typeof row.options === 'object' && !Array.isArray(row.options) ? row.options : {};
+  const ids = (value) => (Array.isArray(value) ? value.map(String).filter((id) => /^\d{15,25}$/.test(id)).slice(0, MAX_OPTION_IDS) : []);
+  return {
+    errorsAsResponse: raw.errorsAsResponse !== false,
+    errorChannel: /^\d{15,25}$/.test(String(raw.errorChannel ?? '')) ? String(raw.errorChannel) : null,
+    roles: { mode: raw.roles?.mode === 'ignore' ? 'ignore' : 'require', ids: ids(raw.roles?.ids) },
+    channels: { mode: raw.channels?.mode === 'ignore' ? 'ignore' : 'only', ids: ids(raw.channels?.ids) },
+  };
+}
+/** Whether this member may use the command in this channel (a thread counts as its channel): the roles it is for or not for, the channels it is for or not for. */
+function allowedHere(row, member, channel) {
+  const { roles, channels } = optionsOf(row);
+  if (roles.ids.length) {
+    const has = roles.ids.some((id) => member?.roles?.cache?.has?.(id));
+    if (roles.mode === 'require' ? !has : has) return false;
+  }
+  if (channels.ids.length) {
+    const here = [channel?.id, channel?.parentId].filter(Boolean).some((id) => channels.ids.includes(String(id)));
+    if (channels.mode === 'only' ? !here : here) return false;
+  }
+  return true;
+}
+/** Sends a mistake of a command to the channel the server chose for them (never pinging anybody). */
+async function sendProblemToChannel(guild, row, userId, text, lang = currentLanguage()) {
+  const { errorChannel } = optionsOf(row);
+  const channel = errorChannel ? guild.channels?.cache?.get(errorChannel) : null;
+  if (!channel?.isTextBased?.() || channel.isDMBased?.()) return;
+  const shown = isPhrase(text) ? say(lang, text) : String(text);
+  await channel.send({ content: clip(`⚠️ \`${row.name}\` · <@${userId}>: ${shown}`), allowedMentions: { parse: [] } }).catch(() => {});
+}
+
 // The commands that code may not run through runCommand: the ones that write code (a command that changes commands could not be checked here).
 const NOT_RUN_FROM_CODE = new Set(['customcommand']);
 
@@ -504,7 +539,9 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
     logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: phrase('customcommands.run.execMissing', { name: effect.name }), lang });
     return;
   }
-  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text, lang });
+  // The command that is run is not for this member or this channel: it does not run (like any use of it).
+  if (!allowedHere(row, source.member, channel)) return;
+  const problem = (text) => { logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text, lang }); sendProblemToChannel(guild, row, author.id, text, lang); };
   const data = { ...buildData(source, row.name, '', prefix, serverPrefix), Trigger: 'exec', Origin: context.origin ?? 'command', TimeZone: await zoneOf(guild.id), ExecData: effect.data ?? null, ExecBy: callerName };
   data.Message.CommandUserID = context.commandUserId ?? null;
   let result;
@@ -553,6 +590,8 @@ async function runScheduled(client, entry) {
 
 /** Runs the code of a custom command for the message that used it. Returns true when the message was handled. */
 async function runCodeCommand(message, row, argText, prefix, serverPrefix = prefix) {
+  // A command that is not for this member or this channel stays quiet, like any word that is not a command.
+  if (!allowedHere(row, message.member, message.channel)) return true;
   const key = `${message.guild.id}:${message.author.id}:${row.name}`;
   const last = cooldowns.get(key) ?? 0;
   if (Date.now() - last < COOLDOWN_MS) return true;
@@ -561,7 +600,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
 
   // Run from the message event, so the language of its server is the current one; it is kept for the commands run later with execCC.
   const lang = currentLanguage();
-  const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text, lang });
+  const problem = (text) => { logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text, lang }); sendProblemToChannel(message.guild, row, message.author.id, text, lang); };
   let result;
   try {
     const typedData = buildData(message, row.name, argText, prefix, serverPrefix);
@@ -570,7 +609,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.toPhrase());
-      await message.reply({ content: clip(mistakeText(error, lang)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
+      if (optionsOf(row).errorsAsResponse) await message.reply({ content: clip(mistakeText(error, lang)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
       return true;
     }
     problem(CRASHED);
@@ -584,7 +623,7 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   const skipped = await applyEffects(message, result.effects, row.name, { code: row.code, lang });
   if (skipped.length) {
     problem(skippedText(skipped, lang));
-    await message.reply({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
+    if (optionsOf(row).errorsAsResponse) await message.reply({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
   }
   // The commands it runs with execCC go last, once everything it did itself is done.
   await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id, lang, origin: 'command' }, result.effects, row.name, 'command', 1, row.links);
@@ -602,6 +641,8 @@ async function runComponent(interaction, row, parsed) {
   // Acknowledges a click without a visible answer; a modal that did not come from a message has nothing to update.
   const acknowledge = () => (submitted && !interaction.isFromMessage?.() ? ephemeralReply('✅') : interaction.deferUpdate().catch(() => {}));
   if (parsed.userId && parsed.userId !== interaction.user.id) return ephemeralReply(t(lang, 'customcommands.run.notForYou'));
+  // A button or menu of a command that is not for this member or this channel says so (only the person who pressed it sees it).
+  if (!allowedHere(row, interaction.member, interaction.channel)) return ephemeralReply(t(lang, 'customcommands.run.notHere'));
   const key = `${interaction.guildId}:${interaction.user.id}:${row.name}:${parsed.handler}`;
   if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return acknowledge();
   cooldowns.set(key, Date.now());
@@ -625,7 +666,7 @@ async function runComponent(interaction, row, parsed) {
   // A button or a menu locked to a member knows who it is for; otherwise who sent the command is not known here.
   data.Message.CommandUserID = parsed.userId ?? null;
   data.Origin = data.Trigger;
-  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: data.Trigger, userId: user.id, text, lang });
+  const problem = (text) => { logProblem(guild.id, { command: row.name, trigger: data.Trigger, userId: user.id, text, lang }); sendProblemToChannel(guild, row, user.id, text, lang); };
 
   let result;
   try {
@@ -677,6 +718,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   const { guild, channel } = message;
   const member = guild.members.cache.get(user.id) ?? await guild.members.fetch(user.id).catch(() => guild.members.fetch(user.id).catch(() => null));
   if (!member) { logger.warn(`A reaction on "${row.name}" in guild ${guild.id} was skipped: could not read the member ${user.id}`); return null; }
+  if (!allowedHere(row, member, channel)) return null;
   const key = `${guild.id}:${user.id}:${row.name}:reaction`;
   // Run from the reaction event, so the language of its server is the current one.
   const lang = currentLanguage();
@@ -690,7 +732,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   };
   const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Origin: 'reaction', TimeZone: await zoneOf(guild.id), Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
   data.Message.CommandUserID = watched?.user ?? null;
-  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang });
+  const problem = (text) => { logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang }); sendProblemToChannel(guild, row, user.id, text, lang); };
   let result;
   try {
     result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild, member), cc: ccFor(guild.id), command: row.name, limits: { maxMillis: 2000 }, lang });
@@ -781,4 +823,4 @@ function decodeShare(text, lang = currentLanguage()) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { runScheduled, guildData, ccFor, zoneOf, forgetZone, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { optionsOf, allowedHere, runScheduled, guildData, ccFor, zoneOf, forgetZone, logProblem, problemLog, MAX_PROBLEMS, MAX_EXEC_DEPTH, dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, submittedFields, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

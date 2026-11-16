@@ -29,6 +29,7 @@ stub('src/db/commandData.js', {
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
 stub('src/db/customCommands.js', {
   normalizeName: (name) => name.toLowerCase().trim().replace(/\s+/g, ''),
+  setOptions: async (guildId, name, options) => { const row = store.get(`${guildId}:${name}`); if (!row) return false; row.options = options; return true; },
   setLinks: async (guildId, name, links) => { const row = store.get(`${guildId}:${name}`); if (!row) return false; row.links = links; return true; },
   getCommand: async (guildId, name) => store.get(`${guildId}:${name}`) ?? null,
   upsertCommand: async (guildId, name, values) => { store.set(`${guildId}:${name}`, { name, trigger_type: 'command', trigger_text: null, ...values }); },
@@ -196,10 +197,28 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   r = await remind({ id: 'one-more', kind: 'interval', everySeconds: 600 }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('already has 25 reminders'));
   waiting.clear();
 
+  // The options of a command: where its mistakes go, and the roles and channels it is for.
+  guild.roles.cache.set('600000000000000001', { id: '600000000000000001' });
+  guild.channels.cache.set('700000000000000001', { id: '700000000000000001', isTextBased: () => true, isDMBased: () => false });
+  guild.channels.cache.set('700000000000000002', { id: '700000000000000002', isTextBased: () => false });
+  const opts = (options, name = 'greet') => call('options', { name, options });
+  r = await opts({ errorsAsResponse: false, errorChannel: '700000000000000001', roles: { mode: 'ignore', ids: ['600000000000000001'] }, channels: { mode: 'only', ids: ['700000000000000001', '700000000000000001'] } });
+  assert.equal(r.status, 200); assert.deepEqual(r.json.options, { errorsAsResponse: false, errorChannel: '700000000000000001', roles: { mode: 'ignore', ids: ['600000000000000001'] }, channels: { mode: 'only', ids: ['700000000000000001'] } });
+  assert.deepEqual(store.get(`${guild.id}:greet`).options, r.json.options);
+  r = await call('overview', null); assert.deepEqual(r.json.commands.find((command) => command.name === 'greet').options.channels, { mode: 'only', ids: ['700000000000000001'] }, 'the page gets the options of each command');
+  assert.equal(r.json.commands.find((command) => command.name === 'second').options.errorsAsResponse, true, 'a command without options has the defaults');
+  r = await opts({ roles: { mode: 'weird', ids: [] }, channels: { mode: 'weird', ids: [] } }); assert.deepEqual(r.json.options, { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [] }, channels: { mode: 'only', ids: [] } }, 'an unknown mode is the first one, and nothing set is the default');
+  r = await opts({ roles: { ids: ['600000000000000009'] } }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('not in this server'));
+  r = await opts({ channels: { ids: ['700000000000000009'] } }); assert.equal(r.status, 400);
+  r = await opts({ errorChannel: '700000000000000002' }); assert.equal(r.status, 400, 'a channel for mistakes is a text channel');
+  r = await opts({ roles: { ids: Array.from({ length: 26 }, (_, n) => `6000000000000001${String(n).padStart(2, '0')}`) } }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('At most 25'));
+  r = await opts({}, 'ghost'); assert.equal(r.status, 400);
+  r = await opts({}); assert.equal(r.status, 200); assert.deepEqual(store.get(`${guild.id}:greet`).options.roles.ids, [], 'saving nothing clears them');
+
   // Everyone who manages the server writes and tests, until it is turned off.
   r = await call('test', { code: 'ok' }, 'someone'); assert.equal(r.status, 200, 'anyone who manages the server can');
   settings.codeCommandsDisabled = true;
-  for (const [route, body] of [['test', { code: 'x' }], ['save', { name: 'x', code: 'x' }], ['trigger', { name: 'greet', type: 'command' }], ['timezone', { timezone: 'UTC' }], ['links', { name: 'greet', links: [] }], ['reminder', { name: 'greet' }], ['reminder/cancel', { name: 'greet', id: 'x' }]]) {
+  for (const [route, body] of [['test', { code: 'x' }], ['save', { name: 'x', code: 'x' }], ['trigger', { name: 'greet', type: 'command' }], ['timezone', { timezone: 'UTC' }], ['links', { name: 'greet', links: [] }], ['reminder', { name: 'greet' }], ['reminder/cancel', { name: 'greet', id: 'x' }], ['options', { name: 'greet', options: {} }]]) {
     r = await call(route, body, 'someone');
     assert.equal(r.status, 403, route); assert.equal(r.json.error, 'turned_off');
   }

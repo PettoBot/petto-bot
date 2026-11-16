@@ -330,6 +330,37 @@ async function setCommandLinks({ guild, name, links, lang = currentLanguage() })
   return { ok: true, links: wanted };
 }
 
+/**
+ * The options of a command (from its settings in the dashboard): whether its mistakes are shown as the answer, the channel they are also sent to, and the roles and
+ * channels it is for (`require` or `ignore` some roles, `only` or `ignore` some channels). Everything is checked against the server. Returns { ok: true, options } or { ok: false, message }.
+ */
+async function setCommandOptions({ guild, name, options, lang = currentLanguage() }) {
+  const row = await ccDb.getCommand(guild.id, name);
+  if (!row) return { ok: false, message: t(lang, 'customcommands.notExist', { name }) };
+  const raw = options && typeof options === 'object' ? options : {};
+  const MAX = 25;
+  const idsOf = (value) => [...new Set((Array.isArray(value) ? value : []).map(String))];
+  const roleIds = idsOf(raw.roles?.ids);
+  const channelIds = idsOf(raw.channels?.ids);
+  if (roleIds.length > MAX || channelIds.length > MAX) return { ok: false, message: t(lang, 'customcommands.options.tooMany', { max: MAX }) };
+  for (const id of roleIds) if (!guild.roles.cache.has(id)) return { ok: false, message: t(lang, 'customcommands.options.noRole') };
+  for (const id of channelIds) if (!guild.channels.cache.has(id)) return { ok: false, message: t(lang, 'customcommands.options.noChannel') };
+  let errorChannel = null;
+  if (raw.errorChannel) {
+    const channel = guild.channels.cache.get(String(raw.errorChannel));
+    if (!channel?.isTextBased?.() || channel.isDMBased?.()) return { ok: false, message: t(lang, 'customcommands.options.noChannel') };
+    errorChannel = channel.id;
+  }
+  const clean = {
+    errorsAsResponse: raw.errorsAsResponse !== false,
+    errorChannel,
+    roles: { mode: raw.roles?.mode === 'ignore' ? 'ignore' : 'require', ids: roleIds },
+    channels: { mode: raw.channels?.mode === 'ignore' ? 'ignore' : 'only', ids: channelIds },
+  };
+  await ccDb.setOptions(guild.id, row.name, clean);
+  return { ok: true, options: clean };
+}
+
 /** The time zone of the code of a server (what `.TimeZone` says and what the reminders use when they do not say one). */
 async function setServerTimeZone({ guild, zone, lang = currentLanguage() }) {
   const normalized = normalizeTimeZone(String(zone ?? '').trim());
@@ -397,4 +428,4 @@ async function cancelReminder({ guild, name, id }) {
   return { ok: true, removed: await commandData.schedule.cancel(guild.id, ccDb.normalizeName(String(name ?? '')), String(id ?? '')) };
 }
 
-module.exports = { MAX_PER_GUILD, MAX_LINKS, MAX_REMINDERS, MAX_FILES, joinFiles, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, setCommandLinks, setServerTimeZone, listReminders, createReminder, cancelReminder, isRealCommand, prefixHint };
+module.exports = { MAX_PER_GUILD, MAX_LINKS, MAX_REMINDERS, MAX_FILES, joinFiles, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, setCommandLinks, setCommandOptions, setServerTimeZone, listReminders, createReminder, cancelReminder, isRealCommand, prefixHint };

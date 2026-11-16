@@ -508,6 +508,54 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
     } finally { delete require.cache[handlerPath]; delete require.cache[aliasesPath]; store.delete(`${G}:ban`); }
   }
 
+  // The options of a command: the roles and channels it is for, and where its mistakes go.
+  {
+    const withOptions = (code, options, name) => ({ ...row(code, name), options });
+    const R1 = '100000000000000001';
+    const run = async (options, { memberRoles = [], code = 'ran' } = {}) => {
+      const x = makeMessage({ memberRoles });
+      await codeCommands.runCodeCommand(x.message, withOptions(code, options), '', '!');
+      return x;
+    };
+    assert.equal((await run({})).replies.length, 1, 'no options: it runs anywhere for anyone');
+    assert.equal((await run({ roles: { mode: 'require', ids: [R1] } }, { memberRoles: [R1] })).replies.length, 1, 'a member with the role it is for');
+    assert.equal((await run({ roles: { mode: 'require', ids: [R1] } })).replies.length, 0, 'a member without the role it is for: silence');
+    assert.equal((await run({ roles: { mode: 'ignore', ids: [R1] } }, { memberRoles: [R1] })).replies.length, 0, 'a member with a role that is ignored: silence');
+    assert.equal((await run({ roles: { mode: 'ignore', ids: [R1] } })).replies.length, 1, 'a member without the ignored role');
+    assert.equal((await run({ channels: { mode: 'only', ids: ['200000000000000001'] } })).replies.length, 1, 'the channel it is for');
+    assert.equal((await run({ channels: { mode: 'only', ids: ['200000000000000002'] } })).replies.length, 0, 'another channel than the one it is for: silence');
+    assert.equal((await run({ channels: { mode: 'ignore', ids: ['200000000000000001'] } })).replies.length, 0, 'a channel that is ignored: silence');
+    assert.equal((await run({ channels: { mode: 'ignore', ids: ['200000000000000002'] } })).replies.length, 1, 'another channel than the ignored one');
+    // A thread counts as its channel.
+    const inThread = makeMessage(); inThread.message.channel = { ...inThread.message.channel, id: '200000000000000099', parentId: '200000000000000001' };
+    await codeCommands.runCodeCommand(inThread.message, withOptions('ran', { channels: { mode: 'only', ids: ['200000000000000001'] } }), '', '!');
+    assert.equal(inThread.replies.length, 1, 'a thread of the channel it is for');
+    assert.deepEqual(codeCommands.optionsOf({ options: { roles: { mode: 'x', ids: ['1', 'nope', R1] }, errorChannel: 'bad' } }), { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [R1] }, channels: { mode: 'only', ids: [] } }, 'what is saved is cleaned');
+    // A button of a command that is not for the member says so, and does not run.
+    const clicks = [];
+    const click = async (options) => {
+      const x = makeMessage();
+      const replies = [];
+      const interaction = { guild: x.message.guild, guildId: x.message.guild.id, channel: x.message.channel, member: x.message.member, user: x.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async (payload) => { replies.push(payload); }, update: async () => {}, deferUpdate: async () => { clicks.push('ack'); }, followUp: async () => {} };
+      await codeCommands.runComponent(interaction, withOptions('clicked', options), { command: 'btn', handler: 'h', data: '', userId: null });
+      return replies;
+    };
+    assert.match(JSON.stringify(await click({ roles: { mode: 'require', ids: [R1] } })), /cannot use this here/, 'a click of someone it is not for');
+    // Mistakes: not shown as the answer, and sent to a channel.
+    let bad = await run({ errorsAsResponse: false }, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 0, 'the mistake is not shown as the answer');
+    bad = await run({}, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 1, 'by default it is');
+    bad = await run({ errorsAsResponse: false, errorChannel: '200000000000000003' }, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 0);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(bad.sent.some((entry) => entry.channel === '200000000000000003' && /nope/.test(entry.payload.content) && entry.payload.allowedMentions.parse.length === 0), 'the mistake goes to the channel of the mistakes, pinging nobody');
+    bad = await run({ errorChannel: '200000000000000003' }, { code: '{{ nope }}' });
+    assert.equal(bad.replies.length, 1, 'as the answer and in the channel too');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(bad.sent.some((entry) => entry.channel === '200000000000000003'));
+  }
+
   // Connected from the settings of a command (not in its code): the commands in `links` run after it, in order, as the same member.
   store.set(`${G}:thanks`, { name: 'thanks', code: 'thanks {{ .Trigger }} {{ .ExecBy }}{{ sendMessage nil "t" }}' });
   store.set(`${G}:log2`, { name: 'log2', code: 'log {{ .Trigger }}{{ sendMessage nil "l" }}' });

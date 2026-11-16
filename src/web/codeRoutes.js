@@ -109,7 +109,7 @@ function registerCodeRoutes(app, { authorize, limit = 60 }) {
     res.json({
       ok: true,
       timezone: await codeCommands.zoneOf(guild.id),
-      commands: rows.filter((row) => row.code).map((row) => ({ number: row.number ?? null, name: row.name, triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? null, links: Array.isArray(row.links) ? row.links : [] })),
+      commands: rows.filter((row) => row.code).map((row) => ({ options: codeCommands.optionsOf(row), number: row.number ?? null, name: row.name, triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? null, links: Array.isArray(row.links) ? row.links : [] })),
       reminders: await admin.listReminders(guild.id),
     });
   }));
@@ -125,6 +125,14 @@ function registerCodeRoutes(app, { authorize, limit = 60 }) {
     if (!needWrite(req, res)) return;
     const name = String(req.body?.name ?? '').toLowerCase().trim();
     const saved = await admin.setCommandLinks({ guild, name, links: Array.isArray(req.body?.links) ? req.body.links.slice(0, 20) : [], lang: languageOf(req) });
+    res.status(saved.ok ? 200 : 400).json(saved);
+  }));
+
+  // The options of a command: where its mistakes go, and the roles and channels it is for.
+  app.post('/api/dashboard/guild/:guildId/code/options', limiter, route(async (req, res, { guild }) => {
+    if (!needWrite(req, res)) return;
+    const name = String(req.body?.name ?? '').toLowerCase().trim();
+    const saved = await admin.setCommandOptions({ guild, name, options: req.body?.options, lang: languageOf(req) });
     res.status(saved.ok ? 200 : 400).json(saved);
   }));
 
