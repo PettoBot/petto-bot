@@ -278,6 +278,7 @@ async function infoCmd(interaction) {
     return reply(interaction, lines.join('\n'));
   }
   lines.push(t(lang, 'customcommands.info.sizeOf', { count: row.code.length, max: MAX_SOURCE_LENGTH }));
+  if (Array.isArray(row.files) && row.files.length > 1) lines.push(t(lang, 'customcommands.info.files', { names: row.files.map((file) => `\`${file.name}\``).join(', ') }));
   const summary = codeSummary(row.code);
   if (summary) {
     const uses = [

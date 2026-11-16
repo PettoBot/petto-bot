@@ -52,7 +52,7 @@ function registerCodeRoutes(app, { authorize, limit = 60 }) {
       templates: TEMPLATES.map((template) => ({ ...templateIn(template, lang), code: templateCode(template, serverLang) })),
       triggerTypes: TRIGGER_TYPES,
       timezone: await codeCommands.zoneOf(String(req.params.guildId)),
-      limits: { reminders: admin.MAX_REMINDERS, links: admin.MAX_LINKS, source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: allowed.limit, premium: allowed.premium, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
+      limits: { files: admin.MAX_FILES, reminders: admin.MAX_REMINDERS, links: admin.MAX_LINKS, source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: allowed.limit, premium: allowed.premium, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
     });
   }));
 
@@ -98,7 +98,8 @@ function registerCodeRoutes(app, { authorize, limit = 60 }) {
     if (!needWrite(req, res)) return;
     const name = String(req.body?.name ?? '').toLowerCase().trim().replace(/\s+/g, '');
     const code = typeof req.body?.code === 'string' ? req.body.code.replace(/\r\n/g, '\n') : '';
-    const saved = await admin.saveCodeCommand({ guild, client: guild.client, userId, name, code, lang: languageOf(req) });
+    const files = Array.isArray(req.body?.files) ? req.body.files.slice(0, admin.MAX_FILES + 1) : null;
+    const saved = await admin.saveCodeCommand({ guild, client: guild.client, userId, name, code, files, lang: languageOf(req) });
     res.status(saved.ok ? 200 : 400).json(saved);
   }));
 

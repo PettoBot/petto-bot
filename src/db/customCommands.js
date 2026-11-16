@@ -17,13 +17,13 @@ async function nextNumber(guildId) {
   return (data?.[0]?.number ?? 0) + 1;
 }
 
-async function upsertCommand(guildId, name, { response, embedTemplate, code, createdBy }) {
+async function upsertCommand(guildId, name, { response, embedTemplate, code, createdBy, files }) {
   const existing = await getCommand(guildId, name);
   // A command keeps the number it was born with; only a new one takes the next.
   const number = existing?.number ?? await nextNumber(guildId);
   const { data, error } = await database
     .from('custom_commands')
-    .upsert({ guild_id: guildId, name: normalizeName(name), response: response ?? null, embed_template: embedTemplate ?? null, number, ...(code !== undefined ? { code, created_by: createdBy ?? null } : {}) }, { onConflict: 'guild_id,name' })
+    .upsert({ guild_id: guildId, name: normalizeName(name), response: response ?? null, embed_template: embedTemplate ?? null, number, ...(code !== undefined ? { code, created_by: createdBy ?? null, files: Array.isArray(files) ? files : [] } : {}) }, { onConflict: 'guild_id,name' })
     .select('*')
     .single();
   if (error) throw error;
@@ -73,7 +73,7 @@ async function removeCommand(guildId, name) {
 }
 
 async function listCommands(guildId) {
-  const { data, error } = await database.from('custom_commands').select('number, name, response, embed_template, code, trigger_type, trigger_text, links').eq('guild_id', guildId).order('name', { ascending: true });
+  const { data, error } = await database.from('custom_commands').select('number, name, response, embed_template, code, trigger_type, trigger_text, links, files').eq('guild_id', guildId).order('name', { ascending: true });
   if (error) throw error;
   return data;
 }

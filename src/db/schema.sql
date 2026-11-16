@@ -2110,6 +2110,8 @@ update custom_commands c set number = r.n from (select id, row_number() over (pa
 create unique index if not exists idx_custom_commands_number on custom_commands(guild_id, number);
 -- The commands that also run after this one (set from the dashboard, without writing code): their names.
 alter table custom_commands add column if not exists links jsonb not null default '[]'::jsonb;
+-- A command written in several files in the dashboard: `code` is all of them joined with a line break (what runs), `files` says where each one starts (name and size).
+alter table custom_commands add column if not exists files jsonb not null default '[]'::jsonb;
 alter table custom_commands drop constraint if exists custom_commands_trigger_type_check;
 alter table custom_commands add constraint custom_commands_trigger_type_check check (trigger_type in ('command', 'prefix', 'startswith', 'exact', 'contains'));
 

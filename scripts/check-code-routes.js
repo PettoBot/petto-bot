@@ -125,6 +125,24 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   r = await call('save', { name: 'ping', code: 'x' }); assert.equal(r.status, 400); assert.equal(r.json.field, 'name'); assert.ok(r.json.message.includes('real command'));
   r = await call('save', { name: 'bad name!', code: 'x' }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('1 to 32'));
   r = await call('save', { name: 'broken', code: '{{ if }}' }); assert.equal(r.status, 400); assert.equal(r.json.field, 'code'); assert.equal(store.has(`${guild.id}:broken`), false, 'code with a mistake is not saved');
+  // Several files (the "+" of the editor): joined into the code that runs, with where each one starts.
+  const fileMain = 'Hello {{ template "who" .User.Username }}';
+  const fileHelpers = '{{ define "who" }}{{ . }}{{ end }}';
+  r = await call('save', { name: 'files', code: 'ignored', files: [{ name: 'x', code: fileMain }, { name: 'helpers', code: fileHelpers }] });
+  assert.equal(r.status, 200);
+  assert.equal(store.get(`${guild.id}:files`).code, `${fileMain}\n${fileHelpers}`, 'the files are joined with a line break');
+  assert.deepEqual(store.get(`${guild.id}:files`).files, [{ name: 'main', size: fileMain.length }, { name: 'helpers', size: fileHelpers.length }], 'the first one is always main, and each one keeps its size');
+  r = await call('test', { code: store.get(`${guild.id}:files`).code }); assert.equal(r.json.output.trim(), 'Hello Liam', 'a define in another file is used');
+  r = await call('save', { name: 'files', code: 'Hi', files: [{ name: 'main', code: 'Hi' }] }); assert.equal(r.status, 200); assert.deepEqual(store.get(`${guild.id}:files`).files, [], 'one file is not a list of files');
+  r = await call('save', { name: 'files', code: 'Hi' }); assert.deepEqual(store.get(`${guild.id}:files`).files, [], 'saved without files (the code of Discord) there are none');
+  const six = Array.from({ length: 6 }, (_, n) => ({ name: `f${n}`, code: 'x' }));
+  r = await call('save', { name: 'files', code: 'x', files: six }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('at most 5 files'));
+  r = await call('save', { name: 'files', code: 'x', files: [{ name: 'a', code: 'x' }, { name: 'b!', code: 'x' }] }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('1 to 20 letters'));
+  r = await call('save', { name: 'files', code: 'x', files: [{ name: 'a', code: 'x' }, { name: 'B', code: 'x' }, { name: 'b', code: 'x' }] }); assert.equal(r.status, 400, 'no two files with the same name');
+  r = await call('save', { name: 'files', code: 'x', files: [{ name: 'a', code: 'x'.repeat(6000) }, { name: 'b', code: 'x'.repeat(6000) }] }); assert.equal(r.status, 400); assert.equal(r.json.field, 'code', 'all the files together have the limit of one code');
+  r = await call('save', { name: 'files', code: 'x', files: [{ name: 'a', code: '{{ if }}' }] }); assert.equal(r.status, 400, 'a mistake in any file is refused');
+  r = await call('meta'); assert.equal(r.json.limits.files, 5);
+  store.delete(`${guild.id}:files`);
   // Triggers.
   r = await call('trigger', { name: 'greet', type: 'prefix', text: '?' }); assert.equal(r.status, 200); assert.equal(store.get(`${guild.id}:greet`).trigger_type, 'prefix');
   r = await call('trigger', { name: 'greet', type: 'nope', text: 'x' }); assert.equal(r.status, 400);

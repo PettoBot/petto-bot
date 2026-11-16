@@ -231,7 +231,37 @@ const isRealCommand = (client, name, userId = null) => !isHiddenWordFor(client, 
  * Saves the code of a command after checking everything. Returns { ok: true, created } or { ok: false, message, field? }.
  * The person who asked must already have been allowed to write code.
  */
-async function saveCodeCommand({ guild, client, userId, name, code, lang = currentLanguage() }) {
+const MAX_FILES = 5; // the files of one command (all of them together have the same limit of characters as one code)
+const FILE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_ -]{0,19}$/;
+
+/**
+ * A command written in several files (the "+" of the editor): the files are one code cut in pieces. The first one is `main`; the others have a name of 1 to 20
+ * characters. They are joined with a line break into the code that runs, and the command remembers where each one starts. Returns { code, meta } or { error }.
+ */
+function joinFiles(files, lang = currentLanguage()) {
+  if (!Array.isArray(files) || !files.length) return { error: t(lang, 'customcommands.files.none') };
+  if (files.length > MAX_FILES) return { error: t(lang, 'customcommands.files.tooMany', { max: MAX_FILES }) };
+  const seen = new Set();
+  const meta = [];
+  const parts = [];
+  for (const [index, file] of files.entries()) {
+    const text = typeof file?.code === 'string' ? file.code.replace(/\r\n/g, '\n') : '';
+    const fileName = index === 0 ? 'main' : String(file?.name ?? '').trim();
+    if (!FILE_NAME.test(fileName) || seen.has(fileName.toLowerCase())) return { error: t(lang, 'customcommands.files.badName') };
+    seen.add(fileName.toLowerCase());
+    meta.push({ name: fileName, size: text.length });
+    parts.push(text);
+  }
+  return { code: parts.join('\n'), meta };
+}
+
+async function saveCodeCommand({ guild, client, userId, name, code, files = null, lang = currentLanguage() }) {
+  if (files) {
+    const joined = joinFiles(files, lang);
+    if (joined.error) return { ok: false, field: 'code', message: joined.error };
+    code = joined.code;
+    files = joined.meta.length > 1 ? joined.meta : [];
+  }
   if (isRealCommand(client, name, userId)) return { ok: false, field: 'name', message: t(lang, 'customcommands.realCommand', { name }) };
   if (!NAME_SHAPE.test(name)) return { ok: false, field: 'name', message: t(lang, 'customcommands.nameShape') };
   const problem = codeProblem(code, lang);
@@ -243,7 +273,7 @@ async function saveCodeCommand({ guild, client, userId, name, code, lang = curre
     const allowed = await commandLimit(guild.id);
     if (current.length >= allowed.limit) return { ok: false, field: 'name', message: fullMessage(allowed, lang) };
   }
-  await ccDb.upsertCommand(guild.id, name, { response: null, embedTemplate: null, code, createdBy: userId });
+  await ccDb.upsertCommand(guild.id, name, { response: null, embedTemplate: null, code, createdBy: userId, files: files ?? [] });
   return { ok: true, created: !existing };
 }
 
@@ -366,4 +396,4 @@ async function cancelReminder({ guild, name, id }) {
   return { ok: true, removed: await commandData.schedule.cancel(guild.id, ccDb.normalizeName(String(name ?? '')), String(id ?? '')) };
 }
 
-module.exports = { MAX_PER_GUILD, MAX_LINKS, MAX_REMINDERS, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, setCommandLinks, setServerTimeZone, listReminders, createReminder, cancelReminder, isRealCommand, prefixHint };
+module.exports = { MAX_PER_GUILD, MAX_LINKS, MAX_REMINDERS, MAX_FILES, joinFiles, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, effectDetails, codeHints, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, setCommandLinks, setServerTimeZone, listReminders, createReminder, cancelReminder, isRealCommand, prefixHint };
