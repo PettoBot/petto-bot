@@ -476,6 +476,38 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   await codeCommands.runCodeCommand(t.message, store.get(`${G}:caller3`), '', '!');
   assert.match(problemsOf('caller3')[0].text, /already running/, 'a command cannot call itself');
   for (const name of ['helper', 'triple', 'caller3']) store.delete(`${G}:${name}`);
+  // runCommand: a command of Petto typed by the member, through the same door as a typed message.
+  {
+    const ran = [];
+    // The handler of typed messages is replaced by one that writes down what it gets (the real one needs the whole bot).
+    const aliasesPath = require.resolve('../src/db/commandAliases');
+    require.cache[aliasesPath] = { id: aliasesPath, filename: aliasesPath, loaded: true, exports: { get: async () => null } };
+    const handlerPath = require.resolve('../src/events/messageCreateCommands');
+    const handler = { getPrefixes: async () => ['!'], execute: null };
+    require.cache[handlerPath] = { id: handlerPath, filename: handlerPath, loaded: true, exports: handler };
+    handler.execute = async (typed) => { ran.push({ content: typed.content, author: typed.author.id, member: typed.member === t.message.member, channel: typed.channelId, reply: typeof typed.reply }); await typed.reply({ content: 'pong' }); };
+    t = makeMessage();
+    const client = t.message.guild.client ?? (t.message.guild.client = {});
+    client.commands = new Map([['ping', {}], ['customcommand', {}], ['ban', {}]]); client.commandAliases = new Map([['cc', 'customcommand'], ['p', 'ping']]); client.commandRoutes = new Map();
+    store.set(`${G}:ban`, { name: 'ban', code: 'mine' }); // a server that wrote its own !ban
+    try {
+      await codeCommands.runCodeCommand(t.message, row('{{ runCommand "!ping now" }}{{ runCommand "p" }}', 'runner2'), '', '!');
+      assert.deepEqual(ran.map((entry) => entry.content), ['!ping now', '!p'], 'the commands of Petto run, as typed with the prefix of the server');
+      assert.ok(ran.every((entry) => entry.author === t.message.author.id && entry.member && entry.channel === '200000000000000001'), 'as the member, in the channel');
+      assert.equal(t.replies.length, 2, 'the answers of the commands go as replies to the message of the member');
+      ran.length = 0;
+      const shown = () => JSON.stringify([...t.replies, ...t.sent.map((entry) => entry.payload)]);
+      t = makeMessage(); client.commands = client.commands; Object.assign(t.message.guild, { client });
+      await codeCommands.runCodeCommand(t.message, row('{{ runCommand "nothere" }}{{ runCommand "cc code x y" }}', 'runner3'), '', '!');
+      assert.deepEqual(ran, [], 'a word that is not a command of Petto, and the command that writes code, are not run');
+      assert.match(shown(), /no command called nothere/); assert.match(shown(), /cc cannot be run from code/);
+      t = makeMessage(); Object.assign(t.message.guild, { client });
+      await codeCommands.runCodeCommand(t.message, row('{{ runCommand "ban <@1> x" }}', 'runner4'), '', '!');
+      assert.deepEqual(ran, [], 'a word that the server made its own with a command is not the command of Petto');
+      assert.match(shown(), /ban cannot be run from code/);
+    } finally { delete require.cache[handlerPath]; delete require.cache[aliasesPath]; store.delete(`${G}:ban`); }
+  }
+
   // Connected from the settings of a command (not in its code): the commands in `links` run after it, in order, as the same member.
   store.set(`${G}:thanks`, { name: 'thanks', code: 'thanks {{ .Trigger }} {{ .ExecBy }}{{ sendMessage nil "t" }}' });
   store.set(`${G}:log2`, { name: 'log2', code: 'log {{ .Trigger }}{{ sendMessage nil "l" }}' });

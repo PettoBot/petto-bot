@@ -377,6 +377,7 @@ module.exports = {
   'scripting.fn.repeatEvery': 'Um lembrete que se repete vai de a cada 5 minutos a a cada 7 dias',
   'scripting.fn.timeOfDay': 'A hora são horas e minutos de um dia, como 20:00',
   'scripting.fn.weekday': 'O dia é um nome (segunda) ou um número de 0 (domingo) a 6',
+  'scripting.fn.runCommandLine': 'runCommand precisa do comando a rodar, como "ping" ou "ban <@123456789012345678> spam" (até 300 caracteres)',
   'scripting.fn.scheduleId': 'O id de um comando agendado tem de 1 a 50 letras, números, - ou _',
   'scripting.fn.notBase64': 'Isso não é um texto em base64',
   'scripting.fn.eventOnly': '{name} só funciona em um botão, um menu, um formulário ou uma reação, não em um comando digitado: o Petto já tem {command} para isso',

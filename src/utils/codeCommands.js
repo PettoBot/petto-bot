@@ -1,7 +1,7 @@
 // Runs custom commands written in code (Petto Code). The code only says what it wants (see src/scripting); this file
 // is where the bot decides what it will really do, so a command can never do more than its member could.
 const {
-  EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ModalBuilder, MessageFlags,
+  EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ModalBuilder, MessageFlags, Collection,
 } = require('discord.js');
 const { addModalParts, submittedFields } = require('./modalParts');
 const config = require('../config');
@@ -338,6 +338,40 @@ async function watchReactions(sent, emojis, commandName, guild, userId = null) {
 }
 
 /** Does what the code asked, as far as it is allowed. Returns the reasons for what was left undone. */
+
+// The commands that code may not run through runCommand: the ones that write code (a command that changes commands could not be checked here).
+const NOT_RUN_FROM_CODE = new Set(['customcommand']);
+
+/**
+ * Runs a command of Petto as the member who used a custom command, as if they had typed it with the prefix of the server: it goes through the same handler as a typed
+ * message, so it asks the same permissions and makes the same checks. Returns 'ok', 'unknown' (the first word is not a command of Petto), 'blocked' (a command that code
+ * may not run, or a word that the server changed with a command or an alias of its own: that would not be the command of Petto) or 'failed'.
+ */
+async function runPrefixCommand(source, line) {
+  const { guild, channel } = source;
+  const client = guild.client;
+  const word = String(line).trim().split(/\s+/)[0].toLowerCase();
+  const known = client.commands?.has(word) || client.commandAliases?.has(word) || client.commandRoutes?.has(word);
+  if (!known) return 'unknown';
+  const canonical = client.commandAliases?.get(word) ?? word;
+  if (NOT_RUN_FROM_CODE.has(canonical) || NOT_RUN_FROM_CODE.has(word)) return 'blocked';
+  if (await ccDb.getCommand(guild.id, word).catch(() => null)) return 'blocked';
+  if (await require('../db/commandAliases').get(guild.id, word).catch(() => null)) return 'blocked';
+  const handler = require('../events/messageCreateCommands');
+  const prefix = (await handler.getPrefixes(guild.id).catch(() => ['!']))[0] ?? '!';
+  const typed = {
+    id: '0', content: `${prefix}${String(line).trim()}`, guild, guildId: guild.id, channel, channelId: channel.id, author: source.author, member: source.member, client,
+    webhookId: null, system: false, createdTimestamp: Date.now(), attachments: new Collection(), stickers: new Collection(), reference: null,
+    mentions: { users: new Collection(), members: new Collection(), roles: new Collection(), channels: new Collection(), repliedUser: null },
+    pettoLang: source.pettoLang,
+    // The answer goes where the member used the command (as a reply to their message when there is one).
+    reply: (payload) => (typeof source.reply === 'function' && source.id !== '0' ? source.reply(payload) : channel.send(payload)),
+    react: async () => {}, delete: async () => {}, fetch: async function fetched() { return this; },
+  };
+  try { await handler.execute(typed); } catch (error) { logger.error(`runCommand "${word}" crashed in guild ${guild.id}:`, error); return 'failed'; }
+  return 'ok';
+}
+
 async function applyEffects(message, effects, commandName = null, { code = '', lang = currentLanguage() } = {}) {
   const { guild, author, member } = message;
   const skipped = [];
@@ -379,7 +413,7 @@ async function applyEffects(message, effects, commandName = null, { code = '', l
         await message.react(effect.emoji).catch(() => skipped.push(t(lang, 'customcommands.run.skip.reaction', { emoji: effect.emoji })));
       } else if (isActionEffect(effect.type)) {
         // Messages, channels, threads, roles, moderation and scheduling: done as the member, with their permissions (codeActions.ts).
-        const reason = await applyAction(message, effect, { lang, commandName, toPayload, schedule: commandData.schedule, commands: ccDb });
+        const reason = await applyAction(message, effect, { lang, commandName, toPayload, schedule: commandData.schedule, commands: ccDb, runPrefix: runPrefixCommand });
         if (reason) skipped.push(reason);
       }
     } catch (error) {

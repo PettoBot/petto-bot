@@ -364,5 +364,14 @@ export function register(h: Helpers): void {
     });
     return null;
   });
+  // Runs a command of Petto as the member who used the command, as if they had typed it: `runCommand "ping"`, `runCommand "ban <@123> spam"`. It is the real command, so it asks
+  // the same permissions and makes the same checks (role order, cooldowns, direct messages, cases) for the member and for Petto. Commands that write code and the ones the server
+  // changed with its own command or alias are not run this way. 2 a run.
+  def('runCommand', 1, 1, (env, line) => {
+    const wanted = text(line).replace(/\s+/g, ' ').trim().replace(/^[^A-Za-z0-9]+/, '');
+    if (!wanted || wanted.length > 300 || !/^[A-Za-z0-9_-]+(?: |$)/.test(wanted)) fail('runCommandLine');
+    env.effects.add('runCommand', { line: wanted });
+    return null;
+  });
   def('cancelScheduledCC', 2, 2, (env, name, id) => { env.effects.add('cancelSchedule', { name: scheduleName(name), id: scheduleId(id) }); return null; });
 }

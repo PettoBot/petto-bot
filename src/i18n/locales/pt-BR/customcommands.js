@@ -41,6 +41,8 @@ module.exports = {
   'customcommands.files.tooMany': 'Um comando pode ter no máximo {max} arquivos.',
   'customcommands.files.badName': 'O nome de um arquivo tem de 1 a 20 letras, números, espaços, - ou _, e não há dois arquivos com o mesmo nome.',
   'customcommands.info.files': 'Arquivos: {names}',
+  'customcommands.run.act.commandBlocked': 'o comando {name} não pode ser executado a partir de código',
+  'customcommands.effect.runCommand': 'rodar o comando `{line}` como você',
   'customcommands.trigger.off': '{emoji}  Os gatilhos próprios estão desativados por enquanto.',
   'customcommands.trigger.current': '`{name}` começa com {current}.\n\nPara mudar:\n```\n{prefix}customcommand trigger {name} prefix .\n{prefix}customcommand trigger {name} startswith olá\n{prefix}customcommand trigger {name} command\n```\n-# Tipos: {types}. `prefix` é um prefixo próprio (até 5 caracteres), `command` volta ao prefixo do servidor.',
   'customcommands.trigger.writePrefix': 'Escreva o prefixo depois de `prefix`, por exemplo `{prefix}customcommand trigger {name} prefix .`, para que `.{name}` o execute.',

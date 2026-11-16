@@ -42,6 +42,8 @@ module.exports = {
   'customcommands.files.tooMany': 'A command can have at most {max} files.',
   'customcommands.files.badName': 'The name of a file is 1 to 20 letters, numbers, spaces, - or _, and no two files have the same name.',
   'customcommands.info.files': 'Files: {names}',
+  'customcommands.run.act.commandBlocked': 'the command {name} cannot be run from code',
+  'customcommands.effect.runCommand': 'run the command `{line}` as you',
   'customcommands.trigger.off': '{emoji}  Triggers of your own are turned off for now.',
   'customcommands.trigger.current': '`{name}` starts with {current}.\n\nChange it:\n```\n{prefix}customcommand trigger {name} prefix .\n{prefix}customcommand trigger {name} startswith hello\n{prefix}customcommand trigger {name} command\n```\n-# Types: {types}. `prefix` is a prefix of its own (up to 5 characters), `command` goes back to the prefix of the server.',
   'customcommands.trigger.writePrefix': 'Write the prefix after `prefix`, for example `{prefix}customcommand trigger {name} prefix .`, so `.{name}` runs it.',

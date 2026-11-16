@@ -55,6 +55,7 @@ function describeEffect(effect, lang = currentLanguage()) {
       const key = effect.delay ? (hasData ? 'execLaterData' : 'execLater') : (hasData ? 'execData' : 'exec');
       return t(lang, `customcommands.effect.${key}`, { name: effect.name, seconds: effect.delay });
     }
+    case 'runCommand': return t(lang, 'customcommands.effect.runCommand', { line: clip(effect.line, 120) });
     default: return effect.type;
   }
 }

@@ -377,6 +377,7 @@ module.exports = {
   'scripting.fn.repeatEvery': 'A reminder that repeats runs every 5 minutes to 7 days',
   'scripting.fn.timeOfDay': 'The time is hours and minutes of a day, like 20:00',
   'scripting.fn.weekday': 'The day is a name (monday) or a number from 0 (Sunday) to 6',
+  'scripting.fn.runCommandLine': 'runCommand needs the command to run, like "ping" or "ban <@123456789012345678> spam" (up to 300 characters)',
   'scripting.fn.scheduleId': 'The id of a scheduled command is from 1 to 50 letters, numbers, - or _',
   'scripting.fn.notBase64': 'That is not base64 text',
   'scripting.fn.eventOnly': '{name} only works in a button, a menu, a form or a reaction, not in a typed command: Petto already has {command} for that',

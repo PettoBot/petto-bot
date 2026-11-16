@@ -47,7 +47,7 @@ const NEW_FUNCTIONS = [
   'editMessage', 'deleteMessage', 'pinMessage', 'unpinMessage', 'purgeMessages', 'reactToMessage',
   'createChannel', 'editChannel', 'deleteChannel', 'setSlowmode', 'lockChannel', 'unlockChannel', 'createThread', 'lockThread', 'archiveThread',
   'ban', 'tempban', 'unban', 'kick', 'mute', 'unmute', 'warn',
-  'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname', 'scheduleUniqueCC', 'cancelScheduledCC', 'scheduleRepeatCC', 'scheduleDailyCC', 'scheduleWeeklyCC',
+  'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname', 'scheduleUniqueCC', 'cancelScheduledCC', 'scheduleRepeatCC', 'scheduleDailyCC', 'scheduleWeeklyCC', 'runCommand',
   'wordCount', 'lines', 'slug', 'initials', 'bar', 'randomString', 'uuid', 'sha256', 'base64Encode', 'base64Decode',
   'avg', 'median', 'percent', 'between', 'sign', 'trunc', 'lerp', 'chunk', 'flatten', 'pluck', 'take', 'drop', 'without', 'zip', 'upTo', 'countOf', 'minOf', 'maxOf',
   'coalesce', 'ternary', 'startOfDay', 'daysBetween', 'isWeekend', 'addDays',
@@ -59,7 +59,7 @@ assert.equal(new Set(names).size, names.length, 'no name twice');
 assert.ok(names.length >= 220, `there are ${names.length} functions`);
 
 // Everything a function needs is in the limits.
-for (const type of ['editMessage', 'deleteMessage', 'ban', 'warn', 'createChannel', 'createRole', 'addRoleTo', 'setNickname', 'schedule', 'cancelSchedule']) {
+for (const type of ['editMessage', 'deleteMessage', 'ban', 'warn', 'createChannel', 'createRole', 'addRoleTo', 'setNickname', 'schedule', 'cancelSchedule', 'runCommand']) {
   assert.ok(DEFAULT_LIMITS.effects[type] > 0, `${type} has a limit`);
 }
 assert.equal(DEFAULT_LIMITS.maxHttp, 3);
@@ -231,6 +231,13 @@ const out = async (code, options) => (await run(code, data, options)).output;
   await failsWith('{{ scheduleUniqueCC "remind" "bad id" 60 }}', '1 to 50 letters');
   await failsWith('{{ scheduleUniqueCC "re mind" "r" 60 }}', 'name');
   await failsWith(`{{ scheduleUniqueCC "remind" "r" 60 "${'x'.repeat(2100)}" }}`, '2000');
+
+  // runCommand: a command of Petto, as the member (the real checks are the ones of the command itself).
+  assert.deepEqual(await effects('{{ runCommand "!ping" }}{{ runCommand "ban <@123456789012345678>  spam" }}'), [{ type: 'runCommand', line: 'ping' }, { type: 'runCommand', line: 'ban <@123456789012345678> spam' }]);
+  await failsWith('{{ runCommand "" }}', 'needs the command to run');
+  await failsWith('{{ runCommand "!!! ??" }}', 'needs the command to run');
+  await failsWith(`{{ runCommand "${'x'.repeat(301)}" }}`, 'needs the command to run');
+  await failsWith('{{ runCommand "ping" }}{{ runCommand "ping" }}{{ runCommand "ping" }}', 'runCommand');
 
   // One message to several channels (up to 5) with one code.
   assert.deepEqual(await effects(`{{ sendMessage (cslice "${ID(601)}" "${ID(602)}" nil) "hi" }}`), [
@@ -521,6 +528,16 @@ const out = async (code, options) => (await run(code, data, options)).output;
   let last = null;
   for (let i = 0; i < 16; i += 1) last = await act(w, ofType('warn', { userId: TARGET, reason: 'x' }));
   assert.match(last, /too many moderation actions/);
+
+  // ── runCommand ──
+  w = world({ member: [] });
+  const ran = [];
+  for (const result of ['ok', 'unknown', 'blocked', 'failed']) {
+    const answer = await act(w, ofType('runCommand', { line: 'ping now' }), { runPrefix: async (source, line) => { ran.push([source === w.source, line]); return result; } });
+    if (result === 'ok') assert.equal(answer, null); else assert.match(answer, { unknown: /no command called ping/, blocked: /ping cannot be run from code/, failed: /Discord did not allow it \(ping\)/ }[result]);
+  }
+  assert.deepEqual(ran, Array(4).fill([true, 'ping now']), 'it runs with the member who used the command');
+  assert.match(await act(w, ofType('runCommand', { line: 'ping' })), /no runner/, 'nothing to run it with');
 
   // ── Scheduling ──
   w = world({ member: [] });

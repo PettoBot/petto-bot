@@ -25,7 +25,7 @@ export const ACTION_TYPES = new Set([
   'createChannel', 'editChannel', 'deleteChannel', 'lockChannel', 'unlockChannel', 'createThread', 'lockThread', 'archiveThread',
   'ban', 'tempban', 'unban', 'kick', 'mute', 'unmute', 'warn',
   'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname',
-  'schedule', 'cancelSchedule',
+  'schedule', 'cancelSchedule', 'runCommand',
 ]);
 export const isActionEffect = (type: string): boolean => ACTION_TYPES.has(type);
 
@@ -44,6 +44,8 @@ export interface ActionContext {
   /** The place where the scheduled commands are kept (the same functions as db/commandData `schedule`). */
   schedule?: ScheduleStore;
   commands?: { getCommand(guildId: string, name: string): Promise<Any> };
+  /** Runs a command of Petto as the member (codeCommands.js): 'ok', 'unknown' (not a command of Petto), 'blocked' (not one that code may run) or 'failed'. */
+  runPrefix?: (source: Any, line: string) => Promise<'ok' | 'unknown' | 'blocked' | 'failed'>;
   /** Only for the checks: the moment now, in milliseconds. */
   now?: () => number;
 }
@@ -469,6 +471,16 @@ export async function applyAction(source: Any, effect: Any, ctx: ActionContext):
           : now + effect.seconds * 1000;
         if (!first) return skip(lang, type, 'failed', { detail: 'no time' });
         await ctx.schedule.set({ guildId: guild.id, name: effect.name, id: effect.id, runAt: first, userId: author.id, channelId: source.channel?.id ?? '', data: effect.data ?? null, origin: effect.origin ?? 'command', repeat });
+        return null;
+      }
+      // A command of Petto, typed by the member (the same checks as when they type it)
+      case 'runCommand': {
+        if (!ctx.runPrefix) return skip(lang, type, 'failed', { detail: 'no runner' });
+        const name = String(effect.line).split(' ')[0].toLowerCase();
+        const result = await ctx.runPrefix(source, effect.line);
+        if (result === 'unknown') return skip(lang, type, 'noCommand', { name });
+        if (result === 'blocked') return skip(lang, type, 'commandBlocked', { name });
+        if (result === 'failed') return skip(lang, type, 'failed', { detail: name });
         return null;
       }
       case 'cancelSchedule': {

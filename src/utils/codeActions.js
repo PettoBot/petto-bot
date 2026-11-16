@@ -25,7 +25,7 @@ exports.ACTION_TYPES = new Set([
     'createChannel', 'editChannel', 'deleteChannel', 'lockChannel', 'unlockChannel', 'createThread', 'lockThread', 'archiveThread',
     'ban', 'tempban', 'unban', 'kick', 'mute', 'unmute', 'warn',
     'createRole', 'editRole', 'deleteRole', 'addRoleTo', 'removeRoleFrom', 'setNickname',
-    'schedule', 'cancelSchedule',
+    'schedule', 'cancelSchedule', 'runCommand',
 ]);
 const isActionEffect = (type) => exports.ACTION_TYPES.has(type);
 exports.isActionEffect = isActionEffect;
@@ -549,6 +549,20 @@ async function applyAction(source, effect, ctx) {
                 if (!first)
                     return skip(lang, type, 'failed', { detail: 'no time' });
                 await ctx.schedule.set({ guildId: guild.id, name: effect.name, id: effect.id, runAt: first, userId: author.id, channelId: source.channel?.id ?? '', data: effect.data ?? null, origin: effect.origin ?? 'command', repeat });
+                return null;
+            }
+            // A command of Petto, typed by the member (the same checks as when they type it)
+            case 'runCommand': {
+                if (!ctx.runPrefix)
+                    return skip(lang, type, 'failed', { detail: 'no runner' });
+                const name = String(effect.line).split(' ')[0].toLowerCase();
+                const result = await ctx.runPrefix(source, effect.line);
+                if (result === 'unknown')
+                    return skip(lang, type, 'noCommand', { name });
+                if (result === 'blocked')
+                    return skip(lang, type, 'commandBlocked', { name });
+                if (result === 'failed')
+                    return skip(lang, type, 'failed', { detail: name });
                 return null;
             }
             case 'cancelSchedule': {

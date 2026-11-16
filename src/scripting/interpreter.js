@@ -27,7 +27,7 @@ const DEFAULT_LIMITS = {
     ban: 3, tempban: 3, unban: 3, kick: 3, mute: 3, unmute: 3, warn: 3,
     createRole: 3, editRole: 3, deleteRole: 2, addRoleTo: 5, removeRoleFrom: 5, setNickname: 3,
     // Later
-    schedule: 2, cancelSchedule: 2,
+    schedule: 2, cancelSchedule: 2, runCommand: 2,
   },
 };
 

@@ -41,6 +41,8 @@ module.exports = {
   'customcommands.files.tooMany': 'Un comando puede tener como máximo {max} archivos.',
   'customcommands.files.badName': 'El nombre de un archivo tiene de 1 a 20 letras, números, espacios, - o _, y no hay dos archivos con el mismo nombre.',
   'customcommands.info.files': 'Archivos: {names}',
+  'customcommands.run.act.commandBlocked': 'el comando {name} no se puede ejecutar desde código',
+  'customcommands.effect.runCommand': 'ejecutar el comando `{line}` como tú',
   'customcommands.trigger.off': '{emoji}  Los disparadores propios están desactivados por ahora.',
   'customcommands.trigger.current': '`{name}` empieza con {current}.\n\nPara cambiarlo:\n```\n{prefix}customcommand trigger {name} prefix .\n{prefix}customcommand trigger {name} startswith hola\n{prefix}customcommand trigger {name} command\n```\n-# Tipos: {types}. `prefix` es un prefijo propio (hasta 5 caracteres), `command` vuelve al prefijo del servidor.',
   'customcommands.trigger.writePrefix': 'Escribe el prefijo después de `prefix`, por ejemplo `{prefix}customcommand trigger {name} prefix .`, para que `.{name}` lo ejecute.',
