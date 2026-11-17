@@ -53,7 +53,8 @@ module.exports = {
 
     // The sample picture. When it cannot be drawn or sent (no permission to attach files, too many drawings at once), the card goes without it.
     let file = null;
-    if (!attachFilesProblem(interaction, lang)) {
+    const attachProblem = attachFilesProblem(interaction, lang);
+    if (!attachProblem) {
       try {
         const buffer = await withRenderSlot(async () => renderColorSample({ rgb }));
         file = new AttachmentBuilder(buffer, { name: 'color.png', description: hex });
@@ -67,6 +68,8 @@ module.exports = {
       color.source === 'name' ? t(lang, 'info.color.named', { name: color.name }) : null,
       color.source === 'random' ? t(lang, 'info.color.random') : null,
       color.alpha !== null && color.alpha < 1 ? t(lang, 'info.color.alpha', { percent: Math.round(color.alpha * 100) }) : null,
+      // Without the permission to attach files there is no sample picture, and the card says why (it was left out without a word).
+      attachProblem,
     ].filter(Boolean);
 
     const card = buildInfoCard({
