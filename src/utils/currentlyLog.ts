@@ -1,7 +1,7 @@
 // i18n-ignore-file: the Currently log is written in English for the Petto community, it is not translated.
 // The Currently log: the changes of Petto (like the releases of a GitHub project) posted to one channel, in colors by kind, with pictures.
 // The channel is the `currently_log` variable (the ID of the channel). The changes are written in the web repo (`src/data/currentlyLog.json`, served at
-// petto.sbs/api/currently-log): the bot looks at it when it starts and every ten minutes, posts the ones it has not posted yet, once each, and remembers
+// petto.sbs/api/currently-log): the bot looks at it when it starts and every two minutes, posts the ones it has not posted yet, once each, and remembers
 // them (so a restart posts nothing twice). A change of the web or of the bot reaches the channel when the web is deployed, with no change to the bot.
 // Written in TypeScript: `npm run build:ts` compiles it over currentlyLog.js, which is what the bot loads.
 import { ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder } from 'discord.js';
@@ -29,7 +29,7 @@ export const CATEGORIES: Record<CategoryKey, Category> = {
   security: { color: 0xfe6465, dot: EMOJI.SAFETY, one: 'Security fix', many: 'Security fixes' },
   feature: { color: 0xfed53c, dot: EMOJI.RELEASE_ROCKET, one: 'New feature', many: 'New features' },
   addition: { color: 0xa5ea7a, dot: EMOJI.VOICE_PERMIT, one: 'Added to a feature', many: 'Added to features' },
-  improvement: { color: 0x74c0fc, dot: EMOJI.RELEASE_RELOAD, one: 'Improvement', many: 'Improvements' },
+  improvement: { color: 0x74c0fc, dot: EMOJI.ROLLOUT_UP, one: 'Improvement', many: 'Improvements' },
   fix: { color: 0xffa45c, dot: EMOJI.RELEASE_SETTINGS, one: 'Fix', many: 'Fixes' },
   web: { color: 0xc4a3ff, dot: EMOJI.ROLLOUT_PLATFORMS, one: 'Web, dashboard and docs', many: 'Web, dashboard and docs' },
   removal: { color: 0xc3c7cf, dot: EMOJI.VOICE_DENY, one: 'Removed from a feature', many: 'Removed from features' },
@@ -251,14 +251,37 @@ export async function fetchLog(url: string = process.env.CURRENTLY_LOG_URL || LO
 let lastProblem = '';
 export function lastLogProblem(): string { return lastProblem; }
 
-/** Whether a picture can be read from its link as an image, the way Discord will read it. */
-export async function imageReachable(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8_000) });
-    return response.ok && /^image\//i.test(response.headers.get('content-type') ?? '');
-  } catch {
-    return false;
+/** The bytes a picture file starts with, by kind: PNG, JPEG, GIF and WebP (a `RIFF` header with `WEBP` after it). */
+export function looksLikeImage(bytes: Uint8Array): boolean {
+  const starts = (...head: number[]): boolean => head.every((byte, index) => bytes[index] === byte);
+  return starts(0x89, 0x50, 0x4e, 0x47) || starts(0xff, 0xd8, 0xff) || starts(0x47, 0x49, 0x46, 0x38)
+    || (starts(0x52, 0x49, 0x46, 0x46) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50);
+}
+
+/** The biggest picture Discord takes in a message. */
+const MAX_PICTURE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Whether a picture can be shown by Discord: it is asked the way Discord asks, the whole file is read, and it has to answer, be an image of a
+ * size Discord takes and really start like one (a page that says it is an image, or a file cut in half, is not). Reading all of it, and not
+ * only the header, is on purpose: the first time a picture is asked the web's cache may have to go and get it, and Discord, which looks at
+ * the three pictures of a change at the same time and does not wait long, would show one of them broken for good. After this the cache has
+ * it, so Discord is answered at once. A second try after a short wait covers a file that is just being put in place.
+ */
+export async function imageReachable(url: string, doFetch: typeof fetch = fetch, retryAfterMs = 1500): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await doFetch(url, { method: 'GET', redirect: 'follow', headers: { Accept: 'image/*', 'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)' }, signal: AbortSignal.timeout(15_000) });
+      if (response.ok && /^image\//i.test(response.headers.get('content-type') ?? '')) {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.length > 0 && bytes.length <= MAX_PICTURE_BYTES && looksLikeImage(bytes)) return true;
+      }
+    } catch {
+      // not reachable now: tried once more below
+    }
+    if (attempt === 0 && retryAfterMs > 0) await sleep(retryAfterMs);
   }
+  return false;
 }
 
 export interface AnnounceOptions {
@@ -404,13 +427,13 @@ export async function announceNewEntries(client: Pick<Client, 'channels'>, optio
 }
 
 /** How often the log of the web is looked at: a change of the web or of the bot is in the channel within this time of the web being deployed. */
-const POLL_EVERY_MS = 10 * 60_000;
+const POLL_EVERY_MS = 2 * 60_000;
 
-/** When the web cannot be read (it is being deployed, most of the time) the bot asks again after these waits, and then every ten minutes. */
+/** When the web cannot be read (it is being deployed, most of the time) the bot asks again after these waits, and then every two minutes. */
 const RETRY_AFTER_MS = [20_000, 60_000, 120_000, 300_000];
 
 /**
- * Posts the log and keeps looking at the web every ten minutes (`pollMs`): what is new is posted, and what waits for a picture (the web is still being
+ * Posts the log and keeps looking at the web every two minutes (`pollMs`): what is new is posted, and what waits for a picture (the web is still being
  * deployed) is posted when the picture answers. When the web cannot be read (the bot starts while the web is being deployed) it asks again after 20 s,
  * 1 min, 2 min and 5 min (`retryMs`) without a warning; only when it still cannot be read after all of them is it said once in the log of the team.
  * Answers the first result and a function that stops the looking.
@@ -437,7 +460,7 @@ export async function startCurrentlyLog(client: Client, options: AnnounceOptions
     failures += 1;
     const wait = retryMs[failures - 1];
     if (wait === undefined) {
-      if (failures === retryMs.length + 1) logger.warn(`Currently log: the web has not given the log for a while (${lastProblem || 'no answer'}); it is still tried every ten minutes.`);
+      if (failures === retryMs.length + 1) logger.warn(`Currently log: the web has not given the log for a while (${lastProblem || 'no answer'}); it is still tried every two minutes.`);
       return;
     }
     waiting = true;
@@ -450,7 +473,7 @@ export async function startCurrentlyLog(client: Client, options: AnnounceOptions
   const first = await look();
   const result = first ?? { cards: 0, entries: 0, skipped: 'nothing-new' as const };
   afterLook(first);
-  // The look of every ten minutes leaves the quick retries alone while they are going on.
+  // The look of every two minutes leaves the quick retries alone while they are going on.
   const timer = setInterval(() => {
     if (waiting) return;
     look().then(afterLook).catch((error) => logger.warn(`Currently log: ${(error as Error)?.message ?? error}`));
