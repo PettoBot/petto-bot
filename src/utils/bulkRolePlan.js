@@ -18,6 +18,7 @@ const ERROR_CODES = Object.freeze({
   role_managed: 'That role is managed by an integration, so Discord does not let anyone give it.', // i18n-ignore: saved in the database
   role_above_bot: "That role is above Petto's highest role, move Petto's role above it and try again.", // i18n-ignore: saved in the database
   member_list: "Couldn't load the member list, try again.", // i18n-ignore: saved in the database
+  roles_unavailable: "Couldn't load the roles of the server, try again.", // i18n-ignore: saved in the database
   permission_lost: 'Discord kept refusing: Petto lost the permission (or the role moved above it) while the job was running.', // i18n-ignore: saved in the database
   crashed: 'The job stopped because of an unexpected error.', // i18n-ignore: saved in the database
 });
@@ -43,7 +44,12 @@ function dangerousBits(role) {
 
 /** Whether the job can be run for this role: `null`, or the code of the reason it cannot. */
 function checkTargetRole({ guildId, role, botMember }) {
-  if (!botMember?.permissions?.has(PermissionFlagsBits.ManageRoles)) return 'missing_permission';
+  // The permissions of a member are added up from the roles the server has loaded, @everyone included: while that list is empty (the server just
+  // came back, or Discord is slow) reading them throws, so the job says the roles could not be read instead of stopping with an error.
+  if (botMember?.guild && !botMember.guild.roles?.everyone) return 'roles_unavailable';
+  let canManage;
+  try { canManage = botMember?.permissions?.has(PermissionFlagsBits.ManageRoles); } catch { return 'roles_unavailable'; }
+  if (!canManage) return 'missing_permission';
   if (!role) return 'role_gone';
   if (role.id === guildId) return 'role_everyone';
   if (role.managed) return 'role_managed';
