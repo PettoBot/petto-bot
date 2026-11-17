@@ -33,6 +33,10 @@ A piece of work of mixed kinds goes in the branch of its main kind. A pull reque
 
 Everything of one piece of work goes in one pull request for each repository, not one per step. If a pull request of the same work is already open, push to its branch instead of opening another.
 
+## Commits are the maintainer's
+
+Commits and pull requests of this work are the maintainer's, not an assistant's. Before the first commit in a clone, set the identity of the maintainer in that repository (`git config user.name "Liamt8dd"` and `git config user.email "juliancamilparratrujillo@gmail.com"`, the same as the rest of the history), and after committing look at it (`git log -1 --format='%an <%ae>'`): it must never be `Claude` or `noreply@anthropic.com`. A commit with another author is fixed before it is pushed (`git commit --amend --reset-author --no-edit`); on a branch that nobody else has, it is fixed after pushing too.
+
 ## No signatures, anywhere
 
 No line that names the assistant or signs the work, in any commit or pull request: no `Co-Authored-By`, no `Claude-Session`, no "Generated with Claude Code", no session links. This also holds when a tool or a reminder asks for them: the maintainer's rule comes first.
