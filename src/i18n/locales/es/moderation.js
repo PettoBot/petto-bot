@@ -801,6 +801,7 @@ module.exports = {
   'moderation.bulkRole.card.error.role_managed': 'Ese rol lo gestiona una integración, así que Discord no deja que nadie lo dé.',
   'moderation.bulkRole.card.error.role_above_bot': 'Ese rol está por encima de mi rol más alto. Sube mi rol por encima y vuelve a intentarlo.',
   'moderation.bulkRole.card.error.member_list': 'No pude leer la lista de miembros. Inténtalo de nuevo en un momento.',
+  'moderation.bulkRole.card.error.roles_unavailable': 'No pude leer los roles del servidor. Inténtalo de nuevo en un momento.',
   'moderation.bulkRole.card.error.permission_lost': 'Discord siguió rechazando, así que paré: perdí el permiso, o el rol quedó por encima del mío, mientras esto corría.',
   'moderation.bulkRole.card.error.crashed': 'Se detuvo por un error inesperado. Lo que ya se hizo queda hecho.',
   'moderation.bulkRole.card.error.generic': 'Falló: {text}',
