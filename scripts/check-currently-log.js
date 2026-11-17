@@ -260,3 +260,29 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
 
   console.log('Checked the Currently log: the entries, the colors, the cards, each change once, the pictures that wait and the log posted again.');
 })().catch((error) => { console.error(error); process.exit(1); });
+
+// The picture check reads the whole file the way Discord asks, and refuses what Discord could not show (and the improvement card has no clock-like icon).
+(async () => {
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  const answer = (body, type = 'image/png', status = 200) => async () => new Response(body, { status, headers: { 'content-type': type } });
+  assert.equal(await log.imageReachable('https://x/a.png', answer(png), 0), true, 'a real PNG is fine');
+  assert.equal(await log.imageReachable('https://x/a.png', answer(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 1]), 'image/jpeg'), 0), true, 'a JPEG is fine');
+  assert.equal(await log.imageReachable('https://x/a.png', answer(Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]), 'image/webp'), 0), true, 'a WebP is fine');
+  assert.equal(await log.imageReachable('https://x/a.png', answer('<html>not found</html>'), 0), false, 'a page that says it is an image is not');
+  assert.equal(await log.imageReachable('https://x/a.png', answer(png, 'text/html'), 0), false, 'a page with the wrong type is not');
+  assert.equal(await log.imageReachable('https://x/a.png', answer(png, 'image/png', 404), 0), false, 'a missing picture is not');
+  assert.equal(await log.imageReachable('https://x/a.png', answer(new Uint8Array(0)), 0), false, 'an empty file is not');
+  assert.equal(await log.imageReachable('https://x/a.png', answer(new Uint8Array(9 * 1024 * 1024).fill(1).map((v, i) => (i < 4 ? [0x89, 0x50, 0x4e, 0x47][i] : v))), 0), false, 'a picture over 8 MB is not');
+  let calls = 0;
+  const flaky = async () => { calls += 1; return calls === 1 ? new Response('wait', { status: 503, headers: { 'content-type': 'text/plain' } }) : new Response(png, { headers: { 'content-type': 'image/png' } }); };
+  assert.equal(await log.imageReachable('https://x/a.png', flaky, 1), true, 'a second try covers a file that is just being put in place');
+  assert.equal(calls, 2);
+  let requested = null;
+  await log.imageReachable('https://x/a.png', async (url, options) => { requested = options; return new Response(png, { headers: { 'content-type': 'image/png' } }); }, 0);
+  assert.equal(requested.method, 'GET', 'the whole file is read, which also leaves it in the cache of the web');
+  assert.match(requested.headers['User-Agent'], /Discordbot/, 'asked the way Discord asks');
+  const clockLike = require('../src/utils/emojis').EMOJI.RELEASE_RELOAD;
+  assert.notEqual(log.CATEGORIES.improvement.dot, clockLike, 'the improvement card does not use the circular arrows that look like a clock');
+  console.log('Currently log picture checks passed.');
+})().catch((error) => { console.error(error); process.exit(1); });
+
