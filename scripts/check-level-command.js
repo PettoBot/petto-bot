@@ -124,6 +124,12 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
     const { applyWordRoute } = require('../src/utils/commandRestrictions');
     for (const word of ['add', 'remove', 'set', 'transfer']) assert.deepEqual(applyWordRoute(command.prefixWords, 'level', `${word} <@5> 1500`), { commandName: 'level', argText: `manage xp ${word} <@5> 1500` }, `!xp ${word}`);
     assert.equal(applyWordRoute(command.prefixWords, 'level', 'reward add 5 @Role'), null, 'the words that belong to the other groups are not touched');
+    // `!level roles` and `!level rewards` are the list of the rewards: the same route as `!level reward list` and `/level reward list`, so the answer is the same.
+    for (const word of ['roles', 'rewards']) {
+      assert.deepEqual(applyWordRoute(command.prefixWords, 'level', word), { commandName: 'level', argText: 'reward list' }, `!level ${word}`);
+      const viaWord = await buildInteractionFromMessage(message, command, 'reward list');
+      assert.deepEqual([viaWord.options.getSubcommandGroup(), viaWord.options.getSubcommand()], ['reward', 'list'], `!level ${word} is the reward list`);
+    }
     // `!lvl add|remove|set` (the rank command) sends the same words to `/level manage level`.
     const rankSource = require('node:fs').readFileSync(path.join(__dirname, '..', 'src', 'commands', 'utility', 'rank.js'), 'utf8');
     assert.match(rankSource, /prefixWords: Object\.fromEntries\(\['add', 'remove', 'set'\]\.map\(\(word\) => \[word, \{ command: 'level', args: \['manage', 'level', word\] \}\]\)\)/, '!lvl add|remove|set change the levels');

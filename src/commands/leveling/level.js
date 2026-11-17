@@ -29,7 +29,12 @@ module.exports = {
   // A prefix command: its slash entry is inside `/levels` or `/bot` (utils/umbrella.js).
   aliases: ['xp'],
   // `!xp add @member 1500` (and `remove`, `set`, `transfer`) is the XP of a member: the same as `!level manage xp add @member 1500`. The levels are `!lvl add|set|remove`.
-  prefixWords: Object.fromEntries(['add', 'remove', 'set', 'transfer'].map((word) => [word, { command: 'level', args: ['manage', 'xp', word] }])),
+  // `!level roles` (and `!level rewards`) is the list of the roles given at a level: the same as `!level reward list` and `/level reward list`.
+  prefixWords: {
+    ...Object.fromEntries(['add', 'remove', 'set', 'transfer'].map((word) => [word, { command: 'level', args: ['manage', 'xp', word] }])),
+    roles: { command: 'level', args: ['reward', 'list'] },
+    rewards: { command: 'level', args: ['reward', 'list'] },
+  },
   // `reward add` and `reward remove` take the kind of level last (Discord wants the optional options after the required ones), and the prefix
   // still reads it first as it always did: `!xp reward add voice 5 @Role` is read as `!xp reward add 5 @Role voice`.
   prefixArgs(argText) {
