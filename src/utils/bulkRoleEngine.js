@@ -97,6 +97,8 @@ async function runBulkRoleJob(client, job) {
   const guild = await client.guilds.fetch(job.guild_id).catch(() => null);
   if (!guild) return fail(job, 'guild_gone');
 
+  // All the roles first (@everyone too): the permissions of Petto are added up from them, and a server whose roles are not loaded yet has none.
+  await guild.roles.fetch().catch(() => null);
   const botMember = await guild.members.fetchMe().catch(() => null);
   const targetRole = await guild.roles.fetch(job.target_role_id).catch(() => null);
   const refusal = checkTargetRole({ guildId: guild.id, role: targetRole, botMember });

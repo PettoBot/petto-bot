@@ -88,6 +88,11 @@ const baseJob = (extra = {}) => ({
   assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '500', position: 3 }, botMember: me(5) }), null);
   assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '500', position: 3 }, botMember: me(5, false) }), 'missing_permission');
   assert.equal(plan.checkTargetRole({ guildId: '999', role: null, botMember: me(5) }), 'role_gone');
+  // A server whose roles are not loaded has no @everyone: the permissions of Petto cannot be added up (discord.js throws), and the job says so.
+  const unloaded = { guild: { roles: { everyone: undefined } }, get permissions() { throw new TypeError("Cannot read properties of undefined (reading 'permissions')"); }, roles: { highest: { position: 9 } } };
+  assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '500', position: 3 }, botMember: unloaded }), 'roles_unavailable');
+  const throwing = { guild: { roles: { everyone: {} } }, get permissions() { throw new TypeError('x'); }, roles: { highest: { position: 9 } } };
+  assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '500', position: 3 }, botMember: throwing }), 'roles_unavailable', 'a throwing read is the same answer');
   assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '999', position: 0 }, botMember: me(5) }), 'role_everyone');
   assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '500', position: 3, managed: true }, botMember: me(5) }), 'role_managed');
   assert.equal(plan.checkTargetRole({ guildId: '999', role: { id: '500', position: 5 }, botMember: me(5) }), 'role_above_bot');

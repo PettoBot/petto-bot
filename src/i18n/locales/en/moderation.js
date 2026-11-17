@@ -801,6 +801,7 @@ module.exports = {
   'moderation.bulkRole.card.error.role_managed': 'That role is managed by an integration, so Discord does not let anyone give it.',
   'moderation.bulkRole.card.error.role_above_bot': 'That role is above my highest role. Move my role above it and try again.',
   'moderation.bulkRole.card.error.member_list': 'I could not read the member list. Try again in a moment.',
+  'moderation.bulkRole.card.error.roles_unavailable': 'I could not read the roles of the server. Try again in a moment.',
   'moderation.bulkRole.card.error.permission_lost': 'Discord kept refusing, so I stopped: I lost the permission, or the role moved above mine, while this was running.',
   'moderation.bulkRole.card.error.crashed': 'It stopped because of an unexpected error. What was already done stays done.',
   'moderation.bulkRole.card.error.generic': 'It failed: {text}',
