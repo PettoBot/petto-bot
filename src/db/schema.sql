@@ -4517,6 +4517,11 @@ create index if not exists idx_pagination_messages_guild on pagination_messages(
 create index if not exists idx_pagination_messages_channel on pagination_messages(channel_id);
 alter table pagination_messages enable row level security;
 
+-- The AI assistant of the tickets was removed for good (it will not come back): what it kept is deleted on every start (nothing is left to delete after the first one).
+drop function if exists public.ticket_ai_count_reply(text);
+drop table if exists public.ticket_ai_usage;
+drop table if exists public.ticket_ai_settings;
+
 -- ---------------------------------------------------------------------------
 -- `ask` (the AI that answers questions): how many questions a member has asked each UTC day. Only a number, never the question or the answer.
 -- The bot counts with one statement that adds 1 only while `used` is under the limit, so two questions at once cannot pass it; a question that
