@@ -7,6 +7,7 @@ async function saveSnapshot(row) {
     channels: JSON.stringify(row.channels ?? []),
     roles: JSON.stringify(row.roles ?? []),
     emojis: JSON.stringify(row.emojis ?? []),
+    hidden_channels: JSON.stringify(row.hidden_channels ?? []),
     updated_at: row.updated_at ?? new Date().toISOString(),
   };
   const { error } = await database.from('discord_guild_snapshots').upsert(values, { onConflict: 'guild_id' });

@@ -32,14 +32,15 @@ function parseCustomId(id) {
  * @param {boolean} [options.done] a button was pressed: say it is done instead of why Petto chose
  * @param {string} options.prefix
  */
-function buildLanguageSection({ guildId, kind, choice, done = false, prefix = '!', lang = currentLanguage() }) {
+function buildLanguageSection({ guildId, kind, choice, done = false, prefix = '!', mentions = {}, lang = currentLanguage() }) {
   if (!choice) return null;
   const language = LANGUAGE_NAMES[choice.language];
+  const command = mentions.language ?? '`/language`';
   const text = done
-    ? t(lang, 'setup.language.done', { emoji: EMOJI.APPROVE, language, prefix })
+    ? t(lang, 'setup.language.done', { emoji: EMOJI.APPROVE, language, command })
     : [
       t(lang, `setup.language.chose.${choice.source}`, { language, words: (choice.words ?? []).map((word) => `\`${word}\``).join(', ') }),
-      t(lang, 'setup.language.change', { prefix }),
+      t(lang, 'setup.language.change', { command }),
     ].join('\n');
   const row = new ActionRowBuilder().addComponents(LANGUAGES.map((code) => new ButtonBuilder()
     .setCustomId(customId(kind, guildId, code))

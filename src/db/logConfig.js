@@ -2,7 +2,9 @@ const database = require('./database');
 const logger = require('../utils/logger');
 
 const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'webhooks', 'threads', 'integrations', 'commands', 'forms', 'forums'];
-const CONFIG_CACHE_TTL_MS = 5_000;
+// Every event of the log of every server asks for this: at 5 s a server with some activity read three tables every 5 s. A command that changes it forgets it at once
+// (`invalidateLogConfig`); a change made in the dashboard is seen within this time.
+const CONFIG_CACHE_TTL_MS = 15_000;
 const configCache = new Map();
 const configRequests = new Map();
 const configVersions = new Map();
@@ -86,6 +88,7 @@ async function getLogConfig(guildId, { force = false } = {}) {
 async function addEntry(guildId, channelId, event) {
   const { error } = await database.from('log_entries').insert({ guild_id: guildId, channel_id: channelId, event });
   if (error) throw error;
+  if (event === 'messages') require('../utils/messageInterest').remember(guildId);
   invalidateLogConfig(guildId);
 }
 
@@ -95,6 +98,7 @@ async function addEntries(guildId, channelId, events) {
   const rows = events.map((event) => ({ guild_id: guildId, channel_id: channelId, event }));
   const { error } = await database.from('log_entries').upsert(rows, { onConflict: 'guild_id,channel_id,event' });
   if (error) throw error;
+  if (events.includes('messages')) require('../utils/messageInterest').remember(guildId);
   invalidateLogConfig(guildId);
 }
 

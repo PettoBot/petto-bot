@@ -13,14 +13,24 @@ const RED = '#f08fa0';
 const BEFORE = '#6f655f'; // the period before, drawn quieter than this one
 const GOLD = '#f5c26b';
 
-function start(guildName, title, subtitle, color = ACCENT) {
+/**
+ * The top of every card: the server (its name, and its icon when it was loaded: `guild` is a name or `{ name, icon }`), what the card shows and the period.
+ */
+function start(guild, title, subtitle, color = ACCENT, height = H) {
+  const guildName = typeof guild === 'string' ? guild : guild.name;
+  const icon = typeof guild === 'string' ? null : guild.icon ?? null;
   registerCardFonts();
-  const canvas = createCanvas(W, H);
+  const canvas = createCanvas(W, height);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = BG;
-  ctx.fillRect(0, 0, W, H);
-  text(ctx, guildName.length > 38 ? `${guildName.slice(0, 37)}…` : guildName, 40, 56, { font: FONT(700, 30) });
-  text(ctx, subtitle, 40, 84, { font: FONT(400, 15), color: MUTED });
+  ctx.fillRect(0, 0, W, height);
+  // The icon of the server is a rounded square at the left; the text moves to its right.
+  const left = icon ? 40 + 60 : 40;
+  if (icon) {
+    ctx.save(); ctx.beginPath(); ctx.roundRect(40, 32, 52, 52, 14); ctx.clip(); ctx.drawImage(icon, 40, 32, 52, 52); ctx.restore();
+  }
+  text(ctx, guildName.length > (icon ? 42 : 46) ? `${guildName.slice(0, icon ? 41 : 45)}…` : guildName, left, 56, { font: FONT(700, 30) });
+  text(ctx, subtitle, left, 84, { font: FONT(400, 15), color: MUTED });
   ctx.font = FONT(700, 15);
   const chipW = ctx.measureText(title).width + 34;
   ctx.beginPath();
@@ -105,7 +115,7 @@ function gridLines(ctx, { left, plotW, ticks }) {
 }
 
 /** Lines over a grid: `series` are { values, color, dashed, fill }, drawn in order (draw the quiet one first). */
-function lineChart(ctx, { x, y, w, h, series, labels, format = compact }) {
+function lineChart(ctx, { x, y, w, h, series, labels, format = compact, labelsMax = null }) {
   const left = x + 46;
   const plotW = w - 46 - 8;
   const plotH = h - 30;
@@ -140,7 +150,7 @@ function lineChart(ctx, { x, y, w, h, series, labels, format = compact }) {
       line.values.forEach((value, i) => { ctx.beginPath(); ctx.arc(px(i), py(value), 3, 0, Math.PI * 2); ctx.fill(); });
     }
   }
-  axisLabels(ctx, labels, px, y + plotH + 20, plotW > 500 ? 12 : 5);
+  axisLabels(ctx, labels, px, y + plotH + 20, labelsMax ?? (plotW > 500 ? 12 : 5));
 }
 
 function legend(ctx, x, y, lang) {
@@ -170,8 +180,8 @@ function rankRows(ctx, { x, y, w, rows, color, format, rowH = 46 }) {
 }
 
 /** The overview: six numbers with their change, and three lines (messages, voice, active members) set against the period before. */
-function buildTrendCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.overview'), versus(days, lang));
+function buildTrendCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.overview'), versus(days, lang));
   const totals = stats.current.totals;
   const change = stats.change;
   const tiles = [
@@ -206,8 +216,8 @@ function buildTrendCard({ guildName, days, stats, lang = currentLanguage() }) {
 const percentOf = (before, now) => (before ? Math.round(((now - before) / before) * 1000) / 10 : now ? null : 0);
 
 /** The week by hour: a cell for each hour of each weekday, brighter the busier. */
-function buildHeatmapCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.heatmap'), tn(lang, 'info.statsCard.period', days, { count: days }), COLORS.messages);
+function buildHeatmapCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.heatmap'), tn(lang, 'info.statsCard.period', days, { count: days }), COLORS.messages);
   const grid = stats.heatmap.messages;
   const max = Math.max(1, ...grid.flat());
   panel(ctx, 40, 108, 840, 552);
@@ -262,8 +272,8 @@ function buildHeatmapCard({ guildName, days, stats, lang = currentLanguage() }) 
 }
 
 /** The top channels (or members): by messages on the left, by voice time on the right. `rows` are { label, value, share }. */
-function buildTopCard({ guildName, days, kind, messages, voice, note = null, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, `info.statsCard.title.${kind}`), tn(lang, 'info.statsCard.period', days, { count: days }), kind === 'channels' ? COLORS.messages : COLORS.voice);
+function buildTopCard({ guildName, guildIcon = null, days, kind, messages, voice, note = null, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, `info.statsCard.title.${kind}`), tn(lang, 'info.statsCard.period', days, { count: days }), kind === 'channels' ? COLORS.messages : COLORS.voice);
   const columns = [
     { title: t(lang, `info.statsCard.top.${kind}Messages`), rows: messages, color: COLORS.messages, format: (v) => compact(v), x: 40 },
     { title: t(lang, `info.statsCard.top.${kind}Voice`), rows: voice, color: COLORS.voice, format: (v) => duration(v), x: 664 },
@@ -431,8 +441,8 @@ function legendDot(ctx, x, y, color, label, strong = false) {
 }
 
 /** How the server grows: the members (or the net change) over the days, joins against leaves, and how long the ones who left had stayed. */
-function buildGrowthCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.growth'), versus(days, lang), COLORS.joins);
+function buildGrowthCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.growth'), versus(days, lang), COLORS.joins);
   const totals = stats.current.totals;
   const tiles = [
     { label: t(lang, 'info.summaryCard.tile.joins'), value: compact(totals.joins), color: COLORS.joins, change: stats.change.joins },
@@ -466,8 +476,8 @@ function buildGrowthCard({ guildName, days, stats, lang = currentLanguage() }) {
 }
 
 /** The two periods side by side, number by number, and how messages are made (links, files, replies, mentions). */
-function buildCompareCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.compare'), versus(days, lang));
+function buildCompareCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.compare'), versus(days, lang));
   const now = stats.current.totals;
   const before = stats.previous.totals;
   const rows = [
@@ -515,10 +525,47 @@ function legendBars(ctx, x, y, lang) {
   text(ctx, t(lang, 'info.statsCard.legend.current'), x + 170, y, { font: FONT(400, 11.5), color: MUTED, baseline: 'middle' });
 }
 
-/** What one member did: numbers, their place among the members, their share and the messages of each day. */
-async function buildMemberCard({ guildName, name, avatarUrl = null, member, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }));
-  // The member: picture (a circle) and name. A picture that cannot be had leaves a circle with the first letter.
+/** The icon of a server as an image for the top of the cards, or null when it has none or cannot be loaded (the card is drawn without it). */
+async function loadGuildIcon(guild) {
+  const url = guild?.iconURL?.({ extension: 'png', size: 128 });
+  if (!url) return null;
+  try { return await loadImageFromLink(url); } catch { return null; }
+}
+
+const MEMBER_H = 520;
+
+/** A date as a small chip with its label above (`CREATED`, `JOINED`), right aligned at `right`. */
+function dateChip(ctx, { right, y, label, date, lang }) {
+  const value = date ? new Intl.DateTimeFormat(lang === 'pt-BR' ? 'pt-BR' : lang, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }).format(date) : '—';
+  ctx.font = FONT(700, 16);
+  const w = Math.max(150, ctx.measureText(value).width + 36);
+  panel(ctx, right - w, y, w, 52, BORDER);
+  text(ctx, label, right - w / 2, y + 16, { font: FONT(700, 10.5), color: MUTED, align: 'center', baseline: 'middle' });
+  text(ctx, value, right - w / 2, y + 36, { font: FONT(700, 16), align: 'center', baseline: 'middle' });
+  return w;
+}
+
+/** A row of a panel: a small label on the left (`1d`, `Messages`) and the value on the right, over a quiet bar. */
+function infoRow(ctx, { x, y, w, label, value, color, share = null }) {
+  ctx.fillStyle = '#2a2421';
+  ctx.beginPath(); ctx.roundRect(x, y, w, 56, 12); ctx.fill();
+  if (share !== null) {
+    ctx.fillStyle = `${color}33`;
+    ctx.beginPath(); ctx.roundRect(x, y, Math.max(12, w * Math.min(1, share)), 56, 12); ctx.fill();
+  }
+  text(ctx, label, x + 18, y + 28, { font: FONT(700, 15), color, baseline: 'middle' });
+  let size = 20;
+  ctx.font = FONT(700, size);
+  while (ctx.measureText(value).width > w - 120 && size > 12) { size -= 1; ctx.font = FONT(700, size); }
+  text(ctx, value, x + w - 18, y + 28, { font: FONT(700, size), align: 'right', baseline: 'middle' });
+}
+
+/**
+ * The picture of a member, like the card of a statistics bot: who it is (picture, name, when the account was made and when the member joined) and three
+ * panels, the ranks in the server, the messages and the voice time of the last day, week and month. The charts and the rest are in `buildMemberChartsCard`.
+ */
+async function buildMemberCard({ guildName, guildIcon = null, name, avatarUrl = null, member, joinedAt = null, createdAt = null, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }), ACCENT, MEMBER_H);
   const cx = 40 + 34;
   let drawn = false;
   if (avatarUrl) {
@@ -532,62 +579,70 @@ async function buildMemberCard({ guildName, name, avatarUrl = null, member, lang
     ctx.fillStyle = '#2f2926'; ctx.beginPath(); ctx.arc(cx, 150, 34, 0, Math.PI * 2); ctx.fill();
     text(ctx, [...name][0]?.toUpperCase() ?? '?', cx, 150, { font: FONT(700, 28), align: 'center', baseline: 'middle' });
   }
-  text(ctx, name.length > 30 ? `${name.slice(0, 29)}…` : name, 124, 146, { font: FONT(700, 26) });
+  text(ctx, name.length > 26 ? `${name.slice(0, 25)}…` : name, 124, 146, { font: FONT(700, 26) });
   text(ctx, t(lang, 'info.statsCard.member.activeShare', { days: member.activeDays, total: member.dayLabels.length }), 124, 172, { font: FONT(400, 14), color: MUTED });
+  const joinedW = dateChip(ctx, { right: W - 40, y: 124, label: t(lang, 'info.statsCard.member.joined'), date: joinedAt, lang });
+  dateChip(ctx, { right: W - 40 - joinedW - 14, y: 124, label: t(lang, 'info.statsCard.member.created'), date: createdAt, lang });
 
+  const gap = 24;
+  const panelW = (W - 80 - gap * 2) / 3;
+  const top = 214;
+  const panelH = MEMBER_H - top - 28;
+  const rowX = (i) => 40 + i * (panelW + gap) + 20;
+  const rowW = panelW - 40;
+  const noData = t(lang, 'info.statsCard.member.noData');
+
+  // 1. The ranks in the server.
+  panel(ctx, 40, top, panelW, panelH);
+  panelTitle(ctx, t(lang, 'info.statsCard.member.serverRanks'), rowX(0), top + 38, rowW, 16);
+  [
+    { label: t(lang, 'info.statsCard.member.messages'), rank: member.rank.messages, color: COLORS.messages, share: member.share.messages },
+    { label: t(lang, 'info.statsCard.member.voice'), rank: member.rank.voice, color: COLORS.voice, share: member.share.voice },
+  ].forEach((entry, i) => infoRow(ctx, {
+    x: rowX(0), y: top + 62 + i * 70, w: rowW, label: entry.label, color: entry.color,
+    value: entry.rank ? t(lang, 'info.statsCard.member.rankOf', { rank: entry.rank.rank, total: entry.rank.of }) : noData,
+    share: entry.rank ? Math.min(1, entry.share * 4) : null,
+  }));
+  text(ctx, tn(lang, 'info.statsCard.member.periodRanks', member.days, { count: member.days }), rowX(0), top + panelH - 18, { font: FONT(400, 11.5), color: MUTED });
+
+  // 2. The messages and 3. the voice time of the last day, week and month.
+  const windows = [['d1', 1], ['d7', 7], ['d30', 30]];
+  panel(ctx, 40 + panelW + gap, top, panelW, panelH);
+  panelTitle(ctx, t(lang, 'info.statsCard.member.messagesTitle'), rowX(1), top + 38, rowW, 16);
+  windows.forEach(([key, count], i) => infoRow(ctx, { x: rowX(1), y: top + 62 + i * 64, w: rowW, label: t(lang, 'info.statsCard.member.window', { count }), color: COLORS.messages, value: tn(lang, 'info.statsCard.member.messagesCount', member.recent[key].messages, {}) }));
+  panel(ctx, 40 + 2 * (panelW + gap), top, panelW, panelH);
+  panelTitle(ctx, t(lang, 'info.statsCard.member.voiceTitle'), rowX(2), top + 38, rowW, 16);
+  windows.forEach(([key, count], i) => infoRow(ctx, { x: rowX(2), y: top + 62 + i * 64, w: rowW, label: t(lang, 'info.statsCard.member.window', { count }), color: COLORS.voice, value: duration(member.recent[key].voiceSeconds) }));
+  return canvas.toBuffer('image/png');
+}
+
+/** The rest of what a member did: the days in a row, the active days and the best day, and the messages and the voice hours of each day as two lines. */
+function buildMemberChartsCard({ guildName, guildIcon = null, member, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }), ACCENT, MEMBER_H);
   const tiles = [
-    { label: t(lang, 'info.statsCard.member.messages'), value: compact(member.totals.messages), color: COLORS.messages, change: member.change.messages },
-    { label: t(lang, 'info.statsCard.member.voice'), value: duration(member.totals.voiceSeconds), color: COLORS.voice, change: member.change.voiceSeconds },
-    { label: t(lang, 'info.statsCard.member.streak'), value: String(member.streak), color: GOLD, change: undefined },
-    { label: t(lang, 'info.statsCard.member.perActiveDay'), value: compact(Math.round(member.perActiveDay)), color: COLORS.joins, change: undefined },
+    { label: t(lang, 'info.statsCard.member.streak'), value: String(member.streak), color: GOLD },
+    { label: t(lang, 'info.statsCard.member.activeDays'), value: `${member.activeDays}/${member.dayLabels.length}`, color: ACCENT },
+    { label: t(lang, 'info.statsCard.member.perActiveDay'), value: compact(Math.round(member.perActiveDay)), color: COLORS.joins },
+    { label: t(lang, 'info.statsCard.member.bestDay'), value: member.bestDay ? `${compact(member.bestDay.value)}` : '—', color: COLORS.messages },
   ];
-  const tileW = (W - 80 - 14 * 3) / 4;
-  tiles.forEach((entry, i) => tile(ctx, { x: 40 + i * (tileW + 14), y: 206, w: tileW, label: entry.label, value: entry.value, color: entry.color, change: entry.change, lang }));
+  const tileGap = 14;
+  const tileW = (W - 80 - tileGap * 3) / 4;
+  tiles.forEach((entry, i) => tile(ctx, { x: 40 + i * (tileW + tileGap), y: 108, w: tileW, label: entry.label, value: entry.value, color: entry.color, change: undefined, lang }));
 
-  panel(ctx, 40, 326, 760, 334);
-  panelTitle(ctx, t(lang, 'info.statsCard.member.daily'), 64, 364, 700, 16);
   const labels = member.dayLabels.map((day) => formatDay(day, lang));
-  const bestIndex = member.bestDay ? member.dayLabels.indexOf(member.bestDay.day) : -1;
-  const values = member.daily;
-  const plotLeft = 118;
-  const plotW = 760 - 118 + 40 - 24;
-  const plotH = 224;
-  const max = niceMax(Math.max(0, ...values));
-  const slot = plotW / values.length;
-  ctx.strokeStyle = GRID; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
-  for (let i = 0; i <= 4; i += 1) {
-    const gy = 386 + plotH - (plotH * i) / 4;
-    ctx.beginPath(); ctx.moveTo(plotLeft, gy); ctx.lineTo(plotLeft + plotW, gy); ctx.stroke();
-    text(ctx, compact((max * i) / 4), plotLeft - 8, gy, { font: FONT(400, 10.5), color: MUTED, align: 'right', baseline: 'middle' });
-  }
-  ctx.setLineDash([]);
-  values.forEach((value, i) => {
-    const h = (value / max) * plotH;
-    const w = Math.max(1, Math.min(26, slot * 0.64));
-    ctx.fillStyle = i === bestIndex ? ACCENT : `${COLORS.messages}88`;
-    ctx.beginPath(); ctx.roundRect(plotLeft + slot * i + (slot - w) / 2, 386 + plotH - h, w, h, [Math.min(5, w / 2), Math.min(5, w / 2), 0, 0]); ctx.fill();
-  });
-  axisLabels(ctx, labels, (i) => plotLeft + slot * i + slot / 2, 386 + plotH + 20, 10);
-
-  panel(ctx, 824, 326, 416, 334);
-  panelTitle(ctx, t(lang, 'info.statsCard.member.place'), 848, 364, 368, 16);
-  const places = [
-    { label: t(lang, 'info.statsCard.member.rankMessages'), rank: member.rank.messages, share: member.share.messages, color: COLORS.messages, shareKey: 'shareMessages' },
-    { label: t(lang, 'info.statsCard.member.rankVoice'), rank: member.rank.voice, share: member.share.voice, color: COLORS.voice, shareKey: 'shareVoice' },
+  const panels = [
+    { title: 'messages', values: member.daily, color: COLORS.messages, format: compact },
+    { title: 'voice', values: member.dailyVoice.map((seconds) => seconds / 3600), color: COLORS.voice, format: hoursAxis },
   ];
-  places.forEach((place, i) => {
-    const y = 396 + i * 124;
-    text(ctx, place.label, 848, y + 8, { font: FONT(400, 13), color: MUTED, baseline: 'middle' });
-    text(ctx, place.rank ? t(lang, 'info.statsCard.member.rankOf', { rank: place.rank.rank, total: place.rank.of }) : '—', 848, y + 44, { font: FONT(700, 28), baseline: 'middle' });
-    if (place.rank) {
-      const top = Math.max(1, Math.ceil((place.rank.rank / place.rank.of) * 100));
-      text(ctx, t(lang, 'info.statsCard.member.top', { percent: top }), 1216, y + 44, { font: FONT(700, 15), color: place.color, align: 'right', baseline: 'middle' });
-    }
-    ctx.fillStyle = '#2a2421'; ctx.beginPath(); ctx.roundRect(848, y + 72, 368, 10, 5); ctx.fill();
-    ctx.fillStyle = place.color; ctx.beginPath(); ctx.roundRect(848, y + 72, Math.max(place.share ? 8 : 0, 368 * Math.min(1, place.share * 4)), 10, 5); ctx.fill();
-    text(ctx, t(lang, `info.statsCard.member.${place.shareKey}`, { percent: (place.share * 100).toFixed(place.share >= 0.1 ? 0 : 1) }), 848, y + 98, { font: FONT(400, 11.5), color: MUTED });
+  const gap = 24;
+  const panelW = (W - 80 - gap) / 2;
+  panels.forEach((entry, i) => {
+    const px = 40 + i * (panelW + gap);
+    panel(ctx, px, 230, panelW, MEMBER_H - 230 - 28);
+    panelTitle(ctx, t(lang, `info.statsCard.chart.${entry.title}`), px + 22, 266, panelW - 44, 16);
+    lineChart(ctx, { x: px + 10, y: 286, w: panelW - 20, h: 200, labels, labelsMax: 7, format: entry.format, series: [{ values: entry.values, color: entry.color, fill: true }] });
   });
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { buildTrendCard, buildHeatmapCard, buildTopCard, buildGrowthCard, buildCompareCard, buildMemberCard };
+module.exports = { buildTrendCard, buildHeatmapCard, buildTopCard, buildGrowthCard, buildCompareCard, buildMemberCard, buildMemberChartsCard, loadGuildIcon };

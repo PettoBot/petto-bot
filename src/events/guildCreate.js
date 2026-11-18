@@ -12,6 +12,8 @@ const { syncGuildAutoMod } = require('../utils/autoModManager');
 const {
   commandMention,
   commandSubcommandMention,
+  setupMentions,
+  botAvatarUrl,
   ensureAdminSetupChannel,
   findPrivateChannel,
   buildAdminSetupMessage,
@@ -27,11 +29,11 @@ const roleTriggerWarm = require('../utils/roleTriggerWarm');
 const OWNER_ID = '293504726505357312';
 
 /** Public-facing thank-you sent to whoever added the bot, no internal server data in it. */
-function buildThanksMessage(guildName, setupMention, prefix, lang = currentLanguage()) {
+function buildThanksMessage(guildName, setupMention, prefix, lang = currentLanguage(), mentions = {}) {
   const container = new ContainerBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.BOT, server: guildName })),
-      new TextDisplayBuilder().setContent(t(lang, 'core.join.howToStart', { setup: setupMention, prefix })),
+      new TextDisplayBuilder().setContent(t(lang, 'core.join.howToStart', { setup: setupMention, help: mentions.help ?? '`/help`' })),
     );
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setLabel(t(lang, 'core.join.website.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs'),
@@ -118,9 +120,12 @@ async function welcomeGuild(guild, guildConfig, languageChoice = null) {
     });
     const setupMention = await commandMention(guild.client, 'setup', guild);
     const reportConfigMention = await commandSubcommandMention(guild.client, 'report', 'config', guild);
+    const mentions = await setupMentions(guild.client, guild);
 
     const setupPayload = (options = {}) => buildAdminSetupMessage({
       botId: guild.client.user.id,
+      avatarUrl: botAvatarUrl(guild),
+      mentions,
       setupMention,
       reportConfigMention,
       prefix: guildPrefixes.primaryPrefix(guildConfig),
@@ -152,11 +157,11 @@ async function welcomeGuild(guild, guildConfig, languageChoice = null) {
     if (ownerUser) await sendDm(ownerUser, { content }, { plain: true }).catch(() => {}); // the team's own notice of a new server: not a message to a member
 
     if (owner?.user && setupTarget) {
-      await sendDm(owner.user, buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildPrefixes.primaryPrefix(guildConfig), languageChoice }), { guild, kind: 'setup' }).catch(() => {});
+      await sendDm(owner.user, buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildPrefixes.primaryPrefix(guildConfig), mentions, languageChoice }), { guild, kind: 'setup' }).catch(() => {});
     }
 
     if (inviter && inviter.id !== owner?.id) {
-      await sendDm(inviter, buildThanksMessage(guild.name, setupMention, guildPrefixes.primaryPrefix(guildConfig)), { guild, kind: 'setup' }).catch(() => {});
+      await sendDm(inviter, buildThanksMessage(guild.name, setupMention, guildPrefixes.primaryPrefix(guildConfig), currentLanguage(), mentions), { guild, kind: 'setup' }).catch(() => {});
     }
   } catch (err) {
     logger.error(`guildCreate join notification failed for guild ${guild.id}:`, err);

@@ -290,7 +290,7 @@ function tailOf(node) {
     assert.ok(wrapped, `${file} exists`);
     assert.ok(!wrapped.hiddenFromHelp && !wrapped.privateGuildId, `${file} is not private`);
     // (what `/config` held is a slash command of its own now: `/alias`, `/backup`... so this holds for what the other umbrellas wrap.)
-    assert.ok(!isSlashCommand(wrapped) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig'].includes(file), `${file} is still a prefix command: the old command works as it did`);
+    assert.ok(!isSlashCommand(wrapped) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig', 'language'].includes(file), `${file} is still a prefix command: the old command works as it did`);
     assert.ok(!(wrapped.data.toJSON().options ?? []).some((option) => option.type === 2), `${file} has no groups of its own`);
     assert.equal(wrapped.prefixArgs === undefined || ['disablecommand'].includes(file), true, `${file}: a prefixArgs reader is read by the old command itself (the prefix goes to it)`);
   }
@@ -535,7 +535,7 @@ function tailOf(node) {
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
   assert.equal(client.commandAliases.get('gw'), 'giveaway');
-  for (const name of wrappedNames) assert.ok(client.commands.has(name) && (!isSlashCommand(commandFile(name)) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig'].includes(name)), `!${name} is still a prefix command (the ones of /config are slash commands of their own now)`);
+  for (const name of wrappedNames) assert.ok(client.commands.has(name) && (!isSlashCommand(commandFile(name)) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig', 'language'].includes(name)), `!${name} is still a prefix command (the ones of /config are slash commands of their own now)`);
   // The six old slash commands that an umbrella subcommand replaced are not registered; the old command is still loaded for the prefix.
   for (const name of ['timeout']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
   for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'game', 'me', 'search', 'levels', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
@@ -714,7 +714,7 @@ function tailOf(node) {
   assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [91, 100, 9], '9 slots are free, the 9 that are kept');
   assert.ok(usage.chat.free >= 9);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
-  for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
+  for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
   const size = (value) => [...String(value ?? '')].length;

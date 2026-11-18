@@ -50,6 +50,7 @@ No line that names the assistant or signs the work, in any commit or pull reques
 - **Global, not page by page.** A behavior or a look (a switch, a list, a bar, a color) is made once in the shared piece and every page gets it; never fixed one page at a time.
 - **Colors of the dashboard.** Green to save, add, confirm and for what is chosen; red to delete. The peach is for the brand, links and focus, not for buttons or selected things. Where a color clashes with another, change it.
 - **Pictures and screenshots** in dark mode, cut to what is shown: no empty space around it, no half-hidden parts. Look at them on a phone width too.
+- **Test pictures use the main server.** Every sample picture or screenshot made to try something (the Currently log, the wikis, the checks of a pull request) that shows a server name or a server picture uses the main server: id `1414452131850879080`, with its name and icon as Discord gives them now (`https://discord.com/api/v10/invites/GXRfVf3wpf` has both; the icon is `https://cdn.discordapp.com/icons/<id>/<icon>.png`), never an invented server.
 - **No empty space** in the layouts, on a wide window or on a phone.
 - **Say the truth about what was checked.** Say what was tried (and how) and what was not (a real phone, the live site, a real server). A fix that could not be reproduced is said so.
 - **Answers to the maintainer** are in short, warm Spanish, with the links and the state of each pull request, and what he has to do (merge order, restart the bot).

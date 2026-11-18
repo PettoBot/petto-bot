@@ -111,6 +111,9 @@ function buildSnapshot(guild, { notes = null } = {}) {
     bot_nick: guild.members?.me?.nickname ?? null,
     bot_avatar: guild.members?.me?.avatar ?? null,
     channels,
+    // Channels the bot cannot view are not in `channels` (the pickers must not list them), but their ids are kept so a saved choice that points to one is
+    // told apart from a deleted channel.
+    hidden_channels: [...guild.channels.cache.values()].filter((channel) => !channel.isThread?.() && isObfuscatedChannel(channel)).map((channel) => String(channel.id)),
     roles,
     emojis,
   };

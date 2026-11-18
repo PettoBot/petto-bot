@@ -1,8 +1,6 @@
-// The AI assistant of the tickets (beta), the part that runs in the bot: the Groq client and the rules of when to answer in a ticket.
-// The prompt is built by ticketAiPrompt.js (the same rules the dashboard's test chat uses). The key is GROQ_API_KEY (never logged or sent
-// anywhere but Groq); the model is GROQ_MODEL, or the first preferred one that Groq lists.
+// The Groq client the AI features of Petto share (today only `/ask`): one chat request, the model choice and the log lines.
+// The key is GROQ_API_KEY (never logged or sent anywhere but Groq); the model is GROQ_MODEL, or the first preferred one that Groq lists.
 const logger = require('./logger');
-const { EMOJI } = require('./emojis');
 
 const CFG = {
   base: 'https://api.groq.com/openai/v1',
@@ -13,21 +11,10 @@ const CFG = {
   modelsTimeoutMs: 4_000,
   temperature: 0.3,
   maxTokens: 700,
-  /** The opener may write several messages in a row: the assistant waits this long and answers the last one. */
-  debounceMs: 2_500,
-  /** Replies per server per hour, so a flood of tickets cannot empty the quota. */
-  guildPerHour: 120,
-  /** Recent messages read from the ticket channel to know what was said and who answered. */
-  scanMessages: 40,
 };
 
-/** The line that ends every reply of the assistant: it says it is an AI and lets the bot recognize its own replies later (after a restart). */
-const MARK = `-# ${EMOJI.RELEASE_MAGIC} `;
-/** The line of the first replies, before the bot's own emoji: still recognized in tickets that already have them. */
-const LEGACY_MARK = '-# 🤖 ';
-
-/** The tag of the log lines of the client; the other features that use it (`ask`) pass their own to `chat`. */
-const TAG = 'ticket-ai';
+/** The tag of the log lines of the client; a feature that uses it passes its own to `chat`. */
+const TAG = 'ai';
 
 const isConfigured = () => Boolean(String(process.env.GROQ_API_KEY ?? '').trim());
 
@@ -54,7 +41,7 @@ async function resolveModel(key, tag = TAG) {
 
 /**
  * One chat request. Returns `{ ok: true, content }` or `{ ok: false, code }` (timeout, busy, model, upstream, empty). Only the status of an
- * error is logged, never its body. `tag` names the feature in the log lines (the tickets by default).
+ * error is logged, never its body. `tag` names the feature in the log lines.
  */
 async function chat(messages, maxTokens = CFG.maxTokens, tag = TAG) {
   const key = String(process.env.GROQ_API_KEY ?? '').trim();
@@ -85,18 +72,4 @@ async function chat(messages, maxTokens = CFG.maxTokens, tag = TAG) {
   }
 }
 
-// ---- limit per server per hour (in this process)
-const hourly = new Map();
-function takeGuildSlot(guildId, now = Date.now()) {
-  const recent = (hourly.get(guildId) ?? []).filter((at) => now - at < 60 * 60 * 1000);
-  if (recent.length >= CFG.guildPerHour) { hourly.set(guildId, recent); return false; }
-  recent.push(now);
-  hourly.set(guildId, recent);
-  if (hourly.size > 5000) hourly.delete(hourly.keys().next().value);
-  return true;
-}
-
-/** The text of an assistant reply without its AI line. */
-const stripMark = (content) => String(content ?? '').split(`\n${MARK}`)[0].split(`\n${LEGACY_MARK}`)[0].trim();
-
-module.exports = { CFG, MARK, LEGACY_MARK, isConfigured, chat, takeGuildSlot, stripMark };
+module.exports = { CFG, isConfigured, chat };

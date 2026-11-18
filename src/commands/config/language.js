@@ -1,4 +1,4 @@
-// `!language` (alias `!lang`): which language Petto speaks on this server, and changing it (Manage Server). Prefix only.
+// `/language` and `!language` (alias `!lang`): which language Petto speaks on this server, and changing it (Manage Server).
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -10,9 +10,11 @@ const languageList = () => LANGUAGES.map((code) => `${LANGUAGE_NAMES[code]} (\`$
 
 /** The current language of the server and how to change it, written in that language. */
 function buildCurrentCard(lang, prefix) {
+  // With `/` the language is an option of the command; with a prefix it is a word after it.
+  const how = (value) => (prefix === '/' ? `/language language:${value}` : `${prefix}language ${value}`); // i18n-ignore: a command line
   return textCard([
-    t(lang, 'config.language.current', { language: LANGUAGE_NAMES[lang], command: `${prefix}language <${LANGUAGES.join('|')}>` }),
-    t(lang, 'config.language.redrawHint', { command: `${prefix}language ${lang}` }),
+    t(lang, 'config.language.current', { language: LANGUAGE_NAMES[lang], command: how(`<${LANGUAGES.join('|')}>`) }),
+    t(lang, 'config.language.redrawHint', { command: how(lang) }),
     t(lang, 'config.language.available', { list: languageList() }),
   ].join('\n'));
 }
@@ -33,6 +35,8 @@ function readLanguageInput(text) {
 
 module.exports = {
   aliases: ['lang'],
+  registerSlash: true,
+  guildScoped: true, // the 100 global slots are kept free: it is registered in each server instead (second set)
   buildCurrentCard,
   buildDoneCard,
   readLanguageInput,
@@ -50,7 +54,7 @@ module.exports = {
   async execute(interaction) {
     const requested = interaction.options.getString('language');
     const current = await languageOf(interaction);
-    const prefix = interaction.typedPrefix ?? '!';
+    const prefix = interaction.typedPrefix ?? '/'; // a real slash command has no typed prefix
 
     if (requested == null) {
       await interaction.reply({ components: [buildCurrentCard(current, prefix)], flags: MessageFlags.IsComponentsV2 });

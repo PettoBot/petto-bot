@@ -83,8 +83,26 @@ function getAvatar(user) {
   }
 }
 
-/** Best-effort lookup of who performed an action via the audit log (Discord has no direct actor field on most events). */
-async function fetchMod(guild, action, targetId) {
+/**
+ * Whether any channel of this server gets this event of the log. It reads the configuration that is kept in memory (a few seconds), so asking it
+ * costs nothing. Everything that only exists to be written in a log (the audit log request that says who did it, the embed) asks it first:
+ * a server that has not turned that log on has no use for them. If the configuration cannot be read it says yes, as before.
+ */
+async function logsEvent(guildId, event) {
+  try {
+    const config = await getLogConfig(guildId);
+    return config.entries.some((entry) => entry.event === event);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Best-effort lookup of who performed an action via the audit log (Discord has no direct actor field on most events).
+ * `{ event }`: the log this is for. When the server has not turned that log on nothing is asked (it is a request to Discord that nobody would read).
+ */
+async function fetchMod(guild, action, targetId, { event = null } = {}) {
+  if (event && !(await logsEvent(guild.id, event))) return null;
   try {
     const logs = await guild.fetchAuditLogs({ type: action, limit: 5 });
     const entry = logs.entries.find((e) => e.targetId === String(targetId) && Date.now() - e.createdTimestamp < 6000);
@@ -96,7 +114,8 @@ async function fetchMod(guild, action, targetId) {
 }
 
 /** The audit log entry behind an action (who did it and why), or null. Best effort like `fetchMod`. */
-async function fetchEntry(guild, action, targetId, { maxAgeMs = 6000 } = {}) {
+async function fetchEntry(guild, action, targetId, { maxAgeMs = 6000, event = null } = {}) {
+  if (event && !(await logsEvent(guild.id, event))) return null;
   try {
     const logs = await guild.fetchAuditLogs({ type: action, limit: 5 });
     return logs.entries.find((e) => (targetId == null || e.targetId === String(targetId)) && Date.now() - e.createdTimestamp < maxAgeMs) ?? null;
@@ -202,4 +221,4 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
   }
 }
 
-module.exports = { sendLog, botLook, getAvatar, fetchMod, fetchEntry, prettyPermission, sanitizeEmbed, EVENTS, AuditLogEvent };
+module.exports = { sendLog, logsEvent, botLook, getAvatar, fetchMod, fetchEntry, prettyPermission, sanitizeEmbed, EVENTS, AuditLogEvent };

@@ -94,6 +94,18 @@ const day = (back) => botDay(new Date(NOW.getTime() - back * 86_400_000));
   assert.deepEqual(member.rank.messages, { rank: 1, of: 2 });
   assert.deepEqual(member.rank.voice, { rank: 1, of: 1 });
   assert.ok(Math.abs(member.share.messages - 0.7) < 1e-9);
+  // The last day, week and month are fixed, whatever period was asked, and the voice has its own day by day line.
+  assert.deepEqual(member.recent.d1, { messages: 70, voiceSeconds: 300 }, 'the last day');
+  assert.deepEqual(member.recent.d7, { messages: 490, voiceSeconds: 2100 }, 'the last week');
+  assert.deepEqual(member.recent.d30, { messages: 735, voiceSeconds: 2100 }, 'the last month: the 14 days that were read');
+  assert.equal(member.dailyVoice.length, 7);
+  assert.equal(member.dailyVoice.reduce((a, b) => a + b, 0), 2100, 'the voice seconds of each day add up to the voice of the period');
+  const monthly = stats.buildMemberStats({ userId: 'u1', days: 30, now: NOW, userRows, memberTotals });
+  assert.equal(monthly.recent.d7.messages, 490, 'the week is the same with a month asked');
+  assert.equal(monthly.dailyVoice.length, 30);
+  // A period of 2 days still has the month (the rows read are at least 30 days back: see readMemberStats).
+  assert.equal(stats.buildMemberStats({ userId: 'u1', days: 2, now: NOW, userRows, memberTotals }).recent.d30.messages, 735);
+  assert.match(require('node:fs').readFileSync(require.resolve('../src/db/statsQueries.js'), 'utf8'), /startOf\(Math\.max\(days \* 2, 30\), now\)/, 'the rows of the member cover at least 30 days');
   const nobody = stats.buildMemberStats({ userId: 'u9', days: 7, now: NOW, userRows: [], memberTotals });
   assert.equal(nobody.rank.messages, null);
   assert.equal(nobody.totals.messages, 0);
@@ -123,6 +135,20 @@ const day = (back) => botDay(new Date(NOW.getTime() - back * 86_400_000));
     assert.ok(png(cards.buildGrowthCard({ guildName: 'Petto', days: 7, stats: result, lang })), `${lang} growth`);
     assert.ok(png(cards.buildCompareCard({ guildName: 'Petto', days: 7, stats: result, lang })), `${lang} compare`);
     assert.ok(png(await cards.buildMemberCard({ guildName: 'Petto', name: 'liam', member, lang })), `${lang} member`);
+    // The two pictures of a member (the profile over the charts), both 1280 wide and 520 high, with and without the dates of the account.
+    const profile = await cards.buildMemberCard({ guildName: 'Petto', name: 'liam', member, joinedAt: new Date('2026-09-11T12:00:00Z'), createdAt: new Date('2026-04-12T12:00:00Z'), lang });
+    const chartsPicture = cards.buildMemberChartsCard({ guildName: 'Petto', member, lang });
+    for (const picture of [profile, chartsPicture]) { assert.ok(png(picture), `${lang} member picture`); assert.deepEqual([picture.readUInt32BE(16), picture.readUInt32BE(20)], [1280, 520], `${lang} member picture size`); }
+    // The icon of the server goes at the top of every card (one place for all of them): a card with an icon is another picture, and still the same size.
+    const { createCanvas } = require('@napi-rs/canvas');
+    const iconCanvas = createCanvas(64, 64); iconCanvas.getContext('2d').fillStyle = '#7bd88f'; iconCanvas.getContext('2d').fillRect(0, 0, 64, 64);
+    for (const [name, make] of [['trend', (icon) => cards.buildTrendCard({ guildName: 'Petto', guildIcon: icon, days: 7, stats: result, lang })], ['member charts', (icon) => cards.buildMemberChartsCard({ guildName: 'Petto', guildIcon: icon, member, lang })]]) {
+      const plain = make(null); const withIcon = make(iconCanvas);
+      assert.ok(png(withIcon) && !plain.equals(withIcon), `${lang} ${name}: the icon is drawn`);
+      assert.deepEqual([withIcon.readUInt32BE(16), withIcon.readUInt32BE(20)], [plain.readUInt32BE(16), plain.readUInt32BE(20)], `${lang} ${name}: same size`);
+    }
+    assert.equal(await cards.loadGuildIcon({ iconURL: () => null }), null, 'a server without an icon draws without it');
+    assert.equal(await cards.loadGuildIcon(null), null);
     // Empty servers draw too.
     assert.ok(png(cards.buildTrendCard({ guildName: 'Petto', days: 30, stats: empty, lang })), `${lang} empty trend`);
     assert.ok(png(cards.buildHeatmapCard({ guildName: 'Petto', days: 30, stats: empty, lang })), `${lang} empty heatmap`);

@@ -33,7 +33,7 @@ async function handleThreadCreate(thread, newlyCreated, client) {
 async function handleThreadDelete(thread, client) {
   if (!thread.guild || ownThread(thread, client)) return;
   const lang = await guildLanguage(thread.guild.id);
-  const mod = await fetchMod(thread.guild, AuditLogEvent.ThreadDelete, thread.id);
+  const mod = await fetchMod(thread.guild, AuditLogEvent.ThreadDelete, thread.id, { event: 'threads' });
   const fields = [{ name: t(lang, 'logs.field.type'), value: threadType(thread.type, lang), inline: true }];
   if (thread.parentId) fields.push({ name: t(lang, 'logs.field.channel'), value: `<#${thread.parentId}>`, inline: true });
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
@@ -58,7 +58,7 @@ async function handleThreadUpdate(oldThread, newThread, client) {
   const archivedChanged = oldThread.archived !== newThread.archived;
   if (!fields.length && !archivedChanged) return;
 
-  const mod = await fetchMod(newThread.guild, AuditLogEvent.ThreadUpdate, newThread.id);
+  const mod = await fetchMod(newThread.guild, AuditLogEvent.ThreadUpdate, newThread.id, { event: 'threads' });
   // A thread that archives itself after a quiet time happens all day, so archiving is only told when a person did it.
   if (archivedChanged && mod) fields.unshift({ name: t(lang, 'logs.thread.state'), value: t(lang, newThread.archived ? 'logs.thread.archived' : 'logs.thread.unarchived'), inline: true });
   if (!fields.length) return;
