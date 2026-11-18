@@ -227,6 +227,8 @@ module.exports = {
   'leveling.manage.unknownLevelAction': 'Unknown action `{action}`. Use `add`, `set` or `remove`.',
   'leveling.manage.needsTarget': 'Provide `target` for a transfer.',
   'leveling.manage.notEnough': "{emoji}  {user} doesn't have enough XP.",
+  'leveling.manage.tooMuchXp': "{emoji}  That is too much XP: one member cannot have more than {max}.",
+  'leveling.manage.tooHighLevel': "{emoji}  That level is too high: the highest level here is {max}.",
   'leveling.manage.xpAdd': '{emoji}  Added **{amount} XP** for {user}.',
   'leveling.manage.xpSet': '{emoji}  Set **{amount} XP** for {user}.',
   'leveling.manage.xpRemove': '{emoji}  Removed **{amount} XP** for {user}.',

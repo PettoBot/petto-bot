@@ -984,6 +984,9 @@ async function manageCmd(interaction, sub, lang) {
   return manageLevel(interaction, lang);
 }
 
+// The XP column is a bigint and a JavaScript number is exact only up to this: more than that cannot be saved, so it is refused (a level of 2e10 would make an XP of 2.5e30).
+const MAX_XP = Number.MAX_SAFE_INTEGER;
+
 async function manageXp(interaction, lang) {
   const action = interaction.options.getString('action', true);
   const targetUser = interaction.options.getUser('user', true);
@@ -1007,6 +1010,7 @@ async function manageXp(interaction, lang) {
   // The XP column is a bigint and the database hands it over as a string ("8921"): it is a number before anything is added to it.
   const current = Number(data.xp) || 0;
   let newXp = current;
+  let destNewXp = null;
   if (action === 'add') newXp = current + amount;
   else if (action === 'set') newXp = amount;
   else if (action === 'remove') newXp = Math.max(0, current - amount);
@@ -1017,10 +1021,15 @@ async function manageXp(interaction, lang) {
     }
     newXp = current - amount;
     const destData = await levelUsersDb.ensureUser(interaction.guild.id, destUser.id);
-    const destNewXp = (Number(destData.xp) || 0) + amount;
-    await levelUsersDb.setXpAndLevel(interaction.guild.id, destUser.id, destNewXp, levelForXp(destNewXp, config));
+    destNewXp = (Number(destData.xp) || 0) + amount;
   }
 
+  // Nothing is saved when the result does not fit in the column (the same check keeps NaN out).
+  if (!(newXp <= MAX_XP) || (destNewXp !== null && !(destNewXp <= MAX_XP))) {
+    await reply(interaction, t(lang, 'leveling.manage.tooMuchXp', { emoji: EMOJI.DENY, max: MAX_XP.toLocaleString('en-US') }), 0xfe6465);
+    return;
+  }
+  if (destNewXp !== null) await levelUsersDb.setXpAndLevel(interaction.guild.id, destUser.id, destNewXp, levelForXp(destNewXp, config));
   await levelUsersDb.setXpAndLevel(interaction.guild.id, targetUser.id, newXp, levelForXp(newXp, config));
 
   const key = { add: 'leveling.manage.xpAdd', set: 'leveling.manage.xpSet', remove: 'leveling.manage.xpRemove', transfer: 'leveling.manage.xpTransfer' }[action];
@@ -1046,7 +1055,13 @@ async function manageLevel(interaction, lang) {
   else if (action === 'set') newLevel = amount;
   else if (action === 'remove') newLevel = Math.max(0, currentLevel - amount);
 
+  // A level above the maximum of the server, or one whose XP does not fit in the column, is refused: nothing is saved (a level of 2e10 made an XP of 2.5e30 and the database refused it).
+  const maxLevel = Math.max(1, Number(config.max_level ?? 1000) || 1000);
   const newXp = totalXpForLevel(newLevel, config);
+  if (!(newLevel <= maxLevel) || !(newXp <= MAX_XP)) {
+    await reply(interaction, t(lang, 'leveling.manage.tooHighLevel', { emoji: EMOJI.DENY, max: maxLevel.toLocaleString('en-US') }), 0xfe6465);
+    return;
+  }
   await levelUsersDb.setXpAndLevel(interaction.guild.id, targetUser.id, newXp, newLevel);
 
   const key = { add: 'leveling.manage.levelAdd', set: 'leveling.manage.levelSet', remove: 'leveling.manage.levelRemove' }[action];
