@@ -21,7 +21,7 @@ const SETTINGS_TABLES = new Set([
   'starboards', 'monkeyboards', 'clownboards', 'button_responders', 'component_panels', 'command_aliases', 'disabled_commands',
   'command_permission_levels', 'permission_groups', 'managed_webhooks', 'counters', 'auto_threads', 'log_entries', 'log_ignored',
   'automod_silent_channels', 'sanction_templates', 'poj_channels', 'bump_reminders', 'sender_identities', 'partner_blacklist',
-  'appeal_forms', 'giveaway_presets', 'dash_access',
+  'appeal_forms', 'giveaway_presets', 'dash_access', 'member_event_variants', 'aged_roles',
   // Forms: the forms, their panels, and the submissions the dashboard lists (a review from Discord shows there at once).
   'forms', 'form_panels', 'form_submissions',
   // Forum support: the setups, and the posts the dashboard lists (a post closed in Discord shows there at once).

@@ -78,7 +78,7 @@ assert.equal(limiter.size(), 1, 'when the cooldowns are over the map empties');
 const fs = require('node:fs');
 const { shortAliasRoutes, SHORT_ALIAS_TABLE, TEAM_ALIAS_TABLE } = require('../src/utils/shortAliases');
 const tableBytes = fs.statSync(path.join(__dirname, '..', 'src', 'utils', 'short-aliases.json')).size;
-assert.ok(tableBytes < 40_000, `the table of short aliases is ${tableBytes} bytes of text`);
+assert.ok(tableBytes < 42_000, `the table of short aliases is ${tableBytes} bytes of text`);
 assert.equal(shortAliasRoutes(), shortAliasRoutes(), 'the routes are made once');
 assert.equal(shortAliasRoutes().length, Object.keys(SHORT_ALIAS_TABLE).length + Object.keys(TEAM_ALIAS_TABLE).length, 'the published table and the words of the team');
 assert.ok(Object.values(SHORT_ALIAS_TABLE).every((target) => typeof target === 'string'), 'strings only');

@@ -1,0 +1,20 @@
+// Cargos por tempo de casa: um cargo dado depois de alguns dias no servidor (utils/agedRoles.ts, commands/welcome/agedrole.js). Catálogo de referência: es e pt-BR devem ter as mesmas chaves.
+module.exports = {
+  'agedroles.managed': '{role} é gerenciado por uma integração ou é @everyone: não dá para dar nem tirar.',
+  'agedroles.aboveMe': '{role} está acima do meu cargo mais alto, então não posso dar nem tirar. Suba meu cargo acima dele.',
+  'agedroles.problem.full': 'Não há espaço: um servidor pode ter {max} regras deste tipo.',
+  'agedroles.problem.days': 'Os dias devem ser um número de 1 a 3650.',
+  'agedroles.problem.same': 'O cargo que se dá e o cargo que se tira não podem ser o mesmo.',
+  'agedroles.target.humans': 'só pessoas',
+  'agedroles.target.all': 'todos',
+  'agedroles.target.bots': 'só bots',
+  'agedroles.added': '{emoji} A partir de agora, {role} é dado aos membros ({target}) depois de {days} dias no servidor. É verificado mais ou menos a cada 30 minutos, e quem já estava aqui também recebe.',
+  'agedroles.addedRemove': '{emoji} A partir de agora, {role} é dado aos membros ({target}) depois de {days} dias no servidor, e {removeRole} é tirado. É verificado mais ou menos a cada 30 minutos, e quem já estava aqui também recebe.',
+  'agedroles.removed': '{emoji} {role} não é mais dado por dias no servidor ({count} removida). Os membros ficam com os cargos que já têm.',
+  'agedroles.notFound': 'Não há regra para {role}.',
+  'agedroles.empty': 'Nenhum cargo é dado por dias no servidor ainda. Adicione um com `add`.',
+  'agedroles.listTitle': '**Cargos por dias no servidor** ({count} de {max})',
+  'agedroles.line': '{role} aos **{days}** dias · {target}{off}',
+  'agedroles.lineRemove': '{role} aos **{days}** dias (tira {removeRole}) · {target}{off}',
+  'agedroles.off': 'desligada',
+};

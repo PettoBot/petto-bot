@@ -1417,6 +1417,36 @@ create table if not exists member_events_config (
 
 alter table member_events_config enable row level security;
 
+-- member_event_variants: more messages for the welcome, the goodbye and the boost announcement. The one in member_events_config is the first; these are the others, and each time
+-- the event happens Petto picks one of them at random (never the same twice in a row). At most 24 here (25 with the first); the dashboard and the commands keep to that.
+create table if not exists member_event_variants (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  kind           text not null check (kind in ('welcome', 'leave', 'boost')),
+  position       integer not null default 0,
+  message        text check (message is null or char_length(message) <= 4000),
+  embed_template text check (embed_template is null or char_length(embed_template) <= 100),
+  created_at     timestamptz not null default now(),
+  check (message is not null or embed_template is not null)
+);
+create index if not exists idx_member_event_variants_guild on member_event_variants(guild_id, kind, position, id);
+alter table member_event_variants enable row level security;
+
+-- aged_roles: "after N days in the server, give this role" (and take another one away). Looked at about every hour (jobs/agedRolesJob.js).
+create table if not exists aged_roles (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  role_id        text not null,
+  days           integer not null check (days between 1 and 3650),
+  remove_role_id text,
+  target         text not null default 'humans' check (target in ('humans', 'all', 'bots')),
+  enabled        boolean not null default true,
+  created_at     timestamptz not null default now(),
+  unique (guild_id, role_id, days)
+);
+create index if not exists idx_aged_roles_guild on aged_roles(guild_id);
+alter table aged_roles enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- bump_reminders: reminds the server to /bump again (DISBOARD) after the
 -- cooldown, with an optional thank-you message, channel autolock between

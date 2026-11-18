@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { getConfig } = require('../db/memberEvents');
 const { sendMemberEvent } = require('../utils/memberEventMessage');
+const { pickMessage } = require('../utils/messageVariants');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -13,12 +14,13 @@ module.exports = {
       const channel = await member.guild.channels.fetch(config.leave_channel_id).catch(() => null);
       if (!channel) return;
 
+      const chosen = await pickMessage(member.guild.id, 'leave', { message: config.leave_message ?? null, template: config.leave_embed_template ?? null });
       await sendMemberEvent({
         guild: member.guild,
         channel,
         kind: 'leave',
-        messageText: config.leave_message,
-        embedTemplateName: config.leave_embed_template,
+        messageText: chosen.message,
+        embedTemplateName: chosen.template,
         ctx: { member, guild: member.guild, channel },
       });
     } catch (err) {

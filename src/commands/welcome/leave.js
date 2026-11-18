@@ -5,6 +5,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { sendMemberEvent, describeMessage, shortMessage } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { addMessageCommand, removeMessageCommand, listMessagesCommand } = require('../../utils/messageVariantsCommand');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
@@ -24,16 +25,33 @@ module.exports = {
     )
     .addSubcommand((s) => s.setName('status').setDescription('Show the current leave configuration.'))
     .addSubcommand((s) => s.setName('test').setDescription('Send a test leave message using your own account.'))
-    .addSubcommand((s) => s.setName('disable').setDescription('Turn off leave messages.')),
+    .addSubcommand((s) => s.setName('disable').setDescription('Turn off leave messages.'))
+    .addSubcommand((s) =>
+      s
+        .setName('add-message')
+        .setDescription('Add another goodbye message: one of all of them is picked at random each time.')
+        .addStringOption((o) => o.setName('message').setDescription('Plain text (supports /embed variables, e.g. {user}, {server_name})').setRequired(false))
+        .addStringOption((o) => o.setName('embed').setDescription('Use a saved /embed template instead of plain text').setRequired(false)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('remove-message')
+        .setDescription('Remove one of the other goodbye messages by its number.')
+        .addIntegerOption((o) => o.setName('number').setDescription('Its number in the list (2 or more)').setMinValue(2).setMaxValue(25).setRequired(true)),
+    )
+    .addSubcommand((s) => s.setName('messages').setDescription('List the goodbye messages (one is picked at random each time).')),
 
   // `!leave setup` takes an embed code as its message, with its line breaks and buttons.
-  prefixCodeOptions: { setup: 'message' },
+  prefixCodeOptions: { setup: 'message', 'add-message': 'message' },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') return setup(interaction);
     if (sub === 'status') return status(interaction);
     if (sub === 'test') return test(interaction);
+    if (sub === 'add-message') return addMessageCommand(interaction, 'leave');
+    if (sub === 'remove-message') return removeMessageCommand(interaction, 'leave');
+    if (sub === 'messages') return listMessagesCommand(interaction, 'leave');
     return disable(interaction);
   },
 };

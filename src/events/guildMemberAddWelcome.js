@@ -3,6 +3,7 @@ const { getConfig } = require('../db/memberEvents');
 const { sendMemberEvent } = require('../utils/memberEventMessage');
 const { inviteInfoFor } = require('../utils/inviteContext');
 const { holdOrSend } = require('../utils/joinGate');
+const { pickMessage } = require('../utils/messageVariants');
 const logger = require('../utils/logger');
 
 // A welcome that cannot be posted (the channel is gone, or Petto cannot see it or write in it) says so in the log once an hour for each channel.
@@ -50,7 +51,9 @@ module.exports = {
       const lookup = async () => (invite ??= { value: await inviteInfoFor(member, { recorded: held }) }).value;
 
       if (config?.welcome_channel_id) {
-        await postWelcome(member, { channelId: config.welcome_channel_id, message: config.welcome_message, template: config.welcome_embed_template, invite: lookup });
+        // The first welcome can have other messages (the dashboard and `/greet welcome add-message`): one of all of them, at random.
+        const chosen = await pickMessage(member.guild.id, 'welcome', { message: config.welcome_message ?? null, template: config.welcome_embed_template ?? null });
+        await postWelcome(member, { channelId: config.welcome_channel_id, message: chosen.message, template: chosen.template, invite: lookup });
       }
       if (config?.welcome_second_enabled && config.welcome_second_channel_id) {
         await postWelcome(member, { channelId: config.welcome_second_channel_id, message: config.welcome_second_message, template: config.welcome_second_embed_template, invite: lookup });
