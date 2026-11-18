@@ -22,6 +22,7 @@ assert.equal(countObfuscated(list), 2);
 const channel = (id, name, flags = 0) => ({ id, name, type: 0, rawPosition: Number(id), parentId: null, flags: { bitfield: flags }, isThread: () => false, permissionsFor: () => null });
 const snapshot = buildSnapshot({ id: '9', name: 'S', channels: { cache: new Map([['1', channel('1', 'general')], ['2', channel('2', '___hidden___', 1 << 17)]]) }, roles: { cache: new Map() }, emojis: { cache: new Map() }, members: { me: null } });
 assert.deepEqual(snapshot.channels.map((each) => each.name), ['general'], 'the dashboard does not list a hidden channel');
+assert.deepEqual(snapshot.hidden_channels, ['2'], 'but its id is kept, so a saved choice that points to it is not shown as deleted');
 
 // The source of the backup, the restore and the lists of the dashboard.
 const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');

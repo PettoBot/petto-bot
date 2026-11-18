@@ -3385,6 +3385,8 @@ create table if not exists discord_guild_snapshots (
 
 -- The rest of what the dashboard asked Discord for on each page: the server banner, how many emojis and boosts it has, and how
 -- the bot looks in it (its server nickname and server avatar).
+-- The ids of the channels Discord shows the bot only in outline (it cannot view them): the dashboard says "no access" for a saved channel in this list, not "deleted".
+alter table discord_guild_snapshots add column if not exists hidden_channels jsonb not null default '[]'::jsonb;
 alter table discord_guild_snapshots add column if not exists banner text;
 alter table discord_guild_snapshots add column if not exists emoji_count integer;
 alter table discord_guild_snapshots add column if not exists premium_tier integer;
