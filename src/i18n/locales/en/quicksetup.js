@@ -1,0 +1,22 @@
+// Quick Setup of the dashboard (utils/quickSetup.ts). Reference catalog: es and pt-BR must have the same keys.
+module.exports = {
+  "quicksetup.reason": "Quick Setup from the dashboard",
+  "quicksetup.name.modLog": "mod-log",
+  "quicksetup.name.welcome": "welcome",
+  "quicksetup.name.tickets": "open-a-ticket",
+  "quicksetup.name.member": "Member",
+  "quicksetup.name.support": "Support",
+  "quicksetup.goodbye": "{user.name} left {server.name}. Goodbye!",
+  "quicksetup.err.channel": "Pick a text channel where Petto can write, or ask for a new one.",
+  "quicksetup.err.role": "Pick a role (not one made by an integration), or ask for a new one.",
+  "quicksetup.err.roleHigh": "{role} is above Petto's highest role, so Petto cannot give it. Move Petto's role above it and run this step again.",
+  "quicksetup.err.ticketLimit": "This server is at the limit of ticket types of its plan.",
+  "quicksetup.err.permission": "Petto does not have the permission it needs here (Manage Channels or Manage Roles).",
+  "quicksetup.err.failed": "This step did not work. Nothing else was changed by it; try it again or use its page of the dashboard.",
+  "quicksetup.done.moderation": "Moderation log in {channel}: sanctions, automod and changes of members, roles, channels and the server.",
+  "quicksetup.done.automod": "Auto moderation: {count} protections on.",
+  "quicksetup.done.welcome": "Welcome messages in {channel}.",
+  "quicksetup.done.autorole": "New members get {role}.",
+  "quicksetup.done.tickets": "Tickets: the panel is in {channel} and {role} answers them.",
+  "quicksetup.done.verification": "Verification is being set up: it takes a moment and you can see it in the Verification page.",
+};

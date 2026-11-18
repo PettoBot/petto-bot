@@ -145,6 +145,7 @@ module.exports = {
   'security.violation.excessiveCaps': 'exceso-de-mayúsculas',
   'security.violation.longMessage': 'mensaje-largo',
   'security.violation.filter': 'filtro-{template}',
+  'security.violation.rule': 'regla {name}',
   'security.malicious.removed': '{user}, se eliminó tu mensaje porque Petto identificó una de sus URL como maliciosa o insegura. No la abras.',
   'security.malicious.kept': '{user}, ese mensaje contiene una URL que Petto identificó como maliciosa o insegura. No la abras.',
   'security.antiAlt.log.lessThanDay': 'menos de un día',

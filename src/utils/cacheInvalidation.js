@@ -31,6 +31,10 @@ const INVALIDATION_TABLES = Object.freeze([
   'ticket_settings', // src/db/ticketSettings.js
   'upload_config', // src/db/uploads.js
   'xp_events', // src/db/xpEvents.js
+  'mod_rule_settings', // src/db/modRules.ts, the moderation rules made in the dashboard (the four tables are read together)
+  'mod_lists', // src/db/modRules.ts
+  'mod_rulesets', // src/db/modRules.ts
+  'mod_rules', // src/db/modRules.ts
 ]);
 
 const SNOWFLAKE = /^\d{15,25}$/;

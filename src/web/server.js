@@ -792,6 +792,23 @@ function startServer(client) {
       }
     });
 
+    // Quick Setup of the dashboard: the page asked for everything in seven steps and sends the answers at the last one (utils/quickSetup.ts). It makes channels and roles,
+    // so it needs Manage Server itself: a role that was only given one page of the dashboard is not enough, and neither is the support mode.
+    app.post('/api/dashboard/guild/:guildId/quick-setup', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
+      if (access.viaRole || access.viaSupport) { res.status(403).json({ ok: false, message: t(lang, 'web.api.quickSetup.needsManage') }); return; }
+      try {
+        const { applyQuickSetup } = require('../utils/quickSetup');
+        const results = await runWithLanguage(lang, () => applyQuickSetup(access.guild, req.body?.setup ?? {}));
+        res.json({ ok: results.length > 0 && results.some((row) => row.ok), results });
+      } catch (err) {
+        logger.error(`Quick Setup failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.quickSetup.failed') });
+      }
+    });
+
     // Saves the bot's copy of the server (roles, channels) now, so the dashboard lists show a role or channel made a moment ago.
     app.post('/api/dashboard/guild/:guildId/resync', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);

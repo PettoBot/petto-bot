@@ -120,6 +120,8 @@ module.exports = {
   'web.api.lift.failed': 'It could not be lifted. Check my permissions and try again.',
   'web.api.confessions.pickChannel': 'Pick a channel for the panel first.',
   'web.api.confessions.failed': 'The panel could not be posted. Try again.',
+  'web.api.quickSetup.needsManage': 'Only people with Manage Server can run Quick Setup.',
+  'web.api.quickSetup.failed': 'Quick Setup could not finish. Try again.',
   'web.api.verification.failed': 'The verification could not be changed. Try again.',
   'web.api.resync.failed': 'The server data could not be updated. Try again.',
   'web.api.quests.testing': 'Quest alerts are in testing.',

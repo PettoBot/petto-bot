@@ -5027,3 +5027,74 @@ create table if not exists command_usage (
 );
 
 alter table command_usage enable row level security;
+
+-- Moderation rules, made in the dashboard (see utils/modRules.ts). A ruleset groups rules that share general conditions (channels, roles,
+-- how new the account is...); each rule has triggers (what is looked for), conditions (who and where) and effects (what Petto does).
+-- The words and the domains live in lists that any rule can use. `mod_rule_logs` keeps what happened, never the text of a message.
+create table if not exists mod_rule_settings (
+  guild_id       text primary key references guilds(guild_id) on delete cascade,
+  enabled        boolean not null default true,
+  ignore_staff   boolean not null default true,
+  log_channel_id text,
+  updated_at     timestamptz not null default now()
+);
+alter table mod_rule_settings enable row level security;
+
+create table if not exists mod_lists (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null check (char_length(name) between 1 and 60),
+  kind       text not null check (kind in ('words', 'domains')),
+  items      text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  unique (guild_id, name)
+);
+create index if not exists idx_mod_lists_guild on mod_lists(guild_id);
+alter table mod_lists enable row level security;
+
+create table if not exists mod_rulesets (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null check (char_length(name) between 1 and 60),
+  enabled    boolean not null default true,
+  position   integer not null default 0,
+  conditions jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mod_rulesets_guild on mod_rulesets(guild_id);
+alter table mod_rulesets enable row level security;
+
+create table if not exists mod_rules (
+  id                bigserial primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  ruleset_id        bigint not null references mod_rulesets(id) on delete cascade,
+  name              text not null check (char_length(name) between 1 and 60),
+  enabled           boolean not null default true,
+  position          integer not null default 0,
+  trigger_mode      text not null default 'any' check (trigger_mode in ('any', 'all')),
+  triggers          jsonb not null default '[]'::jsonb,
+  conditions        jsonb not null default '[]'::jsonb,
+  effects           jsonb not null default '[]'::jsonb,
+  threshold_count   integer not null default 1 check (threshold_count between 1 and 50),
+  threshold_minutes integer not null default 10 check (threshold_minutes between 1 and 1440),
+  stop              boolean not null default true,
+  hits              integer not null default 0,
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_mod_rules_guild on mod_rules(guild_id);
+create index if not exists idx_mod_rules_ruleset on mod_rules(ruleset_id);
+alter table mod_rules enable row level security;
+
+create table if not exists mod_rule_logs (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  rule_id    bigint,
+  rule_name  text not null,
+  user_id    text not null,
+  channel_id text,
+  trigger    text not null,
+  effects    text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mod_rule_logs_guild on mod_rule_logs(guild_id, id desc);
+alter table mod_rule_logs enable row level security;
