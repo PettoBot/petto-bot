@@ -49,3 +49,4 @@ Thumbs.db
 .claude/
 .vscode/settings.json
 .idea/
+native/wordmatch/target/

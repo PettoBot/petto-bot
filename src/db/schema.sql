@@ -5098,3 +5098,48 @@ create table if not exists mod_rule_logs (
 );
 create index if not exists idx_mod_rule_logs_guild on mod_rule_logs(guild_id, id desc);
 alter table mod_rule_logs enable row level security;
+
+-- Moderation rules, second part: a rule can be tried without punishing (`dry_run`), the counters of violations and the heat are kept here (so they survive a
+-- restart of the bot), and the join gate and the raid detector of a server have their own row. See db/modRules.ts.
+alter table mod_rules add column if not exists dry_run boolean not null default false;
+alter table mod_rule_settings add column if not exists ignore_bots boolean not null default true;
+alter table mod_rule_settings add column if not exists heat_decay integer not null default 10 check (heat_decay between 0 and 1000);
+alter table mod_rule_settings add column if not exists quarantine_role_id text;
+
+create table if not exists mod_rule_violations (
+  id       bigserial primary key,
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  name     text not null,
+  at       timestamptz not null default now()
+);
+create index if not exists idx_mod_rule_violations_lookup on mod_rule_violations(guild_id, user_id, name, at desc);
+alter table mod_rule_violations enable row level security;
+
+create table if not exists mod_rule_heat (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  heat       double precision not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table mod_rule_heat enable row level security;
+
+create table if not exists mod_join_gate (
+  guild_id              text primary key references guilds(guild_id) on delete cascade,
+  enabled               boolean not null default false,
+  no_avatar_action      text not null default 'none' check (no_avatar_action in ('none', 'alert', 'timeout', 'kick', 'ban', 'quarantine')),
+  account_age_days      integer not null default 0 check (account_age_days between 0 and 365),
+  account_age_action    text not null default 'none' check (account_age_action in ('none', 'alert', 'timeout', 'kick', 'ban', 'quarantine')),
+  username_list_id      bigint references mod_lists(id) on delete set null,
+  username_words        text[] not null default '{}',
+  username_action       text not null default 'none' check (username_action in ('none', 'alert', 'timeout', 'kick', 'ban', 'quarantine')),
+  timeout_minutes       integer not null default 60 check (timeout_minutes between 1 and 40320),
+  raid_joins            integer not null default 0 check (raid_joins between 0 and 500),
+  raid_seconds          integer not null default 30 check (raid_seconds between 5 and 600),
+  raid_action           text not null default 'alert' check (raid_action in ('alert', 'lockdown', 'kick_new', 'ban_new')),
+  raid_lockdown_minutes integer not null default 10 check (raid_lockdown_minutes between 1 and 720),
+  raid_alert_channel_id text,
+  updated_at            timestamptz not null default now()
+);
+alter table mod_join_gate enable row level security;

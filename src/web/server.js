@@ -809,6 +809,20 @@ function startServer(client) {
       }
     });
 
+    // "Try this rule" of the Moderation rules page: what a rule (as it is in the form) would do with a sample message. Nothing is done, so looking at the page is enough.
+    app.post('/api/dashboard/guild/:guildId/rules/test', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res, { page: 'rules', edit: false });
+      if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
+      try {
+        const { testRule } = require('../utils/modRulesTest');
+        res.json(await testRule(access.guild.id, req.body?.rule, req.body?.sample));
+      } catch (err) {
+        logger.error(`Rule test failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed', message: t(lang, 'web.api.rules.testFailed') });
+      }
+    });
+
     // Saves the bot's copy of the server (roles, channels) now, so the dashboard lists show a role or channel made a moment ago.
     app.post('/api/dashboard/guild/:guildId/resync', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);

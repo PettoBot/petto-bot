@@ -122,6 +122,7 @@ module.exports = {
   'web.api.confessions.failed': 'No se pudo publicar el panel. Inténtalo de nuevo.',
   'web.api.quickSetup.needsManage': 'Solo quien tiene Gestionar servidor puede usar Quick Setup.',
   'web.api.quickSetup.failed': 'Quick Setup no pudo terminar. Inténtalo de nuevo.',
+  'web.api.rules.testFailed': 'No se pudo probar la regla. Inténtalo de nuevo.',
   'web.api.verification.failed': 'No se pudo cambiar la verificación. Inténtalo de nuevo.',
   'web.api.resync.failed': 'No se pudieron actualizar los datos del servidor. Inténtalo de nuevo.',
   'web.api.quests.testing': 'Las alertas de misiones están en pruebas.',

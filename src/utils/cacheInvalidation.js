@@ -35,6 +35,7 @@ const INVALIDATION_TABLES = Object.freeze([
   'mod_lists', // src/db/modRules.ts
   'mod_rulesets', // src/db/modRules.ts
   'mod_rules', // src/db/modRules.ts
+  'mod_join_gate', // src/db/modRules.ts, the join gate and the raid detector (read with the rules)
 ]);
 
 const SNOWFLAKE = /^\d{15,25}$/;
