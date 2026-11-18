@@ -64,6 +64,7 @@ const perf = require('./src/utils/perf');
 const loadGuard = require('./src/utils/loadGuard');
 const watchdog = require('./src/utils/watchdog');
 const processGuards = require('./src/utils/processGuards');
+const messageInterest = require('./src/utils/messageInterest');
 
 // Every interval job of Petto is measured from here on (runs, time, queries and requests of each tick, utils/perf.js) and paused by the load guard when the bot is under pressure.
 perf.trackIntervals();
@@ -99,10 +100,10 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
-  // The memory of the bot: only 100 messages are kept for each channel (the default is 200) and the ones older than an hour are swept every 10 minutes (only the
-  // deleted-message log and `!snipe` read them, and they ask for recent ones). The members, the users and the presences stay: the counters, the identity and the commands read them.
+  // The memory of the bot: only 100 messages are kept for each channel (the default is 200). They are swept every two minutes: after an hour in the servers that have the log of
+  // messages (it is the one that reads an old message) and after ten minutes in the others (utils/messageInterest.js; `!snipe` and the rest keep their own small stores). The members, the users and the presences stay: the counters, the identity and the commands read them.
   makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 100 }),
-  sweepers: { ...Options.DefaultSweeperSettings, messages: { interval: 600, lifetime: 3600 } },
+  sweepers: { ...Options.DefaultSweeperSettings, messages: { interval: messageInterest.SWEEP_EVERY_SECONDS, filter: messageInterest.sweepFilter() } },
   // The limit of requests per second is the gate of utils/sharedRestLimit.js (two lanes: the answers to people first, the background work paced and bounded). discord.js
   // keeps its own limit only as a net, higher than the gate, so it never holds an answer behind the background work.
   // A request that Discord would hold for more than 15 seconds (a channel renamed more than twice in ten minutes) fails at once instead of sitting in the queue for minutes.
@@ -187,6 +188,8 @@ async function main() {
   music.init(client); // before the login: the connection to the node waits for the client to be ready by itself
 
   await runMigrations();
+  // Which servers have the log of messages on: the others do not keep their messages for an hour in memory (utils/messageInterest.js).
+  messageInterest.start();
   // The blacklist of servers is read into memory before the login, so the first guildCreate and the first message already know it (and every few minutes after).
   await require('./src/db/guildBlacklist').load().catch((err) => logger.warn('Could not read the server blacklist (the environment list still applies):', err.message));
   require('./src/db/guildBlacklist').startRefresh();

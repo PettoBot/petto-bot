@@ -86,6 +86,7 @@ async function getLogConfig(guildId, { force = false } = {}) {
 async function addEntry(guildId, channelId, event) {
   const { error } = await database.from('log_entries').insert({ guild_id: guildId, channel_id: channelId, event });
   if (error) throw error;
+  if (event === 'messages') require('../utils/messageInterest').remember(guildId);
   invalidateLogConfig(guildId);
 }
 
@@ -95,6 +96,7 @@ async function addEntries(guildId, channelId, events) {
   const rows = events.map((event) => ({ guild_id: guildId, channel_id: channelId, event }));
   const { error } = await database.from('log_entries').upsert(rows, { onConflict: 'guild_id,channel_id,event' });
   if (error) throw error;
+  if (events.includes('messages')) require('../utils/messageInterest').remember(guildId);
   invalidateLogConfig(guildId);
 }
 
