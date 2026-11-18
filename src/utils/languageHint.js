@@ -21,7 +21,7 @@ async function maybeHintLanguage(interaction) {
     if (row.language_source !== 'auto') return false;
     await updateGuild(guildId, { language_source: 'auto-hinted' });
     await interaction.followUp({
-      content: t(mine, 'setup.language.hint', { current: LANGUAGE_NAMES[peekGuildLanguage(guildId)], language: LANGUAGE_NAMES[mine], command: `${row.prefix || '!'}language ${mine}` }),
+      content: t(mine, 'setup.language.hint', { current: LANGUAGE_NAMES[peekGuildLanguage(guildId)], language: LANGUAGE_NAMES[mine], command: `/language language:${mine}` }),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     });

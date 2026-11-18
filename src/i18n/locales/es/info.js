@@ -429,6 +429,8 @@ module.exports = {
   'info.summaryCard.busiestOn.saturday': 'Más activo los sábados',
   'info.summaryCard.busiestOn.sunday': 'Más activo los domingos',
   'info.uptime.online': 'Petto lleva en línea **{duration}**.',
+  'info.support.title': '### {emoji} Servidor de soporte de Petto',
+  'info.support.text': '{emoji} ¿Necesitas ayuda, encontraste un error o quieres seguir las novedades? Entra al servidor de soporte: ahí responden el equipo y la comunidad.',
   'info.cosmetics.none': 'Ninguna',
   'info.cosmetics.kind': 'Tipo',
   'info.cosmetics.moving': 'Se mueve',

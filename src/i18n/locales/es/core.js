@@ -71,7 +71,7 @@ module.exports = {
   'core.template.none': 'Todavía no tienes embeds guardados. Crea uno en el panel, en Embeds.',
   'core.template.choose': 'Para elegir uno: `{usage}`. Usa `none` para volver al texto de siempre.',
   'core.join.thanks': '{emoji} **¡Gracias por agregar a Petto a {server}!**',
-  'core.join.howToStart': 'Usa {setup} en el servidor para abrir la configuración visual, o usa `{prefix}help` para ver los comandos con prefijo.',
+  'core.join.howToStart': 'Usa {setup} en el servidor para abrir la configuración visual, o usa {help} para ver todos los comandos.',
   'core.join.website.button': 'Sitio web',
   'core.join.dashboard.button': 'Panel',
   'core.join.docs.button': 'Documentación',

@@ -178,6 +178,7 @@ module.exports = {
   'cmd.info.summary.opt.metric.desc': 'What to show (default: everything)',
   'cmd.info.summary.opt.days.desc': 'How many days to include, from 1 to 365',
   'cmd.info.uptime.desc': 'Shows how long Petto has been running.',
+  'cmd.info.support.desc': "Gives you the invitation to Petto's support server.",
   'cmd.info.user.desc': 'Information about a member: details, avatar, banner, permissions, activity and more.',
   'cmd.info.user.info.desc': 'Shows information about a member.',
   'cmd.info.user.info.opt.user.desc': 'User (default: you)',

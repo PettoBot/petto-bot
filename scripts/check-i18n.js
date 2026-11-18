@@ -135,12 +135,12 @@ for (const file of findCommandFiles(COMMANDS_DIR)) {
   }
 }
 
-// What is registered with Discord: the localized descriptions fit, and `!language` is a prefix command only.
-const { collectCommandData } = require('../src/handlers/commandHandler');
+// What is registered with Discord: the localized descriptions fit,.
+const { collectCommandData, collectGuildCommandData } = require('../src/handlers/commandHandler');
 const registered = collectCommandData();
-for (const json of registered) problems.push(...tooLong(json, `registered /${json.name}`));
-if (registered.some((json) => json.name === 'language')) problem('!language must not be registered as a slash command');
-if (require('../src/commands/config/language').registerSlash || require('../src/commands/config/language').slashOnly) problem('!language must stay prefix only (no registerSlash / slashOnly)');
+const registeredPerServer = collectGuildCommandData();
+for (const json of [...registered, ...registeredPerServer]) problems.push(...tooLong(json, `registered /${json.name}`));
+if (!registeredPerServer.some((json) => json.name === 'language')) problem('/language must be registered as a slash command (the prefix may stop working one day)');
 
 // Every key the code asks for by name exists in English (a typo would show the key to the member).
 const used = new Map();
@@ -313,7 +313,7 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   stub('src/db/guilds.js', { createGuildIfMissing: async (id, defaults, guild) => { const language = detectGuildLanguage(guild).language; joins.push([id, language]); return { row: { guild_id: id, prefix: '!', language, language_source: 'auto', created_at: new Date() }, created: true }; } });
   stub('src/utils/discordOps.js', { sendGuildLifecycleLog: async () => { joins.push(['language during the join', currentLanguage()]); } });
   stub('src/utils/autoModManager.js', { syncGuildAutoMod: async () => {} });
-  stub('src/utils/onboarding.js', { commandMention: async () => '</setup:1>', commandSubcommandMention: async () => '', ensureAdminSetupChannel: async () => null, findPrivateChannel: () => null, buildAdminSetupMessage: () => ({}), buildOwnerGuide: () => ({}), sendSetupMessage: async () => null });
+  stub('src/utils/onboarding.js', { commandMention: async () => '</setup:1>', commandSubcommandMention: async () => '', setupMentions: async () => ({}), botAvatarUrl: () => null, ensureAdminSetupChannel: async () => null, findPrivateChannel: () => null, buildAdminSetupMessage: () => ({}), buildOwnerGuide: () => ({}), sendSetupMessage: async () => null });
   delete require.cache[require.resolve('../src/events/guildCreate')];
   const guildCreate = require('../src/events/guildCreate');
   const fakeGuild = { id: 'joined', preferredLocale: 'pt-BR', name: 'Servidor', memberCount: 3, createdTimestamp: 0, client: { user: { id: '1' }, users: { fetch: async () => null } }, fetchOwner: async () => null, fetchAuditLogs: async () => { throw new Error('no access'); } };
@@ -461,7 +461,7 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.equal(data.default_member_permissions, String(require('discord.js').PermissionFlagsBits.ManageGuild), 'needs Manage Server');
   assert.deepEqual(data.options[0].choices.map((choice) => choice.value), ['en', 'es', 'pt-BR']);
   assert.deepEqual(language.aliases, ['lang']);
-  assert.equal(registered.some((json) => json.name === 'language'), false, '!language is not a slash command');
+  assert.equal(require('../src/handlers/commandHandler').collectGuildCommandData().some((json) => json.name === 'language'), true, '/language is a slash command too (the prefix may stop working one day)');
 
   // The language of the running command or event reaches the helpers that are not handed one.
   assert.equal(currentLanguage(), 'en', 'English outside of a command');

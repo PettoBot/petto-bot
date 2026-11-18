@@ -88,6 +88,7 @@ module.exports = {
   'cmd.info.summary.opt.metric.desc': 'O que mostrar (padrão: tudo)',
   'cmd.info.summary.opt.days.desc': 'Quantos dias incluir, de 1 a 365',
   'cmd.info.uptime.desc': 'Mostra há quanto tempo o Petto está funcionando.',
+  'cmd.info.support.desc': 'Dá o convite para o servidor de suporte do Petto.',
   'cmd.info.usercosmetics.desc': 'Mostra a decoração de avatar, a placa de nome e a tag de servidor de um membro.',
   'cmd.info.usercosmetics.opt.user.desc': 'Usuário (padrão: você)',
   'cmd.info.userinfo.desc': 'Mostra informações sobre um membro.',
