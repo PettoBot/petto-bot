@@ -809,6 +809,25 @@ function startServer(client) {
       }
     });
 
+    // The AI helper of the Migrate page (utils/migrationAi.ts): it rewrites a message of another bot, proposes what to set up or answers a question. It only
+    // proposes, nothing is saved, so looking at the page is not enough: it costs the shared AI quota, so Manage Server is needed, like Quick Setup.
+    app.post('/api/dashboard/guild/:guildId/migrate-ai', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
+      if (access.viaRole || access.viaSupport) { res.status(403).json({ ok: false, message: t(lang, 'web.api.migrateAi.needsManage') }); return; }
+      try {
+        const { askMigrationAi } = require('../utils/migrationAi');
+        const result = await askMigrationAi({ guildId: access.guild.id, userId: access.userId, mode: String(req.body?.mode ?? ''), bot: String(req.body?.bot ?? ''), text: String(req.body?.text ?? ''), lang });
+        if (result.ok) { res.json({ ok: true, answer: result.answer, unknown: result.unknown }); return; }
+        const status = { cooldown: 429, limit: 429, busy: 429, empty: 400, too_long: 400, bad_mode: 400, disabled: 503, not_configured: 503 }[result.code] ?? 502;
+        res.status(status).json({ ok: false, code: result.code, retryAfter: result.retryAfter ?? null, message: t(lang, `web.api.migrateAi.${result.code}`, { seconds: result.retryAfter ?? 0, max: require('../utils/migrationAi').MAX_INPUT }) });
+      } catch (err) {
+        logger.error(`Migration AI failed for guild ${req.params.guildId}:`, err?.message);
+        res.status(500).json({ ok: false, code: 'failed', message: t(lang, 'web.api.migrateAi.failed') });
+      }
+    });
+
     // "Try this rule" of the Moderation rules page: what a rule (as it is in the form) would do with a sample message. Nothing is done, so looking at the page is enough.
     app.post('/api/dashboard/guild/:guildId/rules/test', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res, { page: 'rules', edit: false });
