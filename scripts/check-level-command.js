@@ -155,6 +155,21 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
     assert.deepEqual(saved.slice(-2).map((row) => [row.user, row.xp]), [['dest', 600], ['user', 8821]], 'xp transfer adds to the destination as a number');
     await command.execute(manage('level', 'add', 2));
     assert.equal(saved.at(-1).level, 11, 'level add 2 on 9 is 11, not "92"');
+
+    // The error of the log (22P02): `/levels manage level set 20000000000` made an XP of 2.5e30, which the bigint column refuses. Nothing is saved now, and a normal change still works.
+    const before = saved.length;
+    await command.execute(manage('level', 'set', 20_000_000_000));
+    assert.equal(saved.length, before, 'a level above the maximum of the server is not saved');
+    await command.execute(manage('level', 'add', 5_000));
+    assert.equal(saved.length, before, 'a level that goes over the maximum (1000 by default) is not saved');
+    await command.execute(manage('xp', 'set', 1e20));
+    assert.equal(saved.length, before, 'an XP that does not fit in the column is not saved');
+    await command.execute(manage('xp', 'add', Number.MAX_SAFE_INTEGER));
+    assert.equal(saved.length, before, 'adding to an XP so that it passes the most is not saved');
+    await command.execute(manage('xp', 'transfer', 100, { id: 'dest', toString: () => '<@dest>' }));
+    assert.equal(saved.length, before + 2, 'a normal transfer still works after the refusals');
+    await command.execute(manage('level', 'set', 1000));
+    assert.equal(saved.at(-1).level, 1000, 'the maximum level itself is allowed');
   }
 
   console.log('Checked that /level rules, rank-style and event work with the prefix, and the order of the notify options.');
