@@ -22,7 +22,7 @@ const { VARIABLE_GROUPS } = require('./embedVariableRegistry') as { VARIABLE_GRO
 
 export type AiMode = 'rewrite' | 'plan' | 'ask';
 export const MODES: readonly AiMode[] = ['rewrite', 'plan', 'ask'];
-export const BOT_NAMES: Record<string, string> = { mee6: 'MEE6', carl: 'Carl-bot', dyno: 'Dyno', probot: 'ProBot', welcomer: 'Welcomer' };
+export const BOT_NAMES: Record<string, string> = { mee6: 'MEE6', carl: 'Carl-bot', dyno: 'Dyno', probot: 'ProBot', nekotina: 'Nekotina', welcomer: 'Welcomer' };
 
 const TAG = 'migrate-ai';
 export const MAX_INPUT = 1500;

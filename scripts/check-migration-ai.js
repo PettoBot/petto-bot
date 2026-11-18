@@ -43,6 +43,7 @@ const ask = (extra = {}) => { t0 += 60_000; return ai.askMigrationAi({ ...base, 
   check('call: system then admin_text', sent.messages[0].role === 'system' && sent.messages[1].role === 'user' && /^<admin_text>\nHey \{mention\}/.test(sent.messages[1].content));
   check('call: its own log tag and a token cap', sent.tag === 'migrate-ai' && sent.maxTokens === 900);
   check('call: the bot is named', sent.messages[0].content.includes('written for Carl-bot'));
+  check('call: every bot of the Migrate page is named', await (async () => { for (const [id, name] of Object.entries({ mee6: 'MEE6', carl: 'Carl-bot', dyno: 'Dyno', probot: 'ProBot', nekotina: 'Nekotina', welcomer: 'Welcomer' })) { await ask({ bot: id }); if (!calls[calls.length - 1].messages[0].content.includes(`written for ${name}`)) return false; } return true; })());
   check('call: an unknown bot is "another bot"', (await ask({ bot: 'nobot' }), calls[calls.length - 1].messages[0].content.includes('written for another bot')));
 
   // --- the text is a wall, not a way in ---
