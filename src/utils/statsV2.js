@@ -210,6 +210,10 @@ function buildMemberStats({ userId, days = 30, now = new Date(), userRows = [], 
   };
   const everyone = { messages: sum([...perUser.values()].map((entry) => entry.messages)), voiceSeconds: sum([...perUser.values()].map((entry) => entry.voiceSeconds)) };
   const daily = current.map((day) => sum(mine.current.filter((row) => dayKey(row.day) === day).map((row) => num(row.messages))));
+  const dailyVoice = current.map((day) => sum(mine.current.filter((row) => dayKey(row.day) === day).map((row) => num(row.voice_seconds))));
+  // What the member did in the last day, week and month, whatever period was asked (the rows read cover at least 30 days).
+  const lastDays = (count) => { const inside = new Set(windows(count, now).current); return totals(userRows.filter((row) => inside.has(dayKey(row.day)))); };
+  const recent = { d1: lastDays(1), d7: lastDays(7), d30: lastDays(30) };
   let bestDay = null;
   daily.forEach((value, i) => { if (value > 0 && (!bestDay || value > bestDay.value)) bestDay = { day: current[i], value }; });
   return {
@@ -224,7 +228,7 @@ function buildMemberStats({ userId, days = 30, now = new Date(), userRows = [], 
     perActiveDay: activeDays.length ? now_.messages / activeDays.length : 0,
     rank: { messages: rankIn('messages', now_.messages), voice: rankIn('voiceSeconds', now_.voiceSeconds) },
     share: { messages: everyone.messages ? Math.min(1, now_.messages / everyone.messages) : 0, voice: everyone.voiceSeconds ? Math.min(1, now_.voiceSeconds / everyone.voiceSeconds) : 0 },
-    daily, dayLabels: current, bestDay,
+    daily, dailyVoice, recent, dayLabels: current, bestDay,
   };
 }
 

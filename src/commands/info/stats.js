@@ -17,6 +17,7 @@ const { t, tn, languageOf } = require('../../i18n');
 const V2 = MessageFlags.IsComponentsV2;
 const MAX_DAYS = 180; // compare needs the same number of days before, and the counters are kept for two years
 const DEFAULT_DAYS = 7;
+const MEMBER_DEFAULT_DAYS = 30;
 const MEMBER_TOKEN = /^<@!?\d+>$|^\d{15,25}$/;
 
 /** `30`, `30d` or nothing: the number of days, between 1 and 180. */
@@ -72,7 +73,8 @@ module.exports = {
     if (!rules.enabled) return notice(t(lang, 'info.stats.disabled'));
     if (MEMBER_SUBCOMMANDS.includes(sub) && !rules.members) return notice(t(lang, 'info.stats.membersOff'));
 
-    const days = parseDays(interaction.options.getString('days'));
+    // The card of a member looks at a month unless a number of days was asked (the views of the server keep their week).
+    const days = parseDays(interaction.options.getString('days'), sub === 'member' ? MEMBER_DEFAULT_DAYS : DEFAULT_DAYS);
     try {
       if (sub === 'member') return await memberReply({ interaction, guild, lang, days, send, notice });
       return await serverReply({ sub, interaction, guild, lang, days, rules, send, notice });
@@ -154,10 +156,15 @@ async function memberReply({ interaction, guild, lang, days, send, notice }) {
   const { userRows, memberTotals } = await readMemberStats(guild.id, user.id, days);
   const stats = buildMemberStats({ userId: user.id, days, userRows, memberTotals });
   if (!stats.totals.messages && !stats.totals.voiceSeconds) return notice(t(lang, 'info.stats.member.none', { name }));
-  const image = await cards.buildMemberCard({ guildName: guild.name, name, avatarUrl: (member ?? user).displayAvatarURL({ extension: 'png', size: 128 }), member: stats, lang });
+  // Two pictures, one over the other: who the member is with their ranks, messages and voice time, and below it the days in a row and the charts.
+  const [profile, charts] = await Promise.all([
+    cards.buildMemberCard({ guildName: guild.name, name, avatarUrl: (member ?? user).displayAvatarURL({ extension: 'png', size: 128 }), member: stats, joinedAt: member?.joinedAt ?? null, createdAt: user.createdAt ?? null, lang }),
+    cards.buildMemberChartsCard({ guildName: guild.name, member: stats, lang }),
+  ]);
   const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(tn(lang, 'info.stats.header', days, { title: t(lang, 'info.statsCard.title.member'), server: guild.name, count: days })));
   container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://stats.png')));
+  container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://stats-charts.png')));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'info.stats.line.private')));
-  return send({ components: [container], files: [new AttachmentBuilder(image, { name: 'stats.png' })] });
+  return send({ components: [container], files: [new AttachmentBuilder(profile, { name: 'stats.png' }), new AttachmentBuilder(charts, { name: 'stats-charts.png' })] });
 }

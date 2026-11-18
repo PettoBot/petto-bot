@@ -34,11 +34,14 @@ async function readServerStats(guildId, days, { perMember = true, now = new Date
   return { channelRows, hourlyRows, flowRows, contentRows, lifespanRows, memberDaily, memberTotals, activeDistinct: distinct };
 }
 
-/** The counters per day of one member in the period and the one before, and the totals of every member in the period (for their place). */
+/**
+ * The counters per day of one member in the period and the one before (at least 30 days back, for the card of the last day, week and month), and the totals
+ * of every member in the period (for their place).
+ */
 async function readMemberStats(guildId, userId, days, { now = new Date() } = {}) {
   const pool = getPrimaryPool();
   const [userRows, memberTotals] = await Promise.all([
-    pool.query('select day::text as day, messages, voice_seconds from activity_members where guild_id = $1 and user_id = $2 and day >= $3 order by day', [guildId, userId, startOf(days * 2, now)]).then((r) => r.rows),
+    pool.query('select day::text as day, messages, voice_seconds from activity_members where guild_id = $1 and user_id = $2 and day >= $3 order by day', [guildId, userId, startOf(Math.max(days * 2, 30), now)]).then((r) => r.rows),
     pool.query('select user_id, sum(messages)::int as messages, sum(voice_seconds)::int as voice_seconds from activity_members where guild_id = $1 and day >= $2 group by user_id', [guildId, startOf(days, now)]).then((r) => r.rows),
   ]);
   return { userRows, memberTotals };
