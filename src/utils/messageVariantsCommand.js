@@ -40,7 +40,7 @@ async function addMessageCommand(interaction, kind) {
     }
     await ensureGuild(interaction.guild.id);
     const result = await (0, messageVariants_1.addVariant)(interaction.guild.id, kind, { message: message ?? null, template: template ?? null });
-    if (!result.ok) {
+    if (result.ok === false) {
         await interaction.reply({ content: t(lang, result.reason === 'full' ? 'welcomevariants.full' : 'welcomevariants.needText', { kind: kindWord(lang, kind), max: messageVariants_1.MAX_MESSAGES }), ...ephemeral });
         return;
     }

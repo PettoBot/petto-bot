@@ -36,7 +36,7 @@ export async function addMessageCommand(interaction: Interaction, kind: Kind): P
   if (template && !(await getTemplate(interaction.guild.id, template))) { await interaction.reply({ content: t(lang, 'welcomevariants.noEmbed', { name: template }), ...ephemeral }); return; }
   await ensureGuild(interaction.guild.id);
   const result = await addVariant(interaction.guild.id, kind, { message: message ?? null, template: template ?? null });
-  if (!result.ok) { await interaction.reply({ content: t(lang, result.reason === 'full' ? 'welcomevariants.full' : 'welcomevariants.needText', { kind: kindWord(lang, kind), max: MAX_MESSAGES }), ...ephemeral }); return; }
+  if (result.ok === false) { await interaction.reply({ content: t(lang, result.reason === 'full' ? 'welcomevariants.full' : 'welcomevariants.needText', { kind: kindWord(lang, kind), max: MAX_MESSAGES }), ...ephemeral }); return; }
   await interaction.reply({ content: t(lang, 'welcomevariants.added', { emoji: EMOJI.APPROVE, kind: kindWord(lang, kind), total: result.total }), ...ephemeral });
 }
 

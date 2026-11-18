@@ -11,7 +11,7 @@ const int = (value, min, max, fallback) => { const n = Math.floor(Number(value))
 const ids = (value) => (Array.isArray(value) ? value.map(String).filter((v) => /^\d{15,25}$/.test(v)).slice(0, 50) : []);
 async function testRule(guildId, draft, sample) {
     const checked = (0, modRules_1.cleanRule)(draft);
-    if (!checked.ok)
+    if (checked.ok === false)
         return { ok: false, error: checked.error, applies: false, conditions: [], triggers: [], effects: [], notes: [] };
     const rule = checked.rule;
     const o = (sample && typeof sample === 'object' ? sample : {});

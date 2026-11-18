@@ -19,7 +19,7 @@ export interface TestResult {
 
 export async function testRule(guildId: string, draft: unknown, sample: unknown): Promise<TestResult> {
   const checked = cleanRule(draft);
-  if (!checked.ok) return { ok: false, error: checked.error, applies: false, conditions: [], triggers: [], effects: [], notes: [] };
+  if (checked.ok === false) return { ok: false, error: checked.error, applies: false, conditions: [], triggers: [], effects: [], notes: [] };
   const rule = checked.rule;
   const o = (sample && typeof sample === 'object' ? sample : {}) as Record<string, unknown>;
   const { lists } = await load(guildId);
