@@ -14,6 +14,7 @@ const {
 } = require('discord.js');
 const { ensureGuild, updateGuild } = require('../db/guilds');
 const { EMOJI } = require('./emojis');
+const { SUPPORT_URL } = require('./links');
 const logger = require('./logger');
 const { t, currentLanguage } = require('../i18n');
 const { buildLanguageSection } = require('./languageChoice');
@@ -21,7 +22,6 @@ const { buildLanguageSection } = require('./languageChoice');
 const SETUP_CHANNEL_NAME = 'petto-setup';
 // i18n-ignore-next-line: the topic is how Petto finds its channel again, so it never changes with the language
 const SETUP_CHANNEL_TOPIC = 'Petto private administrator setup channel';
-const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
 
 const MAX_CHANNEL_PERMISSION_OVERWRITES = 100;
 // @everyone + owner + Petto are always included. Keep a little headroom so a
@@ -117,6 +117,21 @@ function findPrivateChannel(guild) {
   return [...guild.channels.cache.values()].filter((channel) => canWrite(channel) && !isPublic(channel)).sort((x, y) => x.rawPosition - y.rawPosition)[0] ?? null;
 }
 
+/** The commands the setup and welcome messages point to (their names are the same in every language). */
+const MENTIONED_COMMANDS = ['help', 'logs', 'automod', 'greet', 'language', 'support'];
+
+/** Each of those commands as a clickable mention; one Discord does not list stays as plain `/name`. */
+async function setupMentions(client, guild = null) {
+  const found = await Promise.all(MENTIONED_COMMANDS.map(async (name) => [name, await commandMention(client, name, guild)]));
+  return Object.fromEntries(found);
+}
+
+/** The picture of Petto as this server sees it: the avatar it uses in the server (a Christmas one, for example), else its profile picture. */
+function botAvatarUrl(guild, client = guild?.client) {
+  const options = { extension: 'png', size: 256 };
+  return guild?.members?.me?.displayAvatarURL?.(options) ?? client?.user?.displayAvatarURL?.(options) ?? null;
+}
+
 async function commandMention(client, commandName, guild = null) {
   try {
     const commands = guild?.commands
@@ -139,7 +154,7 @@ async function commandSubcommandMention(client, commandName, subcommandName, gui
 // `fallback`: it goes to a private channel that was not made for it; `dm`: it goes to a person's direct messages (with the name of the server).
 // `languageChoice` (what Petto detected for a new server: { language, source, words }) adds the language it chose, why, and the buttons to change
 // it (`languageDone`: after one was pressed); without it, or without `guildId`, nothing about the language is added.
-function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false, dm = false, guildName = '', guildId = null, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
+function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, mentions = {}, avatarUrl = null, fallback = false, dm = false, guildName = '', guildId = null, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${botId}&permissions=8&scope=bot%20applications.commands`;
   const intro = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.intro')))
@@ -152,48 +167,53 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
           .setURL(inviteUrl),
         new ButtonBuilder().setLabel(t(lang, 'setup.docs.button')).setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs/overview/introduction'),
         new ButtonBuilder().setLabel(t(lang, 'setup.web.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/'),
+        new ButtonBuilder().setLabel(t(lang, 'core.join.support.button')).setStyle(ButtonStyle.Link).setURL(SUPPORT_URL),
       ),
     );
 
-  // `/report config` is a slash mention in English; Spanish and Portuguese name commands with the prefix (`!report config`).
-  const reportConfig = lang === 'en' ? reportConfigMention : `\`${prefix}report config\``; // i18n-ignore: a command name
-  const setup = new ContainerBuilder().addSectionComponents(
-    new SectionBuilder()
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent([
-          t(lang, 'setup.admin.heading'),
-          '',
-          fallback || dm ? t(lang, 'setup.admin.welcomeFallback', { emoji: EMOJI.RELEASE_MAGIC }) : t(lang, 'setup.admin.welcome', { emoji: EMOJI.RELEASE_MAGIC }),
-          dm ? t(lang, 'setup.admin.dmNote', { server: guildName }) : fallback ? t(lang, 'setup.admin.fallbackNote') : t(lang, 'setup.admin.privateNote'),
-          '',
-          t(lang, 'setup.admin.openSetup', { setup: setupMention }),
-          t(lang, 'setup.admin.help', { prefix }),
-          t(lang, 'setup.admin.detailed', { prefix }),
-          ...(fallback || dm ? [] : [t(lang, 'setup.admin.doNotShare')]),
-          t(lang, 'setup.admin.reports', { reportConfig }),
-        ].join('\n')),
-      )
-      .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL)),
-  );
+  // Every command is written as a slash mention (the names are the same in every language): the prefix may stop working one day.
+  const cmd = (name) => mentions[name] ?? `\`/${name}\``;
+  const lines = [
+    t(lang, 'setup.admin.heading'),
+    '',
+    fallback || dm ? t(lang, 'setup.admin.welcomeFallback', { emoji: EMOJI.RELEASE_MAGIC }) : t(lang, 'setup.admin.welcome', { emoji: EMOJI.RELEASE_MAGIC }),
+    dm ? t(lang, 'setup.admin.dmNote', { server: guildName }) : fallback ? t(lang, 'setup.admin.fallbackNote') : t(lang, 'setup.admin.privateNote'),
+    '',
+    t(lang, 'setup.admin.openSetup', { emoji: EMOJI.RELEASE_SETTINGS, setup: setupMention }),
+    t(lang, 'setup.admin.help', { emoji: EMOJI.INFO, help: cmd('help') }),
+    t(lang, 'setup.admin.detailed', { emoji: EMOJI.SAFETY, logs: cmd('logs'), automod: cmd('automod'), greet: cmd('greet') }),
+    t(lang, 'setup.admin.reports', { emoji: EMOJI.REPORT, reportConfig: reportConfigMention }),
+    t(lang, 'setup.admin.language', { emoji: '🌐', language: cmd('language') }),
+    t(lang, 'setup.admin.support', { emoji: EMOJI.LINK, url: SUPPORT_URL, support: cmd('support') }),
+    ...(fallback || dm ? [] : [t(lang, 'setup.admin.doNotShare', { emoji: EMOJI.ALERT })]),
+  ];
+  // Petto's face is the avatar it has in this server right now, not a picture kept in the code; without one the text goes alone.
+  const setup = avatarUrl
+    ? new ContainerBuilder().addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
+        .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)),
+    )
+    : new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
-  const language = guildId ? buildLanguageSection({ guildId, kind: dm ? 'dm' : fallback ? 'fallback' : 'admin', choice: languageChoice, done: languageDone, prefix, lang }) : null;
+  const language = guildId ? buildLanguageSection({ guildId, kind: dm ? 'dm' : fallback ? 'fallback' : 'admin', choice: languageChoice, done: languageDone, prefix, mentions, lang }) : null;
   return { components: [intro, setup, ...(language ? [language] : [])], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
+function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, mentions = {}, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
   const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.BOT, server: guild.name })))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { prefix })));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { emoji: EMOJI.INFO, help: mentions.help ?? '`/help`' })));
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setLabel(t(lang, 'core.join.website.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs'),
     new ButtonBuilder().setLabel(t(lang, 'core.join.dashboard.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/dash'),
     new ButtonBuilder().setLabel(t(lang, 'core.join.docs.button')).setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs'),
-    new ButtonBuilder().setLabel(t(lang, 'core.join.support.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/support'),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.support.button')).setStyle(ButtonStyle.Link).setURL(SUPPORT_URL),
   );
 
-  const language = guild?.id ? buildLanguageSection({ guildId: guild.id, kind: 'owner', choice: languageChoice, done: languageDone, prefix, lang }) : null;
+  const language = guild?.id ? buildLanguageSection({ guildId: guild.id, kind: 'owner', choice: languageChoice, done: languageDone, prefix, mentions, lang }) : null;
   return { components: [container, ...(language ? [language] : []), row], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -207,6 +227,8 @@ module.exports = {
   findPrivateChannel,
   commandMention,
   commandSubcommandMention,
+  setupMentions,
+  botAvatarUrl,
   buildAdminSetupMessage,
   buildOwnerGuide,
   sendSetupMessage,

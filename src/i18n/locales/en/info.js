@@ -429,6 +429,8 @@ module.exports = {
   'info.summaryCard.busiestOn.saturday': 'Busiest on Saturdays',
   'info.summaryCard.busiestOn.sunday': 'Busiest on Sundays',
   'info.uptime.online': 'Petto has been online for **{duration}**.',
+  'info.support.title': '### {emoji} Petto support server',
+  'info.support.text': '{emoji} Need a hand, found a bug or want to follow the news? Join the support server: the team and the community answer there.',
   'info.cosmetics.none': 'None',
   'info.cosmetics.kind': 'Kind',
   'info.cosmetics.moving': 'Moving',

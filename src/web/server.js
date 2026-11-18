@@ -414,6 +414,23 @@ function startServer(client) {
       }
     });
 
+    // The dashboard login asked "do you want Petto to add you to the support server?" and the person said yes and allowed it on Discord's screen: the
+    // website hands over who they are and the permission they just gave (used once, never logged or kept) and the bot adds them.
+    app.post('/api/dashboard/support/join', dashboardDatabaseRateLimiter, async (req, res) => {
+      if (!dashboardAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+      const userId = String(req.body?.user_id || '');
+      const accessToken = String(req.body?.access_token || '');
+      if (!/^\d{15,25}$/.test(userId) || accessToken.length < 10 || accessToken.length > 256) { res.status(400).json({ ok: false, error: 'bad_request' }); return; }
+      try {
+        const { joinSupportServer } = require('../utils/supportJoin');
+        const result = await joinSupportServer(client, userId, accessToken);
+        res.json({ ok: result.ok, code: result.code });
+      } catch (err) {
+        logger.error('Support server join from the dashboard failed:', err.message);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
     // ── Appeals ──────────────────────────────────────────────────────────────
     // The public appeal site (petto.sbs/appeal/<server id>) asks the bot for what only Discord knows and for the actions that touch Discord. The web has already
     // checked who the member is (their Discord login), so these routes trust the user id the same way the dashboard routes do.

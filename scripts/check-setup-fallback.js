@@ -26,10 +26,14 @@ const text = (payload) => JSON.stringify(payload.components.map((entry) => entry
 const options = { botId: '1', setupMention: '/setup', reportConfigMention: '/report config', prefix: '!' };
 assert.ok(text(buildAdminSetupMessage({ ...options, fallback: true })).includes('could not make its private setup channel'));
 assert.ok(!text(buildAdminSetupMessage(options)).includes('could not make'));
-// In Spanish the message is Spanish and names the commands with the prefix; /setup stays a slash command.
+// In Spanish the message is Spanish and every command is a slash mention (the prefix may stop working one day).
 const spanish = text(buildAdminSetupMessage({ ...options, setupMention: '</setup:1>', reportConfigMention: '</report config:1>', fallback: true, lang: 'es' }));
 assert.ok(spanish.includes('Petto no pudo crear su canal privado de configuración'));
-assert.ok(spanish.includes('</setup:1>') && spanish.includes('`!report config`') && !spanish.includes('</report config:1>'));
+assert.ok(spanish.includes('</setup:1>') && spanish.includes('</report config:1>') && !spanish.includes('`!report config`'));
+assert.ok(spanish.includes('`/help`') && spanish.includes('`/logs`') && spanish.includes('`/language`') && spanish.includes('https://petto.sbs/support') && !spanish.includes('!help'), 'the other commands are slash too, and the support server is in the message');
+assert.ok(text(buildAdminSetupMessage({ ...options, mentions: { help: '</help:7>' } })).includes('</help:7>'), 'a mention that is known is clickable');
+assert.ok(!text(buildAdminSetupMessage(options)).includes('imgur'), 'the face of Petto is no picture kept in the code');
+assert.ok(JSON.stringify(buildAdminSetupMessage({ ...options, avatarUrl: 'https://cdn.discordapp.com/avatars/1/xmas.png' }).components).includes('xmas.png'), 'the face is the avatar Petto has in the server');
 assert.ok(text(buildAdminSetupMessage({ ...options, reportConfigMention: '</report config:1>' })).includes('</report config:1>'), 'English keeps the clickable mention');
 // The message that goes by direct message says why, names the server, and does not tell to move it to a private channel.
 const dm = text(buildAdminSetupMessage({ ...options, dm: true, guildName: 'Duck' }));

@@ -121,7 +121,7 @@ const EVERYDAY = new Set([
   'afk', 'remind', 'poll', 'rank', 'leaderboard', 'birthday', 'suggest', 'feedback', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
-  'partner', 'request', 'review', 'uploads', 'stats', 'topcommands',
+  'partner', 'request', 'review', 'uploads', 'stats', 'topcommands', 'support',
   // /server and /user: lookups (their subcommands are the old info commands); `/server steal` asks for Manage Guild Expressions inside.
   'server', 'user',
   // /ai (`!ask`, `/ai ask`, `/ai usage`): open to every member on purpose. `ask` has a daily limit for free members inside (scripts/check-ask.js); `usage` only reads.
