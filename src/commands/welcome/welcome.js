@@ -6,6 +6,8 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { sendMemberEvent, localizeDefaultText, describeMessage, shortMessage } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { pickMessage } = require('../../utils/messageVariants');
+const { addMessageCommand, removeMessageCommand, listMessagesCommand } = require('../../utils/messageVariantsCommand');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
@@ -34,16 +36,33 @@ module.exports = {
         .addStringOption((o) => o.setName('embed').setDescription('Use a saved /embed template instead of plain text').setRequired(false))
         .addStringOption((o) => o.setName('message').setDescription('Plain text (supports /embed variables, e.g. {user}, {server_name})').setRequired(false)),
     )
-    .addSubcommand((s) => s.setName('second-disable').setDescription('Turn off the second welcome.')),
+    .addSubcommand((s) => s.setName('second-disable').setDescription('Turn off the second welcome.'))
+    .addSubcommand((s) =>
+      s
+        .setName('add-message')
+        .setDescription('Add another welcome message: one of all of them is picked at random each time.')
+        .addStringOption((o) => o.setName('message').setDescription('Plain text (supports /embed variables, e.g. {user}, {server_name})').setRequired(false))
+        .addStringOption((o) => o.setName('embed').setDescription('Use a saved /embed template instead of plain text').setRequired(false)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('remove-message')
+        .setDescription('Remove one of the other welcome messages by its number.')
+        .addIntegerOption((o) => o.setName('number').setDescription('Its number in the list (2 or more)').setMinValue(2).setMaxValue(25).setRequired(true)),
+    )
+    .addSubcommand((s) => s.setName('messages').setDescription('List the welcome messages (one is picked at random each time).')),
 
   // `!welcome setup` and `!welcome second-setup` take an embed code as their message, with its line breaks and buttons.
-  prefixCodeOptions: { setup: 'message', 'second-setup': 'message' },
+  prefixCodeOptions: { setup: 'message', 'second-setup': 'message', 'add-message': 'message' },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') return setup(interaction);
     if (sub === 'status') return status(interaction); 
     if (sub === 'test') return test(interaction);
+    if (sub === 'add-message') return addMessageCommand(interaction, 'welcome');
+    if (sub === 'remove-message') return removeMessageCommand(interaction, 'welcome');
+    if (sub === 'messages') return listMessagesCommand(interaction, 'welcome');
     if (sub === 'second-setup') return setupSecond(interaction);
     if (sub === 'second-disable') return disableSecond(interaction);
     return disable(interaction);
@@ -124,8 +143,10 @@ async function disableSecond(interaction) {
 async function test(interaction) {
   const lang = await languageOf(interaction);
   const config = await getConfig(interaction.guild.id);
-  const main = config?.welcome_channel_id && (config.welcome_message || config.welcome_embed_template)
-    ? { channelId: config.welcome_channel_id, message: config.welcome_message, template: config.welcome_embed_template } : null;
+  // One of the messages of the first welcome, picked as it is for a real member (so the test shows the variety).
+  const picked = config?.welcome_channel_id ? await pickMessage(interaction.guild.id, 'welcome', { message: config.welcome_message ?? null, template: config.welcome_embed_template ?? null }) : null;
+  const main = picked && (picked.message || picked.template)
+    ? { channelId: config.welcome_channel_id, message: picked.message, template: picked.template } : null;
   const second = config?.welcome_second_enabled && config.welcome_second_channel_id && (config.welcome_second_message || config.welcome_second_embed_template)
     ? { channelId: config.welcome_second_channel_id, message: config.welcome_second_message, template: config.welcome_second_embed_template } : null;
   if (!main && !second) {

@@ -21,6 +21,7 @@ const MAX_TEMP_ROLE_MS = 365 * 24 * 60 * 60 * 1000;
 const WRAPPED_GROUPS = [
   { group: 'join', wraps: 'joinrole' },
   { group: 'sticky', wraps: 'stickyroles' },
+  { group: 'aged', wraps: 'agedrole' },
 ];
 const wrappedLeaves = expandGroups(WRAPPED_GROUPS, loadByName);
 const wrappedGroups = wrappedExecutor(loadByName, wrappedLeaves);
@@ -47,7 +48,7 @@ module.exports = {
   // `!role join add @Role` is `!joinrole add @Role` and `!role sticky enable` is `!stickyroles enable`: the first word sends the rest to that command (so it reads
   // it as it always did). The rules of a server for `role` apply to them too, and so do the ones for the old command.
   rulesViaWords: true,
-  prefixWords: { join: { command: 'joinrole', args: [] }, sticky: { command: 'stickyroles', args: [] } },
+  prefixWords: { join: { command: 'joinrole', args: [] }, sticky: { command: 'stickyroles', args: [] }, aged: { command: 'agedrole', args: [] } },
   // A word like `remove` or `preview` is the option of that name (`!role all @Role remove preview`), and the ones that are not a role or a word are
   // only given with their name (`--joined_after 30d`), so a reason is never taken for a date.
   prefixBareFlags: true,
@@ -152,7 +153,7 @@ module.exports = {
   async execute(interaction, client) {
     const group = interaction.options.getSubcommandGroup(false);
     if (group === 'group') return groupCmd(interaction);
-    if (group === 'join' || group === 'sticky') return wrappedGroups.execute(interaction, client);
+    if (group === 'join' || group === 'sticky' || group === 'aged') return wrappedGroups.execute(interaction, client);
 
     const sub = interaction.options.getSubcommand();
     if (sub === 'add') return addRoles(interaction);

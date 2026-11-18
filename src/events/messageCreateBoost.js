@@ -1,5 +1,6 @@
 const { Events, MessageType } = require('discord.js');
 const { getConfig } = require('../db/memberEvents');
+const { pickMessage } = require('../utils/messageVariants');
 const { sendMemberEvent } = require('../utils/memberEventMessage');
 const logger = require('../utils/logger');
 
@@ -33,7 +34,8 @@ module.exports = {
       const ctx = { member, guild: message.guild, channel, user: member?.user ?? message.author };
 
       if (isBoost) {
-        await sendMemberEvent({ guild: message.guild, channel, kind: 'boost', messageText: config.boost_message, embedTemplateName: config.boost_embed_template, ctx });
+        const chosen = await pickMessage(message.guild.id, 'boost', { message: config.boost_message ?? null, template: config.boost_embed_template ?? null });
+        await sendMemberEvent({ guild: message.guild, channel, kind: 'boost', messageText: chosen.message, embedTemplateName: chosen.template, ctx });
       }
 
       if (tierLevel) {

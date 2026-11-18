@@ -88,7 +88,7 @@ const SPLIT_WRAPPED = ['suggestion', 'confession', 'requestconfig', 'profileconf
 const UMBRELLAS = {
   config: { category: 'config', groups: { alias: 4, moderationroles: 4, commandroles: 4, disabledcommands: 4, sanctionmessage: 3, backup: 9, statistics: 6 }, flat: { language: 'language', recommended: 'cmdconfig', appeals: 'appeals' } },
   protect: { category: 'config', groups: { honeypot: 5, verify: 6, security: 2, roletrigger: 4 }, flat: {} },
-  greet: { category: 'welcome', groups: { welcome: 6, leave: 4, boost: 5, dmonjoin: 4, pingonjoin: 5 }, flat: {} },
+  greet: { category: 'welcome', groups: { welcome: 9, leave: 7, boost: 8, dmonjoin: 4, pingonjoin: 5 }, flat: {} },
   automation: { category: 'automation', groups: { autothread: 3, bumpreminder: 8, reaction: 10, reactionrole: 4, stickymessage: 3, timer: 12 }, flat: {} },
   message: { category: 'config', groups: { sender: 3, webhook: 5, panel: 7, responder: 4, pagination: 12 }, flat: { send: 'send', editembed: 'editembed' } },
   contributions: { category: 'automation', groups: { partner: 2, partnerconfig: 12, uploads: 2, uploadconfig: 7 }, flat: {} },
@@ -110,7 +110,7 @@ const PERMS = {
 };
 // The commands that already have subcommands, registered by themselves (with the number of top-level subcommands and groups they have).
 const DIRECT = {
-  prefix: 5, quests: 16, automod: 16, form: 17, forum: 19, role: 24, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 9, image: 12, feed: 9, identity: 6,
+  prefix: 5, quests: 16, automod: 16, form: 17, forum: 19, role: 25, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 9, image: 12, feed: 9, identity: 6,
   starboard: 10, clownboard: 10, monkeyboard: 10, stats: 8, customcommand: 16, rollouts: 15, quickreply: 4, voicemaster: 17, giveawaypreset: 7, giveawaytemplate: 4,
 };
 const NEW_SLASH = [...Object.keys(UMBRELLAS), ...Object.keys(DIRECT)].filter((name) => name !== 'config'); // (`/config` is a prefix umbrella now: `/alias`, `/backup`... are slash commands of their own) // (`/config` is a prefix umbrella now: `/alias`, `/backup`... are slash commands of their own)
@@ -280,7 +280,7 @@ function tailOf(node) {
     total.leaves += leavesOf(umbrella).length;
     assert.ok(Object.values(command.ruleKeys).length >= top.length);
   }
-  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 17, greet: 24, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 12 });
+  assert.deepEqual(Object.fromEntries(Object.keys(UMBRELLAS).map((umbrella) => [umbrella, leavesOf(umbrella).length])), { config: 37, protect: 17, greet: 33, automation: 40, message: 33, contributions: 23, specialchannels: 24, bot: 12 });
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, is wrapped once, has no groups of its own (Discord allows two
   // levels), and is still a prefix command (the ones that were slash commands are not wrapped twice).

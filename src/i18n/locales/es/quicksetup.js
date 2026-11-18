@@ -1,0 +1,22 @@
+// Quick Setup of the dashboard (utils/quickSetup.ts). Reference catalog: es and pt-BR must have the same keys.
+module.exports = {
+  "quicksetup.reason": "Quick Setup desde la dash",
+  "quicksetup.name.modLog": "mod-log",
+  "quicksetup.name.welcome": "bienvenida",
+  "quicksetup.name.tickets": "abrir-ticket",
+  "quicksetup.name.member": "Miembro",
+  "quicksetup.name.support": "Soporte",
+  "quicksetup.goodbye": "{user.name} salió de {server.name}. ¡Adiós!",
+  "quicksetup.err.channel": "Elige un canal de texto donde Petto pueda escribir, o pide uno nuevo.",
+  "quicksetup.err.role": "Elige un rol (que no sea de una integración), o pide uno nuevo.",
+  "quicksetup.err.roleHigh": "{role} está por encima del rol más alto de Petto, así que Petto no puede darlo. Sube el rol de Petto por encima y repite este paso.",
+  "quicksetup.err.ticketLimit": "Este servidor llegó al límite de tipos de ticket de su plan.",
+  "quicksetup.err.permission": "Petto no tiene el permiso que necesita aquí (Gestionar canales o Gestionar roles).",
+  "quicksetup.err.failed": "Este paso no funcionó. No cambió nada más; inténtalo otra vez o usa su página de la dash.",
+  "quicksetup.done.moderation": "Registro de moderación en {channel}: sanciones, automod y cambios de miembros, roles, canales y del servidor.",
+  "quicksetup.done.automod": "Auto moderación: {count} protecciones activadas.",
+  "quicksetup.done.welcome": "Mensajes de bienvenida en {channel}.",
+  "quicksetup.done.autorole": "Los miembros nuevos reciben {role}.",
+  "quicksetup.done.tickets": "Tickets: el panel está en {channel} y {role} los atiende.",
+  "quicksetup.done.verification": "La verificación se está preparando: tarda un momento y la ves en la página de Verificación.",
+};

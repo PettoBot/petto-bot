@@ -5,6 +5,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { sendMemberEvent, describeMessage, shortMessage } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { addMessageCommand, removeMessageCommand, listMessagesCommand } = require('../../utils/messageVariantsCommand');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
@@ -31,10 +32,24 @@ module.exports = {
     )
     .addSubcommand((s) => s.setName('status').setDescription('Show the current boost configuration.'))
     .addSubcommand((s) => s.setName('test').setDescription('Send a test boost message using your own account.'))
-    .addSubcommand((s) => s.setName('disable').setDescription('Turn off boost announcements.')),
+    .addSubcommand((s) => s.setName('disable').setDescription('Turn off boost announcements.'))
+    .addSubcommand((s) =>
+      s
+        .setName('add-message')
+        .setDescription('Add another boost message: one of all of them is picked at random each time.')
+        .addStringOption((o) => o.setName('message').setDescription('Plain text (supports /embed variables, e.g. {user}, {server_name})').setRequired(false))
+        .addStringOption((o) => o.setName('embed').setDescription('Use a saved /embed template instead of plain text').setRequired(false)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('remove-message')
+        .setDescription('Remove one of the other boost messages by its number.')
+        .addIntegerOption((o) => o.setName('number').setDescription('Its number in the list (2 or more)').setMinValue(2).setMaxValue(25).setRequired(true)),
+    )
+    .addSubcommand((s) => s.setName('messages').setDescription('List the boost messages (one is picked at random each time).')),
 
   // `!boost setup` takes an embed code as its message, with its line breaks and buttons.
-  prefixCodeOptions: { setup: 'message', 'level-up': 'message' },
+  prefixCodeOptions: { setup: 'message', 'level-up': 'message', 'add-message': 'message' },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -42,6 +57,9 @@ module.exports = {
     if (sub === 'level-up') return levelUp(interaction);
     if (sub === 'status') return status(interaction);
     if (sub === 'test') return test(interaction);
+    if (sub === 'add-message') return addMessageCommand(interaction, 'boost');
+    if (sub === 'remove-message') return removeMessageCommand(interaction, 'boost');
+    if (sub === 'messages') return listMessagesCommand(interaction, 'boost');
     return disable(interaction);
   },
 };

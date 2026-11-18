@@ -135,5 +135,6 @@
  "sy": "search youtube video",
  "wa": "warnescalation add",
  "wl": "warnescalation list",
- "wr": "warnescalation remove"
+ "wr": "warnescalation remove",
+ "lvrm": "levels voice role-mode"
 }

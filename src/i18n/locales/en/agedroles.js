@@ -1,0 +1,20 @@
+// Aged roles: a role given after some days in the server (utils/agedRoles.ts, commands/welcome/agedrole.js). Reference catalog: es and pt-BR must have the same keys.
+module.exports = {
+  'agedroles.managed': '{role} is managed by an integration or is @everyone: it cannot be given or taken.',
+  'agedroles.aboveMe': '{role} is above my highest role, so I cannot give or take it. Move my role above it.',
+  'agedroles.problem.full': 'There is no room: a server can have {max} rules of this kind.',
+  'agedroles.problem.days': 'The days must be a number from 1 to 3650.',
+  'agedroles.problem.same': 'The role to give and the role to take away cannot be the same.',
+  'agedroles.target.humans': 'humans only',
+  'agedroles.target.all': 'everyone',
+  'agedroles.target.bots': 'bots only',
+  'agedroles.added': '{emoji} From now on, {role} is given to members ({target}) after {days} days in the server. It is checked about every 30 minutes, and members who are already here get it too.',
+  'agedroles.addedRemove': '{emoji} From now on, {role} is given to members ({target}) after {days} days in the server, and {removeRole} is taken away. It is checked about every 30 minutes, and members who are already here get it too.',
+  'agedroles.removed': '{emoji} Stopped giving {role} by days in the server ({count} removed). Members keep the roles they already have.',
+  'agedroles.notFound': 'There is no rule for {role}.',
+  'agedroles.empty': 'No role is given by days in the server yet. Add one with `add`.',
+  'agedroles.listTitle': '**Roles by days in the server** ({count} of {max})',
+  'agedroles.line': '{role} after **{days}** days · {target}{off}',
+  'agedroles.lineRemove': '{role} after **{days}** days (takes away {removeRole}) · {target}{off}',
+  'agedroles.off': 'off',
+};

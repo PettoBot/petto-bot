@@ -31,6 +31,13 @@ const INVALIDATION_TABLES = Object.freeze([
   'ticket_settings', // src/db/ticketSettings.js
   'upload_config', // src/db/uploads.js
   'xp_events', // src/db/xpEvents.js
+  'mod_rule_settings', // src/db/modRules.ts, the moderation rules made in the dashboard (the four tables are read together)
+  'mod_lists', // src/db/modRules.ts
+  'mod_rulesets', // src/db/modRules.ts
+  'mod_rules', // src/db/modRules.ts
+  'mod_join_gate', // src/db/modRules.ts, the join gate and the raid detector (read with the rules)
+  'member_event_variants', // src/utils/messageVariants.ts, the other messages of the welcome, the goodbye and the boost
+  'aged_roles', // src/utils/agedRoles.ts
 ]);
 
 const SNOWFLAKE = /^\d{15,25}$/;

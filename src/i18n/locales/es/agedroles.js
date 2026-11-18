@@ -1,0 +1,20 @@
+// Roles por antigüedad: un rol que se da tras unos días en el servidor (utils/agedRoles.ts, commands/welcome/agedrole.js). Catálogo de referencia: es y pt-BR deben tener las mismas claves.
+module.exports = {
+  'agedroles.managed': '{role} lo gestiona una integración o es @everyone: no se puede dar ni quitar.',
+  'agedroles.aboveMe': '{role} está por encima de mi rol más alto, así que no puedo darlo ni quitarlo. Sube mi rol por encima.',
+  'agedroles.problem.full': 'No hay espacio: un servidor puede tener {max} reglas de este tipo.',
+  'agedroles.problem.days': 'Los días deben ser un número del 1 al 3650.',
+  'agedroles.problem.same': 'El rol que se da y el rol que se quita no pueden ser el mismo.',
+  'agedroles.target.humans': 'solo personas',
+  'agedroles.target.all': 'todos',
+  'agedroles.target.bots': 'solo bots',
+  'agedroles.added': '{emoji} Desde ahora, {role} se da a los miembros ({target}) tras {days} días en el servidor. Se revisa más o menos cada 30 minutos, y también lo reciben los miembros que ya estaban.',
+  'agedroles.addedRemove': '{emoji} Desde ahora, {role} se da a los miembros ({target}) tras {days} días en el servidor, y se quita {removeRole}. Se revisa más o menos cada 30 minutos, y también lo reciben los miembros que ya estaban.',
+  'agedroles.removed': '{emoji} Ya no se da {role} por días en el servidor ({count} quitada). Los miembros se quedan con los roles que ya tienen.',
+  'agedroles.notFound': 'No hay una regla para {role}.',
+  'agedroles.empty': 'Todavía no se da ningún rol por días en el servidor. Agrega uno con `add`.',
+  'agedroles.listTitle': '**Roles por días en el servidor** ({count} de {max})',
+  'agedroles.line': '{role} a los **{days}** días · {target}{off}',
+  'agedroles.lineRemove': '{role} a los **{days}** días (quita {removeRole}) · {target}{off}',
+  'agedroles.off': 'apagada',
+};

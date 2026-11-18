@@ -3,7 +3,7 @@
 const { getPrimaryPool } = require('./postgres');
 const commandData = require('./commandData');
 
-// Tables that have a guild_id but are not erased with the server: what a person paid for or asked for stays until it is handled on its own.
+// Tables that have a guild_id but are not erased with the server: what a person paid for or asked for (the Premium slots and their requests, the blacklist) stays until it is handled on its own.
 const KEEP = new Set(['guilds', 'guild_departures', 'premium_slot_assignments', 'premium_slot_requests', 'custom_command_data', 'guild_blacklist']);
 
 const pool = () => getPrimaryPool();
@@ -31,47 +31,22 @@ async function sync(missingIds, presentIds) {
 }
 
 /**
- * The servers that left at least `days` days ago and whose data may go now (oldest first). The ones that must stay are left out here, in the query,
- * and not after: a server with Premium in use stays, and one with backups stays until it has been gone `backupDays` days (0: it stays for good).
- * If they were only skipped later, the oldest ones that stay would fill every pass and the servers behind them would never be reached.
+ * The servers that left at least `minutes` minutes ago and whose data goes now (oldest first). All of them: a Premium slot in use or backups do not hold a
+ * server any more, what a server stored goes with it. (What a person paid for is not in the tables of the server, see `KEEP`.)
  */
-async function due(days, limit, backupDays = 0) {
+async function due(minutes, limit) {
   const { rows } = await pool().query(
-    `select d.guild_id from guild_departures d
-      where d.left_at < now() - make_interval(days => $1::int)
-        and not exists (select 1 from premium_slot_assignments p where p.guild_id = d.guild_id and p.status = 'active')
-        and (not exists (select 1 from guild_backups b where b.guild_id = d.guild_id)
-             or ($3::int > 0 and d.left_at < now() - make_interval(days => $3::int)))
-      order by d.left_at limit $2`, [days, limit, backupDays]);
+    `select guild_id from guild_departures where left_at < now() - make_interval(mins => $1::int) order by left_at limit $2`, [minutes, limit]);
   return rows.map((row) => row.guild_id);
 }
 
-/** How the servers that left are doing: those still inside the `days`, those past them that stay (Premium in use, backups) and those that are due. */
-async function counts(days, backupDays = 0) {
+/** How the servers that left are doing: those still inside the `minutes` of grace, and those that are due. */
+async function counts(minutes) {
   const { rows } = await pool().query(
-    `with d as (
-       select left_at,
-              exists (select 1 from premium_slot_assignments p where p.guild_id = x.guild_id and p.status = 'active') as premium,
-              exists (select 1 from guild_backups b where b.guild_id = x.guild_id) as backups
-         from guild_departures x)
-     select count(*) filter (where left_at >= now() - make_interval(days => $1::int))::int as waiting,
-            count(*) filter (where left_at < now() - make_interval(days => $1::int) and premium)::int as premium,
-            count(*) filter (where left_at < now() - make_interval(days => $1::int) and not premium and backups
-                               and not ($2::int > 0 and left_at < now() - make_interval(days => $2::int)))::int as backups,
-            count(*) filter (where left_at < now() - make_interval(days => $1::int) and not premium
-                               and (not backups or ($2::int > 0 and left_at < now() - make_interval(days => $2::int))))::int as due
-       from d`, [days, backupDays]);
+    `select count(*) filter (where left_at >= now() - make_interval(mins => $1::int))::int as waiting,
+            count(*) filter (where left_at < now() - make_interval(mins => $1::int))::int as due
+       from guild_departures`, [minutes]);
   return rows[0];
-}
-
-/** Why a server's data must stay for now (a Premium slot in use, backups kept in this database), or null. */
-async function holdReason(guildId) {
-  const { rows } = await pool().query(
-    `select case
-       when exists (select 1 from premium_slot_assignments where guild_id = $1 and status = 'active') then 'premium'
-       when exists (select 1 from guild_backups where guild_id = $1) then 'backups'
-     end as reason`, [guildId]);
-  return rows[0]?.reason ?? null;
 }
 
 let tables;
@@ -105,4 +80,4 @@ async function erase(guildId) {
   }
 }
 
-module.exports = { mark, clear, knownGuilds, sync, due, counts, holdReason, erase, looseTables, KEEP };
+module.exports = { mark, clear, knownGuilds, sync, due, counts, erase, looseTables, KEEP };

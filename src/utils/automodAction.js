@@ -26,6 +26,7 @@ const VIOLATION_KEYS = {
 function violationLabel(type, lang) {
   if (VIOLATION_KEYS[type]) return t(lang, `security.violation.${VIOLATION_KEYS[type]}`);
   if (String(type).startsWith('filter-')) return t(lang, 'security.violation.filter', { template: String(type).slice('filter-'.length) });
+  if (String(type).startsWith('rule:')) return t(lang, 'security.violation.rule', { name: String(type).slice('rule:'.length) });
   return type;
 }
 
@@ -39,12 +40,12 @@ const SILENT_CHANNEL_MUTE_MS = 30 * 60 * 1000; // 30 minutes
  * show up in /case history and the 'sanctions' log like anything a moderator did),
  * and separately logs the raw detection to the 'automod' category of /logs.
  */
-async function applyAutomodActionCore(message, { violationType, reason, action, durationMs: customDurationMs }) {
+async function applyAutomodActionCore(message, { violationType, reason, action, durationMs: customDurationMs, keepMessage = false }) {
   const { guild, member, author } = message;
   const client = message.client;
   const lang = currentLanguage();
 
-  await message.delete().catch((err) => logger.warn(`Automod: failed to delete message ${message.id}:`, err.message));
+  if (!keepMessage) await message.delete().catch((err) => logger.warn(`Automod: failed to delete message ${message.id}:`, err.message));
 
   await sendLog(client, guild.id, 'automod', {
     author: { name: author.username, icon_url: author.displayAvatarURL?.() ?? undefined },

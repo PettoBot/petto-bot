@@ -200,7 +200,7 @@ const LEFT_OUT = {
   language: 'the language is set with the prefix (`!language`) or in the dashboard: it is not a slash command (scripts/check-i18n.js)',
 };
 // The join roles and the sticky roles are groups of `/role` (`/role join`, `/role sticky`), which is not an umbrella.
-const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky' };
+const GROUP_OF_ROLE = { joinrole: 'join', stickyroles: 'sticky', agedrole: 'aged' };
 const missing = [];
 for (const [name, command] of all) {
   if (name !== command.data.name) continue; // the same command under the name of its file (the umbrellas name the file: `top.js` is `/leaderboard`)

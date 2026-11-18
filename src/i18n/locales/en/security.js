@@ -146,6 +146,7 @@ module.exports = {
   'security.violation.excessiveCaps': 'excessive-caps',
   'security.violation.longMessage': 'long-message',
   'security.violation.filter': 'filter-{template}',
+  'security.violation.rule': 'rule {name}',
   'security.malicious.removed': '{user} your message was removed because Petto identified one of its URLs as malicious or unsafe. Do not open it.',
   'security.malicious.kept': '{user} that message contains a URL Petto identified as malicious or unsafe. Do not open it.',
   'security.antiAlt.log.lessThanDay': 'less than a day',

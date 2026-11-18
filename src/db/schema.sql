@@ -1417,6 +1417,36 @@ create table if not exists member_events_config (
 
 alter table member_events_config enable row level security;
 
+-- member_event_variants: more messages for the welcome, the goodbye and the boost announcement. The one in member_events_config is the first; these are the others, and each time
+-- the event happens Petto picks one of them at random (never the same twice in a row). At most 24 here (25 with the first); the dashboard and the commands keep to that.
+create table if not exists member_event_variants (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  kind           text not null check (kind in ('welcome', 'leave', 'boost')),
+  position       integer not null default 0,
+  message        text check (message is null or char_length(message) <= 4000),
+  embed_template text check (embed_template is null or char_length(embed_template) <= 100),
+  created_at     timestamptz not null default now(),
+  check (message is not null or embed_template is not null)
+);
+create index if not exists idx_member_event_variants_guild on member_event_variants(guild_id, kind, position, id);
+alter table member_event_variants enable row level security;
+
+-- aged_roles: "after N days in the server, give this role" (and take another one away). Looked at about every hour (jobs/agedRolesJob.js).
+create table if not exists aged_roles (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  role_id        text not null,
+  days           integer not null check (days between 1 and 3650),
+  remove_role_id text,
+  target         text not null default 'humans' check (target in ('humans', 'all', 'bots')),
+  enabled        boolean not null default true,
+  created_at     timestamptz not null default now(),
+  unique (guild_id, role_id, days)
+);
+create index if not exists idx_aged_roles_guild on aged_roles(guild_id);
+alter table aged_roles enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- bump_reminders: reminds the server to /bump again (DISBOARD) after the
 -- cooldown, with an optional thank-you message, channel autolock between
@@ -5027,3 +5057,119 @@ create table if not exists command_usage (
 );
 
 alter table command_usage enable row level security;
+
+-- Moderation rules, made in the dashboard (see utils/modRules.ts). A ruleset groups rules that share general conditions (channels, roles,
+-- how new the account is...); each rule has triggers (what is looked for), conditions (who and where) and effects (what Petto does).
+-- The words and the domains live in lists that any rule can use. `mod_rule_logs` keeps what happened, never the text of a message.
+create table if not exists mod_rule_settings (
+  guild_id       text primary key references guilds(guild_id) on delete cascade,
+  enabled        boolean not null default true,
+  ignore_staff   boolean not null default true,
+  log_channel_id text,
+  updated_at     timestamptz not null default now()
+);
+alter table mod_rule_settings enable row level security;
+
+create table if not exists mod_lists (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null check (char_length(name) between 1 and 60),
+  kind       text not null check (kind in ('words', 'domains')),
+  items      text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  unique (guild_id, name)
+);
+create index if not exists idx_mod_lists_guild on mod_lists(guild_id);
+alter table mod_lists enable row level security;
+
+create table if not exists mod_rulesets (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null check (char_length(name) between 1 and 60),
+  enabled    boolean not null default true,
+  position   integer not null default 0,
+  conditions jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mod_rulesets_guild on mod_rulesets(guild_id);
+alter table mod_rulesets enable row level security;
+
+create table if not exists mod_rules (
+  id                bigserial primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  ruleset_id        bigint not null references mod_rulesets(id) on delete cascade,
+  name              text not null check (char_length(name) between 1 and 60),
+  enabled           boolean not null default true,
+  position          integer not null default 0,
+  trigger_mode      text not null default 'any' check (trigger_mode in ('any', 'all')),
+  triggers          jsonb not null default '[]'::jsonb,
+  conditions        jsonb not null default '[]'::jsonb,
+  effects           jsonb not null default '[]'::jsonb,
+  threshold_count   integer not null default 1 check (threshold_count between 1 and 50),
+  threshold_minutes integer not null default 10 check (threshold_minutes between 1 and 1440),
+  stop              boolean not null default true,
+  hits              integer not null default 0,
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_mod_rules_guild on mod_rules(guild_id);
+create index if not exists idx_mod_rules_ruleset on mod_rules(ruleset_id);
+alter table mod_rules enable row level security;
+
+create table if not exists mod_rule_logs (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  rule_id    bigint,
+  rule_name  text not null,
+  user_id    text not null,
+  channel_id text,
+  trigger    text not null,
+  effects    text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mod_rule_logs_guild on mod_rule_logs(guild_id, id desc);
+alter table mod_rule_logs enable row level security;
+
+-- Moderation rules, second part: a rule can be tried without punishing (`dry_run`), the counters of violations and the heat are kept here (so they survive a
+-- restart of the bot), and the join gate and the raid detector of a server have their own row. See db/modRules.ts.
+alter table mod_rules add column if not exists dry_run boolean not null default false;
+alter table mod_rule_settings add column if not exists ignore_bots boolean not null default true;
+alter table mod_rule_settings add column if not exists heat_decay integer not null default 10 check (heat_decay between 0 and 1000);
+alter table mod_rule_settings add column if not exists quarantine_role_id text;
+
+create table if not exists mod_rule_violations (
+  id       bigserial primary key,
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  name     text not null,
+  at       timestamptz not null default now()
+);
+create index if not exists idx_mod_rule_violations_lookup on mod_rule_violations(guild_id, user_id, name, at desc);
+alter table mod_rule_violations enable row level security;
+
+create table if not exists mod_rule_heat (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  heat       double precision not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table mod_rule_heat enable row level security;
+
+create table if not exists mod_join_gate (
+  guild_id              text primary key references guilds(guild_id) on delete cascade,
+  enabled               boolean not null default false,
+  no_avatar_action      text not null default 'none' check (no_avatar_action in ('none', 'alert', 'timeout', 'kick', 'ban', 'quarantine')),
+  account_age_days      integer not null default 0 check (account_age_days between 0 and 365),
+  account_age_action    text not null default 'none' check (account_age_action in ('none', 'alert', 'timeout', 'kick', 'ban', 'quarantine')),
+  username_list_id      bigint references mod_lists(id) on delete set null,
+  username_words        text[] not null default '{}',
+  username_action       text not null default 'none' check (username_action in ('none', 'alert', 'timeout', 'kick', 'ban', 'quarantine')),
+  timeout_minutes       integer not null default 60 check (timeout_minutes between 1 and 40320),
+  raid_joins            integer not null default 0 check (raid_joins between 0 and 500),
+  raid_seconds          integer not null default 30 check (raid_seconds between 5 and 600),
+  raid_action           text not null default 'alert' check (raid_action in ('alert', 'lockdown', 'kick_new', 'ban_new')),
+  raid_lockdown_minutes integer not null default 10 check (raid_lockdown_minutes between 1 and 720),
+  raid_alert_channel_id text,
+  updated_at            timestamptz not null default now()
+);
+alter table mod_join_gate enable row level security;
