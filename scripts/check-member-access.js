@@ -435,15 +435,15 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // ---------------------------------------------------------- 2b. `ask` and `ai usage` are open to a plain member on purpose, in every way they are typed (a fake model and a fake count)
   {
     const askAi = require('../src/utils/askAi');
-    const ticketAi = require('../src/utils/ticketAi');
+    const groqChat = require('../src/utils/groqChat');
     const askUsage = require('../src/db/askUsage');
-    const originalChat = ticketAi.chat;
+    const originalChat = groqChat.chat;
     const originalUsage = { consume: askUsage.consume, refund: askUsage.refund, usedOn: askUsage.usedOn };
     const counts = new Map();
     const modelSaw = [];
     process.env.GROQ_API_KEY = 'check-only-key';
     process.env.ASK_COOLDOWN_FREE_SECONDS = '0';
-    ticketAi.chat = async (messages) => { modelSaw.push(messages.at(-1).content); return { ok: true, content: 'Cats are small mammals.' }; };
+    groqChat.chat = async (messages) => { modelSaw.push(messages.at(-1).content); return { ok: true, content: 'Cats are small mammals.' }; };
     Object.assign(askUsage, {
       consume: async (user, day, limit) => { const used = counts.get(user) ?? 0; if (used >= limit) return { ok: false, used }; counts.set(user, used + 1); return { ok: true, used: used + 1 }; },
       refund: async (user) => { counts.set(user, Math.max(0, (counts.get(user) ?? 0) - 1)); },
@@ -480,7 +480,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
       // A plain member only writes their own count, and Premium and the team are not counted.
       assert.deepEqual([...counts.keys()].filter((id) => id !== ANA), [], 'only the count of the member who asked is written');
     } finally {
-      ticketAi.chat = originalChat;
+      groqChat.chat = originalChat;
       Object.assign(askUsage, originalUsage);
       askAi.resetState();
       delete process.env.GROQ_API_KEY; delete process.env.ASK_COOLDOWN_FREE_SECONDS;

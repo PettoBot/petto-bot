@@ -3,7 +3,7 @@
 // This file is everything that is not Discord: the prompt, the limits, the cleaning of what the model writes and the context of a conversation
 // (the reply chain). The command is src/commands/utility/ai.js, the follow-up of a conversation is read by events/messageCreateCommands.js.
 //
-// The model is the Groq client of the ticket assistant (utils/ticketAi.js `chat`), with its own log tag. The key is GROQ_API_KEY.
+// The model is the shared Groq client (utils/groqChat.js `chat`), with its own log tag. The key is GROQ_API_KEY.
 //
 // Limits (environment variables, read each time so they can change without code):
 //   ASK_ENABLED=false             switches the command off for everybody (it says it is not available).
@@ -17,7 +17,7 @@
 // and nothing else, and the database only holds a number per member and day.
 const config = require('../config');
 const logger = require('./logger');
-const ticketAi = require('./ticketAi');
+const groqChat = require('./groqChat');
 const usage = require('../db/askUsage');
 const { t, tn } = require('../i18n');
 
@@ -59,7 +59,7 @@ function limits() {
 const isEnabled = () => !['false', '0', 'off', 'no', 'disabled'].includes(String(process.env.ASK_ENABLED ?? '').trim().toLowerCase());
 
 /** The key of Groq is set. */
-const isConfigured = () => ticketAi.isConfigured();
+const isConfigured = () => groqChat.isConfigured();
 
 // ---------------------------------------------------------------- who has no limit
 const PREMIUM_TTL_MS = 60_000;
@@ -225,7 +225,7 @@ function composeAnswer(text, { lang, remaining = null }) {
  */
 async function ask({ userId, guildId, question, history = [], lang = 'en' }, deps = {}) {
   const now = (deps.now ?? Date.now)();
-  const chat = deps.chat ?? ((messages, max) => ticketAi.chat(messages, max, TAG));
+  const chat = deps.chat ?? ((messages, max) => groqChat.chat(messages, max, TAG));
   const store = deps.store ?? usage;
   if (!isEnabled()) return { status: 'disabled' };
   if (!(deps.configured ?? isConfigured)()) return { status: 'not_configured' };

@@ -28,7 +28,7 @@ patch('src/utils/logger.js', { info: record, warn: record, error: record, debug:
 
 const askAi = require('../src/utils/askAi');
 const usage = require('../src/db/askUsage');
-const ticketAi = require('../src/utils/ticketAi');
+const groqChat = require('../src/utils/groqChat');
 const premiumDb = require('../src/db/premium');
 const config = require('../src/config');
 const { t, tn } = require('../src/i18n');
@@ -417,22 +417,22 @@ const ask = (pool, input = {}, extra = {}) => askAi.ask({ userId: ANA, guildId: 
     process.env.GROQ_MODEL = 'check-model';
     try {
       global.fetch = async (url, init) => { urls.push(String(url)); return { ok: false, status: 500, json: async () => ({ error: SECRET_ANSWER }), text: async () => SECRET_ANSWER }; };
-      const failed = await ticketAi.chat([{ role: 'user', content: SECRET_QUESTION }], 50, 'ask');
+      const failed = await groqChat.chat([{ role: 'user', content: SECRET_QUESTION }], 50, 'ask');
       assert.deepEqual(failed, { ok: false, code: 'upstream' });
       global.fetch = async () => ({ ok: false, status: 429, json: async () => ({}) });
-      assert.deepEqual(await ticketAi.chat([{ role: 'user', content: SECRET_QUESTION }], 50, 'ask'), { ok: false, code: 'busy' });
+      assert.deepEqual(await groqChat.chat([{ role: 'user', content: SECRET_QUESTION }], 50, 'ask'), { ok: false, code: 'busy' });
       global.fetch = async () => { const error = new Error(`network ${SECRET_QUESTION}`); error.name = 'TimeoutError'; throw error; };
-      assert.deepEqual(await ticketAi.chat([{ role: 'user', content: SECRET_QUESTION }], 50, 'ask'), { ok: false, code: 'timeout' });
-      logged.push('--- tickets'); // the tickets keep their own tag
+      assert.deepEqual(await groqChat.chat([{ role: 'user', content: SECRET_QUESTION }], 50, 'ask'), { ok: false, code: 'timeout' });
+      logged.push('--- default'); // without a tag the client uses its own
       global.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
-      await ticketAi.chat([{ role: 'user', content: 'hello' }]);
+      await groqChat.chat([{ role: 'user', content: 'hello' }]);
       global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'fine' } }] }) });
-      assert.deepEqual(await ticketAi.chat([{ role: 'user', content: 'x' }], 10, 'ask'), { ok: true, content: 'fine' });
+      assert.deepEqual(await groqChat.chat([{ role: 'user', content: 'x' }], 10, 'ask'), { ok: true, content: 'fine' });
     } finally { global.fetch = real; delete process.env.GROQ_MODEL; }
     const all = logged.join('\n');
     assert.ok(!all.includes('SECRETQUESTION') && !all.includes('SECRETANSWER'), `no question or answer in the logs:\n${all}`);
     assert.match(all, /\[ask\] Groq answered 500/, 'the log of the AI says what status it got, with the tag of the feature');
-    assert.match(all.split('--- tickets')[1], /\[ticket-ai\] Groq answered 500/, 'the ticket assistant keeps its tag');
+    assert.match(all.split('--- default')[1], /\[ai\] Groq answered 500/, 'without a tag the client logs with its own');
   }
 
   // ---------------------------------------------------------- 12. the reply chain: context, who continues, and what does not
@@ -538,7 +538,7 @@ const ask = (pool, input = {}, extra = {}) => askAi.ask({ userId: ANA, guildId: 
   const premiumUsers = new Set();
   patch('src/db/premium.js', { getUserPremium: async (id) => ({ active: premiumUsers.has(id) }) });
   let chatCalls = [];
-  ticketAi.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: true, content: modelAnswer.content ?? 'Paris.' }; };
+  groqChat.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: true, content: modelAnswer.content ?? 'Paris.' }; };
 
   const client = { user: { id: BOT, bot: true, displayAvatarURL: () => 'https://example.com/a.png' }, guilds: { cache: new Collection() }, channels: { cache: new Collection(), fetch: async () => null }, users: { cache: new Collection(), fetch: async () => null }, ws: { ping: 1 }, shard: null };
   loadCommands(client);
@@ -776,15 +776,15 @@ const ask = (pool, input = {}, extra = {}) => askAi.ask({ userId: ANA, guildId: 
     // a failed answer says nothing was counted, and the use is back
     resetAll();
     modelAnswer = null;
-    ticketAi.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: false, code: 'timeout' }; };
+    groqChat.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: false, code: 'timeout' }; };
     result = await typed('!ask hello');
     assert.equal(result.replies[0].payload.content, t('en', 'utility.ask.failed')); assert.equal(usedToday(ANA), 0, 'a failed answer is not counted');
-    ticketAi.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: false, code: 'busy' }; };
+    groqChat.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: false, code: 'busy' }; };
     askAi.resetState();
     result = await typed('!ask hello');
     assert.equal(result.replies[0].payload.content, t('en', 'utility.ask.busy')); assert.equal(usedToday(ANA), 0);
     // the cooldown is told with the seconds
-    ticketAi.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: true, content: 'Hi' }; };
+    groqChat.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: true, content: 'Hi' }; };
     resetAll();
     delete process.env.ASK_COOLDOWN_FREE_SECONDS;
     await typed('!ask one');
@@ -802,7 +802,7 @@ const ask = (pool, input = {}, extra = {}) => askAi.ask({ userId: ANA, guildId: 
   // ---------------------------------------------------------- 14. the slash command: public answer, private refusals, the same rules
   {
     resetAll();
-    ticketAi.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: true, content: 'Slash answer. @everyone' }; };
+    groqChat.chat = async (messages, max, tag) => { chatCalls.push({ messages, max, tag }); return { ok: true, content: 'Slash answer. @everyone' }; };
     const slash = async (sub, values = { question: 'what is a cat?' }, { as = ANA } = {}) => {
       const calls = [];
       const member = { id: as, guild, permissions: new PermissionsBitField(0n), roles: { cache: new Collection() } };

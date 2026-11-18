@@ -175,9 +175,6 @@ async function openTicket({ guild, client, category, opener, formAnswers = null,
     await postAnswers(shown, { send: (payload) => sendAs(channel, 'tickets', payload), lang, guild, log: (err) => logger.warn(`Ticket #${ticket.ticket_number}: the answers of the form could not be sent: ${err.message}`) });
   }
 
-  // The AI assistant (beta, off unless the server switched it on) says hello in the ticket.
-  await require('./ticketAiGreeting').greet({ guild, client, channel, category, opener });
-
   await sendLog(client, guild.id, 'tickets', {
     author: { name: t(lang, 'tickets.log.opened.title', { number: ticket.ticket_number }) },
     description: t(lang, 'tickets.log.opened.description', { emoji: EMOJI.APPROVE, user: opener.id, category: category.label, channel: channel.id }),

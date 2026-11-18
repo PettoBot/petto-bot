@@ -178,7 +178,7 @@ const clock = (start = 1_000_000) => { let at = start; return { now: () => at, t
     assert.equal(loadGuard.level(), 'critical');
     for (const job of ['expireSanctions', 'lockdownJob', 'joinGateJob', 'antiScamJob']) assert.equal(loadGuard.allowsJob(job), true, `${job} is essential even in critical`);
     for (const job of ['giveawayJob', 'reminderJob', 'feedsJob', 'autoMessageJob']) assert.equal(loadGuard.allowsJob(job), false, `${job} waits in critical`);
-    for (const file of ['interactionCreate', 'interactionCreateGuildOps', 'messageCreateCommands', 'messageCreateTicketAi', 'guildMemberAddJail', 'guildMemberAddAntiRaid', 'messageCreateAntiScam', 'channelDeleteAntiNuke', 'ready']) assert.equal(loadGuard.allowsEvent(file), true, `${file} is essential`);
+    for (const file of ['interactionCreate', 'interactionCreateGuildOps', 'messageCreateCommands', 'guildMemberAddJail', 'guildMemberAddAntiRaid', 'messageCreateAntiScam', 'channelDeleteAntiNuke', 'ready']) assert.equal(loadGuard.allowsEvent(file), true, `${file} is essential`);
     for (const file of ['messageCreateLevelXp', 'messageCreateSticky', 'guildMemberAddWelcome', 'voiceStateUpdate', 'messageDelete', 'messageCreateCounting']) assert.equal(loadGuard.allowsEvent(file), false, `${file} is dropped in critical`);
     const stats = loadGuard.stats();
     assert.ok(stats.shed['job:feedsJob'] > 0 && stats.shed['event:messageCreateLevelXp'] > 0, 'what is shed is counted by job and by listener');
