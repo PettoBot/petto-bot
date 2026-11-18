@@ -34,7 +34,7 @@ async function handleRuleCreate(rule, client) {
 
 async function handleRuleDelete(rule, client) {
   const lang = await guildLanguage(rule.guild.id);
-  const mod = await fetchMod(rule.guild, AuditLogEvent.AutoModerationRuleDelete, rule.id);
+  const mod = await fetchMod(rule.guild, AuditLogEvent.AutoModerationRuleDelete, rule.id, { event: 'automod' });
   const fields = summary(rule, lang);
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   await sendLog(client, rule.guild.id, 'automod', {
@@ -57,7 +57,7 @@ async function handleRuleUpdate(oldRule, newRule, client) {
   if (before !== after) fields.push({ name: t(lang, 'logs.field.actions'), value: `${actionList(oldRule, lang, '')} -> ${actionList(newRule, lang, '')}`, inline: false });
   if (JSON.stringify(oldRule.triggerMetadata ?? {}) !== JSON.stringify(newRule.triggerMetadata ?? {})) fields.push({ name: t(lang, 'logs.field.settings'), value: t(lang, 'logs.automod.settingsChanged'), inline: false });
   if (!fields.length) return;
-  const mod = await fetchMod(newRule.guild, AuditLogEvent.AutoModerationRuleUpdate, newRule.id);
+  const mod = await fetchMod(newRule.guild, AuditLogEvent.AutoModerationRuleUpdate, newRule.id, { event: 'automod' });
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   await sendLog(client, newRule.guild.id, 'automod', {
     author: { name: t(lang, 'logs.automod.updated.title') },

@@ -1,4 +1,4 @@
-const { sendLog, getAvatar } = require('./engine');
+const { sendLog, logsEvent, getAvatar } = require('./engine');
 const { t, tn, guildLanguage, currentLanguage } = require('../i18n');
 
 function truncate(str, max) {
@@ -78,6 +78,8 @@ function mediaDescription(message, lang = currentLanguage()) {
 async function handleMessageDelete(message, client) {
   // A message that was deleted cannot be fetched (a 404 for every deleted message that was not cached): what the event has is used.
   if (!message.guild) return;
+  // A server without the log of messages has no use for the embed (nothing below is for anything else).
+  if (!(await logsEvent(message.guild.id, 'messages'))) return;
   const isBot = message.author?.bot;
   if (isBot && !message.attachments?.size && !message.embeds?.length && !message.stickers?.size) return;
   const lang = await guildLanguage(message.guild.id);
@@ -107,6 +109,8 @@ async function handleMessageUpdate(oldMessage, newMessage, client) {
   // An edit of a message that was not cached has no "before": asking Discord for it would give the message as it is now, so it was a request for nothing (hundreds of
   // `GET /channels/:id/messages/:id` for each listener, which hit the rate limit of that route and held every other request of the bot).
   if (!oldMessage || oldMessage.partial) return;
+  // Before the request that fills the new message in and before the embed: a server without the log of messages has no use for them.
+  if (oldMessage.guild && !(await logsEvent(oldMessage.guild.id, 'messages'))) return;
   newMessage = await hydrateMessage(newMessage);
   if (!oldMessage.author || oldMessage.author.bot || !oldMessage.guild) return;
   const contentChanged = oldMessage.content !== newMessage.content;
@@ -147,6 +151,7 @@ async function handleMessageUpdate(oldMessage, newMessage, client) {
 
 async function handleMessageBulkDelete(messages, channel, client) {
   if (!channel.guild) return;
+  if (!(await logsEvent(channel.guild.id, 'messages'))) return;
   const lang = await guildLanguage(channel.guild.id);
 
   const cached = [...messages.values()].filter((m) => m.author);

@@ -22,7 +22,7 @@ const bool = (value, lang) => `\`${t(lang, value ? 'logs.true' : 'logs.false')}\
 
 async function handleRoleCreate(role, client) {
   const lang = await guildLanguage(role.guild.id);
-  const mod = await fetchMod(role.guild, AuditLogEvent.RoleCreate, role.id);
+  const mod = await fetchMod(role.guild, AuditLogEvent.RoleCreate, role.id, { event: 'roles' });
   const fields = [
     { name: t(lang, 'logs.field.name'), value: role.name, inline: true },
     { name: t(lang, 'logs.field.color'), value: `\`#${role.color.toString(16).padStart(6, '0')}\``, inline: true },
@@ -40,7 +40,7 @@ async function handleRoleCreate(role, client) {
 
 async function handleRoleDelete(role, client) {
   const lang = await guildLanguage(role.guild.id);
-  const mod = await fetchMod(role.guild, AuditLogEvent.RoleDelete, role.id);
+  const mod = await fetchMod(role.guild, AuditLogEvent.RoleDelete, role.id, { event: 'roles' });
   const fields = mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : [];
 
   await sendLog(client, role.guild.id, 'roles', {
@@ -71,7 +71,7 @@ async function handleRoleUpdate(oldRole, newRole, client) {
   if ((oldRole.unicodeEmoji ?? null) !== (newRole.unicodeEmoji ?? null)) fields.push({ name: t(lang, 'logs.field.emoji'), value: `${oldRole.unicodeEmoji || none} -> ${newRole.unicodeEmoji || none}`, inline: true });
   if (!fields.length) return;
 
-  const mod = await fetchMod(newRole.guild, AuditLogEvent.RoleUpdate, newRole.id);
+  const mod = await fetchMod(newRole.guild, AuditLogEvent.RoleUpdate, newRole.id, { event: 'roles' });
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
 
   await sendLog(client, newRole.guild.id, 'roles', {
@@ -95,7 +95,7 @@ function channelFields(channel, mod, lang) {
 async function handleChannelCreate(channel, client) {
   if (!channel.guild) return;
   const lang = await guildLanguage(channel.guild.id);
-  const mod = await fetchMod(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
+  const mod = await fetchMod(channel.guild, AuditLogEvent.ChannelCreate, channel.id, { event: 'channels' });
 
   await sendLog(
     client,
@@ -115,7 +115,7 @@ async function handleChannelCreate(channel, client) {
 async function handleChannelDelete(channel, client) {
   if (!channel.guild) return;
   const lang = await guildLanguage(channel.guild.id);
-  const mod = await fetchMod(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
+  const mod = await fetchMod(channel.guild, AuditLogEvent.ChannelDelete, channel.id, { event: 'channels' });
 
   await sendLog(client, channel.guild.id, 'channels', {
     author: { name: t(lang, 'logs.channel.deleted.title') },
@@ -242,7 +242,7 @@ async function reportChannelUpdate(oldChannel, newChannel, client) {
   const actions = overwrites.length ? [AuditLogEvent.ChannelOverwriteUpdate, AuditLogEvent.ChannelOverwriteCreate, AuditLogEvent.ChannelOverwriteDelete, AuditLogEvent.ChannelUpdate] : [AuditLogEvent.ChannelUpdate];
   let mod = null;
   for (const action of actions) {
-    mod = await fetchMod(newChannel.guild, action, newChannel.id);
+    mod = await fetchMod(newChannel.guild, action, newChannel.id, { event: 'channels' });
     if (mod) break;
   }
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
@@ -370,7 +370,7 @@ async function handleGuildUpdate(oldGuild, newGuild, client) {
   if (oldGuild.preferredLocale !== newGuild.preferredLocale) fields.push({ name: t(lang, 'logs.server.language'), value: `${oldGuild.preferredLocale} -> ${newGuild.preferredLocale}`, inline: true });
   if (!fields.length) return;
 
-  const mod = await fetchMod(newGuild, AuditLogEvent.GuildUpdate, newGuild.id);
+  const mod = await fetchMod(newGuild, AuditLogEvent.GuildUpdate, newGuild.id, { event: 'server' });
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
 
   const embed = {
@@ -405,7 +405,7 @@ async function handleScheduledEventCreate(event, client) {
   if (!event.guild) return;
   const lang = await guildLanguage(event.guild.id);
   const fields = scheduledEventFields(event, lang);
-  const by = event.creatorId ? `<@${event.creatorId}>` : await fetchMod(event.guild, AuditLogEvent.GuildScheduledEventCreate, event.id);
+  const by = event.creatorId ? `<@${event.creatorId}>` : await fetchMod(event.guild, AuditLogEvent.GuildScheduledEventCreate, event.id, { event: 'server' });
   if (by) fields.push({ name: t(lang, 'logs.field.by'), value: by, inline: true });
   await sendLog(client, event.guild.id, 'server', {
     author: { name: t(lang, 'logs.event.created.title') },
@@ -419,7 +419,7 @@ async function handleScheduledEventCreate(event, client) {
 async function handleScheduledEventDelete(event, client) {
   if (!event.guild) return;
   const lang = await guildLanguage(event.guild.id);
-  const mod = await fetchMod(event.guild, AuditLogEvent.GuildScheduledEventDelete, event.id);
+  const mod = await fetchMod(event.guild, AuditLogEvent.GuildScheduledEventDelete, event.id, { event: 'server' });
   const fields = scheduledEventFields(event, lang);
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   await sendLog(client, event.guild.id, 'server', {
@@ -441,7 +441,7 @@ async function handleScheduledEventUpdate(oldEvent, newEvent, client) {
   if ((oldEvent.description ?? '') !== (newEvent.description ?? '')) fields.push({ name: t(lang, 'logs.field.description'), value: t(lang, 'logs.event.descriptionChanged'), inline: true });
   if ((oldEvent.channelId ?? oldEvent.entityMetadata?.location) !== (newEvent.channelId ?? newEvent.entityMetadata?.location)) fields.push({ name: t(lang, 'logs.event.where'), value: newEvent.channelId ? `<#${newEvent.channelId}>` : newEvent.entityMetadata?.location ?? t(lang, 'logs.none'), inline: true });
   if (!fields.length) return;
-  const mod = await fetchMod(newEvent.guild, AuditLogEvent.GuildScheduledEventUpdate, newEvent.id);
+  const mod = await fetchMod(newEvent.guild, AuditLogEvent.GuildScheduledEventUpdate, newEvent.id, { event: 'server' });
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   await sendLog(client, newEvent.guild.id, 'server', {
     author: { name: t(lang, 'logs.event.updated.title') },

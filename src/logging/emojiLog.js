@@ -8,7 +8,7 @@ function getEmojiUrl(emoji) {
 
 async function handleEmojiCreate(emoji, client) {
   const lang = await guildLanguage(emoji.guild.id);
-  const mod = await fetchMod(emoji.guild, AuditLogEvent.EmojiCreate, emoji.id);
+  const mod = await fetchMod(emoji.guild, AuditLogEvent.EmojiCreate, emoji.id, { event: 'emojis' });
   const url = getEmojiUrl(emoji);
   const fields = mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : [];
 
@@ -25,7 +25,7 @@ async function handleEmojiCreate(emoji, client) {
 
 async function handleEmojiDelete(emoji, client) {
   const lang = await guildLanguage(emoji.guild.id);
-  const mod = await fetchMod(emoji.guild, AuditLogEvent.EmojiDelete, emoji.id);
+  const mod = await fetchMod(emoji.guild, AuditLogEvent.EmojiDelete, emoji.id, { event: 'emojis' });
   const fields = mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : [];
 
   await sendLog(client, emoji.guild.id, 'emojis', {
@@ -47,7 +47,7 @@ async function handleEmojiUpdate(oldEmoji, newEmoji, client) {
   const rolesChanged = before.join() !== after.join();
   if (!renamed && !rolesChanged) return;
   const lang = await guildLanguage(newEmoji.guild.id);
-  const mod = await fetchMod(newEmoji.guild, AuditLogEvent.EmojiUpdate, newEmoji.id);
+  const mod = await fetchMod(newEmoji.guild, AuditLogEvent.EmojiUpdate, newEmoji.id, { event: 'emojis' });
   const fields = [];
   if (renamed) {
     fields.push(
@@ -87,7 +87,7 @@ function stickerFields(sticker, mod, lang) {
 async function handleStickerCreate(sticker, client) {
   if (!sticker.guild) return;
   const lang = await guildLanguage(sticker.guild.id);
-  const mod = await fetchMod(sticker.guild, AuditLogEvent.StickerCreate, sticker.id);
+  const mod = await fetchMod(sticker.guild, AuditLogEvent.StickerCreate, sticker.id, { event: 'emojis' });
   const embed = {
     author: { name: t(lang, 'logs.sticker.added.title') },
     description: t(lang, 'logs.sticker.added.description', { name: sticker.name }),
@@ -102,7 +102,7 @@ async function handleStickerCreate(sticker, client) {
 async function handleStickerDelete(sticker, client) {
   if (!sticker.guild) return;
   const lang = await guildLanguage(sticker.guild.id);
-  const mod = await fetchMod(sticker.guild, AuditLogEvent.StickerDelete, sticker.id);
+  const mod = await fetchMod(sticker.guild, AuditLogEvent.StickerDelete, sticker.id, { event: 'emojis' });
   await sendLog(client, sticker.guild.id, 'emojis', {
     author: { name: t(lang, 'logs.sticker.removed.title') },
     description: t(lang, 'logs.sticker.removed.description', { name: sticker.name }),
@@ -121,7 +121,7 @@ async function handleStickerUpdate(oldSticker, newSticker, client) {
   if ((oldSticker.description ?? '') !== (newSticker.description ?? '')) fields.push({ name: t(lang, 'logs.field.description'), value: `${oldSticker.description || none} -> ${newSticker.description || none}`, inline: false });
   if ((oldSticker.tags ?? '') !== (newSticker.tags ?? '')) fields.push({ name: t(lang, 'logs.field.emoji'), value: `${oldSticker.tags || none} -> ${newSticker.tags || none}`, inline: true });
   if (!fields.length) return;
-  const mod = await fetchMod(newSticker.guild, AuditLogEvent.StickerUpdate, newSticker.id);
+  const mod = await fetchMod(newSticker.guild, AuditLogEvent.StickerUpdate, newSticker.id, { event: 'emojis' });
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   const embed = {
     author: { name: t(lang, 'logs.sticker.updated.title') },

@@ -1,4 +1,4 @@
-const { sendLog, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
+const { sendLog, logsEvent, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
 const { t, guildLanguage } = require('../i18n');
 
 async function handleVoiceState(oldState, newState, client) {
@@ -7,6 +7,8 @@ async function handleVoiceState(oldState, newState, client) {
 
   const guildId = newState.guild?.id ?? oldState.guild?.id;
   if (!guildId) return;
+  // Joining, leaving, muting and moving in voice happen all the time: a server without the voice log gets nothing built for them (and no audit log request).
+  if (!(await logsEvent(guildId, 'voice'))) return;
 
   const guild = newState.guild ?? oldState.guild;
   const lang = await guildLanguage(guildId);
@@ -31,7 +33,7 @@ async function handleVoiceState(oldState, newState, client) {
   }
 
   if (oldState.channelId && !newState.channelId) {
-    const mod = await fetchMod(guild, AuditLogEvent.MemberDisconnect, member.id);
+    const mod = await fetchMod(guild, AuditLogEvent.MemberDisconnect, member.id, { event: 'voice' });
     const fields = mod ? [{ name: t(lang, 'logs.voice.disconnectedBy'), value: mod, inline: true }] : [];
     return sendLog(
       client,
@@ -49,7 +51,7 @@ async function handleVoiceState(oldState, newState, client) {
   }
 
   if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-    const mod = await fetchMod(guild, AuditLogEvent.MemberMove, member.id);
+    const mod = await fetchMod(guild, AuditLogEvent.MemberMove, member.id, { event: 'voice' });
     const fields = mod ? [{ name: t(lang, 'logs.voice.movedBy'), value: mod, inline: true }] : [];
     return sendLog(
       client,
@@ -72,7 +74,7 @@ async function handleVoiceState(oldState, newState, client) {
     : t(lang, `logs.voice.${what}.description`, { member: `<@${member.id}>` }));
 
   if (oldState.serverMute !== newState.serverMute) {
-    const mod = await fetchMod(guild, AuditLogEvent.MemberUpdate, member.id);
+    const mod = await fetchMod(guild, AuditLogEvent.MemberUpdate, member.id, { event: 'voice' });
     const fields = mod ? [{ name: t(lang, newState.serverMute ? 'logs.voice.mutedBy' : 'logs.voice.unmutedBy'), value: mod, inline: true }] : [];
     await sendLog(
       client,
@@ -90,7 +92,7 @@ async function handleVoiceState(oldState, newState, client) {
   }
 
   if (oldState.serverDeaf !== newState.serverDeaf) {
-    const mod = await fetchMod(guild, AuditLogEvent.MemberUpdate, member.id);
+    const mod = await fetchMod(guild, AuditLogEvent.MemberUpdate, member.id, { event: 'voice' });
     const fields = mod ? [{ name: t(lang, newState.serverDeaf ? 'logs.voice.deafenedBy' : 'logs.voice.undeafenedBy'), value: mod, inline: true }] : [];
     await sendLog(
       client,

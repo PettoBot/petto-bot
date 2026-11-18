@@ -49,7 +49,7 @@ async function handleMemberLeave(member, client) {
     .join(' ') || t(lang, 'logs.none');
 
   // A kick leaves the server like any other leave, so the audit log tells them apart.
-  const kick = await fetchEntry(member.guild, AuditLogEvent.MemberKick, member.id);
+  const kick = await fetchEntry(member.guild, AuditLogEvent.MemberKick, member.id, { event: 'members' });
   const fields = [
     { name: t(lang, 'logs.member.joinedField'), value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : t(lang, 'logs.unknown'), inline: true },
     { name: t(lang, 'logs.field.roles'), value: roles.slice(0, 1024), inline: false },
@@ -87,7 +87,7 @@ async function handleMemberUpdate(oldMember, newMember, client) {
     const removed = oldRoles.filter((r) => !newRoles.has(r.id));
 
     if (added.size || removed.size) {
-      const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
+      const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { event: 'roles' });
       const fields = [];
       if (added.size) fields.push({ name: t(lang, 'logs.member.rolesAdded'), value: added.map((r) => `<@&${r.id}>`).join(' '), inline: true });
       if (removed.size) fields.push({ name: t(lang, 'logs.member.rolesRemoved'), value: removed.map((r) => `<@&${r.id}>`).join(' '), inline: true });
@@ -121,13 +121,13 @@ async function handleMemberUpdate(oldMember, newMember, client) {
   const newUntil = newMember.communicationDisabledUntilTimestamp ?? null;
   const activeNow = (until) => until !== null && until > Date.now();
   if (activeNow(newUntil) && newUntil !== oldUntil) {
-    const entry = await fetchEntry(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
+    const entry = await fetchEntry(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id, { event: 'members' });
     const fields = [{ name: t(lang, 'logs.member.until'), value: `<t:${Math.floor(newUntil / 1000)}:F> (<t:${Math.floor(newUntil / 1000)}:R>)`, inline: false }];
     if (entry?.executor) fields.push({ name: t(lang, 'logs.field.by'), value: `<@${entry.executor.id}>`, inline: true });
     if (entry?.reason) fields.push({ name: t(lang, 'logs.field.reason'), value: entry.reason, inline: false });
     await sendLog(client, newMember.guild.id, 'members', memberEmbed('timedOut', fields), { ignoreIds: [newMember.id] });
   } else if (activeNow(oldUntil) && !activeNow(newUntil)) {
-    const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
+    const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id, { event: 'members' });
     await sendLog(client, newMember.guild.id, 'members', memberEmbed('timeoutRemoved', mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : []), { ignoreIds: [newMember.id] });
   }
   if (!oldMember.premiumSinceTimestamp && newMember.premiumSinceTimestamp) {
@@ -141,7 +141,7 @@ async function handleMemberUpdate(oldMember, newMember, client) {
 
   // Nickname -> `members` event
   if (oldMember.nickname !== newMember.nickname) {
-    const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
+    const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id, { event: 'members' });
     const none = t(lang, 'logs.noneItalic');
     const fields = [
       { name: t(lang, 'logs.field.before'), value: oldMember.nickname || none, inline: true },
@@ -224,7 +224,7 @@ async function handleUserUpdate(oldUser, newUser, client) {
 
 async function handleBanAdd(ban, client) {
   const lang = await guildLanguage(ban.guild.id);
-  const mod = await fetchMod(ban.guild, AuditLogEvent.MemberBan, ban.user.id);
+  const mod = await fetchMod(ban.guild, AuditLogEvent.MemberBan, ban.user.id, { event: 'members' });
   const fields = ban.reason ? [{ name: t(lang, 'logs.field.reason'), value: ban.reason, inline: false }] : [];
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
 
@@ -239,7 +239,7 @@ async function handleBanAdd(ban, client) {
 
 async function handleBanRemove(ban, client) {
   const lang = await guildLanguage(ban.guild.id);
-  const mod = await fetchMod(ban.guild, AuditLogEvent.MemberUnban, ban.user.id);
+  const mod = await fetchMod(ban.guild, AuditLogEvent.MemberUnban, ban.user.id, { event: 'members' });
   const fields = mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : [];
 
   await sendLog(client, ban.guild.id, 'members', {

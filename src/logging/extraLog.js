@@ -88,7 +88,7 @@ async function handleSound(kind, sound, oldSound, client) {
   if (!guild) return;
   const lang = await guildLanguage(guild.id);
   const types = { create: AuditLogEvent.SoundboardSoundCreate, update: AuditLogEvent.SoundboardSoundUpdate, delete: AuditLogEvent.SoundboardSoundDelete };
-  const entry = types[kind] ? await fetchEntry(guild, types[kind], sound.soundId ?? sound.id) : null;
+  const entry = types[kind] ? await fetchEntry(guild, types[kind], sound.soundId ?? sound.id, { event: 'emojis' }) : null;
   const by = entry?.executor ? `<@${entry.executor.id}>` : sound.user ? `<@${sound.user.id}>` : null;
   const fields = soundFields(sound, by, lang);
   if (kind === 'update') {
@@ -135,7 +135,7 @@ async function handleIntegrationsUpdate(guild, client) {
 async function handleBotAdded(member, client) {
   if (!member.user?.bot) return;
   const lang = await guildLanguage(member.guild.id);
-  const entry = await fetchEntry(member.guild, AuditLogEvent.BotAdd, member.id);
+  const entry = await fetchEntry(member.guild, AuditLogEvent.BotAdd, member.id, { event: 'integrations' });
   const fields = [{ name: t(lang, 'logs.field.accountCreated'), value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true }];
   if (entry?.executor) fields.push({ name: t(lang, 'logs.bot.addedBy'), value: `<@${entry.executor.id}>`, inline: true });
   const permissions = member.permissions?.has?.('Administrator');
@@ -152,7 +152,7 @@ async function handleBotAdded(member, client) {
 async function handleBotRemoved(member, client) {
   if (!member.user?.bot) return;
   const lang = await guildLanguage(member.guild.id);
-  const entry = await fetchEntry(member.guild, AuditLogEvent.MemberKick, member.id);
+  const entry = await fetchEntry(member.guild, AuditLogEvent.MemberKick, member.id, { event: 'integrations' });
   const fields = [];
   if (entry?.executor) fields.push({ name: t(lang, 'logs.field.by'), value: `<@${entry.executor.id}>`, inline: true });
   await sendLog(client, member.guild.id, 'integrations', {
