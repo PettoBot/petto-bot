@@ -88,25 +88,26 @@ module.exports = {
 
 /** The reply of the server subcommands: the picture, then a few lines. */
 async function serverReply({ sub, guild, lang, days, rules, send }) {
+  const guildIcon = await cards.loadGuildIcon(guild);
   const data = await readServerStats(guild.id, days, { perMember: rules.members });
   const stats = buildStatsV2({ days, ...data, memberTotal: guild.memberCount });
   const channelName = (id) => (guild.channels.cache.get(id) ? `#${guild.channels.cache.get(id).name}` : t(lang, 'info.summary.text.goneChannel'));
   let image;
   let lines;
   if (sub === 'heatmap') {
-    image = cards.buildHeatmapCard({ guildName: guild.name, days, stats, lang });
+    image = cards.buildHeatmapCard({ guildName: guild.name, guildIcon, days, stats, lang });
     lines = describeStats('heatmap', stats, lang);
   } else if (sub === 'growth') {
-    image = cards.buildGrowthCard({ guildName: guild.name, days, stats, lang });
+    image = cards.buildGrowthCard({ guildName: guild.name, guildIcon, days, stats, lang });
     lines = describeStats('growth', stats, lang);
   } else if (sub === 'compare') {
-    image = cards.buildCompareCard({ guildName: guild.name, days, stats, lang });
+    image = cards.buildCompareCard({ guildName: guild.name, guildIcon, days, stats, lang });
     lines = describeStats('compare', stats, lang);
   } else if (sub === 'channels') {
     const textIds = [...guild.channels.cache.values()].filter((channel) => channel.isTextBased?.() && !channel.isVoiceBased?.() && !channel.isThread?.()).map((channel) => channel.id);
     const quiet = quietChannels(textIds, data.channelRows, days);
     image = cards.buildTopCard({
-      guildName: guild.name, days, kind: 'channels', lang,
+      guildName: guild.name, guildIcon, days, kind: 'channels', lang,
       messages: stats.topChannels.messages.map((row) => ({ label: channelName(row.id), value: row.messages, share: row.share })),
       voice: stats.topChannels.voice.map((row) => ({ label: channelName(row.id), value: row.voiceSeconds, share: row.share })),
     });
@@ -115,13 +116,13 @@ async function serverReply({ sub, guild, lang, days, rules, send }) {
     const names = await memberNames(guild, [...stats.topMembers.messages, ...stats.topMembers.voice].map((row) => row.id), lang);
     const concentration = describeStats('members', stats, lang)[0] ?? null;
     image = cards.buildTopCard({
-      guildName: guild.name, days, kind: 'members', lang, note: concentration ? concentration.replace(/^<:[^>]+>\s*/, '').replace(/\*\*/g, '') : null,
+      guildName: guild.name, guildIcon, days, kind: 'members', lang, note: concentration ? concentration.replace(/^<:[^>]+>\s*/, '').replace(/\*\*/g, '') : null,
       messages: stats.topMembers.messages.map((row) => ({ label: names.get(row.id), value: row.messages, share: row.share })),
       voice: stats.topMembers.voice.map((row) => ({ label: names.get(row.id), value: row.voiceSeconds, share: row.share })),
     });
     lines = [];
   } else {
-    image = cards.buildTrendCard({ guildName: guild.name, days, stats, lang });
+    image = cards.buildTrendCard({ guildName: guild.name, guildIcon, days, stats, lang });
     lines = describeStats('overview', stats, lang);
   }
 
@@ -156,10 +157,11 @@ async function memberReply({ interaction, guild, lang, days, send, notice }) {
   const { userRows, memberTotals } = await readMemberStats(guild.id, user.id, days);
   const stats = buildMemberStats({ userId: user.id, days, userRows, memberTotals });
   if (!stats.totals.messages && !stats.totals.voiceSeconds) return notice(t(lang, 'info.stats.member.none', { name }));
+  const guildIcon = await cards.loadGuildIcon(guild);
   // Two pictures, one over the other: who the member is with their ranks, messages and voice time, and below it the days in a row and the charts.
   const [profile, charts] = await Promise.all([
-    cards.buildMemberCard({ guildName: guild.name, name, avatarUrl: (member ?? user).displayAvatarURL({ extension: 'png', size: 128 }), member: stats, joinedAt: member?.joinedAt ?? null, createdAt: user.createdAt ?? null, lang }),
-    cards.buildMemberChartsCard({ guildName: guild.name, member: stats, lang }),
+    cards.buildMemberCard({ guildName: guild.name, guildIcon, name, avatarUrl: (member ?? user).displayAvatarURL({ extension: 'png', size: 128 }), member: stats, joinedAt: member?.joinedAt ?? null, createdAt: user.createdAt ?? null, lang }),
+    cards.buildMemberChartsCard({ guildName: guild.name, guildIcon, member: stats, lang }),
   ]);
   const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(tn(lang, 'info.stats.header', days, { title: t(lang, 'info.statsCard.title.member'), server: guild.name, count: days })));
   container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://stats.png')));

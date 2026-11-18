@@ -13,14 +13,24 @@ const RED = '#f08fa0';
 const BEFORE = '#6f655f'; // the period before, drawn quieter than this one
 const GOLD = '#f5c26b';
 
-function start(guildName, title, subtitle, color = ACCENT, height = H) {
+/**
+ * The top of every card: the server (its name, and its icon when it was loaded: `guild` is a name or `{ name, icon }`), what the card shows and the period.
+ */
+function start(guild, title, subtitle, color = ACCENT, height = H) {
+  const guildName = typeof guild === 'string' ? guild : guild.name;
+  const icon = typeof guild === 'string' ? null : guild.icon ?? null;
   registerCardFonts();
   const canvas = createCanvas(W, height);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, height);
-  text(ctx, guildName.length > 38 ? `${guildName.slice(0, 37)}…` : guildName, 40, 56, { font: FONT(700, 30) });
-  text(ctx, subtitle, 40, 84, { font: FONT(400, 15), color: MUTED });
+  // The icon of the server is a rounded square at the left; the text moves to its right.
+  const left = icon ? 40 + 60 : 40;
+  if (icon) {
+    ctx.save(); ctx.beginPath(); ctx.roundRect(40, 32, 52, 52, 14); ctx.clip(); ctx.drawImage(icon, 40, 32, 52, 52); ctx.restore();
+  }
+  text(ctx, guildName.length > (icon ? 42 : 46) ? `${guildName.slice(0, icon ? 41 : 45)}…` : guildName, left, 56, { font: FONT(700, 30) });
+  text(ctx, subtitle, left, 84, { font: FONT(400, 15), color: MUTED });
   ctx.font = FONT(700, 15);
   const chipW = ctx.measureText(title).width + 34;
   ctx.beginPath();
@@ -170,8 +180,8 @@ function rankRows(ctx, { x, y, w, rows, color, format, rowH = 46 }) {
 }
 
 /** The overview: six numbers with their change, and three lines (messages, voice, active members) set against the period before. */
-function buildTrendCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.overview'), versus(days, lang));
+function buildTrendCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.overview'), versus(days, lang));
   const totals = stats.current.totals;
   const change = stats.change;
   const tiles = [
@@ -206,8 +216,8 @@ function buildTrendCard({ guildName, days, stats, lang = currentLanguage() }) {
 const percentOf = (before, now) => (before ? Math.round(((now - before) / before) * 1000) / 10 : now ? null : 0);
 
 /** The week by hour: a cell for each hour of each weekday, brighter the busier. */
-function buildHeatmapCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.heatmap'), tn(lang, 'info.statsCard.period', days, { count: days }), COLORS.messages);
+function buildHeatmapCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.heatmap'), tn(lang, 'info.statsCard.period', days, { count: days }), COLORS.messages);
   const grid = stats.heatmap.messages;
   const max = Math.max(1, ...grid.flat());
   panel(ctx, 40, 108, 840, 552);
@@ -262,8 +272,8 @@ function buildHeatmapCard({ guildName, days, stats, lang = currentLanguage() }) 
 }
 
 /** The top channels (or members): by messages on the left, by voice time on the right. `rows` are { label, value, share }. */
-function buildTopCard({ guildName, days, kind, messages, voice, note = null, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, `info.statsCard.title.${kind}`), tn(lang, 'info.statsCard.period', days, { count: days }), kind === 'channels' ? COLORS.messages : COLORS.voice);
+function buildTopCard({ guildName, guildIcon = null, days, kind, messages, voice, note = null, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, `info.statsCard.title.${kind}`), tn(lang, 'info.statsCard.period', days, { count: days }), kind === 'channels' ? COLORS.messages : COLORS.voice);
   const columns = [
     { title: t(lang, `info.statsCard.top.${kind}Messages`), rows: messages, color: COLORS.messages, format: (v) => compact(v), x: 40 },
     { title: t(lang, `info.statsCard.top.${kind}Voice`), rows: voice, color: COLORS.voice, format: (v) => duration(v), x: 664 },
@@ -431,8 +441,8 @@ function legendDot(ctx, x, y, color, label, strong = false) {
 }
 
 /** How the server grows: the members (or the net change) over the days, joins against leaves, and how long the ones who left had stayed. */
-function buildGrowthCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.growth'), versus(days, lang), COLORS.joins);
+function buildGrowthCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.growth'), versus(days, lang), COLORS.joins);
   const totals = stats.current.totals;
   const tiles = [
     { label: t(lang, 'info.summaryCard.tile.joins'), value: compact(totals.joins), color: COLORS.joins, change: stats.change.joins },
@@ -466,8 +476,8 @@ function buildGrowthCard({ guildName, days, stats, lang = currentLanguage() }) {
 }
 
 /** The two periods side by side, number by number, and how messages are made (links, files, replies, mentions). */
-function buildCompareCard({ guildName, days, stats, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.compare'), versus(days, lang));
+function buildCompareCard({ guildName, guildIcon = null, days, stats, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.compare'), versus(days, lang));
   const now = stats.current.totals;
   const before = stats.previous.totals;
   const rows = [
@@ -515,6 +525,13 @@ function legendBars(ctx, x, y, lang) {
   text(ctx, t(lang, 'info.statsCard.legend.current'), x + 170, y, { font: FONT(400, 11.5), color: MUTED, baseline: 'middle' });
 }
 
+/** The icon of a server as an image for the top of the cards, or null when it has none or cannot be loaded (the card is drawn without it). */
+async function loadGuildIcon(guild) {
+  const url = guild?.iconURL?.({ extension: 'png', size: 128 });
+  if (!url) return null;
+  try { return await loadImageFromLink(url); } catch { return null; }
+}
+
 const MEMBER_H = 520;
 
 /** A date as a small chip with its label above (`CREATED`, `JOINED`), right aligned at `right`. */
@@ -547,8 +564,8 @@ function infoRow(ctx, { x, y, w, label, value, color, share = null }) {
  * The picture of a member, like the card of a statistics bot: who it is (picture, name, when the account was made and when the member joined) and three
  * panels, the ranks in the server, the messages and the voice time of the last day, week and month. The charts and the rest are in `buildMemberChartsCard`.
  */
-async function buildMemberCard({ guildName, name, avatarUrl = null, member, joinedAt = null, createdAt = null, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }), ACCENT, MEMBER_H);
+async function buildMemberCard({ guildName, guildIcon = null, name, avatarUrl = null, member, joinedAt = null, createdAt = null, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }), ACCENT, MEMBER_H);
   const cx = 40 + 34;
   let drawn = false;
   if (avatarUrl) {
@@ -600,8 +617,8 @@ async function buildMemberCard({ guildName, name, avatarUrl = null, member, join
 }
 
 /** The rest of what a member did: the days in a row, the active days and the best day, and the messages and the voice hours of each day as two lines. */
-function buildMemberChartsCard({ guildName, member, lang = currentLanguage() }) {
-  const { ctx, canvas } = start(guildName, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }), ACCENT, MEMBER_H);
+function buildMemberChartsCard({ guildName, guildIcon = null, member, lang = currentLanguage() }) {
+  const { ctx, canvas } = start({ name: guildName, icon: guildIcon }, t(lang, 'info.statsCard.title.member'), tn(lang, 'info.statsCard.period', member.days, { count: member.days }), ACCENT, MEMBER_H);
   const tiles = [
     { label: t(lang, 'info.statsCard.member.streak'), value: String(member.streak), color: GOLD },
     { label: t(lang, 'info.statsCard.member.activeDays'), value: `${member.activeDays}/${member.dayLabels.length}`, color: ACCENT },
@@ -628,4 +645,4 @@ function buildMemberChartsCard({ guildName, member, lang = currentLanguage() }) 
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { buildTrendCard, buildHeatmapCard, buildTopCard, buildGrowthCard, buildCompareCard, buildMemberCard, buildMemberChartsCard };
+module.exports = { buildTrendCard, buildHeatmapCard, buildTopCard, buildGrowthCard, buildCompareCard, buildMemberCard, buildMemberChartsCard, loadGuildIcon };

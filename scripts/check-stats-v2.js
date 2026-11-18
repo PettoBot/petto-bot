@@ -139,6 +139,16 @@ const day = (back) => botDay(new Date(NOW.getTime() - back * 86_400_000));
     const profile = await cards.buildMemberCard({ guildName: 'Petto', name: 'liam', member, joinedAt: new Date('2026-09-11T12:00:00Z'), createdAt: new Date('2026-04-12T12:00:00Z'), lang });
     const chartsPicture = cards.buildMemberChartsCard({ guildName: 'Petto', member, lang });
     for (const picture of [profile, chartsPicture]) { assert.ok(png(picture), `${lang} member picture`); assert.deepEqual([picture.readUInt32BE(16), picture.readUInt32BE(20)], [1280, 520], `${lang} member picture size`); }
+    // The icon of the server goes at the top of every card (one place for all of them): a card with an icon is another picture, and still the same size.
+    const { createCanvas } = require('@napi-rs/canvas');
+    const iconCanvas = createCanvas(64, 64); iconCanvas.getContext('2d').fillStyle = '#7bd88f'; iconCanvas.getContext('2d').fillRect(0, 0, 64, 64);
+    for (const [name, make] of [['trend', (icon) => cards.buildTrendCard({ guildName: 'Petto', guildIcon: icon, days: 7, stats: result, lang })], ['member charts', (icon) => cards.buildMemberChartsCard({ guildName: 'Petto', guildIcon: icon, member, lang })]]) {
+      const plain = make(null); const withIcon = make(iconCanvas);
+      assert.ok(png(withIcon) && !plain.equals(withIcon), `${lang} ${name}: the icon is drawn`);
+      assert.deepEqual([withIcon.readUInt32BE(16), withIcon.readUInt32BE(20)], [plain.readUInt32BE(16), plain.readUInt32BE(20)], `${lang} ${name}: same size`);
+    }
+    assert.equal(await cards.loadGuildIcon({ iconURL: () => null }), null, 'a server without an icon draws without it');
+    assert.equal(await cards.loadGuildIcon(null), null);
     // Empty servers draw too.
     assert.ok(png(cards.buildTrendCard({ guildName: 'Petto', days: 30, stats: empty, lang })), `${lang} empty trend`);
     assert.ok(png(cards.buildHeatmapCard({ guildName: 'Petto', days: 30, stats: empty, lang })), `${lang} empty heatmap`);
