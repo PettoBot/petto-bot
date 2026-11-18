@@ -312,12 +312,11 @@ module.exports = {
   // needs a public address that reaches the bot: YOUTUBE_WEBSUB_URL, or VERIFY_BASE_URL when that is not set. YOUTUBE_WEBSUB=false turns it off (the channels are looked at as before).
   youtubeWebsub: process.env.YOUTUBE_WEBSUB !== 'false',
   youtubeWebsubUrl: (process.env.YOUTUBE_WEBSUB_URL || '').trim().replace(/\/+$/, '') || null,
-  // What Petto has stored for a server it is no longer in is deleted this many days after it left (GUILD_PURGE=false turns it off, GUILD_PURGE_DRY_RUN=true only says what would go).
+  // What Petto has stored for a server it is no longer in is deleted a few minutes after it left, all of it: the settings, the backups and the rest (the cleanup looks every
+  // minute, so it is gone within 5 minutes). GUILD_PURGE=false turns it off, GUILD_PURGE_DRY_RUN=true only says what would go, GUILD_PURGE_MINUTES changes the wait.
   guildPurge: process.env.GUILD_PURGE !== 'false',
-  guildPurgeDays: Math.max(1, Number(process.env.GUILD_PURGE_DAYS) || 3),
+  guildPurgeMinutes: Math.min(60, Math.max(1, Math.floor(Number(process.env.GUILD_PURGE_MINUTES)) || 4)),
   guildPurgeDryRun: process.env.GUILD_PURGE_DRY_RUN === 'true',
-  // A server that left with backups kept in this database has them deleted too after this many days (0 keeps them for good).
-  guildPurgeBackupDays: process.env.GUILD_PURGE_BACKUP_DAYS?.trim() && Number.isFinite(Number(process.env.GUILD_PURGE_BACKUP_DAYS)) ? Math.max(0, Math.floor(Number(process.env.GUILD_PURGE_BACKUP_DAYS))) : 30,
   youtubeDailyQuota: Math.max(1000, Number(process.env.YOUTUBE_DAILY_QUOTA) || 10_000),
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —
