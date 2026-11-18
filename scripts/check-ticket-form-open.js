@@ -29,7 +29,6 @@ stub('src/db/ticketRatings.js', {});
 stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 stub('src/db/ticketForms.js', {});
 stub('src/utils/senderIdentity.js', { sendAs: async (channel, feature, payload) => { sent.push({ feature, payload }); return {}; } });
-stub('src/utils/ticketAiGreeting.js', { greet: async () => {} });
 stub('src/logging/engine.js', { sendLog: async () => {} });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 
