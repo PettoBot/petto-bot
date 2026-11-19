@@ -19,7 +19,7 @@ stub('src/utils/cardService.js', { renderCardForMessage: async () => null, norma
 const questApi = require('../src/utils/questApi');
 const { questMessage, buildQuestCard, buildQuestList, questContext } = require('../src/utils/questMessages');
 const { EMOJI } = require('../src/utils/emojis');
-const { canUseQuests, matchesFilters, checkQuests, resendMissing } = require('../src/utils/questAlerts');
+const { canUseQuests, matchesFilters, checkQuests, resendMissing, FALLBACK_DAYS } = require('../src/utils/questAlerts');
 const { resolve } = require('../src/utils/embedVariables');
 
 const day = 86_400_000;
@@ -447,6 +447,44 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     assert.deepEqual(marked.at(-1), [listedQuest.id], 'the first look remembers only the listed ones: the others are new when the main list gets them');
     const resent = await resendMissing(client3, { guild_id: '1', channel_id: '2', reward_kinds: [], task_kinds: [] }, { api: down, db: db3, now: nowMs, pause: 0 });
     assert.equal(resent.missing, 1, 'what is sent again is only what the main list has');
+
+    // The fallback: with no new quest from the main list for 7 days, the other lists announce too, until the main list publishes again.
+    {
+      const day = 86_400_000; const marks = []; const markedMain = [];
+      const seenIds = new Set(['0']);
+      const state = (lastDaysAgo, fallbackIds = []) => async () => ({ lastMainAt: lastDaysAgo == null ? null : new Date(nowMs - lastDaysAgo * day), fallbackIds: new Set(fallbackIds) });
+      const dbf = (lastDaysAgo, fallbackIds) => ({ ...db3, listSeenIds: async () => seenIds, markSeen: async (list) => { marks.push(list.map((quest) => `${quest.id}:${quest.listed === false ? 'fallback' : 'main'}`)); }, mainState: state(lastDaysAgo, fallbackIds), markMain: async (ids) => { markedMain.push(ids); } });
+      const both = { fetchQuests: async () => ({ notModified: false, quests: [listedQuest, waiting] }), isActive: questApi.isActive };
+      assert.equal(FALLBACK_DAYS, 7, 'a week');
+      let out = await checkQuests(client3, { api: both, db: dbf(6.9), now: nowMs });
+      assert.deepEqual([out.newQuests, out.fallback], [1, false], 'under 7 days only the main list announces');
+      out = await checkQuests(client3, { api: both, db: dbf(7.1), now: nowMs });
+      assert.deepEqual([out.newQuests, out.fallback], [2, true], 'over 7 days the other lists announce too');
+      assert.deepEqual(marks.at(-1).sort(), [`${listedQuest.id}:main`, `${waiting.id}:fallback`].sort(), 'what the fallback announces is remembered as the fallback\'s');
+      out = await checkQuests(client3, { api: both, db: dbf(null), now: nowMs });
+      assert.equal(out.fallback, true, 'a main list that never had a quest counts as silent');
+      out = await checkQuests(client3, { api: later, db: dbf(30, [waiting.id]), now: nowMs });
+      assert.deepEqual([out.fallback, markedMain.at(-1)], [false, [waiting.id]], 'a quest the fallback announced and the main list now has: it is back, the wait starts over');
+      // The first look on an empty database remembers only the main list\'s quests, even if it has been silent.
+      marks.length = 0;
+      out = await checkQuests(client3, { api: both, db: { ...dbf(null), listSeenIds: async () => new Set() }, now: nowMs });
+      assert.deepEqual([out.baseline, marks.at(-1)], [true, [`${listedQuest.id}:main`]], 'the first look does not take the fallback quests');
+      // Sending again follows the same rule.
+      const noMain = { guild_id: '1', channel_id: '2', reward_kinds: [], task_kinds: [] };
+      assert.equal((await resendMissing(client3, noMain, { api: both, db: dbf(8), now: nowMs, pause: 0 })).missing, 2, 'sent again, the fallback quests count too');
+      assert.equal((await resendMissing(client3, noMain, { api: both, db: dbf(1), now: nowMs, pause: 0 })).missing, 1, 'and not before a week');
+      // The database: the last quest of the main list and the ones from the fallback.
+      const rows = [{ quest_id: 'a', first_seen_at: new Date(nowMs - 9 * day).toISOString(), via_fallback: false }, { quest_id: 'b', first_seen_at: new Date(nowMs - 3 * day).toISOString(), via_fallback: false }, { quest_id: 'c', first_seen_at: new Date(nowMs - 1 * day).toISOString(), via_fallback: true }];
+      const updates = [];
+      stub('src/db/database.js', { from: () => ({ select: async () => ({ data: rows, error: null }), update: (values) => ({ in: async (column, ids) => { updates.push([values.via_fallback, column, ids]); return { error: null }; } }) }) });
+      const stubbed = require.resolve('../src/db/quests'); delete require.cache[stubbed];
+      const realQuests = require('../src/db/quests');
+      const fromDb = await realQuests.mainState();
+      await realQuests.markMain(['c'], new Date(nowMs));
+      assert.deepEqual(updates, [[false, 'quest_id', ['c']]], 'the quests the main list now has stop counting as the fallback\'s');
+      assert.equal(fromDb.lastMainAt.toISOString(), new Date(nowMs - 3 * day).toISOString(), 'the wait counts from the last quest of the main list, not from the fallback\'s');
+      assert.deepEqual([...fromDb.fallbackIds], ['c']);
+    }
   }
   // The card follows the language of the server; the quest data stays in English.
   {

@@ -53,10 +53,32 @@ async function listSeenIds() {
   return new Set((data ?? []).map((row) => row.quest_id));
 }
 
+/** A quest the main list does not have (`listed: false`) is marked as announced by the fallback; the main list's ones are not. */
 async function markSeen(quests) {
   if (!quests.length) return;
-  const rows = quests.map((quest) => ({ quest_id: quest.id, expires_at: quest.expiresAt.toISOString() }));
+  const rows = quests.map((quest) => ({ quest_id: quest.id, expires_at: quest.expiresAt.toISOString(), via_fallback: quest.listed === false }));
   const { error } = await database.from('quest_seen').upsert(rows, { onConflict: 'quest_id' });
+  if (error) throw error;
+}
+
+/** When the main list last had a quest new to us, and the quests that were announced by the fallback (to notice the main list is back). */
+async function mainState() {
+  const { data, error } = await database.from('quest_seen').select('quest_id,first_seen_at,via_fallback');
+  if (error) throw error;
+  let lastMainAt = null;
+  const fallbackIds = new Set();
+  for (const row of data ?? []) {
+    if (row.via_fallback) { fallbackIds.add(row.quest_id); continue; }
+    const at = new Date(row.first_seen_at);
+    if (!lastMainAt || at > lastMainAt) lastMainAt = at;
+  }
+  return { lastMainAt, fallbackIds };
+}
+
+/** The main list has quests the fallback announced: it is publishing again, so the wait starts over from now. */
+async function markMain(ids, at = new Date()) {
+  if (!ids.length) return;
+  const { error } = await database.from('quest_seen').update({ via_fallback: false, first_seen_at: at.toISOString() }).in('quest_id', ids);
   if (error) throw error;
 }
 
@@ -80,4 +102,4 @@ async function getPost(guildId, questId, kind) {
   return data ?? null;
 }
 
-module.exports = { DEFAULTS, getPost, getConfig, upsertConfig, listEnabledConfigs, listSeenIds, markSeen, hasPost, savePost };
+module.exports = { DEFAULTS, getPost, getConfig, upsertConfig, listEnabledConfigs, listSeenIds, markSeen, mainState, markMain, hasPost, savePost };

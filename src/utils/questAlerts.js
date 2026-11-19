@@ -79,6 +79,28 @@ async function checkQuests(client, deps = {}) {
 /** The quests that are announced: the ones the main list has (`listed`), with their limits and pictures. A list with no such mark (a test, an older answer) is taken as it is. */
 const announceable = (quests) => quests.filter((quest) => quest.listed !== false);
 
+/** How long the main list may go without a new quest before the other lists are allowed to announce. */
+const FALLBACK_DAYS = 7;
+
+/**
+ * The quests that can be announced now. Normally only the main list's. If the main list has had no new quest for 7 days (counted
+ * from the last one it had), the other lists announce too, until the main list publishes again. A database that cannot say
+ * (a test, an older one) never falls back.
+ */
+async function announcePool(api, db, answer, now) {
+  const listed = announceable(answer.quests);
+  const state = db.mainState ? await db.mainState() : null;
+  if (!state) return { quests: listed, fallback: false };
+  // The main list has quests that were announced by the fallback: it is publishing again.
+  const back = listed.filter((quest) => state.fallbackIds.has(quest.id));
+  if (back.length) {
+    await db.markMain(back.map((quest) => quest.id), new Date(now));
+    return { quests: listed, fallback: false };
+  }
+  const silent = !state.lastMainAt || now - state.lastMainAt.getTime() > FALLBACK_DAYS * 86_400_000;
+  return { quests: silent ? answer.quests : listed, fallback: silent };
+}
+
 // The main list not answering means no alert at all (the maintainer decided to rely on it): it is said in the log, once in a while, so it is not missed.
 let warnedAt = 0;
 function warnIfMainDown(api) {
@@ -88,19 +110,28 @@ function warnIfMainDown(api) {
   logger.warn(`The main quest list (${main.name}) is not answering (${main.error}): no quest alert is sent until it does.`);
 }
 
+let warnedFallbackAt = 0;
+function warnFallback() {
+  if (Date.now() - warnedFallbackAt < 6 * 3_600_000) return;
+  warnedFallbackAt = Date.now();
+  logger.warn(`The main quest list has had no new quest for ${FALLBACK_DAYS} days: the other lists announce (without limits) until it has one.`);
+}
+
 async function runPass(client, { api, db, now, configs, answer, result }) {
   warnIfMainDown(api);
-  const listed = announceable(answer.quests);
-  const active = listed.filter((quest) => api.isActive(quest, now));
+  const { quests: pool, fallback } = await announcePool(api, db, answer, now);
+  const active = pool.filter((quest) => api.isActive(quest, now));
   const seen = await db.listSeenIds();
   const fresh = active.filter((quest) => !seen.has(quest.id));
 
   if (!seen.size) {
     // Only the quests that have started: one that starts later is announced when it does.
-    await db.markSeen(listed.filter((quest) => quest.startsAt.getTime() <= now));
+    await db.markSeen(announceable(answer.quests).filter((quest) => quest.startsAt.getTime() <= now));
     return { ...result, baseline: true };
   }
   result.newQuests = fresh.length;
+  result.fallback = fallback;
+  if (fallback && fresh.length) warnFallback();
 
   await forEachWithConcurrency(configs, async (settings) => {
     for (const quest of fresh) {
@@ -130,7 +161,8 @@ async function runPass(client, { api, db, now, configs, answer, result }) {
 async function resendMissing(client, settings, { api = questApi, db = questsDb, now = Date.now(), limit = 10, pause = 1500 } = {}) {
   const answer = await api.fetchQuests({ force: true });
   const missing = [];
-  for (const quest of announceable(answer.quests).filter((entry) => api.isActive(entry, now)).sort((a, b) => a.startsAt - b.startsAt)) {
+  const { quests: pool } = await announcePool(api, db, answer, now);
+  for (const quest of pool.filter((entry) => api.isActive(entry, now)).sort((a, b) => a.startsAt - b.startsAt)) {
     if (!matchesFilters(quest, settings)) continue;
     if (await db.hasPost(settings.guild_id, quest.id, 'new')) continue;
     missing.push(quest);
@@ -144,4 +176,4 @@ async function resendMissing(client, settings, { api = questApi, db = questsDb, 
   return { missing: missing.length, sent, left: missing.length - batch.length };
 }
 
-module.exports = { canUseQuests, matchesFilters, checkQuests, resendMissing };
+module.exports = { canUseQuests, matchesFilters, checkQuests, resendMissing, FALLBACK_DAYS };
