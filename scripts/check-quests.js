@@ -19,7 +19,7 @@ stub('src/utils/cardService.js', { renderCardForMessage: async () => null, norma
 const questApi = require('../src/utils/questApi');
 const { questMessage, buildQuestCard, buildQuestList, questContext } = require('../src/utils/questMessages');
 const { EMOJI } = require('../src/utils/emojis');
-const { canUseQuests, matchesFilters, checkQuests, resendMissing } = require('../src/utils/questAlerts');
+const { canUseQuests, matchesFilters, checkQuests, resendMissing, FALLBACK_DAYS } = require('../src/utils/questAlerts');
 const { resolve } = require('../src/utils/embedVariables');
 
 const day = 86_400_000;
@@ -396,6 +396,95 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     const left = questApi.normalizeCompact({ id: '1552766796283641979', name: 'Odyssey', dates: { starts_at: '2026-10-01T00:00:00Z', expires_at: '2026-10-08T00:00:00Z' }, requirements: { excluded_regions: ['CA', 'US'] } });
     assert.deepEqual([left.global, left.regions.exclude], [false, ['CA', 'US']]);
     assert.equal(questApi.normalizeCompact({ id: 'x', name: 'No' }), null);
+  }
+  {
+    // The main list (agnonotdev's compact one) is the one that announces: its limits and its pictures come with the alert.
+    const IDA = '1560753341024178001'; const IDB = '1560753341024178002';
+    const nowMs = Date.now();
+    const window = { starts_at: new Date(nowMs - 3_600_000).toISOString(), expires_at: new Date(nowMs + 86_400_000).toISOString() };
+    const deco = 'https://cdn.discordapp.com/avatar-decoration-presets/a_26bc424aca3f6400.png?size=4096&passthrough=true';
+    const compactRow = { id: IDA, name: 'Alpha', dates: { starts_at: window.starts_at, expires_at: window.expires_at }, requirements: { regions: ['NZ'], age_gate: true, platforms: ['desktop'] },
+      tasks: [{ type: 'WATCH_VIDEO', target: 29, unit: 'seconds' }], rewards: [{ type: 'collectible', name: 'Vice City Avatar', image: deco }, { type: 'code', name: 'A code', image: 'https://cdn.discordapp.com/quests/1572085565795471514/1572295634860380341.png' }, { type: 'collectible', name: 'Evil', image: 'https://evil.test/a.png' }] };
+    const diffRow = (id, name) => ({ id, config: { id, ...window, messages: { quest_name: name }, task_config_v2: { tasks: { a: { type: 'WATCH_VIDEO', target: 30 } } }, rewards_config: { rewards: [{ type: 3, sku_id: '1560753341024178276', messages: { name: 'Deco' } }] } } });
+    const real = global.fetch;
+    global.fetch = async (url) => {
+      const link = String(url);
+      if (link.includes('agnonotdev')) return new Response(JSON.stringify([compactRow]), { status: 200 });
+      if (link.includes('discord-api-diff')) return new Response(JSON.stringify([diffRow(IDA, 'Alpha'), diffRow(IDB, 'Only in the others')]), { status: 200 });
+      return new Response('nope', { status: 503 });
+    };
+    questApi.resetCache();
+    const merged = (await questApi.fetchQuests({ force: true })).quests;
+    global.fetch = real;
+    const a = merged.find((quest) => quest.id === IDA); const b = merged.find((quest) => quest.id === IDB);
+    assert.equal(a.listed, true, 'a quest of the main list is listed'); assert.equal(b.listed, false, 'a quest that only the other lists have is not');
+    assert.deepEqual([a.regions.include, a.ageGate, a.global], [['NZ'], true, false], 'the limits come from the main list');
+    assert.equal(a.rewards[0].image, 'https://cdn.discordapp.com/avatar-decoration-presets/a_26bc424aca3f6400.png?size=256&passthrough=true', 'the picture of the decoration comes ready, asked small');
+    assert.equal(a.rewards[0].sku, '1560753341024178276', 'and the sku of the other lists is kept, to ask for a picture when there is none');
+    assert.equal(a.rewards[1].image, 'https://cdn.discordapp.com/quests/1572085565795471514/1572295634860380341.png', 'the picture of a code is kept');
+    assert.equal(a.rewards[2].image, null, 'a picture that is not Discord\'s CDN is not used');
+    assert.equal(questApi.getStatus().sources[0].name, questApi.COMPACT);
+
+    // The alerts: only the listed quests are announced, and the others wait until the main list has them.
+    const marked = [];
+    const db3 = { listEnabledConfigs: async () => [{ guild_id: '1', channel_id: '2' }], listSeenIds: async () => new Set(['0']), markSeen: async (list) => { marked.push(list.map((quest) => quest.id)); }, hasPost: async () => false, savePost: async () => {} };
+    const client3 = { guilds: { cache: new Map(), fetch: async () => null } };
+    const quick = { id: 'q', url: 'https://discord.com/quests/q', startsAt: new Date(nowMs - 1000), expiresAt: new Date(nowMs + 86_400_000), rewards: [], tasks: [], platforms: [] };
+    const listedQuest = { ...quick, id: '1560753341024178010', name: 'Listed', listed: true }; const waiting = { ...quick, id: '1560753341024178011', name: 'Waiting', listed: false };
+    const warnings = []; const logger = require('../src/utils/logger'); const warnBefore = logger.warn; logger.warn = (...args) => { warnings.push(args.join(' ')); };
+    const down = { COMPACT: questApi.COMPACT, fetchQuests: async () => ({ notModified: false, quests: [listedQuest, waiting] }), isActive: questApi.isActive, getStatus: () => ({ sources: [{ name: questApi.COMPACT, ok: false, error: 'answered 503' }] }) };
+    let outcome = await checkQuests(client3, { api: down, db: db3, now: nowMs });
+    assert.equal(outcome.newQuests, 1, 'only the listed quest is new'); assert.deepEqual(marked.at(-1), [listedQuest.id], 'and only it is remembered');
+    await checkQuests(client3, { api: down, db: db3, now: nowMs });
+    assert.equal(warnings.filter((line) => /main quest list/.test(line) && /answered 503/.test(line)).length, 1, 'the main list being down is said once, not every pass');
+    logger.warn = warnBefore;
+    const listedLater = { ...waiting, listed: true };
+    const later = { fetchQuests: async () => ({ notModified: false, quests: [listedQuest, listedLater] }), isActive: questApi.isActive };
+    outcome = await checkQuests(client3, { api: later, db: { ...db3, listSeenIds: async () => new Set(['0', listedQuest.id]) }, now: nowMs });
+    assert.equal(outcome.newQuests, 1, 'the quest that waited is announced when the main list has it');
+    marked.length = 0;
+    await checkQuests(client3, { api: down, db: { ...db3, listSeenIds: async () => new Set() }, now: nowMs });
+    assert.deepEqual(marked.at(-1), [listedQuest.id], 'the first look remembers only the listed ones: the others are new when the main list gets them');
+    const resent = await resendMissing(client3, { guild_id: '1', channel_id: '2', reward_kinds: [], task_kinds: [] }, { api: down, db: db3, now: nowMs, pause: 0 });
+    assert.equal(resent.missing, 1, 'what is sent again is only what the main list has');
+
+    // The fallback: with no new quest from the main list for 7 days, the other lists announce too, until the main list publishes again.
+    {
+      const day = 86_400_000; const marks = []; const markedMain = [];
+      const seenIds = new Set(['0']);
+      const state = (lastDaysAgo, fallbackIds = []) => async () => ({ lastMainAt: lastDaysAgo == null ? null : new Date(nowMs - lastDaysAgo * day), fallbackIds: new Set(fallbackIds) });
+      const dbf = (lastDaysAgo, fallbackIds) => ({ ...db3, listSeenIds: async () => seenIds, markSeen: async (list) => { marks.push(list.map((quest) => `${quest.id}:${quest.listed === false ? 'fallback' : 'main'}`)); }, mainState: state(lastDaysAgo, fallbackIds), markMain: async (ids) => { markedMain.push(ids); } });
+      const both = { fetchQuests: async () => ({ notModified: false, quests: [listedQuest, waiting] }), isActive: questApi.isActive };
+      assert.equal(FALLBACK_DAYS, 7, 'a week');
+      let out = await checkQuests(client3, { api: both, db: dbf(6.9), now: nowMs });
+      assert.deepEqual([out.newQuests, out.fallback], [1, false], 'under 7 days only the main list announces');
+      out = await checkQuests(client3, { api: both, db: dbf(7.1), now: nowMs });
+      assert.deepEqual([out.newQuests, out.fallback], [2, true], 'over 7 days the other lists announce too');
+      assert.deepEqual(marks.at(-1).sort(), [`${listedQuest.id}:main`, `${waiting.id}:fallback`].sort(), 'what the fallback announces is remembered as the fallback\'s');
+      out = await checkQuests(client3, { api: both, db: dbf(null), now: nowMs });
+      assert.equal(out.fallback, true, 'a main list that never had a quest counts as silent');
+      out = await checkQuests(client3, { api: later, db: dbf(30, [waiting.id]), now: nowMs });
+      assert.deepEqual([out.fallback, markedMain.at(-1)], [false, [waiting.id]], 'a quest the fallback announced and the main list now has: it is back, the wait starts over');
+      // The first look on an empty database remembers only the main list\'s quests, even if it has been silent.
+      marks.length = 0;
+      out = await checkQuests(client3, { api: both, db: { ...dbf(null), listSeenIds: async () => new Set() }, now: nowMs });
+      assert.deepEqual([out.baseline, marks.at(-1)], [true, [`${listedQuest.id}:main`]], 'the first look does not take the fallback quests');
+      // Sending again follows the same rule.
+      const noMain = { guild_id: '1', channel_id: '2', reward_kinds: [], task_kinds: [] };
+      assert.equal((await resendMissing(client3, noMain, { api: both, db: dbf(8), now: nowMs, pause: 0 })).missing, 2, 'sent again, the fallback quests count too');
+      assert.equal((await resendMissing(client3, noMain, { api: both, db: dbf(1), now: nowMs, pause: 0 })).missing, 1, 'and not before a week');
+      // The database: the last quest of the main list and the ones from the fallback.
+      const rows = [{ quest_id: 'a', first_seen_at: new Date(nowMs - 9 * day).toISOString(), via_fallback: false }, { quest_id: 'b', first_seen_at: new Date(nowMs - 3 * day).toISOString(), via_fallback: false }, { quest_id: 'c', first_seen_at: new Date(nowMs - 1 * day).toISOString(), via_fallback: true }];
+      const updates = [];
+      stub('src/db/database.js', { from: () => ({ select: async () => ({ data: rows, error: null }), update: (values) => ({ in: async (column, ids) => { updates.push([values.via_fallback, column, ids]); return { error: null }; } }) }) });
+      const stubbed = require.resolve('../src/db/quests'); delete require.cache[stubbed];
+      const realQuests = require('../src/db/quests');
+      const fromDb = await realQuests.mainState();
+      await realQuests.markMain(['c'], new Date(nowMs));
+      assert.deepEqual(updates, [[false, 'quest_id', ['c']]], 'the quests the main list now has stop counting as the fallback\'s');
+      assert.equal(fromDb.lastMainAt.toISOString(), new Date(nowMs - 3 * day).toISOString(), 'the wait counts from the last quest of the main list, not from the fallback\'s');
+      assert.deepEqual([...fromDb.fallbackIds], ['c']);
+    }
   }
   // The card follows the language of the server; the quest data stays in English.
   {

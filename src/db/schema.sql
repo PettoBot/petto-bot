@@ -3142,6 +3142,8 @@ create table if not exists quest_seen (
   expires_at    timestamptz
 );
 alter table quest_seen enable row level security;
+-- A quest announced from the other lists because the main one had been silent for days (`via_fallback`). The last quest the main list had is what starts the wait.
+alter table quest_seen add column if not exists via_fallback boolean not null default false;
 
 create table if not exists quest_posts (
   guild_id   text not null references guilds(guild_id) on delete cascade,
