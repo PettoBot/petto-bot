@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.newState = exports.WATCH_MS = void 0;
 exports.isActiveNow = isActiveNow;
+exports.targetOf = targetOf;
 exports.signature = signature;
 exports.classify = classify;
 exports.applyBatch = applyBatch;
@@ -24,6 +25,18 @@ function isActiveNow(entitlement, now) {
         return true;
     const end = Date.parse(entitlement.current_period_end);
     return Number.isFinite(end) && end > now;
+}
+/**
+ * Who or what a Premium is for. A Premium granted by hand says it in its key (`manual:user:<id>` or `manual:server:<id>`): the dashboard used to keep the owner of Petto as the
+ * holder of every grant (`user_id`), so the key is read first. A paid one is for its `user_id`.
+ */
+function targetOf(entitlement) {
+    const match = /^manual:(user|server):(\d+)$/.exec(entitlement.provider_subscription_id ?? '');
+    if (match)
+        return { type: match[1], id: match[2] };
+    if (entitlement.metadata?.target_type === 'server' && entitlement.metadata.target_guild_id)
+        return { type: 'server', id: String(entitlement.metadata.target_guild_id) };
+    return entitlement.user_id ? { type: 'user', id: entitlement.user_id } : { type: 'unknown', id: null };
 }
 /** What makes two states of an entitlement different for the record (the plan, the slots, the end date, the status). */
 function signature(entitlement) {
@@ -68,11 +81,12 @@ function applyBatch(state, rows, at) {
     }
     return changes;
 }
-const COLUMNS = 'id,user_id,provider,plan_key,status,slot_limit,current_period_end,metadata,updated_at';
+const COLUMNS = 'id,user_id,provider,provider_subscription_id,plan_key,status,slot_limit,current_period_end,metadata,updated_at';
 const toEntitlement = (row) => ({
     id: Number(row.id),
     user_id: row.user_id == null ? null : String(row.user_id),
     provider: row.provider == null ? null : String(row.provider),
+    provider_subscription_id: row.provider_subscription_id == null ? null : String(row.provider_subscription_id),
     plan_key: row.plan_key == null ? null : String(row.plan_key),
     status: row.status == null ? null : String(row.status),
     slot_limit: row.slot_limit == null ? null : Number(row.slot_limit),
@@ -116,10 +130,8 @@ const sourceOf = (entitlement) => {
 function recordText(change, gem, roleSynced) {
     const { kind, entitlement } = change;
     const lines = [`### ${gem} ${TITLES[kind]}`];
-    const target = entitlement.metadata?.target_type === 'server' && entitlement.metadata?.target_guild_id
-        ? `Server \`${String(entitlement.metadata.target_guild_id)}\``
-        : entitlement.user_id ? `<@${entitlement.user_id}> · \`${entitlement.user_id}\`` : 'Unknown';
-    lines.push(target);
+    const who = targetOf(entitlement);
+    lines.push(who.type === 'server' ? `Server \`${who.id}\`` : who.id ? `<@${who.id}> · \`${who.id}\`` : 'Unknown');
     const active = kind === 'granted' || kind === 'changed';
     lines.push(`**Plan:** ${entitlement.plan_key ?? 'premium'} · **Slots:** ${entitlement.slot_limit ?? 1}`);
     if (active)
@@ -153,7 +165,8 @@ async function sendRecord(client, change, roleSynced) {
         logger.warn('Premium record: the channel could not be found.');
         return;
     }
-    const user = change.entitlement.user_id && change.entitlement.metadata?.target_type !== 'server' ? await client.users.fetch(change.entitlement.user_id).catch(() => null) : null;
+    const who = targetOf(change.entitlement);
+    const user = who.type === 'user' && who.id ? await client.users.fetch(who.id).catch(() => null) : null;
     const card = recordCard(change, EMOJI.GEM, roleSynced, user?.displayAvatarURL({ size: 128 }) ?? null);
     await channel.send({ components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
@@ -170,7 +183,9 @@ async function watchOnce(state, deps) {
     const send = deps.send ?? sendRecord;
     for (const change of changes) {
         let roleSynced = null;
-        const userId = change.entitlement.user_id;
+        // The role is for the person the Premium is for; a Premium for a server gives no role.
+        const who = targetOf(change.entitlement);
+        const userId = who.type === 'user' ? who.id : null;
         if (userId)
             roleSynced = await syncRole(deps.client, userId).catch((error) => { logger.warn(`Premium watch: the role of ${userId} could not be updated: ${error.message}`); return null; });
         await send(deps.client, change, roleSynced).catch((error) => logger.warn(`Premium watch: the record could not be sent: ${error.message}`));

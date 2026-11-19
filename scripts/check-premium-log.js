@@ -19,6 +19,15 @@ const json = (card) => JSON.stringify(card.toJSON());
   assert.ok(json(cards[0]).includes('**120** active subscriptions'), 'the first card has the count');
   assert.ok(json(cards[0]).includes('Polar') && json(cards[0]).includes('manual'));
 
+  // A Premium granted by hand is listed for who it is for (the key says it), and one for a server names the server.
+  const asText = (card) => JSON.stringify(card.toJSON());
+  const listed = asText(buildPremiumCards([
+    { user_id: '293504726505357312', provider: 'manual', provider_subscription_id: 'manual:user:111111111111111111', plan_key: 'premium-manual-3', slot_limit: 3, current_period_end: null, metadata: {} },
+    { user_id: '293504726505357312', provider: 'manual', provider_subscription_id: 'manual:server:1414452131850879080', plan_key: 'premium-manual-1', slot_limit: 1, current_period_end: null, metadata: {} },
+  ])[0]);
+  assert.ok(listed.includes('<@111111111111111111>') && !listed.includes('<@293504726505357312>'), 'a grant for a person is listed as theirs, not the owner\'s');
+  assert.ok(listed.includes('Server `1414452131850879080`'), 'a grant for a server names the server');
+
   const sent = [];
   const client = { channels: { fetch: async (id) => (id === config.premiumLogChannelId ? { send: async (p) => { sent.push(p); } } : null) } };
   rows.push(...many.slice(0, 3));

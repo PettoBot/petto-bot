@@ -48,6 +48,21 @@ create index if not exists idx_premium_assignments_user on premium_slot_assignme
 create index if not exists idx_premium_assignments_guild on premium_slot_assignments(guild_id, status);
 alter table premium_slot_assignments enable row level security;
 
+-- A Premium granted by hand to a person from the dashboard was saved with the owner of Petto as its holder (`user_id`), so the bot showed it as the owner's: the person had no
+-- Premium (no role, no slots) and the owner had it. The person is in its key (`manual:user:<id>`): it is the holder now, and the same for the slots it holds.
+update premium_entitlements
+   set user_id = substring(provider_subscription_id from '^manual:user:([0-9]+)$'), updated_at = now()
+ where provider = 'manual'
+   and provider_subscription_id ~ '^manual:user:[0-9]+$'
+   and user_id <> substring(provider_subscription_id from '^manual:user:([0-9]+)$');
+update premium_slot_assignments a
+   set user_id = e.user_id
+  from premium_entitlements e
+ where a.entitlement_id = e.id
+   and e.provider = 'manual'
+   and e.provider_subscription_id ~ '^manual:user:[0-9]+$'
+   and a.user_id <> e.user_id;
+
 -- Before billing is connected, this table lets a user select the servers they
 -- want Premium on without pretending that a payment happened. Requests are
 -- harmless and can be removed once Discord entitlements are live.

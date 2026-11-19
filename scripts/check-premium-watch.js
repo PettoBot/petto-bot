@@ -2,6 +2,7 @@
 // that every change has its record with the Premium gem, and that a failure of the role or of the record never stops the other. The database and Discord are replaced.
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 
 function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
@@ -13,7 +14,7 @@ stub('src/db/postgres.js', { getPrimaryPool: () => ({ query: async () => ({ rows
 const settings = { premiumLogChannelId: '123456789012345678' };
 stub('src/config.js', settings);
 stub('src/utils/emojis.js', { EMOJI: { GEM: '<:pe_gem:1566295308261007450>' } });
-const { classify, applyBatch, newState, isActiveNow, signature, recordText, recordCard, watchOnce, sendRecord, seed, WATCH_MS } = require('../src/utils/premiumWatch');
+const { targetOf, classify, applyBatch, newState, isActiveNow, signature, recordText, recordCard, watchOnce, sendRecord, seed, WATCH_MS } = require('../src/utils/premiumWatch');
 
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-19T12:00:00Z');
@@ -103,8 +104,28 @@ const row = (over = {}) => ({ id: 1, user_id: '293504726505357312', provider: 'm
   const seeded = newState();
   await seed(seeded, async () => ({ rows: [row(), row({ id: 3, updated_at: '2026-11-19T10:00:00.000Z' })] }));
   assert.equal(seeded.known.size, 2); assert.equal(seeded.cursor, '2026-11-19T11:59:00.000Z');
+  // Who a Premium is for: the key says it (the dashboard saved the owner of Petto as the holder of every grant, and the bot showed the grants as the owner's).
+  const OWNER = '293504726505357312'; const PERSON = '111111111111111111'; const SERVER = '1414452131850879080';
+  const fromDashboard = row({ id: 11, user_id: OWNER, provider_subscription_id: `manual:user:${PERSON}`, updated_at: '2026-11-19T12:05:00.000Z' });
+  const forServer = row({ id: 12, user_id: OWNER, provider_subscription_id: `manual:server:${SERVER}`, metadata: { target_type: 'server', target_guild_id: SERVER }, slot_limit: 1, updated_at: '2026-11-19T12:06:00.000Z' });
+  assert.deepEqual(targetOf(fromDashboard), { type: 'user', id: PERSON }, 'a grant for a person is for that person, not for the owner who saved it');
+  assert.deepEqual(targetOf(forServer), { type: 'server', id: SERVER });
+  assert.deepEqual(targetOf(row({ provider: 'polar', provider_subscription_id: 'sub_1' })), { type: 'user', id: '293504726505357312' }, 'a paid one is for its holder');
+  assert.deepEqual(targetOf(row({ user_id: null, metadata: null })), { type: 'unknown', id: null });
+  assert.ok(recordText({ kind: 'granted', entitlement: fromDashboard }, gem, true).includes(`<@${PERSON}> · \`${PERSON}\``) && !recordText({ kind: 'granted', entitlement: fromDashboard }, gem, true).includes(`<@${OWNER}> ·`), 'the record names the person');
+  const dash = newState(); const syncedFor = []; const record = [];
+  const dashDeps = { client: {}, now: () => NOW, syncRole: async (c, userId) => { syncedFor.push(userId); return true; }, send: async (c, change, roleSynced) => { record.push([change.entitlement.id, roleSynced]); } };
+  let dashRows = [row()];
+  dashDeps.query = async () => ({ rows: dashRows });
+  await watchOnce(dash, dashDeps);
+  dashRows = [fromDashboard, forServer];
+  await watchOnce(dash, dashDeps);
+  assert.deepEqual(syncedFor, [PERSON], 'the role goes to the person, not to the owner, and a Premium for a server gives no role');
+  assert.deepEqual(record, [[11, true], [12, null]], 'both are recorded');
+  // The grants saved before with the owner as holder are repaired by the schema when the bot starts.
+  const schema = fs.readFileSync(path.join(__dirname, '..', 'src/db/schema.sql'), 'utf8');
+  assert.ok(/update premium_entitlements\s+set user_id = substring\(provider_subscription_id from '\^manual:user:\(\[0-9\]\+\)\$'\)/.test(schema) && /update premium_slot_assignments a\s+set user_id = e\.user_id/.test(schema), 'schema.sql repairs the grants and their slots');
   // It is started with the bot and can be paused when the bot is degraded.
-  const fs = require('node:fs');
   assert.ok(/startPremiumWatchJob\(client\);/.test(fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8')), 'the job is started in index.js');
   assert.ok(/'premiumWatchJob'/.test(fs.readFileSync(path.join(__dirname, '..', 'src/utils/loadGuard.js'), 'utf8')), 'and listed in the load guard');
   console.log('Checked the Premium watch: what changed, the role at once, the record with the gem and the failures.');
