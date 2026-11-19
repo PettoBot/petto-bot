@@ -7,6 +7,7 @@ const config = require('../config');
 const { listActiveEntitlements } = require('../db/premium');
 const { textCard } = require('../utils/caseCard');
 const logger = require('../utils/logger');
+const { targetOf } = require('../utils/premiumWatch');
 
 const START_DELAY_MS = 45_000;
 const MAX_TEXT = 3400;
@@ -15,7 +16,9 @@ const PEACH = 0xf0a88f;
 function lineFor(entitlement) {
   const until = entitlement.current_period_end ? ` · until <t:${Math.floor(Date.parse(entitlement.current_period_end) / 1000)}:d>` : ' · no end date';
   const source = entitlement.provider === 'polar' ? 'Polar' : (entitlement.provider || 'manual');
-  return `<@${entitlement.user_id}> · ${entitlement.plan_key || 'premium'} · ${entitlement.slot_limit ?? 1} slot(s)${until} · ${source}`;
+  const who = targetOf(entitlement);
+  const name = who.type === 'server' ? `Server \`${who.id}\`` : `<@${who.id ?? entitlement.user_id}>`;
+  return `${name} · ${entitlement.plan_key || 'premium'} · ${entitlement.slot_limit ?? 1} slot(s)${until} · ${source}`;
 }
 
 /** The cards to post: the list split in parts that fit in a message. */
@@ -57,7 +60,7 @@ async function lastPosted(channel, botId) {
   const group = [mine[start]];
   for (const message of mine.slice(start + 1)) {
     const text = body(message);
-    if (text.startsWith(HEADER) || !(text.startsWith('<@') || text.startsWith('None right now'))) break;
+    if (text.startsWith(HEADER) || !(text.startsWith('<@') || text.startsWith('Server ') || text.startsWith('None right now'))) break;
     group.push(message);
   }
   return group;
