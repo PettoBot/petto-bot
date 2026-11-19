@@ -38,6 +38,7 @@ const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
 const { startPremiumCleanupJob } = require('./src/jobs/premiumCleanupJob');
 const { startPremiumLogJob } = require('./src/jobs/premiumLogJob');
+const { startPremiumWatchJob } = require('./src/jobs/premiumWatchJob');
 const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
 const { startRolloutAlertsJob } = require('./src/jobs/rolloutAlertsJob');
 const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
@@ -230,6 +231,7 @@ async function main() {
   startPremiumRoleJob(client);
   startPremiumCleanupJob(client);
   startPremiumLogJob(client);
+  startPremiumWatchJob(client);
   startQuestAlertsJob(client);
   startRolloutAlertsJob(client);
   startRequestTimeoutJob(client);
