@@ -1,4 +1,4 @@
-const { isPermissionError } = require('../utils/permissionErrors');
+const { isPermissionError, notePermissionProblem } = require('../utils/permissionErrors');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
@@ -78,7 +78,8 @@ function makeInvoker(event, file, client, { countsEvent = true } = {}) {
       .then(() => perf.measureListener(entry, () => runWithLanguage(lang, () => event.execute(...args, client))))
       .then((value) => { perf.finishContext(perfContext); return value; }, (error) => { perf.finishContext(perfContext, error); throw error; })
       .catch((err) => (isPermissionError(err)
-        ? logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`)
+        ? (logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`),
+          notePermissionProblem(client, err, { guild: context.guildId ? client.guilds.cache.get(context.guildId) : null, feature: `event:${event.name}` }))
         : logger.error(`[event:${event.name}] Handler failed (${file}):`, err)))));
   };
 }

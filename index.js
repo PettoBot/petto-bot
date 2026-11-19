@@ -143,7 +143,7 @@ logger.setDiscordSink(createErrorRouter({
 logger.addDiscordSink(createGuildDiagnosticSink(client));
 
 // The process stays up for a failed request (Discord, the network, the database, a timeout) and stops cleanly for anything else (utils/processGuards.js).
-processGuards.installProcessGuards({ exit: (reason) => shutdown(reason, 1), canExit: () => watchdog.stats().restartsLastHour < config.watchdogMaxRestartsPerHour });
+processGuards.installProcessGuards({ exit: (reason) => shutdown(reason, 1), canExit: () => watchdog.stats().restartsLastHour < config.watchdogMaxRestartsPerHour, client });
 processGuards.installGatewayGuards(client, { exit: (reason) => shutdown(reason, 1) });
 // When memory is the problem the caches that can be filled again are emptied before anything is restarted.
 loadGuard.setDropCaches(() => {

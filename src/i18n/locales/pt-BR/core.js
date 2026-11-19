@@ -127,6 +127,8 @@ module.exports = {
   'core.perm.ManageRoles': 'Gerenciar cargos',
   'core.perm.ManageWebhooks': 'Gerenciar webhooks',
   'core.perm.ManageGuildExpressions': 'Gerenciar expressões',
+  'core.perm.SendMessagesInThreads': 'Enviar mensagens em tópicos',
+  'core.perm.CreatePrivateThreads': 'Criar tópicos privados',
   'core.perm.ManageEvents': 'Gerenciar eventos',
   'core.perm.ManageThreads': 'Gerenciar tópicos',
   'core.perm.ModerateMembers': 'Castigar membros',

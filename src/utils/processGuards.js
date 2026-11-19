@@ -6,7 +6,7 @@
 //   - the events of the connection to Discord are handled one by one (logged and counted; discord.js reconnects by itself); only `invalidated`, a
 //     session that Discord closed for good, stops the process.
 const logger = require('./logger');
-const { isPermissionError } = require('./permissionErrors');
+const { isPermissionError, notePermissionProblem } = require('./permissionErrors');
 
 const counts = { rejections: 0, rejectionsIgnored: 0, exceptions: 0, exceptionsIgnored: 0, shardDisconnect: 0, shardError: 0, shardReconnecting: 0, shardResume: 0, clientError: 0, invalidated: 0 };
 const recentGateway = []; // { at, event, detail }
@@ -32,10 +32,10 @@ function noteGateway(event, detail = '') {
 }
 
 /** Installs the handlers of the process. `exit(reason)` stops it cleanly; `canExit()` says if a restart is still allowed (the watchdog counts them). */
-function installProcessGuards({ exit, canExit = () => true, proc = process } = {}) {
+function installProcessGuards({ exit, canExit = () => true, proc = process, client = null } = {}) {
   proc.on('unhandledRejection', (error) => {
     counts.rejections += 1;
-    if (isPermissionError(error)) { logger.warn(`Missing permission (unhandled): ${error.message} (code ${error.code})`); counts.rejectionsIgnored += 1; return; }
+    if (isPermissionError(error)) { logger.warn(`Missing permission (unhandled): ${error.message} (code ${error.code})`); counts.rejectionsIgnored += 1; if (client) notePermissionProblem(client, error); return; }
     if (isNonFatal(error)) { counts.rejectionsIgnored += 1; logger.warn(`Unhandled rejection that is only a failed request: ${error?.message ?? error}`); return; }
     logger.error('Unhandled promise rejection:', error);
   });

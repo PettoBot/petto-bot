@@ -1438,11 +1438,20 @@ const allText = (message) => JSON.stringify(json(message.components));
       await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'unavailable');
       assert.equal(calls.length, 1);
 
-      // A 404 keeps its meaning and is not looked for elsewhere.
+      // A 404 of the feed addresses is believed only when the JSON address says it too (Reddit answers 404 to what it blocks, even for r/pics): all three say it, so it is gone.
       start();
       globalThis.fetch = answer([status(404)]);
       await assert.rejects(rssProviders.readReddit('gone'), (error) => error.kind === 'notFound');
-      assert.equal(calls.length, 1);
+      assert.equal(calls.length, 3);
+      // The feed addresses say 404 but the JSON one refuses (403): nothing proves that the subreddit is gone, so it is a refusal and the feed is never turned off as "the account no longer exists".
+      start();
+      globalThis.fetch = answer([status(404), status(404), status(403)]);
+      await assert.rejects(rssProviders.readReddit('blocked404'), (error) => error.kind === 'blocked');
+      assert.equal(calls.length, 3);
+      // The first address says 404 and the next one has the posts: it works.
+      start();
+      globalThis.fetch = answer([status(404), () => new Response('<feed><title>r/real</title><entry><id>t3_1</id><title>Hi</title><link href="https://www.reddit.com/r/real/comments/1"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>', { status: 200 })]);
+      assert.equal((await rssProviders.readReddit('real')).entries.length, 1);
       // A name that does not exist answers the JSON with a list of subreddits (t5): not found too.
       start();
       globalThis.fetch = answer([status(403), status(403), () => new Response(JSON.stringify({ data: { children: [{ kind: 't5', data: { display_name: 'other' } }] } }), { status: 200 })]);

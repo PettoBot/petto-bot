@@ -52,6 +52,7 @@ const template = (kind, severity) => ({
 const TEMPLATES = {
   diagnostic: template('diagnostic', 'warning'),
   permissions: template('permissions', 'warning'),
+  permissionAlert: template('permissionAlert', 'warning'),
   verifyRoles: template('verifyRoles', 'warning'),
   feedOff: template('feedOff', 'warning'),
   logs: template('logs', 'warning'),
@@ -299,6 +300,8 @@ async function sendGuildNotice(client, {
   requestedBy = null,
   force = false,
   teamAlert = null,
+  // The notices that are only for the staff of the server (the permission problems): never by DM to the owner, and never an alert of the Petto team.
+  staffOnly = false,
 }) {
   const guild = await resolveGuild(client, guildId);
   if (!guild) return { ok: false, reason: 'guild_not_found', guild: null, channel: null, deliveryType: null };
@@ -328,7 +331,7 @@ async function sendGuildNotice(client, {
   // Never fall back to a random public channel. If no suitable staff/log channel is
   // private and writable, try the guild owner's DMs. If DMs are closed, the team
   // alert remains the final fallback.
-  if (!sent) {
+  if (!sent && !staffOnly) {
     // In DMs there is no guild permission gate for external emoji usage. Use Petto's
     // branded emoji IDs here too so owner notices keep the same visual language as
     // private guild notices. Discord will render them when the bot has access to them.
@@ -342,7 +345,7 @@ async function sendGuildNotice(client, {
 
   if (sent) noticeCooldowns.set(cooldownKey, now);
 
-  const shouldAlertTeam = !sent || (teamAlert ?? template.severity === 'critical');
+  const shouldAlertTeam = !staffOnly && (!sent || (teamAlert ?? template.severity === 'critical'));
   if (shouldAlertTeam) {
     await sendTeamAlert(client, {
       guild,

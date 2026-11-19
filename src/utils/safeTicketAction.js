@@ -219,7 +219,7 @@ async function safeTicketAction(interaction, name, fn, options = {}, deps = {}) 
     const label = options.label ?? `Ticket action "${name}" failed:`; // i18n-ignore: log text for the team
     if (isPermissionError(error)) {
       logger.warn(context(), `${label} ${error.message}`);
-      await ctx.say(permissionHelp(error, await lang()), { force: true }).catch(() => null);
+      await ctx.say(permissionHelp(error, await lang(), { guild: interaction.guild ?? null, feature: 'ticket' }), { force: true }).catch(() => null);
     } else {
       logger.error({ ...context(), exhausted: transient && attempt > 1 }, label, error);
       const message = await text(error?.friendlyKey ?? 'tickets.safe.failed');

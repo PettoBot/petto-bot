@@ -128,6 +128,8 @@ module.exports = {
   'core.perm.ManageRoles': 'Manage Roles',
   'core.perm.ManageWebhooks': 'Manage Webhooks',
   'core.perm.ManageGuildExpressions': 'Manage Expressions',
+  'core.perm.SendMessagesInThreads': 'Send Messages in Threads',
+  'core.perm.CreatePrivateThreads': 'Create Private Threads',
   'core.perm.ManageEvents': 'Manage Events',
   'core.perm.ManageThreads': 'Manage Threads',
   'core.perm.ModerateMembers': 'Timeout Members',

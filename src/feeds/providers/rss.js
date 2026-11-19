@@ -199,7 +199,7 @@ function takeRedditTurn() {
 
 /**
  * Reads a subreddit now: the main address first and, when it is refused (403), limited (429), fails (5xx) or does not answer, the next ones (after the
- * gap of the queue). A 404 keeps its meaning and stops the reading. Answers `{ isFeed, title, image, entries }`; otherwise fails with `rateLimited` (some
+ * gap of the queue). A 404 of the feed addresses is only believed when the JSON address says it too (Reddit also answers 404 to what it blocks). Answers `{ isFeed, title, image, entries }`; otherwise fails with `rateLimited` (some
  * address said 429; `retryAfterMs` is what Reddit asked for), `blocked` (403, or a page that is not a feed) or `unavailable`. Each attempt has its own
  * time, and the reading gives up in about 12 seconds from its first request.
  */
@@ -219,6 +219,13 @@ async function readRedditNow(name) {
     try {
       return await sources[i].read(Math.min(REDDIT_ATTEMPT_MS, left));
     } catch (error) {
+      // Reddit answers "404 Not Found" (an empty feed) to a request it does not like, even for r/pics: a 404 of the feed addresses is not proof that the subreddit is gone. It is only believed when
+      // the last address (the JSON one, which says it differently) says it too; until then the next address is tried, and if none confirms it, it counts as a refusal, never as "the account no longer exists".
+      if (error instanceof IntegrationError && error.kind === 'notFound' && i < sources.length - 1) {
+        last = '404'; // i18n-ignore: a word for the log
+        logger.info(`feed reddit r/${name}: ${sources[i].host} 404, not believed until ${sources[sources.length - 1].host} says it too, trying ${sources[i + 1].host}`); // i18n-ignore: a line of the log
+        continue;
+      }
       if (!(error instanceof IntegrationError) || error.kind === 'notFound') throw error;
       const retryable = error.kind === 'rateLimited' || (error.kind === 'unavailable' && (error.status === undefined || error.status === 403 || error.status >= 500));
       if (!retryable) throw error;
