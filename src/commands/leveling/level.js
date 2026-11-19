@@ -12,6 +12,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { getTemplate } = require('../../db/embedTemplates');
 const { getVoiceConfig } = require('../../utils/levelSource');
+const { blockedIds, isXpBlocked, firstBlocked, toggleBlocked, MAX_BLOCKED } = require('../../utils/xpBlock');
 const imageCardsDb = require('../../db/imageCards');
 const xpEventsDb = require('../../db/xpEvents');
 const { parseDuration, formatDuration } = require('../../utils/duration');
@@ -209,7 +210,11 @@ module.exports = {
               { name: 'Levels: calculate them again from the XP', value: 'levels' },
               { name: 'Messages: raise the counters to the statistics', value: 'messages' },
               { name: 'Everything', value: 'all' },
-            ))),
+            )))
+        .addSubcommand((s) => s
+          .setName('block')
+          .setDescription('Block a member from XP (none earned, none given by hand). No member: shows who is blocked.')
+          .addUserOption((o) => o.setName('user').setDescription('Member to block, or to let out if already blocked').setRequired(false))),
     ),
 
   async execute(interaction) {
@@ -567,6 +572,28 @@ async function ignoreCmd(interaction, lang) {
   await reply(interaction, `${EMOJI.APPROVE}  ${notes.join('\n')}`);
 }
 
+async function blockCmd(interaction, lang) {
+  const user = interaction.options.getUser('user');
+  await defer(interaction);
+  const config = await levelConfigDb.ensureConfig(interaction.guild.id);
+  if (!user) {
+    const ids = blockedIds(config);
+    await reply(interaction, ids.length ? t(lang, 'leveling.block.list', { count: ids.length, list: ids.map((id) => `<@${id}>`).join(', ') }) : t(lang, 'leveling.block.none'));
+    return;
+  }
+  if (user.bot) {
+    await reply(interaction, t(lang, 'leveling.block.bot', { emoji: EMOJI.ALERT }), 0xfe6465);
+    return;
+  }
+  const result = toggleBlocked(config, user.id);
+  if (result.full) {
+    await reply(interaction, t(lang, 'leveling.block.full', { emoji: EMOJI.DENY, max: MAX_BLOCKED }), 0xfe6465);
+    return;
+  }
+  await levelConfigDb.upsertConfig(interaction.guild.id, { no_xp_user_ids: result.list });
+  await reply(interaction, t(lang, result.blocked ? 'leveling.block.added' : 'leveling.block.removed', { emoji: EMOJI.APPROVE, user: `${user}` }));
+}
+
 async function voiceIgnoreCmd(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   await defer(interaction);
@@ -617,7 +644,7 @@ async function syncJoinCmd(interaction, lang) {
   await interaction.guild.members.fetch().catch(() => {});
   let affected = 0;
   for (const member of interaction.guild.members.cache.values()) {
-    if (member.user.bot) continue;
+    if (member.user.bot || isXpBlocked(config, member.id)) continue;
     const existing = await levelUsersDb.getUser(interaction.guild.id, member.id);
     if (existing && (existing.xp > 0 || existing.level > 0)) continue;
     await levelUsersDb.setXpAndLevel(interaction.guild.id, member.id, xp, level);
@@ -870,6 +897,7 @@ async function statusCmd(interaction, lang) {
     t(lang, 'leveling.status.ignoredChannels', { list: mentionList(config.ignored_channel_ids, channelMention, 'leveling.status.noneChannels', lang) }),
     t(lang, 'leveling.status.ignoredVoiceChannels', { list: mentionList(config.voice_ignored_channel_ids, channelMention, 'leveling.status.noneChannels', lang) }),
     t(lang, 'leveling.status.ignoredCategories', { list: mentionList(config.ignored_category_ids, channelMention, 'leveling.status.noneCategories', lang) }),
+    t(lang, 'leveling.status.blocked', { list: mentionList(blockedIds(config), (id) => `<@${id}>`, 'leveling.status.noneRoles', lang) }),
     t(lang, 'leveling.status.roles', {
       noXp: mentionList(config.no_xp_role_ids, roleMention, 'leveling.status.noneRoles', lang),
       only: mentionList(config.only_xp_role_ids, roleMention, 'leveling.status.everyone', lang),
@@ -980,6 +1008,7 @@ async function syncCmd(interaction, lang) {
 
 async function manageCmd(interaction, sub, lang) {
   if (sub === 'sync') return syncCmd(interaction, lang);
+  if (sub === 'block') return blockCmd(interaction, lang);
   if (sub === 'xp') return manageXp(interaction, lang);
   return manageLevel(interaction, lang);
 }
@@ -1005,6 +1034,12 @@ async function manageXp(interaction, lang) {
 
   await defer(interaction);
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
+  // A blocked member neither gets XP by hand nor gives it away: nothing is saved.
+  const blockedId = firstBlocked(config, [targetUser.id, action === 'transfer' ? destUser?.id : null]);
+  if (blockedId) {
+    await reply(interaction, t(lang, 'leveling.manage.blocked', { emoji: EMOJI.DENY, user: `<@${blockedId}>` }), 0xfe6465);
+    return;
+  }
   const data = await levelUsersDb.ensureUser(interaction.guild.id, targetUser.id);
 
   // The XP column is a bigint and the database hands it over as a string ("8921"): it is a number before anything is added to it.
@@ -1047,6 +1082,10 @@ async function manageLevel(interaction, lang) {
 
   await defer(interaction);
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
+  if (isXpBlocked(config, targetUser.id)) {
+    await reply(interaction, t(lang, 'leveling.manage.blocked', { emoji: EMOJI.DENY, user: `${targetUser}` }), 0xfe6465);
+    return;
+  }
   const data = await levelUsersDb.ensureUser(interaction.guild.id, targetUser.id);
 
   const currentLevel = Number(data.level) || 0;
