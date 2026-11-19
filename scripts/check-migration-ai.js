@@ -26,6 +26,8 @@ const ask = (extra = {}) => { t0 += 60_000; return ai.askMigrationAi({ ...base, 
   // --- the prompt ---
   const prompt = ai.buildSystemPrompt('rewrite', 'Carl-bot', 'es');
   check('prompt: language', prompt.includes('Answer in Spanish'));
+  check('prompt: the role pages are in its list (so it does not say Petto has no message roles)', ['Message roles', 'Aged roles', 'Role quotas', 'Role triggers', 'Staff roles', 'Activity leaderboards'].every((name) => prompt.includes(name)) && /number of messages/.test(prompt));
+
   check('prompt: variables of Petto', ['{user.mention}', '{server_name}', '{server_membercount}', '{choose:a|b|c}'].every((tok) => prompt.includes(tok)));
   check('prompt: only proposes', /only PROPOSE/.test(prompt) && /Never say that something was done/.test(prompt));
   check('prompt: no economy', /no economy system/.test(prompt));

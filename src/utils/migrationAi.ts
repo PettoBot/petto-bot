@@ -97,7 +97,7 @@ function everywhereTokens(): string {
 
 // What the dashboard of Petto has, by the names the person sees in its menu.
 const PAGES = [
-  'Quick Setup', 'Welcome messages (up to 25 messages each for welcome, leave and boost)', 'Join roles', 'Aged roles', 'Reaction roles', 'Sticky roles', 'Leveling and Level rewards',
+  'Quick Setup', 'Welcome messages (up to 25 messages each for welcome, leave and boost)', 'Join roles', 'Aged roles (a role after some days in the server)', 'Message roles (a role when a member reaches a number of messages, all time or in the last days: like level rewards but counting messages, not XP)', 'Reaction roles', 'Sticky roles', 'Bulk roles', 'Role triggers', 'Role quotas', 'Staff roles', 'Activity leaderboards', 'Leveling and Level rewards',
   'Custom commands', 'Commands in code (Petto Code)', 'Autoresponders', 'Timers', 'Sticky messages', 'VoiceMaster (temporary voice channels)', 'AutoMod templates', 'Moderation rules',
   'Moderation and Case log', 'Logging', 'Permissions', 'Tickets', 'Forms', 'Giveaways', 'Polls', 'Suggestions', 'Birthdays', 'Boards (the starboard)', 'Feeds (Twitch, YouTube and more)',
   'Counters', 'Webhooks', 'Verification', 'Anti-nuke and Anti-scam',
