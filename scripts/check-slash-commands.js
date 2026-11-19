@@ -29,7 +29,7 @@ const ESSENTIAL = [
   // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config alias add`,
   // `/protect honeypot add`, `/automation timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
   // only has subcommands (scripts/check-umbrellas-3.js).
-  'automation', 'bot', 'contributions', 'greet', 'message', 'protect', 'specialchannels',
+  'automation', 'bot', 'contributions', 'greet', 'message', 'protect',
   'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
   'identity', 'image', 'invites', 'levels', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // The booster role, apart from /me: the old command with all its subcommands (member ones open, `admin` and `filter` check Manage Server inside).
@@ -56,7 +56,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  'appeals', 'banlist', 'cmdconfig', 'customize', 'disablecommand', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'language', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'messagerole', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'support', 'warnescalation',
+  'appeals', 'banlist', 'cmdconfig', 'counter', 'counting', 'customize', 'disablecommand', 'imageonly', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'language', 'linkonly', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'messagerole', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'support', 'warnescalation',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;

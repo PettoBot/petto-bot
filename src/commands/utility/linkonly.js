@@ -11,9 +11,12 @@ const say = (interaction, text, ephemeral = false) => interaction.reply({ ...pla
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum];
 
 module.exports = {
-  aliases: ['linkonly'],
+  aliases: ['urlonly'],
+  legacyRuleNames: ['urlonly'],
+  registerSlash: true,
+  guildScoped: true, // the global 100 run short: it is registered in each server, still in the `/` list (see handlers/commandHandler.js)
   data: new SlashCommandBuilder()
-    .setName('urlonly')
+    .setName('linkonly')
     .setDescription('Channels where only links (of the sites you choose) can be posted.')
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('add').setDescription('Make a channel links only.')

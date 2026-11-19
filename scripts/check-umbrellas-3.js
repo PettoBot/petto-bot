@@ -105,7 +105,7 @@ const PERMS = {
   send: 'ManageMessages', editembed: 'ManageMessages', sender: 'ManageGuild', webhook: 'ManageWebhooks', panel: 'ManageGuild', responder: 'ManageGuild', pagination: 'ManageMessages',
   suggestion: null, confession: null, confess: null, request: null, requestconfig: 'ManageGuild', review: null, profile: null, profileconfig: 'ManageGuild',
   partner: null, partnerconfig: 'ManageGuild', uploads: null, uploadconfig: 'ManageGuild',
-  counting: null, counter: 'ManageChannels', imgonly: null, urlonly: null,
+  counting: null, counter: 'ManageChannels', imageonly: null, linkonly: null,
   uptime: null, version: null, topcommands: null, votes: null, premium: null, botinfo: null, ping: null, poll: null,
 };
 // The commands that already have subcommands, registered by themselves (with the number of top-level subcommands and groups they have).
@@ -113,9 +113,9 @@ const DIRECT = {
   prefix: 5, quests: 16, automod: 16, form: 17, forum: 19, role: 25, logs: 5, permission: 3, antinuke: 8, antiscam: 4, invites: 9, autoresponder: 9, image: 12, feed: 9, identity: 6,
   starboard: 10, clownboard: 10, monkeyboard: 10, stats: 8, customcommand: 16, rollouts: 15, quickreply: 4, voicemaster: 17, giveawaypreset: 7, giveawaytemplate: 4,
 };
-const NEW_SLASH = [...Object.keys(UMBRELLAS), ...Object.keys(DIRECT)].filter((name) => name !== 'config'); // (`/config` is a prefix umbrella now: `/alias`, `/backup`... are slash commands of their own) // (`/config` is a prefix umbrella now: `/alias`, `/backup`... are slash commands of their own)
+const NEW_SLASH = [...Object.keys(UMBRELLAS), ...Object.keys(DIRECT)].filter((name) => name !== 'config' && name !== 'specialchannels'); // (`/config` is a prefix umbrella now: `/alias`, `/backup`... are slash commands of their own) // (`/config` is a prefix umbrella now: `/alias`, `/backup`... are slash commands of their own)
 // A group that is called otherwise than the old command it wraps (`/config commandroles` is `restrictcommand`).
-const GROUP_FILE = { moderationroles: 'moderation', commandroles: 'restrictcommand', disabledcommands: 'disablecommand', statistics: 'statsconfig', pingonjoin: 'poj', imageonly: 'imgonly', linkonly: 'urlonly' };
+const GROUP_FILE = { moderationroles: 'moderation', commandroles: 'restrictcommand', disabledcommands: 'disablecommand', statistics: 'statsconfig', pingonjoin: 'poj', imageonly: 'imageonly', linkonly: 'linkonly' };
 const fileOf = (group) => GROUP_FILE[group] ?? group;
 const wrappedNames = Object.values(UMBRELLAS).flatMap((u) => [...Object.keys(u.groups).map(fileOf), ...Object.values(u.flat)]);
 const leavesOf = (umbrella) => {
@@ -253,7 +253,7 @@ function tailOf(node) {
     const command = commandFile(umbrella);
     assert.ok(command, `/${umbrella} is loaded`);
     assert.equal(command.category, spec.category, `/${umbrella} is in ${spec.category}`);
-    const flattened = ['user', 'server', 'staff', 'config'].includes(umbrella); // a prefix umbrella now: what it held is a slash command of its own
+    const flattened = ['user', 'server', 'staff', 'config', 'specialchannels'].includes(umbrella); // a prefix umbrella now: what it held is a slash command of its own
     assert.ok(!command.hiddenFromHelp && !command.slashOnly && (flattened ? command.prefixOnly === true : !command.prefixOnly), `/${umbrella} is shown in !help (${flattened ? 'prefix only' : 'a prefix and a slash command'})`);
     if (!flattened) assert.equal(command.registerSlash, true);
     assert.equal(command.umbrella, true);
@@ -290,7 +290,7 @@ function tailOf(node) {
     assert.ok(wrapped, `${file} exists`);
     assert.ok(!wrapped.hiddenFromHelp && !wrapped.privateGuildId, `${file} is not private`);
     // (what `/config` held is a slash command of its own now: `/alias`, `/backup`... so this holds for what the other umbrellas wrap.)
-    assert.ok(!isSlashCommand(wrapped) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig', 'language'].includes(file), `${file} is still a prefix command: the old command works as it did`);
+    assert.ok(!isSlashCommand(wrapped) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig', 'language', 'counting', 'counter', 'imageonly', 'linkonly'].includes(file), `${file} is still a prefix command: the old command works as it did`);
     assert.ok(!(wrapped.data.toJSON().options ?? []).some((option) => option.type === 2), `${file} has no groups of its own`);
     assert.equal(wrapped.prefixArgs === undefined || ['disablecommand'].includes(file), true, `${file}: a prefixArgs reader is read by the old command itself (the prefix goes to it)`);
   }
@@ -526,7 +526,7 @@ function tailOf(node) {
     ['!prefix show', 'prefix', 'view'], ['!prefix set ?!', 'prefix', 'set'], ['!language es', 'language', null], ['!alias list', 'alias', 'list'], ['!honeypot list', 'honeypot', 'list'], ['!verify status', 'verify', 'status'],
     ['!welcome status', 'welcome', 'status'], ['!leave status', 'leave', 'status'], ['!boost status', 'boost', 'status'], ['!timer list', 'timer', 'list'],
     ['!reaction list', 'reaction', 'list'], ['!sender list', 'sender', 'list'], ['!webhook list', 'webhook', 'list'], ['!panel list', 'panel', 'list'], ['!suggestion setup', 'suggestion', 'setup'],
-    ['!confession config', 'confession', 'config'], ['!counting config', 'counting', 'config'], ['!imgonly list', 'imgonly', 'list'], ['!partner stats', 'partner', 'stats'], ['!uploads stats', 'uploads', 'stats'],
+    ['!confession config', 'confession', 'config'], ['!counting config', 'counting', 'config'], ['!imgonly list', 'imageonly', 'list'], ['!partner stats', 'partner', 'stats'], ['!uploads stats', 'uploads', 'stats'],
     ['!votes top', 'votes', 'top'], ['!uptime', 'uptime', null], ['!version', 'version', null], ['!premium status', 'premium', 'status'],
   ]) {
     const result = await ran(content);
@@ -535,7 +535,7 @@ function tailOf(node) {
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
   assert.equal(client.commandAliases.get('gw'), 'giveaway');
-  for (const name of wrappedNames) assert.ok(client.commands.has(name) && (!isSlashCommand(commandFile(name)) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig', 'language'].includes(name)), `!${name} is still a prefix command (the ones of /config are slash commands of their own now)`);
+  for (const name of wrappedNames) assert.ok(client.commands.has(name) && (!isSlashCommand(commandFile(name)) || ['premium', 'alias', 'backup', 'cmdconfig', 'moderation', 'restrictcommand', 'disablecommand', 'sanctionmessage', 'appeals', 'statsconfig', 'language', 'counting', 'counter', 'imageonly', 'linkonly'].includes(name)), `!${name} is still a prefix command (the ones of /config are slash commands of their own now)`);
   // The six old slash commands that an umbrella subcommand replaced are not registered; the old command is still loaded for the prefix.
   for (const name of ['timeout']) assert.ok(client.commands.has(name) && !isSlashCommand(commandFile(name)), `/${name} is not a slash command any more, !${name} still works`);
   for (const name of ['afk', 'remind', 'prefix', 'ban', 'kick', 'game', 'me', 'search', 'levels', 'social']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
@@ -707,11 +707,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 94, '94 commands registered globally with Discord (91 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 91, '91 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 93, '93 commands registered globally with Discord (90 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 90, '90 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [91, 100, 9], '9 slots are free, the 9 that are kept');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [90, 100, 10], '10 slots are free (the four special-channel commands are registered in each server, not globally)');
   assert.ok(usage.chat.free >= 9);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);

@@ -33,6 +33,8 @@ const parseBool = (text) => (/^(true|on|yes|si|sí|1|enable|enabled)$/i.test(tex
 
 module.exports = {
   aliases: ['count'],
+  registerSlash: true,
+  guildScoped: true, // the global 100 run short: it is registered in each server, still in the `/` list (see handlers/commandHandler.js)
   data: new SlashCommandBuilder()
     .setName('counting')
     .setDescription('A channel where members count one number after the other.')

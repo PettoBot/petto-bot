@@ -180,7 +180,7 @@ assert.deepEqual(read('members voice'), { type: 'members', kind: 'voice' }, 'the
 assert.deepEqual(read('role <@&123456789012345678> "{role}: {count}"'), { type: 'role', role: '<@&123456789012345678>', template: '{role}: {count}' });
 assert.deepEqual(read('goal --goal 500 --format compact Goal {count}/{goal}'), { type: 'goal', goal: '500', format: 'compact', template: 'Goal {count}/{goal}' });
 assert.deepEqual(read('clock --tz Europe/Madrid'), { type: 'clock', timezone: 'Europe/Madrid' });
-assert.equal(counterCommand.prefixOnly, true, '!counter is never a slash command');
+assert.ok(!counterCommand.prefixOnly && counterCommand.registerSlash === true, '/counter is a slash command of its own, besides the prefix');
 
 // ── The job ───────────────────────────────────────────────────────────────
 const job = require('../src/jobs/counterJob');

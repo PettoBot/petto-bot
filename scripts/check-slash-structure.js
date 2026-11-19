@@ -107,7 +107,7 @@ const WORDS = {
   level: 'level', levels: 'levels', xp: 'level', rank: 'rank', nivel: 'rank', lvl: 'rank', top: 'leaderboard', leaderboard: 'leaderboard', lb: 'leaderboard', ranking: 'leaderboard', botinfo: 'botinfo', about: 'botinfo', bi: 'botinfo',
   ping: 'ping', p: 'ping', poll: 'poll', pl: 'poll', suggest: 'suggest', sug: 'suggest', suggestion: 'suggestion', prefix: 'prefix', pfx: 'prefix', setup: 'setup',
   hug: 'action', pat: 'action', slap: 'action', hf: 'action',
-  restrictcommand: 'restrictcommand', disablecommand: 'disablecommand', moderation: 'moderation', statsconfig: 'statsconfig', poj: 'poj', imgonly: 'imgonly', urlonly: 'urlonly',
+  restrictcommand: 'restrictcommand', disablecommand: 'disablecommand', moderation: 'moderation', statsconfig: 'statsconfig', poj: 'poj', imgonly: 'imageonly', urlonly: 'linkonly',
   minecraft: 'minecraft', mc: 'minecraft', roblox: 'roblox', steam: 'steam', chesscom: 'chess', lichess: 'chess', pokemon: 'pokemon', modrinth: 'modrinth', rps: 'rps',
   imute: 'imute', rmute: 'rmute', raid: 'raid', rep: 'rep', br: 'boosterrole', boosterrole: 'boosterrole',
 };
@@ -119,7 +119,7 @@ for (const [word, expected] of Object.entries(WORDS)) {
 const FIRST_WORDS = {
   config: { prefix: 'prefix', moderation: 'moderation', restrictcommand: 'restrictcommand', disablecommand: 'disablecommand', statsconfig: 'statsconfig' },
   greet: { poj: 'poj' },
-  specialchannels: { imgonly: 'imgonly', urlonly: 'urlonly' },
+  specialchannels: { imgonly: 'imageonly', urlonly: 'linkonly' },
   game: { minecraft: 'minecraft', roblox: 'roblox', steam: 'steam', chesscom: 'chess', lichess: 'chess', pokemon: 'pokemon', modrinth: 'modrinth', mc: 'minecraft' },
   levels: { 'voice-xp': 'level', 'voice-enable': 'level', 'sync-join': 'level', reward: 'level', multiplier: 'level', event: 'level', rank: 'rank', leaderboard: 'top', status: 'level', reset: 'level', rules: 'level', curve: 'level' },
   search: { yt: 'youtube', gh: 'github', ani: 'anilist', chesscom: 'chess', 'minecraft-server': 'minecraft', math: 'calc' },
@@ -210,7 +210,7 @@ for (const [name, command] of all) {
   // The cards of `!<module>config`, generated for every module: they only explain the settings of a module.
   if (/^Show the .* settings and how to change them\.$/.test(json.description)) continue;
   // `!modtools` is only the prefix umbrella of the commands that are slash commands of their own now (`/case`, `/note`, `/jail`...): each of them is checked as itself.
-  if (['modtools', 'mod', 'user', 'server', 'staff', 'config'].includes(name)) continue;
+  if (['modtools', 'mod', 'user', 'server', 'staff', 'config', 'specialchannels'].includes(name)) continue;
   const have = covered.get(name);
   const dropped = new Set(command.prefixOnlySubcommands ?? []);
   const subs = subsOf(command).filter((sub) => !dropped.has(sub) && !(command.teamParts ?? []).includes(sub));
