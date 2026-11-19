@@ -499,7 +499,7 @@ create table if not exists log_entries (
 -- CHECK constraint (added here for the 'sanctions'/'verification'/'automod'/'tickets'/'forms' categories) needs its own idempotent migration step.
 alter table log_entries drop constraint if exists log_entries_event_check;
 alter table log_entries add constraint log_entries_event_check
-  check (event in ('messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'tickets', 'webhooks', 'threads', 'integrations', 'commands', 'forms'));
+  check (event in ('messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'tickets', 'webhooks', 'threads', 'integrations', 'commands', 'forms', 'forums'));
 
 create index if not exists idx_log_entries_guild_event on log_entries(guild_id, event);
 
@@ -5173,3 +5173,29 @@ create table if not exists mod_join_gate (
   updated_at            timestamptz not null default now()
 );
 alter table mod_join_gate enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- The permission problems Petto found in a server (db/permissionAlerts.ts, utils/permissionAlerts.ts): when something Petto tried to do failed because it is
+-- missing a permission (or a role is above its own), what is missing and where. One row per problem (the same feature, the same request and the same thing
+-- missing), however many times it happens: `occurrences` counts them. `last_notified` is the last notice to the staff (one every 24 hours at most). The
+-- dashboard shows the rows and checks them again, so a problem that was fixed disappears. It goes with the server (it has guild_id).
+-- ---------------------------------------------------------------------------
+create table if not exists permission_alerts (
+  guild_id      text not null,
+  problem_key   text not null,
+  feature       text not null,
+  kind          text not null check (kind in ('missing', 'hierarchy')),
+  needs         jsonb not null default '[]'::jsonb,
+  channel_id    text,
+  role_id       text,
+  role_name     text,
+  role_managed  boolean not null default false,
+  member_id     text,
+  occurrences   integer not null default 1,
+  first_seen    timestamptz not null default now(),
+  last_seen     timestamptz not null default now(),
+  last_notified timestamptz,
+  primary key (guild_id, problem_key)
+);
+create index if not exists permission_alerts_seen_idx on permission_alerts (last_seen);
+alter table permission_alerts enable row level security;

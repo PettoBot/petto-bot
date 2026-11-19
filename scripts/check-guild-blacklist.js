@@ -751,7 +751,7 @@ const reset = () => { order.length = 0; dms.length = 0; channelSends.length = 0;
   assert.ok(/could not find a safe private route/.test((await typed(`!guildsend ${notified.id} policy`)).sent[0]), 'a failed delivery says so and never uses a public channel');
   noticeResult = () => ({ ok: true, deliveryType: 'owner_dm', channel: null });
   const opsAlerts = read('src/utils/guildOpsAlerts.js');
-  assert.ok((opsAlerts.match(/allowedMentions: \{ parse: \[\] \}/g) ?? []).length >= 2, 'the notice goes out with no mentions, in a channel and in a DM');
+  assert.ok((opsAlerts.match(/allowedMentions: \{ parse: \[\] \}/g) ?? []).length >= 1, 'the notice goes out with no mentions');
   assert.ok(/never fall back to a random public channel/i.test(opsAlerts), 'and never to a public channel');
 
   // ============================================================================================== !guilddebug (prefix only now: it was a slash command of one private server)

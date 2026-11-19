@@ -828,6 +828,39 @@ function startServer(client) {
       }
     });
 
+    // The permission problems of a server (utils/permissionAlerts.ts) for the Overview of the dashboard: what Petto could not do because a permission is missing, what is
+    // missing and where. Each problem is checked again every time, so what the staff fixed is gone from the list. Only Manage Server (like the notice in the log channel).
+    app.get('/api/dashboard/guild/:guildId/permission-alerts', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
+      try {
+        const { listForDashboard } = require('../utils/permissionAlerts');
+        await access.guild.members.fetchMe().catch(() => null); // what Petto has now, not what it had when the server was cached
+        await access.guild.roles.fetch().catch(() => null);
+        res.json({ ok: true, alerts: await listForDashboard(access.guild, lang) });
+      } catch (err) {
+        logger.error(`Permission alerts could not be listed for guild ${req.params.guildId}:`, err?.message);
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.permissionAlerts.failed') });
+      }
+    });
+
+    // "Dismiss": takes one problem off the list. If it happens again, it comes back (and the staff is told again, at most once a day).
+    app.post('/api/dashboard/guild/:guildId/permission-alerts/dismiss', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
+      const key = String(req.body?.key ?? '').slice(0, 400);
+      if (!key) { res.status(400).json({ ok: false, message: t(lang, 'web.api.permissionAlerts.failed') }); return; }
+      try {
+        const { dismiss } = require('../utils/permissionAlerts');
+        res.json({ ok: true, removed: await dismiss(access.guild, key) });
+      } catch (err) {
+        logger.error(`Permission alert could not be dismissed for guild ${req.params.guildId}:`, err?.message);
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.permissionAlerts.failed') });
+      }
+    });
+
     // "Try this rule" of the Moderation rules page: what a rule (as it is in the form) would do with a sample message. Nothing is done, so looking at the page is enough.
     app.post('/api/dashboard/guild/:guildId/rules/test', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res, { page: 'rules', edit: false });

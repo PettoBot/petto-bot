@@ -13,8 +13,17 @@ const CODES = new Map([
 
 const isPermissionError = (error) => Boolean(error) && CODES.has(error.code);
 
-/** What to tell the member when a command could not run because of a permission. */
-function permissionHelp(error, lang = currentLanguage()) {
+/**
+ * What to tell the member when a command could not run because of a permission. With `{ guild, feature }` it also says exactly what is missing and where, from the error itself
+ * (utils/permissionAlerts.ts), and the problem is saved and told to the staff of the server (once a day at most). Without them, or when it cannot be known, the generic text.
+ */
+function permissionHelp(error, lang = currentLanguage(), context = null) {
+  if (context?.guild) {
+    const { explain, reportPermissionProblem } = require('./permissionAlerts');
+    reportPermissionProblem(error, context).catch(() => {});
+    const exact = explain(error, lang, context.guild);
+    if (exact) return exact;
+  }
   if (error?.code === 160002) return t(lang, 'core.permission.readHistory');
   if (error?.code === 50001) return t(lang, 'core.permission.viewChannel');
   return t(lang, 'core.permission.generic');
@@ -23,4 +32,12 @@ function permissionHelp(error, lang = currentLanguage()) {
 /** The text of an error a command threw on purpose to tell the member something (`userFacing`, already in their language), or null for any other error. It is not a bug: it is shown, and kept out of the channel of errors. */
 const userFacingText = (error) => (error?.userFacing && typeof error.message === 'string' && error.message.trim() ? error.message.slice(0, 1900) : null);
 
-module.exports = { isPermissionError, permissionHelp, userFacingText };
+/** For a failure nobody answers to (an event, a job, a rejection nobody caught): the problem is saved and the staff is told. `guild` can be missing: it is found from the address of the request. */
+function notePermissionProblem(client, error, { guild = null, feature = 'task' } = {}) {
+  if (!isPermissionError(error)) return;
+  const { reportPermissionProblem, guildOf } = require('./permissionAlerts');
+  const found = guild ?? guildOf(client, error);
+  if (found) reportPermissionProblem(error, { guild: found, feature }).catch(() => {});
+}
+
+module.exports = { isPermissionError, permissionHelp, notePermissionProblem, userFacingText };

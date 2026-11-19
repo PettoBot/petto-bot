@@ -141,12 +141,16 @@ function errorCode(error) {
 
 function isRetryable(error) {
   const status = error?.status ?? error?.statusCode;
-  return status === 429 || status >= 500;
+  // The REST client of the bot refuses at once a wait longer than 15 s (a `RateLimitError`, with `timeToReset` in milliseconds and no status): rule creation is limited to 5 per 30 s per person,
+  // so the rest of the rules of a big setup has to wait and try again, not fail.
+  return status === 429 || status >= 500 || error?.name === 'RateLimitError' || Number(error?.timeToReset) > 0;
 }
 
 function retryAfterMs(error, attempt) {
   const retryAfter = Number(error?.retryAfter ?? error?.rawError?.retry_after ?? 0);
   if (retryAfter > 0) return Math.min(retryAfter * 1000, 30_000);
+  const timeToReset = Number(error?.timeToReset ?? 0);
+  if (timeToReset > 0) return Math.min(timeToReset + 500, 35_000);
   return Math.min(1_000 * (2 ** attempt), 8_000);
 }
 

@@ -122,6 +122,7 @@ module.exports = {
   'web.api.confessions.failed': 'No se pudo publicar el panel. Inténtalo de nuevo.',
   'web.api.quickSetup.needsManage': 'Solo quien tiene Gestionar servidor puede usar Quick Setup.',
   'web.api.quickSetup.failed': 'Quick Setup no pudo terminar. Inténtalo de nuevo.',
+  'web.api.permissionAlerts.failed': 'No se pudieron cargar los problemas de permisos ahora. Inténtalo de nuevo en un momento.',
   'web.api.migrateAi.needsManage': 'Solo quien tiene Gestionar servidor puede usar el ayudante de IA.',
   'web.api.migrateAi.disabled': 'El ayudante de IA está apagado por ahora.',
   'web.api.migrateAi.not_configured': 'El ayudante de IA no está disponible por ahora.',
