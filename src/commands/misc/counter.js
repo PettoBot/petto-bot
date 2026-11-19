@@ -1,5 +1,5 @@
 // `!counter`: channels whose name shows a live number (members, humans, bots, boosts, online, a role, a goal, a clock...).
-// Prefix only: the builder below is read by the prefix parser and never registered as a slash command.
+// A slash command of its own (`/counter`) and a prefix command.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require('discord.js');
 const countersDb = require('../../db/counters');
 const { textCard } = require('../../utils/caseCard');
@@ -380,7 +380,8 @@ async function announce(interaction, lang) {
 
 module.exports = {
   aliases: ['counters'],
-  prefixOnly: true,
+  registerSlash: true,
+  guildScoped: true, // the global 100 run short: it is registered in each server, still in the `/` list (see handlers/commandHandler.js)
   data,
   prefixSubcommandAliases: { milestone: 'announce', milestones: 'announce', announcement: 'announce', anunciar: 'announce', anuncio: 'announce', add: 'create', new: 'create', make: 'create', remove: 'delete', del: 'delete', rm: 'delete', stop: 'delete', ls: 'list', update: 'refresh', sync: 'refresh', type: 'types', quick: 'setup', preset: 'setup', presets: 'setup', pack: 'setup' },
   prefixDefaultSubcommand: 'list',

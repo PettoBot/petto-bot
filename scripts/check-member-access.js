@@ -139,8 +139,8 @@ const SELF_GATED = {
   quickreply: { MEMBER: ['send', 'list'], why: 'quick replies are used by anybody who may; adding them is for the staff' },
   rollouts: { MEMBER: ['list', 'help'], why: 'the setup is for Manage Server' },
   quests: { MEMBER: ['list'], why: 'anyone sees the active quests; the setup and the test are for Manage Server' },
-  imgonly: { MEMBER: ['list'], why: 'the setup is for Manage Server' },
-  urlonly: { MEMBER: ['list', 'sites'], why: 'the setup is for Manage Server' },
+  imageonly: { MEMBER: ['list'], why: 'the setup is for Manage Server' },
+  linkonly: { MEMBER: ['list', 'sites'], why: 'the setup is for Manage Server' },
   counting: { MEMBER: ['stats', 'leaderboard', 'next', 'config'], why: 'the setup is for Manage Server' },
   boosterrole: { MEMBER: ['create', 'color', 'rename', 'icon', 'random', 'remove', 'share', 'unshare', 'shared'], why: 'boosters manage their own role; admin and filter are for the staff' },
   report: { MEMBER: ['send'], why: 'anybody reports; the setup and the review are for the staff' },
@@ -418,7 +418,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   for (const key of Object.keys(OWN_DATA)) assert.ok(found.some((entry) => `${entry.name} ${entry.leaf}`.trim() === key && entry.writes.length), `${key} is in OWN_DATA and writes nothing (any more)`);
   // The staff subcommands of a command open at Discord refuse a plain member (ephemeral on the slash command, so the channel does not see it).
   const MUST_REFUSE = ['form create', 'form delete', 'form set', 'form panel', 'rollouts enable', 'rollouts role', 'invites bonus', 'invites config', 'invites reward add', 'invites reset', 'counting setup', 'counting disable', 'counting reset', 'quickreply add', 'quickreply remove',
-    'imgonly add', 'imgonly remove', 'urlonly add', 'urlonly remove', 'rep reset', 'report config', 'report disable', 'forum setup', 'forum panel', 'forum delete', 'ticket panel create', 'ticket category add', 'ticket setup', 'confession setup', 'suggestion setup',
+    'imageonly add', 'imageonly remove', 'linkonly add', 'linkonly remove', 'rep reset', 'report config', 'report disable', 'forum setup', 'forum panel', 'forum delete', 'ticket panel create', 'ticket category add', 'ticket setup', 'confession setup', 'suggestion setup',
     'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'boosterrole admin remove', 'boosterrole settings base-role', 'boosterrole settings cooldown', 'boosterrole filter add', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config alias add', 'protect honeypot add', 'greet welcome setup', 'automation timer',
     // everything that makes Petto post for a person (scripts/check-send-permissions.js runs every way to start them, with real permissions)
     'message send', 'message editembed', 'message sender set', 'message webhook send', 'message panel send', 'message responder add', 'message pagination create'];

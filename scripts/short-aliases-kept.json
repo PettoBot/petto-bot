@@ -89,6 +89,7 @@
  "jll": "jaillist",
  "jls": "jailsetup",
  "lmsr": "levels manage sync",
+ "lvrm": "levels voice role-mode",
  "mcda": "modtools case remove-all",
  "mtls": "mutelist",
  "pfxa": "prefix add",
@@ -133,8 +134,11 @@
  "sur": "specialchannels linkonly remove",
  "sus": "specialchannels linkonly sites",
  "sy": "search youtube video",
+ "ua": "linkonly add",
+ "uli": "linkonly list",
+ "ur": "linkonly remove",
+ "usi": "linkonly sites",
  "wa": "warnescalation add",
  "wl": "warnescalation list",
- "wr": "warnescalation remove",
- "lvrm": "levels voice role-mode"
+ "wr": "warnescalation remove"
 }
