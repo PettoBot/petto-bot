@@ -5199,3 +5199,43 @@ create table if not exists permission_alerts (
 );
 create index if not exists permission_alerts_seen_idx on permission_alerts (last_seen);
 alter table permission_alerts enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Message roles (db/messageRoles.ts, utils/messageRoles.ts): "at N messages, give this role". `mode` 'total' counts every message since the first rule was made; 'period' counts the messages
+-- of the last `period_days` days (and `remove_below` takes the role away when the member falls under it). The counts are only kept for servers that have rules: the total of each
+-- member in message_role_totals, and the messages of each day in message_role_days (days older than a year are deleted every day). Both go with the server (they have guild_id).
+-- ---------------------------------------------------------------------------
+create table if not exists message_roles (
+  id           bigserial primary key,
+  guild_id     text not null references guilds(guild_id) on delete cascade,
+  role_id      text not null,
+  messages     integer not null check (messages between 1 and 10000000),
+  mode         text not null default 'total' check (mode in ('total', 'period')),
+  period_days  integer not null default 0 check (period_days between 0 and 365),
+  remove_below boolean not null default false,
+  enabled      boolean not null default true,
+  created_at   timestamptz not null default now(),
+  check ((mode = 'total' and period_days = 0 and remove_below = false) or (mode = 'period' and period_days >= 1)),
+  unique (guild_id, role_id, messages, mode, period_days)
+);
+create index if not exists idx_message_roles_guild on message_roles(guild_id);
+alter table message_roles enable row level security;
+
+create table if not exists message_role_totals (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  messages   bigint not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table message_role_totals enable row level security;
+
+create table if not exists message_role_days (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  day      date not null,
+  messages integer not null default 0,
+  primary key (guild_id, user_id, day)
+);
+create index if not exists idx_message_role_days_day on message_role_days(day);
+alter table message_role_days enable row level security;

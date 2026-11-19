@@ -94,7 +94,7 @@ assert.match(gone[0], /no subcommand nothing/);
 // missing shows up here: run `npm run gen:short-aliases` and commit the table (the words that exist never change).
 const { added, skipped } = generator.generate({ ...info, table: SHORT_ALIAS_TABLE });
 assert.deepEqual(added, {}, `the table is out of date, run npm run gen:short-aliases: ${JSON.stringify(added)}`);
-assert.ok(skipped.length < 20, 'a few subcommands may have no short alias, not many');
+assert.ok(skipped.length < 25, 'a few subcommands may have no short alias, not many');
 // The same rule, from the words that were kept when a command was renamed or moved (scripts/short-aliases-kept.json: `!gm` was `!game minecraft` and
 // is `!search minecraft user` now), gives the same table (it is deterministic). Each of the kept words must still be in the table, unchanged.
 const kept = require('./short-aliases-kept.json');

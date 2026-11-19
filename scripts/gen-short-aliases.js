@@ -34,7 +34,7 @@ const MAX_STEM = 3;
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
 // The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search`, `/staff`, `/config`, `/protect`, `/greet`, `/automation`, `/message`, `/contributions`, `/specialchannels`, `/modtools`, `/levels` and `/bot` come after every other command, so their words are the ones left free and no word that already
 // works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
-const LAST = ['agedrole', 'server', 'user', 'mod', 'game', 'me', 'search', 'staff', 'config', 'protect', 'greet', 'automation', 'message', 'contributions', 'specialchannels', 'bot', 'ai', 'levels', 'modtools', 'social'];
+const LAST = ['agedrole', 'messagerole', 'server', 'user', 'mod', 'game', 'me', 'search', 'staff', 'config', 'protect', 'greet', 'automation', 'message', 'contributions', 'specialchannels', 'bot', 'ai', 'levels', 'modtools', 'social'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /action have their own words (`!hug`), and these are not for members to type.
