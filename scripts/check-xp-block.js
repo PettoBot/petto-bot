@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { Collection } = require('discord.js');
 
+process.env.DISCORD_TOKEN ??= 'check';
+process.env.DISCORD_CLIENT_ID ??= '1';
+process.env.DISCLOUD_DATABASE_URL ??= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
+
 function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
