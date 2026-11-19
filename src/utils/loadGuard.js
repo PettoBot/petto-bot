@@ -19,7 +19,7 @@ const ESSENTIAL_JOBS = new Set(['expireSanctions', 'lockdownJob', 'antiScamJob',
 const SHED_IN_DEGRADED_JOBS = new Set([
   'feedsJob', 'guildSnapshotJob', 'counterJob', 'bumpReminderJob', 'globalStatsJob', 'omniplexStatsJob', 'commandDataJob', 'afkMentionsJob', 'birthdayJob',
   'forumJob', 'questAlertsJob', 'rolloutAlertsJob', 'requestTimeoutJob', 'formCleanupJob', 'backupVaultJob', 'appealCleanupJob',
-  'premiumCleanupJob', 'premiumLogJob', 'premiumRoleJob', 'ticketAutoDeleteJob', 'ticketChannelJob', 'ticketReminderJob', 'ticketAutocloseJob',
+  'premiumCleanupJob', 'premiumLogJob', 'premiumRoleJob', 'premiumWatchJob', 'ticketAutoDeleteJob', 'ticketChannelJob', 'ticketReminderJob', 'ticketAutocloseJob',
   'pollAutocloseJob', 'verifyChecksJob', 'countingRoleJob', 'roleQuotaJob', 'activityLeaderboardJob', 'agedRolesJob', 'messageRolesJob', 'guildPurgeJob', 'discordOps', 'guildSnapshots',
 ]);
 // Listeners of events that only write a log of low value: skipped when degraded.
