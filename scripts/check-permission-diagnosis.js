@@ -153,7 +153,7 @@ const err = (method, url, json) => ({ code: 50013, method, url: `https://discord
   const schema = read('src/db/schema.sql');
   check('schema: table with row level security and guild_id', /create table if not exists permission_alerts \([\s\S]*?guild_id\s+text not null[\s\S]*?primary key \(guild_id, problem_key\)\s*\);/.test(schema) && /alter table permission_alerts enable row level security;/.test(schema));
   const ops = read('src/utils/guildOpsAlerts.js');
-  check('notice: staff only means no DM and no team alert', /if \(!sent && !staffOnly\)/.test(ops) && /const shouldAlertTeam = !staffOnly && \(/.test(ops) && /permissionAlert: template\('permissionAlert', 'warning'\)/.test(ops));
+  check('notice: no DM to the owner for any notice, and staff only means no team alert', !/sendOwnerDm|owner_dm/.test(ops.slice(ops.indexOf('async function sendGuildNotice'))) && /const shouldAlertTeam = !staffOnly && \(/.test(ops) && /permissionAlert: template\('permissionAlert', 'warning'\)/.test(ops));
   const hooks = {
     'src/events/interactionCreate.js': /permissionHelp\(err, lang, \{ guild: interaction\.guild, feature: `command:/,
     'src/events/messageCreateCommands.js': /permissionHelp\(err, lang, \{ guild: message\.guild, feature: `command:/,

@@ -11,7 +11,6 @@ const {
 const config = require('../config');
 const { getLogConfig } = require('../db/logConfig');
 const { t, defaultText, peekGuildLanguage } = require('../i18n');
-const { sendDm } = require('./dmOrigin');
 
 const SUPPORT_URL = 'https://petto.sbs/support';
 const DEFAULT_ALERT_CHANNEL_ID = process.env.PETTO_GUILD_ALERT_CHANNEL_ID || config.opsChannels?.general || config.errorLogChannelId || null;
@@ -281,17 +280,6 @@ async function sendTeamAlert(client, {
   return sent;
 }
 
-async function sendOwnerDm(guild, content) {
-  const owner = await resolveOwner(guild);
-  if (!owner) return null;
-  const message = await sendDm(owner, {
-    content,
-    allowedMentions: { parse: [] },
-  }, { guild: null, kind: 'team' }).catch(() => null);
-  if (!message) return null;
-  return { message, ownerId: owner.id };
-}
-
 async function sendGuildNotice(client, {
   guildId,
   kind = 'diagnostic',
@@ -328,20 +316,8 @@ async function sendGuildNotice(client, {
     if (sent) deliveryType = 'private_channel';
   }
 
-  // Never fall back to a random public channel. If no suitable staff/log channel is
-  // private and writable, try the guild owner's DMs. If DMs are closed, the team
-  // alert remains the final fallback.
-  if (!sent && !staffOnly) {
-    // In DMs there is no guild permission gate for external emoji usage. Use Petto's
-    // branded emoji IDs here too so owner notices keep the same visual language as
-    // private guild notices. Discord will render them when the bot has access to them.
-    const dm = await sendOwnerDm(guild, renderNotice({ kind, details, externalEmojis: true, lang }));
-    if (dm) {
-      sent = dm.message;
-      deliveryType = 'owner_dm';
-      recipientId = dm.ownerId;
-    }
-  }
+  // Never fall back to a random public channel, and never to a direct message to the owner (it filled their DMs with notices nobody asked for): a notice goes to the private staff/log channel of
+  // the server, and when there is none it is only seen in the dashboard and by the team (the team alert below).
 
   if (sent) noticeCooldowns.set(cooldownKey, now);
 
