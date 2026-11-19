@@ -397,6 +397,57 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     assert.deepEqual([left.global, left.regions.exclude], [false, ['CA', 'US']]);
     assert.equal(questApi.normalizeCompact({ id: 'x', name: 'No' }), null);
   }
+  {
+    // The main list (agnonotdev's compact one) is the one that announces: its limits and its pictures come with the alert.
+    const IDA = '1560753341024178001'; const IDB = '1560753341024178002';
+    const nowMs = Date.now();
+    const window = { starts_at: new Date(nowMs - 3_600_000).toISOString(), expires_at: new Date(nowMs + 86_400_000).toISOString() };
+    const deco = 'https://cdn.discordapp.com/avatar-decoration-presets/a_26bc424aca3f6400.png?size=4096&passthrough=true';
+    const compactRow = { id: IDA, name: 'Alpha', dates: { starts_at: window.starts_at, expires_at: window.expires_at }, requirements: { regions: ['NZ'], age_gate: true, platforms: ['desktop'] },
+      tasks: [{ type: 'WATCH_VIDEO', target: 29, unit: 'seconds' }], rewards: [{ type: 'collectible', name: 'Vice City Avatar', image: deco }, { type: 'code', name: 'A code', image: 'https://cdn.discordapp.com/quests/1572085565795471514/1572295634860380341.png' }, { type: 'collectible', name: 'Evil', image: 'https://evil.test/a.png' }] };
+    const diffRow = (id, name) => ({ id, config: { id, ...window, messages: { quest_name: name }, task_config_v2: { tasks: { a: { type: 'WATCH_VIDEO', target: 30 } } }, rewards_config: { rewards: [{ type: 3, sku_id: '1560753341024178276', messages: { name: 'Deco' } }] } } });
+    const real = global.fetch;
+    global.fetch = async (url) => {
+      const link = String(url);
+      if (link.includes('agnonotdev')) return new Response(JSON.stringify([compactRow]), { status: 200 });
+      if (link.includes('discord-api-diff')) return new Response(JSON.stringify([diffRow(IDA, 'Alpha'), diffRow(IDB, 'Only in the others')]), { status: 200 });
+      return new Response('nope', { status: 503 });
+    };
+    questApi.resetCache();
+    const merged = (await questApi.fetchQuests({ force: true })).quests;
+    global.fetch = real;
+    const a = merged.find((quest) => quest.id === IDA); const b = merged.find((quest) => quest.id === IDB);
+    assert.equal(a.listed, true, 'a quest of the main list is listed'); assert.equal(b.listed, false, 'a quest that only the other lists have is not');
+    assert.deepEqual([a.regions.include, a.ageGate, a.global], [['NZ'], true, false], 'the limits come from the main list');
+    assert.equal(a.rewards[0].image, 'https://cdn.discordapp.com/avatar-decoration-presets/a_26bc424aca3f6400.png?size=256&passthrough=true', 'the picture of the decoration comes ready, asked small');
+    assert.equal(a.rewards[0].sku, '1560753341024178276', 'and the sku of the other lists is kept, to ask for a picture when there is none');
+    assert.equal(a.rewards[1].image, 'https://cdn.discordapp.com/quests/1572085565795471514/1572295634860380341.png', 'the picture of a code is kept');
+    assert.equal(a.rewards[2].image, null, 'a picture that is not Discord\'s CDN is not used');
+    assert.equal(questApi.getStatus().sources[0].name, questApi.COMPACT);
+
+    // The alerts: only the listed quests are announced, and the others wait until the main list has them.
+    const marked = [];
+    const db3 = { listEnabledConfigs: async () => [{ guild_id: '1', channel_id: '2' }], listSeenIds: async () => new Set(['0']), markSeen: async (list) => { marked.push(list.map((quest) => quest.id)); }, hasPost: async () => false, savePost: async () => {} };
+    const client3 = { guilds: { cache: new Map(), fetch: async () => null } };
+    const quick = { id: 'q', url: 'https://discord.com/quests/q', startsAt: new Date(nowMs - 1000), expiresAt: new Date(nowMs + 86_400_000), rewards: [], tasks: [], platforms: [] };
+    const listedQuest = { ...quick, id: '1560753341024178010', name: 'Listed', listed: true }; const waiting = { ...quick, id: '1560753341024178011', name: 'Waiting', listed: false };
+    const warnings = []; const logger = require('../src/utils/logger'); const warnBefore = logger.warn; logger.warn = (...args) => { warnings.push(args.join(' ')); };
+    const down = { COMPACT: questApi.COMPACT, fetchQuests: async () => ({ notModified: false, quests: [listedQuest, waiting] }), isActive: questApi.isActive, getStatus: () => ({ sources: [{ name: questApi.COMPACT, ok: false, error: 'answered 503' }] }) };
+    let outcome = await checkQuests(client3, { api: down, db: db3, now: nowMs });
+    assert.equal(outcome.newQuests, 1, 'only the listed quest is new'); assert.deepEqual(marked.at(-1), [listedQuest.id], 'and only it is remembered');
+    await checkQuests(client3, { api: down, db: db3, now: nowMs });
+    assert.equal(warnings.filter((line) => /main quest list/.test(line) && /answered 503/.test(line)).length, 1, 'the main list being down is said once, not every pass');
+    logger.warn = warnBefore;
+    const listedLater = { ...waiting, listed: true };
+    const later = { fetchQuests: async () => ({ notModified: false, quests: [listedQuest, listedLater] }), isActive: questApi.isActive };
+    outcome = await checkQuests(client3, { api: later, db: { ...db3, listSeenIds: async () => new Set(['0', listedQuest.id]) }, now: nowMs });
+    assert.equal(outcome.newQuests, 1, 'the quest that waited is announced when the main list has it');
+    marked.length = 0;
+    await checkQuests(client3, { api: down, db: { ...db3, listSeenIds: async () => new Set() }, now: nowMs });
+    assert.deepEqual(marked.at(-1), [listedQuest.id], 'the first look remembers only the listed ones: the others are new when the main list gets them');
+    const resent = await resendMissing(client3, { guild_id: '1', channel_id: '2', reward_kinds: [], task_kinds: [] }, { api: down, db: db3, now: nowMs, pause: 0 });
+    assert.equal(resent.missing, 1, 'what is sent again is only what the main list has');
+  }
   // The card follows the language of the server; the quest data stays in English.
   {
     const spanish = texts(buildQuestCard({ ...orbs, rewards: [{ kind: 'orbs', name: '200 Orbs', amount: 200, premiumAmount: 240, image: null }] }, { hide_sections: [] }, { lang: 'es' }));

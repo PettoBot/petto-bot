@@ -76,14 +76,28 @@ async function checkQuests(client, deps = {}) {
   }
 }
 
+/** The quests that are announced: the ones the main list has (`listed`), with their limits and pictures. A list with no such mark (a test, an older answer) is taken as it is. */
+const announceable = (quests) => quests.filter((quest) => quest.listed !== false);
+
+// The main list not answering means no alert at all (the maintainer decided to rely on it): it is said in the log, once in a while, so it is not missed.
+let warnedAt = 0;
+function warnIfMainDown(api) {
+  const main = api.getStatus?.().sources?.find((source) => source.name === api.COMPACT);
+  if (!main || main.ok !== false || Date.now() - warnedAt < 6 * 3_600_000) return;
+  warnedAt = Date.now();
+  logger.warn(`The main quest list (${main.name}) is not answering (${main.error}): no quest alert is sent until it does.`);
+}
+
 async function runPass(client, { api, db, now, configs, answer, result }) {
-  const active = answer.quests.filter((quest) => api.isActive(quest, now));
+  warnIfMainDown(api);
+  const listed = announceable(answer.quests);
+  const active = listed.filter((quest) => api.isActive(quest, now));
   const seen = await db.listSeenIds();
   const fresh = active.filter((quest) => !seen.has(quest.id));
 
   if (!seen.size) {
     // Only the quests that have started: one that starts later is announced when it does.
-    await db.markSeen(answer.quests.filter((quest) => quest.startsAt.getTime() <= now));
+    await db.markSeen(listed.filter((quest) => quest.startsAt.getTime() <= now));
     return { ...result, baseline: true };
   }
   result.newQuests = fresh.length;
@@ -116,7 +130,7 @@ async function runPass(client, { api, db, now, configs, answer, result }) {
 async function resendMissing(client, settings, { api = questApi, db = questsDb, now = Date.now(), limit = 10, pause = 1500 } = {}) {
   const answer = await api.fetchQuests({ force: true });
   const missing = [];
-  for (const quest of answer.quests.filter((entry) => api.isActive(entry, now)).sort((a, b) => a.startsAt - b.startsAt)) {
+  for (const quest of announceable(answer.quests).filter((entry) => api.isActive(entry, now)).sort((a, b) => a.startsAt - b.startsAt)) {
     if (!matchesFilters(quest, settings)) continue;
     if (await db.hasPost(settings.guild_id, quest.id, 'new')) continue;
     missing.push(quest);

@@ -56,10 +56,10 @@ function platformLabel(name, lang = currentLanguage()) {
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
-// Five public copies of the list of quests are read (the first is agnonotdev's compact gist, the main one), so one being late or down does not stop the alerts. The first one is
-// the short list of recent quests of the discord-api-tracker repository (the one that has a new quest within minutes), then
-// the community API, aamiaa/discord-api-diff (which archives Discord's own quest data, every few hours) and the tracker's
-// big file. A quest found by any of them is announced, and the earlier source wins when they differ.
+// Five public copies of the list of quests are read. The first is agnonotdev's compact gist, the main one and the only one that ANNOUNCES: it brings the limits (countries, age), the
+// pictures and the decorations, so an alert is complete when it goes out (the maintainer chose it, a partner of the bot uses it too; when it stops working he changes it). The others
+// are the short list of recent quests of the discord-api-tracker repository, the community API, aamiaa/discord-api-diff (which archives Discord's own quest data) and the tracker's big
+// file: they fill what the main one leaves empty and keep `/quests` complete, but a quest that only they have is not announced until the main one lists it. The earlier source wins.
 const COMMUNITY = 'discordquest.com';
 // i18n-ignore: name of a data source
 const COMPACT = 'agnonotdev quests (compact)';
@@ -176,6 +176,18 @@ function compactImage(value) {
   return url.startsWith(CDN_BASE) ? cdnImage(url.slice(CDN_BASE.length)) : null;
 }
 
+/**
+ * The picture of a reward of the compact list: an avatar decoration (`avatar-decoration-presets/<preset>.png`, which the list gives ready to use; it is asked small, the size of a thumbnail)
+ * or a picture of a quest (the code or the item of a game), only Discord's CDN and only still images. Anything else is no picture.
+ */
+function compactRewardImage(value) {
+  const url = String(value ?? '');
+  if (!url.startsWith(CDN_BASE)) return null;
+  const path = url.slice(CDN_BASE.length).split('?')[0];
+  if (/^avatar-decoration-presets\/[A-Za-z0-9_]{8,64}\.png$/.test(path)) return `${CDN_BASE}${path}?size=256&passthrough=true`;
+  return cdnImage(path);
+}
+
 /** The limits of a quest of the compact list: its countries (or the ones left out), the age gate and who can do it. */
 function compactLimits(requirements) {
   const include = (Array.isArray(requirements?.regions) ? requirements.regions : []).slice(0, 20).map((c) => clean(c, 4)).filter(Boolean);
@@ -199,7 +211,7 @@ function normalizeCompact(raw) {
     const kind = COMPACT_REWARDS[reward.type] ?? 'other';
     const amount = kind === 'orbs' ? Math.max(0, Number(reward.amount) || 0) : 0;
     const premium = kind === 'orbs' ? (Number(reward.premium_amount) || Math.round(amount * 1.2)) : 0;
-    return { kind, sku: '', name: clean(reward.name, 100) || (kind === 'orbs' && amount ? `${amount} Orbs` : REWARD_LABELS[kind]), amount, premiumAmount: premium > amount ? premium : 0, expiresAt: date(raw.dates?.rewards_expires_at), image: compactImage(reward.image) };
+    return { kind, sku: '', name: clean(reward.name, 100) || (kind === 'orbs' && amount ? `${amount} Orbs` : REWARD_LABELS[kind]), amount, premiumAmount: premium > amount ? premium : 0, expiresAt: date(raw.dates?.rewards_expires_at), image: compactRewardImage(reward.image) };
   });
   const listed = (Array.isArray(raw.requirements?.platforms) ? raw.requirements.platforms : []).map((p) => COMPACT_PLATFORMS[p]).filter(Boolean);
   return {
@@ -336,15 +348,19 @@ function cachedQuests() {
       if (!before) { merged.set(quest.id, quest); continue; }
       const filled = { ...quest };
       for (const [key, value] of Object.entries(before)) if (blank(filled[key]) && !blank(value)) filled[key] = value;
+      // The compact list gives the picture of a decoration but not its sku: the sku of the other lists is kept for it, to ask for the picture when the list has none.
+      const skus = before.rewards.filter((reward) => reward.kind === 'decoration' && reward.sku).map((reward) => reward.sku);
+      if (skus.length) { let next = 0; filled.rewards = quest.rewards.map((reward) => (reward.kind === 'decoration' && !reward.sku ? { ...reward, sku: skus[next++] ?? '' } : reward)); }
       merged.set(quest.id, filled);
     }
   }
-  // The limits come from the compact list first; the quests it does not have fall back to the region lists.
+  // The limits come from the compact list; the quests it does not have fall back to the region lists (they are in the list of `/quests` but are not announced).
   const compact = new Map((state.get(COMPACT).quests ?? []).map((quest) => [quest.id, quest]));
   return [...merged.values()].map((quest) => {
     const limits = compact.get(quest.id);
-    if (limits) return { ...quest, global: limits.global, regions: limits.regions, ageGate: limits.ageGate };
-    return regionCache.map.has(quest.id) ? { ...quest, ...regionFields(regionCache.map.get(quest.id)) } : quest;
+    // `listed`: the compact list has the quest. Only those are announced: it is the one that brings the limits and the pictures, so an alert never goes out without them.
+    if (limits) return { ...quest, global: limits.global, regions: limits.regions, ageGate: limits.ageGate, listed: true };
+    return { ...(regionCache.map.has(quest.id) ? { ...quest, ...regionFields(regionCache.map.get(quest.id)) } : quest), listed: false };
   });
 }
 
@@ -370,5 +386,5 @@ function getStatus() {
 
 module.exports = {
   API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS, rewardLabel, taskLabel, platformLabel,
-  fetchQuests, getQuests, cachedQuests, resetCache, normalizeQuest, normalizeCompact, isActive, getStatus, cdnImage,
+  COMPACT, fetchQuests, getQuests, cachedQuests, resetCache, normalizeQuest, normalizeCompact, isActive, getStatus, cdnImage,
 };
