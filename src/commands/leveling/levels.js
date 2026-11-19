@@ -58,6 +58,7 @@ const SUBCOMMANDS = [
       level('xp', 'xp', [], 'manage'),
       level('level', 'level', [], 'manage'),
       level('sync', 'sync', [], 'manage'),
+      level('block', 'block', [], 'manage'),
       level('reset', 'reset', ['reset']),
     ],
   },

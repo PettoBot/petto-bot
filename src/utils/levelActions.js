@@ -10,6 +10,7 @@ const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const { getTemplate } = require('../db/embedTemplates');
+const { isXpBlocked } = require('./xpBlock');
 const { build: buildEmbedTemplate } = require('./embedBuilder');
 const { listEvents } = require('../db/xpEvents');
 const { addPeriodXp } = require('../db/levelPeriods');
@@ -110,6 +111,7 @@ async function getMultiplier(guildId, channel, member, config = null) {
  * some), and not in an ignored channel or category. `channel` is where the message was sent or the voice channel.
  */
 function canEarnXp({ member, channel, config }) {
+  if (isXpBlocked(config, member?.id ?? member?.user?.id)) return false;
   const roleIds = member?.roles?.cache;
   const has = (id) => Boolean(roleIds?.has?.(id));
   if ((config?.no_xp_role_ids ?? []).some(has)) return false;

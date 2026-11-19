@@ -3755,6 +3755,8 @@ alter table level_config add column if not exists multiplier_cap numeric not nul
 -- The vote boost (+10% XP for 12 hours for a member who voted for the bot): servers can turn it off. The dashboard writes this column.
 alter table level_config add column if not exists vote_boost_enabled boolean not null default true;
 alter table level_config add column if not exists no_xp_role_ids text[] not null default '{}';
+-- Members who cannot earn XP and cannot be given any by hand (`/levels manage block`).
+alter table level_config add column if not exists no_xp_user_ids text[] not null default '{}';
 alter table level_config add column if not exists only_xp_role_ids text[] not null default '{}';
 alter table level_config add column if not exists ignored_category_ids text[] not null default '{}';
 alter table level_config add column if not exists voice_ignored_category_ids text[] not null default '{}';

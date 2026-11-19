@@ -3,6 +3,7 @@ const { getConfig } = require('../db/levelConfig');
 const levelUsersDb = require('../db/levelUsers');
 const { totalXpForLevel, levelForXp } = require('../utils/levelCurve');
 const logger = require('../utils/logger');
+const { isXpBlocked } = require('../utils/xpBlock');
 
 module.exports = {
   name: Events.GuildMemberAdd,
@@ -12,6 +13,7 @@ module.exports = {
     try {
       const config = await getConfig(member.guild.id);
       if (!config?.enabled || (!config.join_xp && !config.join_level)) return;
+      if (isXpBlocked(config, member.id)) return;
 
       // Only a genuinely fresh member gets the bonus — someone who left with progress and
       // rejoined keeps whatever they already had, same as bli/urubot's "only if untouched" guard.

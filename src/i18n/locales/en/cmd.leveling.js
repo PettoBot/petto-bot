@@ -116,6 +116,8 @@ module.exports = {
   'cmd.leveling.level.manage.level.opt.amount.desc': 'Level amount',
   'cmd.leveling.level.manage.sync.desc': 'Put leveling in order: reward roles, voice roles, levels from XP, message counters, or all.',
   'cmd.leveling.level.manage.sync.opt.type.desc': 'What to sync (default: roles)',
+  'cmd.leveling.level.manage.block.desc': 'Block a member from XP (none earned, none given by hand). No member: shows who is blocked.',
+  'cmd.leveling.level.manage.block.opt.user.desc': 'Member to block, or to let out if already blocked',
   'cmd.leveling.levels.desc': 'Levels and XP: your rank, the leaderboard of the server and the settings of the leveling system.',
   'cmd.leveling.levels.rank.desc': 'View your level/XP rank, or someone else\'s.',
   'cmd.leveling.levels.rank.opt.user.desc': 'Member to check (default: you)',
@@ -239,6 +241,8 @@ module.exports = {
   'cmd.leveling.levels.manage.level.opt.amount.desc': 'Level amount',
   'cmd.leveling.levels.manage.sync.desc': 'Put leveling in order: reward roles, voice roles, levels from XP, message counters, or all.',
   'cmd.leveling.levels.manage.sync.opt.type.desc': 'What to sync (default: roles)',
+  'cmd.leveling.levels.manage.block.desc': 'Block a member from XP (none earned, none given by hand). No member: shows who is blocked.',
+  'cmd.leveling.levels.manage.block.opt.user.desc': 'Member to block, or to let out if already blocked',
   'cmd.leveling.levels.manage.reset.desc': 'Wipe a member\'s XP/level and remove their reward roles.',
   'cmd.leveling.levels.manage.reset.opt.user.desc': 'Member',
 };
