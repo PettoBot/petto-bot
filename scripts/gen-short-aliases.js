@@ -38,7 +38,7 @@ const LAST = ['agedrole', 'messagerole', 'server', 'user', 'mod', 'game', 'me', 
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /action have their own words (`!hug`), and these are not for members to type.
-const SKIPPED_COMMANDS = new Set(['action']);
+const SKIPPED_COMMANDS = new Set(['action', '247']); // `247` is a number: a short word is letters only
 
 /** Everything the rule needs to know about the commands, read from the command files. */
 function loadCommandInfo() {

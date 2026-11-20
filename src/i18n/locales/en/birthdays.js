@@ -1,5 +1,8 @@
 // Birthdays: the command, the dates, the default message and the daily announcements.
 module.exports = {
+  'birthdays.outside.needServer': 'This part needs a server where Petto is added. Here you can use `/birthday set`, `/birthday view` and `/birthday remove` for your own birthday.',
+  'birthdays.outside.onlyYours': 'Outside a server I only show your own birthday. To see someone else\'s, use this in a server where Petto is added.',
+  'birthdays.outside.saveNote': 'It is saved on your account, so `/birthday view` shows it anywhere, and only you can see it. A server announces only the birthday saved inside that server.',
   'birthdays.month.january': 'January',
   'birthdays.month.february': 'February',
   'birthdays.month.march': 'March',

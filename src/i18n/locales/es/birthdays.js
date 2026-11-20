@@ -1,5 +1,8 @@
 // Cumpleaños: el comando, las fechas, el mensaje de siempre y los anuncios de cada día.
 module.exports = {
+  'birthdays.outside.needServer': 'Esta parte necesita un servidor donde esté Petto. Aquí puedes usar `/birthday set`, `/birthday view` y `/birthday remove` para tu propio cumpleaños.',
+  'birthdays.outside.onlyYours': 'Fuera de un servidor solo muestro tu propio cumpleaños. Para ver el de otra persona, úsalo en un servidor donde esté Petto.',
+  'birthdays.outside.saveNote': 'Se guarda en tu cuenta, así que `/birthday view` lo muestra en cualquier sitio, y solo tú lo ves. Un servidor solo anuncia el cumpleaños guardado dentro de ese servidor.',
   'birthdays.month.january': 'enero',
   'birthdays.month.february': 'febrero',
   'birthdays.month.march': 'marzo',

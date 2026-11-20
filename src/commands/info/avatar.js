@@ -1,13 +1,16 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { userInstallable } = require('../../utils/userInstall');
 const { INFO_ACCENT, infoPayload } = require('../../utils/infoCard');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
-  data: new SlashCommandBuilder()
+  // A command of its own in the `/` menu (global, not the second set: only global commands can be installed on a person).
+  registerSlash: true,
+  // Also from a person's own installation (anywhere, DMs included): nothing here needs the server.
+  data: userInstallable(new SlashCommandBuilder()
     .setName('avatar')
-    .setDMPermission(false)
     .setDescription("Shows a member's avatar.")
-    .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false)),
+    .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false))),
   aliases: ['av', 'pfp'],
 
   async execute(interaction) {

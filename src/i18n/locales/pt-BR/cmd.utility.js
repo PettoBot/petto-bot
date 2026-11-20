@@ -1,5 +1,14 @@
 // Brazilian Portuguese descriptions of the utility commands (same keys as en/cmd.utility.js).
 module.exports = {
+  'cmd.utility.247.desc': 'Deixa o Petto num canal de voz para sempre, com um status no canal.',
+  'cmd.utility.247.set.desc': 'Escolhe o canal de voz onde o Petto fica.',
+  'cmd.utility.247.set.opt.channel.desc': 'O canal de voz',
+  'cmd.utility.247.set.opt.status.desc': 'O status do canal (padrão: Vendo o servidor 24/7)',
+  'cmd.utility.247.set.opt.deaf.desc': 'Entrar com o som desligado (padrão: sim)',
+  'cmd.utility.247.off.desc': 'Sai do canal de voz e para de voltar.',
+  'cmd.utility.247.status.desc': 'Muda o status do canal de voz.',
+  'cmd.utility.247.status.opt.text.desc': 'O status; "default" para Vendo o servidor 24/7',
+  'cmd.utility.247.info.desc': 'Veja onde o Petto fica e com qual status.',
   'cmd.utility.afk.desc': 'Defina um status AFK, ou veja as menções que você recebeu enquanto estava fora.',
   'cmd.utility.afk.set.desc': 'Marque-se como AFK.',
   'cmd.utility.afk.set.opt.reason.desc': 'Por que você está fora (padrão: "AFK")',

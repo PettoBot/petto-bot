@@ -23,6 +23,8 @@ function staffRolesOf(member) {
 module.exports = {
   // A slash command of its own (`/stripstaff`), not a subcommand of `/mod`.
   registerSlash: true,
+  // The second set (registered in each server): the global slots were needed for the commands that can be installed on a person (`/avatar`, `/banner`, `/userinfo`, `/birthday`).
+  guildScoped: true,
   aliases: ['strip', 'destaff'],
   data: new SlashCommandBuilder()
     .setName('stripstaff')

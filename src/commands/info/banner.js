@@ -1,14 +1,17 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { userInstallable } = require('../../utils/userInstall');
 const { INFO_ACCENT, infoPayload, noticePayload } = require('../../utils/infoCard');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // A command of its own in the `/` menu (global, not the second set: only global commands can be installed on a person).
+  registerSlash: true,
   aliases: ['bn'],
-  data: new SlashCommandBuilder()
+  // Also from a person's own installation (anywhere, DMs included): nothing here needs the server.
+  data: userInstallable(new SlashCommandBuilder()
     .setName('banner')
-    .setDMPermission(false)
     .setDescription("Shows a member's profile banner.")
-    .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false)),
+    .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false))),
 
   async execute(interaction) {
     const lang = await languageOf(interaction);

@@ -1,5 +1,14 @@
 // Spanish descriptions of the utility commands (same keys as en/cmd.utility.js).
 module.exports = {
+  'cmd.utility.247.desc': 'Deja a Petto en un canal de voz para siempre, con un estado en el canal.',
+  'cmd.utility.247.set.desc': 'Elige el canal de voz donde se queda Petto.',
+  'cmd.utility.247.set.opt.channel.desc': 'El canal de voz',
+  'cmd.utility.247.set.opt.status.desc': 'El estado del canal (por defecto: Viendo el servidor 24/7)',
+  'cmd.utility.247.set.opt.deaf.desc': 'Entrar con el sonido apagado (por defecto: sí)',
+  'cmd.utility.247.off.desc': 'Sale del canal de voz y deja de volver.',
+  'cmd.utility.247.status.desc': 'Cambia el estado del canal de voz.',
+  'cmd.utility.247.status.opt.text.desc': 'El estado; "default" para Viendo el servidor 24/7',
+  'cmd.utility.247.info.desc': 'Mira dónde se queda Petto y con qué estado.',
   'cmd.utility.afk.desc': 'Ponte un estado AFK, o mira las menciones que recibiste mientras no estabas.',
   'cmd.utility.afk.set.desc': 'Márcate como AFK.',
   'cmd.utility.afk.set.opt.reason.desc': 'Por qué no estás (predeterminado: "AFK")',

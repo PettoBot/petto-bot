@@ -5,6 +5,9 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { parseBirthday, localDate, daysUntil, formatDay, parseOffset, formatOffset, nextAge } = require('../../utils/birthdays');
+const { userInstallable, outsideServer } = require('../../utils/userInstall');
+// Read when it is needed (it is the database of the personal birthday; the rest of the command does not load it).
+const personalDb = { get: (...a) => require('../../db/userBirthdays').getPersonalBirthday(...a), set: (...a) => require('../../db/userBirthdays').setPersonalBirthday(...a), remove: (...a) => require('../../db/userBirthdays').removePersonalBirthday(...a) };
 const { t, tn, languageOf } = require('../../i18n');
 
 const DEFAULT_OFFSET = -300;
@@ -15,11 +18,13 @@ const FLAGS = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? FLAGS | MessageFlags.Ephemeral : FLAGS, allowedMentions: { parse: [] } });
 
 module.exports = {
+  // A command of its own in the `/` menu (global, not the second set: only global commands can be installed on a person).
+  registerSlash: true,
   aliases: ['bday', 'bd'],
-  data: new SlashCommandBuilder()
+  // Also from a person's own installation (anywhere, DMs included): there `set`, `view` and `remove` keep a personal birthday (db/userBirthdays.ts); the rest needs a server of Petto.
+  data: userInstallable(new SlashCommandBuilder()
     .setName('birthday')
     .setDescription('Save your birthday so Petto can celebrate it, and see the ones coming.')
-    .setDMPermission(false)
     .addSubcommand((s) => s
       .setName('set')
       .setDescription('Save your birthday, e.g. birthday set 25 12.')
@@ -42,11 +47,12 @@ module.exports = {
       .addStringOption((o) => o.setName('embed').setDescription('A saved embed to send instead of the message; "none" to stop using it').setMaxLength(60).setRequired(false))
       .addIntegerOption((o) => o.setName('hour').setDescription('Hour of the day to send it (0-23)').setMinValue(0).setMaxValue(23).setRequired(false))
       .addStringOption((o) => o.setName('timezone').setDescription('Time zone of the server as an offset, e.g. UTC-5 or +5:30').setMaxLength(12).setRequired(false))
-      .addBooleanOption((o) => o.setName('clear_role').setDescription('Stop giving a role').setRequired(false))),
+      .addBooleanOption((o) => o.setName('clear_role').setDescription('Stop giving a role').setRequired(false)))),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const lang = await languageOf(interaction);
+    if (outsideServer(interaction)) return outsideCmd(interaction, lang, sub);
     if (sub === 'set') return setCmd(interaction, lang);
     if (sub === 'remove') return removeCmd(interaction, lang);
     if (sub === 'view') return viewCmd(interaction, lang);
@@ -54,6 +60,35 @@ module.exports = {
     return configCmd(interaction, lang);
   },
 };
+
+/** Where Petto is not a member (a person's own installation): a personal birthday, only yours, not tied to any server. The server parts need a server of Petto. */
+async function outsideCmd(interaction, lang, sub) {
+  if (sub === 'upcoming' || sub === 'config') return reply(interaction, t(lang, 'birthdays.outside.needServer'), 0x4b4f59, true);
+  const me = interaction.user;
+  if (sub === 'set') {
+    const parsed = parseBirthday({ day: interaction.options.getInteger('day', true), month: interaction.options.getInteger('month', true), year: interaction.options.getInteger('year') }, new Date(), lang);
+    if (parsed.error) return reply(interaction, parsed.error, COLORS.RED, true);
+    await personalDb.set(me.id, parsed);
+    const saved = t(lang, parsed.year ? 'birthdays.saved.withYear' : 'birthdays.saved.plain', { emoji: EMOJI.APPROVE, date: formatDay(parsed, lang), year: parsed.year });
+    return reply(interaction, `${saved}\n${t(lang, 'birthdays.outside.saveNote')}`, COLORS.GREEN, true);
+  }
+  if (sub === 'remove') {
+    const removed = await personalDb.remove(me.id);
+    return reply(interaction, removed ? t(lang, 'birthdays.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'birthdays.notSaved'), removed ? COLORS.GREEN : COLORS.RED, true);
+  }
+  // `view`: only the own one (a personal birthday is private; the others are seen in a server where Petto is, with their consent in that server).
+  const asked = interaction.options.getUser('user');
+  if (asked && asked.id !== me.id) return reply(interaction, t(lang, 'birthdays.outside.onlyYours'), 0x4b4f59, true);
+  const row = await personalDb.get(me.id);
+  if (!row) return reply(interaction, t(lang, 'birthdays.view.noneSelf'), 0x4b4f59, true);
+  const local = localDate(new Date(), DEFAULT_OFFSET);
+  const days = daysUntil(row, local);
+  const age = nextAge(row, local);
+  const first = t(lang, row.year ? 'birthdays.view.dateWithYear' : 'birthdays.view.date', { user: `${me}`, date: formatDay(row, lang), year: row.year });
+  const withAge = age !== null ? 'Age' : '';
+  const next = days === 0 ? t(lang, `birthdays.view.today${withAge}`, { age }) : tn(lang, `birthdays.view.inDays${withAge}`, days, { count: days, age });
+  return reply(interaction, `${first}\n${next}`, 0x4b4f59, true);
+}
 
 async function setCmd(interaction, lang) {
   const parsed = parseBirthday({ day: interaction.options.getInteger('day', true), month: interaction.options.getInteger('month', true), year: interaction.options.getInteger('year') }, new Date(), lang);

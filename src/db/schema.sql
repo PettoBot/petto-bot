@@ -5258,3 +5258,32 @@ create table if not exists message_role_days (
 );
 create index if not exists idx_message_role_days_day on message_role_days(day);
 alter table message_role_days enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Stay in voice (db/stayVoice.ts, utils/stayVoice.ts, commands/utility/247.ts): Petto stays in one voice channel of the server for good, with a status on the channel.
+-- `status` is the text the maintainers of the server chose (null: the default text, in the language of the server); `deaf` joins with the sound off; `enabled` is the switch
+-- (the channel is kept when it is off, so the dashboard can turn it on again). It goes with the server (it has guild_id).
+-- ---------------------------------------------------------------------------
+create table if not exists stay_voice (
+  guild_id   text primary key references guilds(guild_id) on delete cascade,
+  channel_id text not null,
+  status     text check (status is null or char_length(status) <= 120),
+  deaf       boolean not null default true,
+  enabled    boolean not null default true,
+  updated_by text,
+  updated_at timestamptz not null default now()
+);
+alter table stay_voice enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Personal birthday: the one a person saves with `/birthday set` where Petto is not a member (their own installation: another server, a direct message, a group chat).
+-- A server's own birthdays are in `birthdays`; this one belongs to the person, and only they can see it (`/birthday view`). It has no server, so nothing deletes it but them.
+-- ---------------------------------------------------------------------------
+create table if not exists user_birthdays (
+  user_id    text primary key,
+  month      smallint not null check (month between 1 and 12),
+  day        smallint not null check (day between 1 and 31),
+  year       smallint check (year is null or year between 1900 and 2100),
+  updated_at timestamptz not null default now()
+);
+alter table user_birthdays enable row level security;

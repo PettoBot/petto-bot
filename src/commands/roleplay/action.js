@@ -4,6 +4,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { COMMAND_NAME, GROUPS, DESCRIPTIONS } = require('../../utils/actions');
 const { executeAction } = require('../../utils/roleplay');
+const { userInstallable } = require('../../utils/userInstall');
 
 const GROUP_DESCRIPTIONS = {
   love: 'Affection and sweet gestures.',
@@ -13,10 +14,10 @@ const GROUP_DESCRIPTIONS = {
   react: 'Greetings and reactions.',
 };
 
-const data = new SlashCommandBuilder()
+// Also from a person's own installation (anywhere, DMs included): outside Petto's servers it sends the action without the counters and the answer button.
+const data = userInstallable(new SlashCommandBuilder()
   .setName(COMMAND_NAME)
-  .setDescription('Interact with members: hugs, pats, slaps and more.')
-  .setDMPermission(false);
+  .setDescription('Interact with members: hugs, pats, slaps and more.'));
 for (const group of GROUPS) {
   data.addSubcommandGroup((builder) => {
     builder.setName(group.name).setDescription(GROUP_DESCRIPTIONS[group.name]);
