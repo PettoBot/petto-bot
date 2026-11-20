@@ -10,6 +10,8 @@ const { t, tn, languageOf } = require('../../i18n');
 module.exports = {
   // A slash command of its own (`/pauseinvites`), not a subcommand of `/mod`.
   registerSlash: true,
+  // The second set (registered in each server): the global slots were needed for the commands that can be installed on a person (`/avatar`, `/banner`, `/userinfo`, `/birthday`).
+  guildScoped: true,
   aliases: ['pi'],
   data: new SlashCommandBuilder()
     .setName('pauseinvites')

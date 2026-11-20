@@ -149,7 +149,9 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.equal(command.category, 'info', `${command.data.name} is listed with the info commands in !help`);
     assert.ok(!command.hiddenFromHelp && !command.slashOnly && !command.prefixOnly, `${command.data.name} is a prefix and a slash command, shown in !help`);
     assert.equal(command.registerSlash, true);
-    for (const old of ['serverinfo', 'userinfo', 'avatar']) assert.ok(client.commands.get(old) && !client.commands.get(old).registerSlash, `${old} stays loaded for the prefix and is no longer registered as a slash command`);
+    // `serverinfo` is only for the prefix (`/server info`); `userinfo` and `avatar` are slash commands of their own again so they can be installed on a person (scripts/check-user-install.js).
+    assert.ok(client.commands.get('serverinfo') && !client.commands.get('serverinfo').registerSlash, 'serverinfo stays loaded for the prefix and is no longer registered as a slash command');
+    for (const name of ['userinfo', 'avatar']) assert.ok(client.commands.get(name)?.registerSlash === true, `${name} is also a slash command of its own (it can be installed on a person)`);
     assert.equal(command.rulesBySubcommand, true);
     assert.equal(command.prefixDefaultSubcommand, 'info', `${command.data.name} alone is its info`);
     assert.equal(command.data.toJSON().dm_permission, false);
@@ -496,10 +498,10 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
       assert.ok(total < 2500, `/${name}${locale ? ` [${locale}]` : ''} is ${total} characters (Discord allows 8000)`);
     }
   }
-  // The three old everyday slash commands that /server and /user replaced are loaded for the prefix only.
-  for (const name of ['serverinfo', 'userinfo', 'avatar']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered: /server info, /user info and /user avatar replace it`);
+  // `/server info` replaces serverinfo, which is loaded for the prefix only. `/userinfo`, `/avatar` and `/banner` are slash commands of their own again, to be installed on a person (scripts/check-user-install.js).
+  assert.ok(!chat.some((json) => json.name === 'serverinfo'), '/serverinfo is not registered: /server info replaces it');
   // Nothing else of the wrapped commands became a slash command.
-  for (const name of ['roles', 'channels', 'emojis', 'boosters', 'banner', 'usercosmetics', 'permissions', 'snowflake', 'firstmessage', 'activity']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not a slash command`);
+  for (const name of ['roles', 'channels', 'emojis', 'boosters', 'usercosmetics', 'permissions', 'snowflake', 'firstmessage', 'activity']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not a slash command`);
   // Every key of the English catalog of the info commands has its Spanish and Portuguese text.
   const english = CATALOGS.en;
   for (const key of Object.keys(english).filter((each) => /^cmd\.info\.(server|user)\./.test(each))) {

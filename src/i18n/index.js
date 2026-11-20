@@ -323,7 +323,8 @@ async function setGuildLanguage(guildId, lang) {
 async function languageOf(interaction) {
   if (interaction?.pettoLang) return interaction.pettoLang;
   const guildId = interaction?.guildId ?? interaction?.guild?.id ?? null;
-  if (guildId) return peekGuildLanguage(guildId);
+  // A server Petto is not in (a person's own installation used there): its language is unknown, so the one of the person's Discord is used, not the default.
+  if (guildId && interaction?.guild !== null) return peekGuildLanguage(guildId);
   return languageFromLocale(interaction?.locale);
 }
 

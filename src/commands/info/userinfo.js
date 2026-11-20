@@ -4,6 +4,7 @@ const { badgeList, badgeText } = require('../../utils/userBadges');
 const { EMOJI } = require('../../utils/emojis');
 const { renderProfileLook } = require('../../utils/profileLookImage');
 const { decorationUrl, nameplateUrl, serverTag } = require('../../utils/profileLook');
+const { userInstallable } = require('../../utils/userInstall');
 const { t, languageOf } = require('../../i18n');
 
 const ROLE_LIST_LIMIT = 800;
@@ -32,11 +33,13 @@ function roleList(roles, lang) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder()
+  // A command of its own in the `/` menu (global, not the second set: only global commands can be installed on a person).
+  registerSlash: true,
+  // Also from a person's own installation (anywhere, DMs included): outside Petto's servers it shows the account, not the part of the server.
+  data: userInstallable(new SlashCommandBuilder()
     .setName('userinfo')
-    .setDMPermission(false)
     .setDescription('Shows information about a member.')
-    .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false)),
+    .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false))),
   aliases: ['ui', 'whois'],
 
   async execute(interaction) {

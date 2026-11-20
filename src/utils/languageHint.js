@@ -12,7 +12,8 @@ const asked = new Set(); // servers looked at in this run: the database is read 
 async function maybeHintLanguage(interaction) {
   try {
     const guildId = interaction.guildId;
-    if (!guildId || asked.has(guildId) || !(interaction.replied || interaction.deferred)) return false;
+    // Not in a server Petto is in (a direct message, or a person's own installation in another server): there is no server of ours to hint about.
+    if (!guildId || interaction.guild === null || asked.has(guildId) || !(interaction.replied || interaction.deferred)) return false;
     const mine = languageFromLocale(interaction.locale);
     if (mine === 'en' || mine === peekGuildLanguage(guildId)) return false; // cheap checks first: most commands stop here
     if (!interaction.member?.permissions?.has?.(PermissionFlagsBits.ManageGuild)) return false;

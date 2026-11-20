@@ -585,7 +585,8 @@ module.exports = {
     // The group of an umbrella that wraps a whole command (`/protect antiscam set`): its rules are the ones of that command.
     const group = interaction.options?.getSubcommandGroup?.(false) ?? null;
     perf.setCommand(`/${[interaction.commandName, group, subcommand].filter(Boolean).join(' ')}`);
-    const inGuild = Boolean(interaction.guildId && interaction.member);
+    // `interaction.guild` is null in a server where Petto is not a member (a person used it from their own installation): nothing of that server is read.
+    const inGuild = Boolean(interaction.guildId && interaction.member && interaction.guild !== null);
     // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /action (`hug`) or the whole command
     // (`act`) can be restricted or turned off.
     const ruleNames = commandRules.ruleNames(command, { subcommand, group });
@@ -597,7 +598,7 @@ module.exports = {
       ? Promise.allSettled(commandRules.permissionNames(command, { subcommand, group }).map((name) => permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)))
       : null;
     const restrictedCheck = inGuild ? commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null) : null;
-    const disabledCheck = interaction.guildId && interaction.channelId ? commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb, commandRules.categoriesOf(interaction.channel)) : null;
+    const disabledCheck = interaction.guildId && interaction.guild !== null && interaction.channelId ? commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb, commandRules.categoriesOf(interaction.channel)) : null;
     // A member with a role chosen for this moderation command passes its permission check, the same as with the prefix (Discord only
     // shows the command to them when the server allows it in Integrations).
     const roleCheck = command.category === 'moderation' && inGuild ? moderationPermissions.hasConfiguredRole(interaction.guildId, command.data.name, interaction.member).catch(() => false) : null;

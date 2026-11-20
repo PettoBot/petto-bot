@@ -21,7 +21,7 @@ const ESSENTIAL = [
   // (`!staff voice mute`, `!config alias add`): what they held is a command of its own each (`/backup`, `/alias`, `/voice`...).
   'user', 'server', 'backup', 'alias', 'voice',
   // The moderation commands that used to be subcommands of `/mod` are commands of their own (`/softban`, `/hardban`, `/purge`, `/history`...); `/mod` is a prefix command only.
-  'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites',
+  'softban', 'hardban', 'purge', 'history',
   // The second batch of umbrellas, wrapping prefix-only commands: the fun and games (`/game 8ball`, `minecraft`...), what is yours (`/me birthday`,
   // `rep`...), lookups (`/search weather`, `youtube`...) and the staff tools that do not fit `/mod` (`/staff massban`, `voice-mute`...). Each one only
   // has subcommands, and `/staff` asks for the permission of the command each one wraps when it runs. The rest of the prefix commands move little by little.
@@ -30,7 +30,7 @@ const ESSENTIAL = [
   // `/protect honeypot add`, `/automation timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
   // only has subcommands (scripts/check-umbrellas-3.js).
   'automation', 'bot', 'contributions', 'greet', 'message', 'protect',
-  'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
+  'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaytemplate',
   'identity', 'image', 'invites', 'levels', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // The booster role, apart from /me: the old command with all its subcommands (member ones open, `admin` and `filter` check Manage Server inside).
   'boosterrole',
@@ -46,6 +46,8 @@ const ESSENTIAL = [
   'activityboard', 'rank', 'leaderboard',
   // Where to find the options of any command (`/variables quote`, `/variables duration`), asked by the maintainer: it takes the 91st slot, the last one before the 9 that are kept free.
   'variables',
+  // The commands that can also be installed on a person ("User Install", utils/userInstall.ts): global, because only global commands can be. They work in any server, in direct messages and in group chats.
+  'avatar', 'banner', 'birthday', 'userinfo',
   // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`); what else they held is a command of its own: `/unban`, `/unmute`, `/unjail`.
   'unban', 'unmute', 'unjail',
   // Registered before for their own reasons.
@@ -56,7 +58,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  'appeals', 'banlist', 'cmdconfig', 'counter', 'counting', 'customize', 'disablecommand', 'imageonly', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'language', 'linkonly', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'messagerole', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'support', 'warnescalation',
+  '247', 'appeals', 'banlist', 'clearinvites', 'giveawaypreset', 'pauseinvites', 'stripstaff', 'cmdconfig', 'counter', 'counting', 'customize', 'disablecommand', 'imageonly', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'language', 'linkonly', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'messagerole', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'support', 'warnescalation',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;
@@ -190,7 +192,10 @@ for (const name of ESSENTIAL.filter((name) => !['setup'].includes(name))) {
   const file = findCommandFiles(COMMANDS_DIR).find((path) => require(path).data?.name === name && (require(path).data.toJSON().type ?? 1) === 1);
   const command = require(file);
   assert.ok(!command.slashOnly && !command.prefixOnly, `${name} works with the prefix and as a slash command`);
-  assert.equal(command.data.toJSON().dm_permission, false, `/${name} is not offered in DMs`);
+  const json = command.data.toJSON();
+  // The ones that can be installed on a person are used in direct messages and group chats on purpose (scripts/check-user-install.js checks them).
+  if (['avatar', 'banner', 'birthday', 'userinfo'].includes(name)) assert.deepEqual(json.integration_types, [0, 1], `/${name} can be installed on a server and on a person`);
+  else assert.equal(json.dm_permission, false, `/${name} is not offered in DMs`);
 }
 const byName = new Map(chat.map((json) => [json.name, json]));
 for (const name of ['ban', 'kick', 'warn', 'channel', 'giveaway', 'embed']) {

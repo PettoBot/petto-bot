@@ -28,7 +28,8 @@ const menus = registered.filter((json) => (json.type ?? 1) !== 1);
 // A slash command without subcommands is a command of its own (`/help`, `/poll`, `/setup`, and what used to be a subcommand of an umbrella: `/avatar`, `/softban`...). The
 // ones that must be there are listed; the rest is any command that is registered on purpose (`registerSlash`).
 const STANDALONE = ['help', 'poll', 'setup', 'softban', 'hardban', 'purge', 'history', 'stripstaff', 'clearinvites', 'pauseinvites'];
-const loose = chat.filter((json) => !(json.options ?? []).some((option) => option.type === SUBCOMMAND || option.type === GROUP)).map((json) => json.name);
+// (The second set, registered in each server, counts too: `/stripstaff`, `/clearinvites` and `/pauseinvites` are there.)
+const loose = [...chat, ...guildSet].filter((json) => !(json.options ?? []).some((option) => option.type === SUBCOMMAND || option.type === GROUP)).map((json) => json.name);
 assert.ok(STANDALONE.every((name) => loose.includes(name)), `these slash commands must be commands of their own: ${STANDALONE.filter((name) => !loose.includes(name)).join(', ')}`);
 assert.deepEqual(menus.map((json) => `${json.name}:${json.type}`).sort(), ['Report Message:3', 'Report User:2', 'Report User:3'], 'the context menus');
 

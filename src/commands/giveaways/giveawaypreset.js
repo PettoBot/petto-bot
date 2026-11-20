@@ -11,6 +11,8 @@ const { t, tn, languageOf } = require('../../i18n');
 module.exports = {
   // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
   registerSlash: true,
+  // The second set (registered in each server): the global slots were needed for the commands that can be installed on a person (`/avatar`, `/banner`, `/userinfo`, `/birthday`).
+  guildScoped: true,
   data: new SlashCommandBuilder()
     .setName('giveawaypreset')
     .setDescription('Manage giveaway role presets — bonus entries and claim time per role.')

@@ -3,6 +3,7 @@ const { getRoleplayCounter } = require('../db/roleplayStats');
 const { COLORS } = require('./colors');
 const { buildRoleplayButtonRow, getRoleplayCounterMessage } = require('./roleplayButtons');
 const { actionOf } = require('./actions');
+const { outsideServer } = require('./userInstall');
 const { t, languageOf } = require('../i18n');
 
 const WAIFU_ACTIONS = {
@@ -304,8 +305,9 @@ async function executeAction(interaction) {
   const actorLabel = labelOf(actor);
   const targetLabel = labelOf(target);
   const isSelf = actor.id === target.id;
-  // A bot cannot answer the button, so it gets the sentence and nothing else.
-  const canAnswer = !isSelf && !target.bot;
+  // A bot cannot answer the button, so it gets the sentence and nothing else. Outside Petto's servers (a person's own installation) there is no server to count in
+  // and the answer button would have nothing to write to: the action goes alone.
+  const canAnswer = !isSelf && !target.bot && !outsideServer(interaction);
   const requestId = interaction.id ?? interaction.rawMessage?.id ?? `rp-${actor.id}-${Date.now()}`;
   // The self texts get the name already in bold, as they always did (a text that bolds {actor} again shows it the same).
   const sentence = isSelf

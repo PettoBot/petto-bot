@@ -147,6 +147,15 @@ function isSlashCommand(command, category = command?.category) {
  * registered with Discord, with their descriptions localized from the catalogs. Other chat-input builders stay available only to the
  * configured message-prefix parser.
  */
+/**
+ * Where a global command can be installed. When the application has "User Install" turned on in the Developer Portal, a command that does not say it defaults to being
+ * available on a person's own installation too, and it would show in every server for people who did not add Petto to it, where it cannot work (it needs the server).
+ * So every command says it: servers only (0), unless it declared its own (`userInstallable`, utils/userInstall.ts: `/action`, `/avatar`, `/banner`, `/userinfo`, `/birthday`).
+ */
+function forServersUnlessSaid(json) {
+  return json.integration_types ? json : { ...json, integration_types: [0] };
+}
+
 function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
     .map((filePath) => ({ filePath, command: require(filePath) }))
@@ -163,7 +172,7 @@ function collectCommandData() {
     .filter(({ command }) => !command.hiddenEverywhere)
     .filter(({ filePath, command }) => (command.data.toJSON().type ?? 1) !== 1 || isSlashCommand(command, categoryFromPath(filePath)))
     // The descriptions go to Discord in Spanish and Portuguese too (names are never translated).
-    .map(({ filePath, command }) => flattenSlash(command, localizeCommandJson(categoryFromPath(filePath), slashJson(command))));
+    .map(({ filePath, command }) => forServersUnlessSaid(flattenSlash(command, localizeCommandJson(categoryFromPath(filePath), slashJson(command)))));
 }
 
 /**
@@ -191,4 +200,4 @@ function collectPrivateGuildCommandData() {
     .map(({ command }) => ({ guildId: String(command.privateGuildId), data: slashJson(command) }));
 }
 
-module.exports = { loadCommands, commandKey, isSlashCommand, collectCommandData, collectGuildCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };
+module.exports = { loadCommands, commandKey, isSlashCommand, forServersUnlessSaid, collectCommandData, collectGuildCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };

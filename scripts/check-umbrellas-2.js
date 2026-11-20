@@ -287,10 +287,10 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     wrapped.data.toJSON().options?.forEach(walk);
   }
   // Only prefix commands are wrapped (the ones that were already slash commands, `/remind`, `/rank`, `/afk`..., stay as they are).
-  // (`thread`, `snipe` and `mute` are the exception: they are also slash commands of their own now, so `/thread lock` and `/staff thread-lock` both exist.)
+  // (`thread`, `snipe`, `mute` and `birthday` are the exception: they are also slash commands of their own now, so `/thread lock` and `/staff thread-lock` both exist; `/birthday` is one so it can be installed on a person.)
   // (`/staff` is a prefix umbrella now: what it wraps is a slash command of its own, so this holds for the umbrellas that are still slash commands only.)
   const wrappedBySlashUmbrellas = [...new Set(UMBRELLAS.filter((umbrella) => !['user', 'server', 'staff', 'config'].includes(umbrella)).flatMap((umbrella) => TABLES[umbrella].map((row) => row[1])))];
-  for (const file of wrappedBySlashUmbrellas) assert.ok(!isSlashCommand(commandFile(file)) || ['thread', 'snipe', 'mute'].includes(file), `${file} was a prefix command (the slash ones are not wrapped twice)`);
+  for (const file of wrappedBySlashUmbrellas) assert.ok(!isSlashCommand(commandFile(file)) || ['thread', 'snipe', 'mute', 'birthday'].includes(file), `${file} was a prefix command (the slash ones are not wrapped twice)`);
 
   // Each subcommand has the description and the options of what it wraps: the same names, types, required flags, limits and choices.
   const shape = (options) => (options ?? []).map((option) => [option.name, option.type, Boolean(option.required), option.description, option.channel_types ?? null, option.choices ?? null, option.min_value ?? null, option.max_value ?? null, option.min_length ?? null, option.max_length ?? null]);
@@ -482,7 +482,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.equal(client.commandAliases.get(word), command, `${word} is still ${command}`);
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
-  for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
+  for (const name of ['8ball', 'minecraft', 'anilist', 'github']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
+  // `/birthday` is a slash command of its own so it can be installed on a person (scripts/check-user-install.js); `/me birthday` is the same command.
+  assert.ok(isSlashCommand(commandFile('birthday')), '/birthday is a slash command of its own');
   for (const name of ['thread', 'snipe']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is a slash command of its own, and !${name} works as before`);
   // The booster role is its own slash command, with every subcommand, and not a subcommand of /me any more (`!boosterrole` and `!br` work as before).
   assert.ok(isSlashCommand(commandFile('boosterrole')), '/boosterrole is a slash command');

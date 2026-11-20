@@ -57,7 +57,7 @@ patch('src/logging/extraLog.js', { logCommandUse() {} });
 patch('src/utils/cardService.js', { plainMessage: async (text) => ({ content: text }) });
 patch('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 
-const { loadCommands, collectCommandData } = require('../src/handlers/commandHandler');
+const { loadCommands, collectCommandData, collectGuildCommandData } = require('../src/handlers/commandHandler');
 const event = require('../src/events/messageCreateCommands');
 const interactionCreate = require('../src/events/interactionCreate');
 const commandRules = require('../src/utils/commandRules');
@@ -579,7 +579,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.ok(chat.find((each) => each.name === 'ban').default_member_permissions === String(F.BanMembers));
   // What `/mod` held is a command of its own each (`/softban`, `/hardban`, `/history`, `/stripstaff`, `/clearinvites`, `/pauseinvites`, `/purge`), asking for the permission it always did.
   for (const [name, bit] of [['softban', F.BanMembers], ['hardban', F.BanMembers], ['history', F.ModerateMembers], ['stripstaff', F.Administrator], ['clearinvites', F.ManageGuild], ['pauseinvites', F.Administrator], ['purge', F.ManageMessages]]) {
-    const json = chat.find((each) => each.name === name);
+    // `/stripstaff`, `/clearinvites` and `/pauseinvites` are in the second set (registered in each server), the rest in the global one.
+    const json = [...chat, ...collectGuildCommandData()].find((each) => each.name === name);
     assert.ok(json, `/${name} is a slash command`);
     assert.equal(json.default_member_permissions, String(bit), `/${name} asks for ${bit}`);
   }
@@ -609,7 +610,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     for (const child of node.options ?? []) walk(child, `${trail} ${child.name}`);
   };
   for (const name of ['softban', 'hardban', 'history', 'stripstaff', 'clearinvites', 'pauseinvites', 'purge']) {
-    const json = chat.find((each) => each.name === name);
+    const json = [...chat, ...collectGuildCommandData()].find((each) => each.name === name);
     walk(json, `/${name}`);
     assert.notEqual(json.description_localizations['es-ES'], json.description, `/${name} is translated into Spanish`);
     assert.notEqual(json.description_localizations['pt-BR'], json.description, `/${name} is translated into Portuguese`);
