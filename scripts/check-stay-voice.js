@@ -124,7 +124,16 @@ const keepAlive = setInterval(() => {}, 1000); // the waits of the module use un
   check('command: subcommands set, off, status and info', ['set', 'off', 'status', 'info'].every((name) => command.includes(`setName('${name}')`)));
   check('command: only voice channels can be chosen', /addChannelTypes\(ChannelType\.GuildVoice\)/.test(command));
   check('job: started in index.js', /startStayVoiceJob\(client\)/.test(read('index.js')));
-  check('job: listed in the load guard', /'stayVoiceJob'/.test(read('src/utils/loadGuard.js')));
+  check('job: essential for the load guard, so a busy bot does not leave Petto out of its channel', (() => {
+    const guard = require('../src/utils/loadGuard');
+    const src = read('src/utils/loadGuard.js');
+    return /ESSENTIAL_JOBS = new Set\([^)]*'stayVoiceJob'/.test(src) && !/SHED_IN_DEGRADED_JOBS = new Set\([^)]*'stayVoiceJob'/.test(src) && typeof guard.allowsJob === 'function';
+  })());
+  check('job: looks at the servers every 20 seconds or less, and never skips a round for load', (() => {
+    const job = read('src/jobs/stayVoiceJob.ts');
+    const every = Number(/EVERY_MS = ([\d_]+)/.exec(job)?.[1]?.replace(/_/g, ''));
+    return every > 0 && every <= 20_000 && !/loadGuard/.test(job);
+  })());
   check('event: moved or kicked, it comes back', /onBotMoved/.test(read('src/events/voiceStateUpdateStayVoice.ts')));
   check('schema: the table is there with row level security', /create table if not exists stay_voice/i.test(read('src/db/schema.sql')) && /alter table stay_voice enable row level security/i.test(read('src/db/schema.sql')));
   check('catalogs: the same keys in es and pt-BR', (() => {

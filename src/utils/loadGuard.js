@@ -13,14 +13,14 @@ const LEVELS = ['normal', 'degraded', 'critical'];
 const RANK = { normal: 0, degraded: 1, critical: 2 };
 const TICK_MS = 5_000;
 
-// Jobs that must keep running at any level (a punishment that expires, a lockdown, a join that is waiting, the checks of this file).
-const ESSENTIAL_JOBS = new Set(['expireSanctions', 'lockdownJob', 'antiScamJob', 'joinGateJob', 'verifyPanelJob', 'loadGuard', 'watchdog', 'redis', 'statusHeartbeatJob', 'guildBlacklist', 'index', 'perf']);
+// Jobs that must keep running at any level (a punishment that expires, a lockdown, a join that is waiting, the checks of this file, and the one that keeps Petto in its voice channel: one small query and nothing else when it is in).
+const ESSENTIAL_JOBS = new Set(['expireSanctions', 'lockdownJob', 'antiScamJob', 'joinGateJob', 'verifyPanelJob', 'stayVoiceJob', 'loadGuard', 'watchdog', 'redis', 'statusHeartbeatJob', 'guildBlacklist', 'index', 'perf']);
 // Jobs that are paused as soon as the bot is degraded (and also in critical): they catch up by themselves when they run again.
 const SHED_IN_DEGRADED_JOBS = new Set([
   'feedsJob', 'guildSnapshotJob', 'counterJob', 'bumpReminderJob', 'globalStatsJob', 'statsCategoryJob', 'omniplexStatsJob', 'commandDataJob', 'afkMentionsJob', 'birthdayJob',
   'forumJob', 'questAlertsJob', 'rolloutAlertsJob', 'requestTimeoutJob', 'formCleanupJob', 'backupVaultJob', 'appealCleanupJob',
   'premiumCleanupJob', 'premiumLogJob', 'premiumRoleJob', 'premiumWatchJob', 'ticketAutoDeleteJob', 'ticketChannelJob', 'ticketReminderJob', 'ticketAutocloseJob',
-  'pollAutocloseJob', 'verifyChecksJob', 'countingRoleJob', 'roleQuotaJob', 'activityLeaderboardJob', 'agedRolesJob', 'messageRolesJob', 'stayVoiceJob', 'guildPurgeJob', 'discordOps', 'guildSnapshots',
+  'pollAutocloseJob', 'verifyChecksJob', 'countingRoleJob', 'roleQuotaJob', 'activityLeaderboardJob', 'agedRolesJob', 'messageRolesJob', 'guildPurgeJob', 'discordOps', 'guildSnapshots',
 ]);
 // Listeners of events that only write a log of low value: skipped when degraded.
 const SHED_IN_DEGRADED_EVENTS = new Set([

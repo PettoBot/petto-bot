@@ -27,6 +27,7 @@ const WAIT_JOIN_MS = 6_000;
 const targets = new Map();
 const seen = new Map();
 const noStatusPermission = new Set();
+const reported = new Map();
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms).unref?.(); });
 /** The status of the channel as it is written: the text the server chose, or the default one in its language. */
 const statusText = (row, lang) => row.status ?? t(lang, 'stayvoice.defaultStatus');
@@ -138,6 +139,7 @@ async function ensure(client, row, { waitMs = WAIT_JOIN_MS } = {}) {
 async function release(client, guildId, channelId) {
     targets.delete(guildId);
     seen.delete(guildId);
+    reported.delete(guildId);
     const guild = client.guilds.cache.get(guildId);
     if (!guild)
         return;
@@ -154,6 +156,7 @@ async function tick(client) {
         if (!wanted.has(guildId)) {
             targets.delete(guildId);
             seen.delete(guildId);
+            reported.delete(guildId);
         }
     let joined = 0;
     for (const row of rows) {
@@ -172,8 +175,12 @@ async function tick(client) {
             joined += 1;
             await sleep(JOIN_GAP_MS);
         }
-        if (outcome && !outcome.ok && outcome.reason !== 'music' && outcome.reason !== 'notThere' && outcome.reason !== 'noGuild')
-            logger.info(`Stay in voice: ${row.guildId} cannot stay in ${row.channelId} (${outcome.reason})`);
+        // One line in the log each time the result of a server changes (never every round), so the team can see why Petto is not in a channel.
+        const result = outcome ? (outcome.ok ? 'in' : outcome.reason) : 'error';
+        if (reported.get(row.guildId) !== result) {
+            reported.set(row.guildId, result);
+            logger.info(outcome?.ok ? `Stay in voice: ${row.guildId} is in ${row.channelId}` : `Stay in voice: ${row.guildId} is not in ${row.channelId} (${result})`);
+        }
     }
     return { checked: rows.length, joined };
 }
@@ -191,7 +198,7 @@ async function onBotMoved(client, guildId, leftChannelId) {
         logger.info(`Stay in voice: ${guildId} could not come back (${outcome.reason})`);
 }
 /** For the checks. */
-const forget = () => { targets.clear(); seen.clear(); noStatusPermission.clear(); };
+const forget = () => { targets.clear(); seen.clear(); noStatusPermission.clear(); reported.clear(); };
 exports.forget = forget;
 const targetOf = (guildId) => targets.get(guildId);
 exports.targetOf = targetOf;
