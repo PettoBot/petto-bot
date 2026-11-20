@@ -120,13 +120,30 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   captcha.createChallenge = original;
   const locked = [];
   const answered = { ...interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }), replied: false, isFromMessage: () => true, message: { components: [{ toJSON: () => ({ type: 17, components: [{ type: 10, content: 'x' }, { type: 1, components: [{ type: 2, custom_id: `vfy:type:${GUILD}` }, { type: 2, custom_id: `vfy:again:${GUILD}` }] }] }) }] } };
-  answered.update = async (payload) => { locked.push(payload); answered.replied = true; };
-  answered.followUp = async (payload) => { replies.push(payload); };
+  // The form is answered first (three seconds are all Discord gives), then the picture message is edited and the member is told with a follow-up.
+  const order = [];
+  answered.deferred = false;
+  answered.deferUpdate = async () => { order.push('defer'); answered.deferred = true; };
+  answered.editReply = async (payload) => { order.push('edit'); locked.push(payload); };
+  answered.update = async () => { throw new Error('a deferred form is edited, not updated'); };
+  answered.followUp = async (payload) => { order.push('follow'); replies.push(payload); };
   await verifyLetters.handleModal(answered);
-  assert.equal(locked.length, 1, 'the picture message is updated once');
+  assert.deepEqual(order, ['defer', 'edit', 'follow'], 'answered first, then the picture is locked, then the member is told');
+  assert.equal(locked.length, 1, 'the picture message is edited once');
   const buttons = JSON.stringify(locked[0].components).match(/"disabled":true/g) ?? [];
   assert.equal(buttons.length, 2, 'both buttons are off');
   assert.ok(text(replies.at(-1)).includes("You're verified") || JSON.stringify(replies.at(-1)).includes("You're verified"), 'and the member is told they are in');
+
+  // A form that reaches the bot after the three seconds (Unknown interaction) changes nothing: no roles are given and nobody is told twice.
+  captcha.createChallenge = (id) => known(id);
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  captcha.createChallenge = original;
+  const lateBefore = applied.length;
+  const late = { ...interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }), isFromMessage: () => true, deferUpdate: async () => { throw new Error('Unknown interaction'); } };
+  const repliesBefore = replies.length;
+  await verifyLetters.handleModal(late);
+  assert.equal(applied.length, lateBefore, 'a form that came too late gives no roles');
+  assert.equal(replies.length, repliesBefore, 'and says nothing');
 
   // The member solved the picture but there is no role to give (it was deleted and cannot be made again): told in a friendly way, not "contact a moderator".
   captcha.createChallenge = (id) => known(id);
