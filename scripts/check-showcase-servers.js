@@ -27,18 +27,27 @@ assert.equal(bigger.length, 15);
 assert.equal(showcase.MIN_MEMBERS, 500);
 assert.equal(showcase.MAX_SERVERS, 15);
 
-// The marks.
-assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED', 'PARTNERED']), ['partnered', 'verified', 'discoverable']);
-assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'VERIFIED']), ['verified']);
-assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'NEWS']), [], 'community alone has no mark: the Discord app has no icon for it');
-assert.deepEqual(showcase.badgesOf(), []);
+// The badge, in the order of the Discord app.
+assert.equal(showcase.badgeOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED', 'PARTNERED'], 5, 3), 'partnered', 'partnered first');
+assert.equal(showcase.badgeOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED']), 'verified');
+assert.equal(showcase.badgeOf(['COMMUNITY', 'DISCOVERABLE']), 'discoverable');
+assert.equal(showcase.badgeOf(['COMMUNITY', 'DISCOVERABLE'], 1), 'discoverable-boosted', 'a boost gives the boosted look');
+assert.equal(showcase.badgeOf(['COMMUNITY']), 'community');
+assert.equal(showcase.badgeOf(['COMMUNITY'], 2, 1), 'community-boosted');
+assert.equal(showcase.badgeOf(['NEWS']), null, 'nothing special, no badge');
+assert.equal(showcase.badgeOf([], 0, 0), null, 'no boost, no badge');
+assert.equal(showcase.badgeOf([], 1, 0), 'boost-0', 'one boost but no level yet');
+assert.equal(showcase.badgeOf([], 7, 2), 'boost-2');
+assert.equal(showcase.badgeOf([], 20, 3), 'boost-3');
+assert.equal(showcase.badgeOf([], 20, 9), 'boost-3', 'the level is at most 3');
+assert.equal(showcase.badgeOf(), null);
 
 // The whole list from a client: icon (animated or not), online members, kept for five minutes, kept when Discord does not answer.
 function guild(id, members, extra = {}) {
-  return { id, name: `Server ${id}`, memberCount: members, icon: extra.icon ?? null, features: extra.features ?? [], premiumTier: extra.tier ?? 0, iconURL: ({ forceStatic }) => (extra.icon ? `https://cdn.discordapp.com/icons/${id}/${extra.icon}.${!forceStatic && extra.icon.startsWith('a_') ? 'gif' : 'png'}?size=128` : null) };
+  return { id, name: `Server ${id}`, memberCount: members, icon: extra.icon ?? null, features: extra.features ?? [], premiumTier: extra.tier ?? 0, premiumSubscriptionCount: extra.boosts ?? 0, iconURL: ({ forceStatic }) => (extra.icon ? `https://cdn.discordapp.com/icons/${id}/${extra.icon}.${!forceStatic && extra.icon.startsWith('a_') ? 'gif' : 'png'}?size=128` : null) };
 }
 let fetches = 0; let online = 40; let fail = false;
-const guilds = [guild('1', 800, { icon: 'abc', features: ['DISCOVERABLE'] }), guild('2', 3000, { icon: 'a_def', features: ['VERIFIED'], tier: 2 }), guild('3', 100), guild('4', 5000, { features: [] })];
+const guilds = [guild('1', 800, { icon: 'abc', features: ['DISCOVERABLE'] }), guild('2', 3000, { icon: 'a_def', features: ['VERIFIED'], tier: 2, boosts: 9 }), guild('3', 100), guild('4', 5000, { features: [] })];
 const client = {
   guilds: {
     cache: new Map(guilds.map((g) => [g.id, g])),
@@ -52,9 +61,8 @@ const client = {
   assert.equal(list[0].animated, true);
   assert.equal(list[1].animated, false);
   assert.ok(list[1].icon.endsWith('.png?size=128'));
-  assert.deepEqual(list[0].badges, ['verified']);
-  assert.equal(list[0].boost, 2, 'the boost level');
-  assert.equal(list[1].boost, 0, 'no boost, no mark');
+  assert.equal(list[0].badge, 'verified');
+  assert.equal(list[1].badge, 'discoverable', 'a discoverable server with no boost');
   assert.deepEqual([list[0].members, list[0].online], [3000, 42]);
   assert.equal(fetches, 2);
 

@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ONLINE_EVERY_MS = exports.MAX_SERVERS = exports.MIN_MEMBERS = void 0;
 exports.pickShowcase = pickShowcase;
-exports.badgesOf = badgesOf;
+exports.badgeOf = badgeOf;
 exports.readHiddenGuildIds = readHiddenGuildIds;
 exports.buildShowcase = buildShowcase;
 exports.resetShowcase = resetShowcase;
@@ -18,16 +18,24 @@ function pickShowcase(candidates, hidden = new Set(), min = exports.MIN_MEMBERS,
         .sort((a, b) => b.members - a.members || (a.id < b.id ? -1 : 1))
         .slice(0, max);
 }
-/** The marks of a server that the carousel shows, from the features Discord lists. */
-function badgesOf(features = []) {
-    const badges = [];
+/**
+ * The badge of a server, in the order the Discord app uses: partnered, verified, discoverable, community, then the boost level when it has at least one boost.
+ * A boost makes the discoverable and the community badges their boosted look.
+ */
+function badgeOf(features = [], boosts = 0, tier = 0) {
+    const boosted = Number(boosts) >= 1;
     if (features.includes('PARTNERED'))
-        badges.push('partnered');
+        return 'partnered';
     if (features.includes('VERIFIED'))
-        badges.push('verified');
+        return 'verified';
     if (features.includes('DISCOVERABLE'))
-        badges.push('discoverable');
-    return badges;
+        return boosted ? 'discoverable-boosted' : 'discoverable';
+    if (features.includes('COMMUNITY'))
+        return boosted ? 'community-boosted' : 'community';
+    if (!boosted)
+        return null;
+    const level = Math.min(3, Math.max(0, Math.floor(Number(tier) || 0)));
+    return `boost-${level}`;
 }
 /** The ids of the servers that asked to be left out of the public numbers. */
 async function readHiddenGuildIds() {
@@ -63,8 +71,7 @@ async function buildShowcase(client, hidden, now = Date.now()) {
             animated: Boolean(guild.icon?.startsWith('a_')),
             members,
             online: await onlineOf(client, guild, now),
-            badges: badgesOf(guild.features),
-            boost: Math.min(3, Math.max(0, Number(guild.premiumTier) || 0)),
+            badge: badgeOf(guild.features, guild.premiumSubscriptionCount ?? 0, Number(guild.premiumTier) || 0),
         });
     }
     return servers;

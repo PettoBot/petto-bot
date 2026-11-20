@@ -1,7 +1,6 @@
 // i18n-ignore-file: the data is for the website (the carousel of the home page); the website writes the words.
 // The servers of the carousel on the home page of the website: the ones with 500 members or more, the biggest first, at most 15, each with its
-// name, icon (animated when it is), the members and how many are online, and the marks Discord gives it (partnered, verified, discoverable)
-// and its boost level.
+// name, icon (animated when it is), the members and how many are online, and the badge the Discord app shows for it.
 // A server that chose to be left out of the public numbers (`guilds.global_stats_hidden`, the switch of the dashboard for the public stats) is never in it.
 // When a server with more members than the last one appears, it takes its place and the last one goes out: the list is made again every time.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/showcaseServers.js.
@@ -16,7 +15,11 @@ export const MAX_SERVERS = 15;
 export const ONLINE_EVERY_MS = 5 * 60_000;
 
 /** The marks of a server, in the order the carousel draws them (the ones the Discord app itself has an icon for: community alone has none). */
-export type Badge = 'partnered' | 'verified' | 'discoverable';
+/**
+ * The badge of a server, the one the Discord app shows next to its name (the file of the same name in `public/assets/discord-badges/` of the website):
+ * partnered, verified, discoverable (with a boost: `discoverable-boosted`), community (`community-boosted`), and a boosted server that is none of those, by its level (`boost-0` to `boost-3`).
+ */
+export type Badge = 'partnered' | 'verified' | 'discoverable' | 'discoverable-boosted' | 'community' | 'community-boosted' | 'boost-0' | 'boost-1' | 'boost-2' | 'boost-3';
 
 export interface ShowcaseServer {
   id: string;
@@ -27,9 +30,8 @@ export interface ShowcaseServer {
   members: number;
   /** Members online now, or null while Discord has not said. */
   online: number | null;
-  badges: Badge[];
-  /** Boost level of the server, 0 to 3 (0 shows no boost mark). */
-  boost: number;
+  /** The badge of the server, or null when it has none. */
+  badge: Badge | null;
 }
 
 /** What is known of a server before it is decided whether it shows. */
@@ -43,13 +45,19 @@ export function pickShowcase<T extends Candidate>(candidates: T[], hidden: Reado
     .slice(0, max);
 }
 
-/** The marks of a server that the carousel shows, from the features Discord lists. */
-export function badgesOf(features: readonly string[] = []): Badge[] {
-  const badges: Badge[] = [];
-  if (features.includes('PARTNERED')) badges.push('partnered');
-  if (features.includes('VERIFIED')) badges.push('verified');
-  if (features.includes('DISCOVERABLE')) badges.push('discoverable');
-  return badges;
+/**
+ * The badge of a server, in the order the Discord app uses: partnered, verified, discoverable, community, then the boost level when it has at least one boost.
+ * A boost makes the discoverable and the community badges their boosted look.
+ */
+export function badgeOf(features: readonly string[] = [], boosts = 0, tier = 0): Badge | null {
+  const boosted = Number(boosts) >= 1;
+  if (features.includes('PARTNERED')) return 'partnered';
+  if (features.includes('VERIFIED')) return 'verified';
+  if (features.includes('DISCOVERABLE')) return boosted ? 'discoverable-boosted' : 'discoverable';
+  if (features.includes('COMMUNITY')) return boosted ? 'community-boosted' : 'community';
+  if (!boosted) return null;
+  const level = Math.min(3, Math.max(0, Math.floor(Number(tier) || 0)));
+  return `boost-${level}` as Badge;
 }
 
 /** The ids of the servers that asked to be left out of the public numbers. */
@@ -86,8 +94,7 @@ export async function buildShowcase(client: Client, hidden?: ReadonlySet<string>
       animated: Boolean(guild.icon?.startsWith('a_')),
       members,
       online: await onlineOf(client, guild, now),
-      badges: badgesOf(guild.features),
-      boost: Math.min(3, Math.max(0, Number(guild.premiumTier) || 0)),
+      badge: badgeOf(guild.features, guild.premiumSubscriptionCount ?? 0, Number(guild.premiumTier) || 0),
     });
   }
   return servers;
