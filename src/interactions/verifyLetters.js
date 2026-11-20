@@ -37,7 +37,9 @@ async function lockPicture(interaction) {
   try {
     if (!interaction.isFromMessage?.() || !interaction.message?.components?.length) return false;
     const components = interaction.message.components.map((component) => withButtonsOff(component.toJSON?.() ?? component));
-    await interaction.update({ components });
+    // When the form was answered at once (deferred), the message is edited; otherwise the answer to the form is the update of the message.
+    if (interaction.deferred || interaction.replied) await interaction.editReply({ components });
+    else await interaction.update({ components });
     return true;
   } catch (err) {
     logger.warn(`The picture of a verification could not be locked: ${err.message}`);
@@ -178,6 +180,16 @@ async function tellStaff(client, guild, user, info, lang) {
 async function handleModal(interaction) {
   const guildId = interaction.customId.split(':')[2];
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
+  // Discord gives three seconds to answer a form, and what follows (the language, the member, the checks, the roles) can take longer when the bot is busy: it is answered first
+  // (the message of the picture stays as it is) and everything else is said afterwards. A form that arrives too late changes nothing: the member just tries again.
+  if (interaction.isFromMessage?.() && typeof interaction.deferUpdate === 'function') {
+    try {
+      await interaction.deferUpdate();
+    } catch (err) {
+      logger.warn(`The form of a verification came too late to be answered (${err.message}); nothing was changed.`);
+      return undefined;
+    }
+  }
   const lang = await guildLanguage(guildId);
   const state = await situation(interaction.client, guildId, interaction.user.id, lang);
   if (state.error) return say(interaction, state.error);

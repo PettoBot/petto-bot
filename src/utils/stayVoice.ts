@@ -24,6 +24,7 @@ interface Seen { joinedAt: number; statusAt: number; statusText: string | null }
 const targets = new Map<string, StayVoice>();
 const seen = new Map<string, Seen>();
 const noStatusPermission = new Set<string>();
+const reported = new Map<string, string>();
 const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms).unref?.(); });
 
 /** The status of the channel as it is written: the text the server chose, or the default one in its language. */
@@ -122,6 +123,7 @@ export async function ensure(client: Client, row: StayVoice, { waitMs = WAIT_JOI
 export async function release(client: Client, guildId: string, channelId: string | null): Promise<void> {
   targets.delete(guildId);
   seen.delete(guildId);
+  reported.delete(guildId);
   const guild = client.guilds.cache.get(guildId);
   if (!guild) return;
   if (channelId) await writeStatus(client, channelId, null);
@@ -132,7 +134,7 @@ export async function release(client: Client, guildId: string, channelId: string
 export async function tick(client: Client): Promise<{ checked: number; joined: number }> {
   const rows = await listEnabled();
   const wanted = new Set(rows.map((row) => row.guildId));
-  for (const guildId of [...targets.keys()]) if (!wanted.has(guildId)) { targets.delete(guildId); seen.delete(guildId); }
+  for (const guildId of [...targets.keys()]) if (!wanted.has(guildId)) { targets.delete(guildId); seen.delete(guildId); reported.delete(guildId); }
   let joined = 0;
   for (const row of rows) {
     const guild = client.guilds.cache.get(row.guildId);
@@ -144,7 +146,12 @@ export async function tick(client: Client): Promise<{ checked: number; joined: n
     const before = inChannel(guild, row.channelId);
     const outcome = await ensure(client, row, { waitMs: 2_500 }).catch((error) => { logger.warn(`Stay in voice: ${row.guildId}: ${(error as Error)?.message ?? error}`); return null; });
     if (!before && outcome?.ok) { joined += 1; await sleep(JOIN_GAP_MS); }
-    if (outcome && !outcome.ok && outcome.reason !== 'music' && outcome.reason !== 'notThere' && outcome.reason !== 'noGuild') logger.info(`Stay in voice: ${row.guildId} cannot stay in ${row.channelId} (${outcome.reason})`);
+    // One line in the log each time the result of a server changes (never every round), so the team can see why Petto is not in a channel.
+    const result = outcome ? (outcome.ok ? 'in' : outcome.reason) : 'error';
+    if (reported.get(row.guildId) !== result) {
+      reported.set(row.guildId, result);
+      logger.info(outcome?.ok ? `Stay in voice: ${row.guildId} is in ${row.channelId}` : `Stay in voice: ${row.guildId} is not in ${row.channelId} (${result})`);
+    }
   }
   return { checked: rows.length, joined };
 }
@@ -161,5 +168,5 @@ export async function onBotMoved(client: Client, guildId: string, leftChannelId:
 }
 
 /** For the checks. */
-export const forget = (): void => { targets.clear(); seen.clear(); noStatusPermission.clear(); };
+export const forget = (): void => { targets.clear(); seen.clear(); noStatusPermission.clear(); reported.clear(); };
 export const targetOf = (guildId: string): StayVoice | undefined => targets.get(guildId);
