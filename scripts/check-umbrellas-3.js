@@ -58,7 +58,7 @@ patch('src/logging/extraLog.js', { logCommandUse() {} });
 patch('src/utils/cardService.js', { plainMessage: async (text) => ({ content: text }) });
 patch('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 
-const { loadCommands, collectCommandData, isSlashCommand } = require('../src/handlers/commandHandler');
+const { loadCommands, collectCommandData, collectGuildCommandData, isSlashCommand } = require('../src/handlers/commandHandler');
 const event = require('../src/events/messageCreateCommands');
 const interactionCreate = require('../src/events/interactionCreate');
 const commandRules = require('../src/utils/commandRules');
@@ -330,7 +330,8 @@ function tailOf(node) {
     assert.equal(json.dm_permission, false, `/${name} is not offered in DMs`);
     assert.equal(json.options.length, count, `/${name} has ${count} subcommands and groups`);
     assert.ok(json.options.length <= 25 && json.options.every((each) => each.type === 1 || each.type === 2), `/${name} only has subcommands (at most 25)`);
-    assert.deepEqual(chat.find((each) => each.name === name).options.map((each) => each.name), json.options.map((each) => each.name), `/${name} is sent to Discord as it is`);
+    // (`giveawaypreset` is in the second set, registered in each server.)
+    assert.deepEqual([...chat, ...collectGuildCommandData()].find((each) => each.name === name).options.map((each) => each.name), json.options.map((each) => each.name), `/${name} is sent to Discord as it is`);
   }
   // The old permission of each is the one Discord checks for the whole command (they are not wrapped, so nobody else asks for it).
   const byName = new Map(chat.map((each) => [each.name, each]));
@@ -730,9 +731,11 @@ function tailOf(node) {
     for (const child of node.options ?? []) walk(child, `${trail} ${child.name}`);
   };
   for (const name of NEW_SLASH) {
-    const json = registered.find((each) => each.name === name);
+    // (`giveawaypreset` is in the second set, registered in each server.)
+    const json = [...registered, ...collectGuildCommandData()].find((each) => each.name === name);
     assert.ok(json, `/${name} is registered with Discord, so deploy-commands.js sends it`);
-    assert.ok(deployed.some((each) => each.name === name && each.options.length === json.options.length), `deploy-commands.js sends /${name} to Discord`);
+    // (The second set is sent to each server by the guild deploy, scripts/check-deploy-commands.js.)
+    assert.ok([...deployed, ...collectGuildCommandData()].some((each) => each.name === name && each.options.length === json.options.length), `deploy-commands.js sends /${name} to Discord`);
     for (const locale of [null, ...LOCALES]) {
       let sum = 0;
       const add = (node) => {

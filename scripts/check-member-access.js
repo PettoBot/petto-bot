@@ -288,8 +288,10 @@ const DECLARED = {
 // `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are not slash commands any more (their umbrella subcommand has every option and action of
 // them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
 // None is left: what `/mod` and `/staff` held of a command that is a slash command of its own is for the prefix only now.
-const UMBRELLA_TWINS = [];
-const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', timeout: 'mod tempmute' };
+// The maintainer asked for these (so they can be installed on a person): `/userinfo`, `/avatar`, `/banner` and `/birthday` are slash commands of their own next to the umbrella subcommands.
+const UMBRELLA_TWINS = ['user info = /userinfo', 'user avatar = /avatar', 'user banner = /banner', 'me birthday = /birthday', 'me birthday-remove = /birthday', 'me birthday-view = /birthday', 'social birthday = /birthday'];
+// (`userinfo` and `avatar` are slash commands of their own again so they can be installed on a person: scripts/check-user-install.js.)
+const REMOVED_TWINS = { serverinfo: 'server info', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
 const executed = [];
@@ -649,7 +651,8 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     const pingJson = collectCommandData().find((entry) => entry.name === 'bot');
     assert.ok(pingJson && pingJson.options.some((option) => option.name === 'ping'), '/bot ping is registered');
     assert.ok(!('default_member_permissions' in pingJson) || pingJson.default_member_permissions == null, '/bot has no default_member_permissions');
-    assert.ok(!pingJson.contexts && !pingJson.integration_types, '/bot does not narrow where it can be used');
+    // (Every global command says it is for servers only, `integration_types: [0]`, so turning on User Install in the portal adds none of them to a person's apps; contexts stay open.)
+    assert.ok(!pingJson.contexts && JSON.stringify(pingJson.integration_types) === '[0]', '/bot does not narrow where it can be used in a server');
     assert.ok(!collectPrivateGuildCommandData().some((entry) => entry.data.name === 'ping'), '/ping is not a command of one private server');
     const puts = [];
     const fakeRest = { get: async () => [], put: async (route, { body }) => { puts.push({ route, names: body.map((entry) => entry.name) }); return body; } };
