@@ -3,6 +3,7 @@
 const globalStatsDb = require('../db/globalStats');
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
+const showcaseServers = require('../utils/showcaseServers');
 
 const INTERVAL_MS = 60_000;
 const USERS_EVERY_MS = 10 * 60_000; // adding up every member is heavier than the rest, so it is not done every minute
@@ -10,6 +11,7 @@ const HISTORY_EVERY_MS = 10 * 60_000; // the daily history is added up from the 
 let usersAt = 0;
 let historyAt = -Infinity;
 let usersCache = [];
+let showcaseCache = []; // the last carousel that could be built: a failed turn does not empty it
 
 async function refreshGlobalStats(client, now = new Date()) {
   const [counted, ranked] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers()]);
@@ -31,6 +33,9 @@ async function refreshGlobalStats(client, now = new Date()) {
   const servers = client.guilds.cache.size;
   // The members of every server the bot is in, for the link preview of the website ("servers and members"). Counted from the cache, so it costs nothing.
   const members = [...client.guilds.cache.values()].reduce((total, guild) => total + (Number(guild.memberCount) || 0), 0);
+  // The servers of the carousel of the home page (500 members or more, at most 15). A failure here never leaves the rest of the numbers unsaved.
+  const built = await showcaseServers.buildShowcase(client).catch((error) => { logger.warn(`The carousel of servers could not be built: ${error.message}`); return null; });
+  if (built) showcaseCache = built;
   await globalStatsDb.saveSnapshot({
     totals,
     rates: globalStatsDb.buildRates(totals.today),
@@ -38,6 +43,7 @@ async function refreshGlobalStats(client, now = new Date()) {
     users: globalStatsDb.buildUserRanking(rankedUsers, (id) => people.get(id) ?? null),
     servers,
     members,
+    showcase: showcaseCache,
   });
   // The daily history (row `history`) goes after `main`, at most every 10 minutes, and a failure of it never leaves `main` unsaved. It runs inside
   // this same tick, so the load guard that pauses the tick pauses it too.
@@ -60,6 +66,6 @@ function startGlobalStatsJob(client) {
 }
 
 /** Forgets the saved member ranking and the time of the last history so the next run reads them again (used by the checks). */
-function resetUsersCache() { usersAt = 0; usersCache = []; historyAt = -Infinity; }
+function resetUsersCache() { usersAt = 0; usersCache = []; showcaseCache = []; historyAt = -Infinity; }
 
 module.exports = { startGlobalStatsJob, refreshGlobalStats, resetUsersCache };
