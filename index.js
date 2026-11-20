@@ -43,6 +43,7 @@ const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
 const { startRolloutAlertsJob } = require('./src/jobs/rolloutAlertsJob');
 const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
 const { startGlobalStatsJob } = require('./src/jobs/globalStatsJob');
+const { startStatsCategoryJob } = require('./src/jobs/statsCategoryJob');
 const { startGuildSnapshotJob } = require('./src/jobs/guildSnapshotJob');
 const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startCodeScheduleJob } = require('./src/jobs/codeScheduleJob');
@@ -236,6 +237,7 @@ async function main() {
   startRolloutAlertsJob(client);
   startRequestTimeoutJob(client);
   startGlobalStatsJob(client);
+  startStatsCategoryJob(client);
   startGuildSnapshotJob(client);
   startCommandDataJob();
   startCodeScheduleJob(client);
