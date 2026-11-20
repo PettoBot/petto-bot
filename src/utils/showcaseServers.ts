@@ -1,6 +1,7 @@
 // i18n-ignore-file: the data is for the website (the carousel of the home page); the website writes the words.
 // The servers of the carousel on the home page of the website: the ones with 500 members or more, the biggest first, at most 15, each with its
-// name, icon (animated when it is), the members and how many are online, and the marks Discord gives it (discoverable, verified, partnered).
+// name, icon (animated when it is), the members and how many are online, and the marks Discord gives it (partnered, verified, discoverable, community)
+// and its boost level.
 // A server that chose to be left out of the public numbers (`guilds.global_stats_hidden`, the switch of the dashboard for the public stats) is never in it.
 // When a server with more members than the last one appears, it takes its place and the last one goes out: the list is made again every time.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/showcaseServers.js.
@@ -14,7 +15,8 @@ export const MAX_SERVERS = 15;
 /** How long the number of online members of a server is kept before it is asked again: it costs one request to Discord for each server. */
 export const ONLINE_EVERY_MS = 5 * 60_000;
 
-export type Badge = 'discoverable' | 'verified' | 'partnered';
+/** The marks of a server, in the order the carousel draws them. Discoverable replaces community (a discoverable server is always a community). */
+export type Badge = 'partnered' | 'verified' | 'discoverable' | 'community';
 
 export interface ShowcaseServer {
   id: string;
@@ -26,6 +28,8 @@ export interface ShowcaseServer {
   /** Members online now, or null while Discord has not said. */
   online: number | null;
   badges: Badge[];
+  /** Boost level of the server, 0 to 3 (0 shows no boost mark). */
+  boost: number;
 }
 
 /** What is known of a server before it is decided whether it shows. */
@@ -42,9 +46,10 @@ export function pickShowcase<T extends Candidate>(candidates: T[], hidden: Reado
 /** The marks of a server that the carousel shows, from the features Discord lists. */
 export function badgesOf(features: readonly string[] = []): Badge[] {
   const badges: Badge[] = [];
-  if (features.includes('DISCOVERABLE')) badges.push('discoverable');
-  if (features.includes('VERIFIED')) badges.push('verified');
   if (features.includes('PARTNERED')) badges.push('partnered');
+  if (features.includes('VERIFIED')) badges.push('verified');
+  if (features.includes('DISCOVERABLE')) badges.push('discoverable');
+  else if (features.includes('COMMUNITY')) badges.push('community');
   return badges;
 }
 
@@ -83,6 +88,7 @@ export async function buildShowcase(client: Client, hidden?: ReadonlySet<string>
       members,
       online: await onlineOf(client, guild, now),
       badges: badgesOf(guild.features),
+      boost: Math.min(3, Math.max(0, Number(guild.premiumTier) || 0)),
     });
   }
   return servers;

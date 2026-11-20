@@ -21,12 +21,14 @@ function pickShowcase(candidates, hidden = new Set(), min = exports.MIN_MEMBERS,
 /** The marks of a server that the carousel shows, from the features Discord lists. */
 function badgesOf(features = []) {
     const badges = [];
-    if (features.includes('DISCOVERABLE'))
-        badges.push('discoverable');
-    if (features.includes('VERIFIED'))
-        badges.push('verified');
     if (features.includes('PARTNERED'))
         badges.push('partnered');
+    if (features.includes('VERIFIED'))
+        badges.push('verified');
+    if (features.includes('DISCOVERABLE'))
+        badges.push('discoverable');
+    else if (features.includes('COMMUNITY'))
+        badges.push('community');
     return badges;
 }
 /** The ids of the servers that asked to be left out of the public numbers. */
@@ -64,6 +66,7 @@ async function buildShowcase(client, hidden, now = Date.now()) {
             members,
             online: await onlineOf(client, guild, now),
             badges: badgesOf(guild.features),
+            boost: Math.min(3, Math.max(0, Number(guild.premiumTier) || 0)),
         });
     }
     return servers;

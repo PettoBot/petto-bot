@@ -28,16 +28,18 @@ assert.equal(showcase.MIN_MEMBERS, 500);
 assert.equal(showcase.MAX_SERVERS, 15);
 
 // The marks.
-assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED', 'PARTNERED']), ['discoverable', 'verified', 'partnered']);
-assert.deepEqual(showcase.badgesOf(['COMMUNITY']), []);
+assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED', 'PARTNERED']), ['partnered', 'verified', 'discoverable'], 'discoverable replaces community');
+assert.deepEqual(showcase.badgesOf(['COMMUNITY']), ['community']);
+assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'VERIFIED']), ['verified', 'community']);
+assert.deepEqual(showcase.badgesOf(['NEWS']), [], 'a server that is nothing special has no mark');
 assert.deepEqual(showcase.badgesOf(), []);
 
 // The whole list from a client: icon (animated or not), online members, kept for five minutes, kept when Discord does not answer.
 function guild(id, members, extra = {}) {
-  return { id, name: `Server ${id}`, memberCount: members, icon: extra.icon ?? null, features: extra.features ?? [], iconURL: ({ forceStatic }) => (extra.icon ? `https://cdn.discordapp.com/icons/${id}/${extra.icon}.${!forceStatic && extra.icon.startsWith('a_') ? 'gif' : 'png'}?size=128` : null) };
+  return { id, name: `Server ${id}`, memberCount: members, icon: extra.icon ?? null, features: extra.features ?? [], premiumTier: extra.tier ?? 0, iconURL: ({ forceStatic }) => (extra.icon ? `https://cdn.discordapp.com/icons/${id}/${extra.icon}.${!forceStatic && extra.icon.startsWith('a_') ? 'gif' : 'png'}?size=128` : null) };
 }
 let fetches = 0; let online = 40; let fail = false;
-const guilds = [guild('1', 800, { icon: 'abc', features: ['DISCOVERABLE'] }), guild('2', 3000, { icon: 'a_def', features: ['VERIFIED'] }), guild('3', 100), guild('4', 5000, { features: [] })];
+const guilds = [guild('1', 800, { icon: 'abc', features: ['DISCOVERABLE'] }), guild('2', 3000, { icon: 'a_def', features: ['VERIFIED'], tier: 2 }), guild('3', 100), guild('4', 5000, { features: [] })];
 const client = {
   guilds: {
     cache: new Map(guilds.map((g) => [g.id, g])),
@@ -52,6 +54,8 @@ const client = {
   assert.equal(list[1].animated, false);
   assert.ok(list[1].icon.endsWith('.png?size=128'));
   assert.deepEqual(list[0].badges, ['verified']);
+  assert.equal(list[0].boost, 2, 'the boost level');
+  assert.equal(list[1].boost, 0, 'no boost, no mark');
   assert.deepEqual([list[0].members, list[0].online], [3000, 42]);
   assert.equal(fetches, 2);
 
