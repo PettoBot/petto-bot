@@ -28,10 +28,9 @@ assert.equal(showcase.MIN_MEMBERS, 500);
 assert.equal(showcase.MAX_SERVERS, 15);
 
 // The marks.
-assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED', 'PARTNERED']), ['partnered', 'verified', 'discoverable'], 'discoverable replaces community');
-assert.deepEqual(showcase.badgesOf(['COMMUNITY']), ['community']);
-assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'VERIFIED']), ['verified', 'community']);
-assert.deepEqual(showcase.badgesOf(['NEWS']), [], 'a server that is nothing special has no mark');
+assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'DISCOVERABLE', 'VERIFIED', 'PARTNERED']), ['partnered', 'verified', 'discoverable']);
+assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'VERIFIED']), ['verified']);
+assert.deepEqual(showcase.badgesOf(['COMMUNITY', 'NEWS']), [], 'community alone has no mark: the Discord app has no icon for it');
 assert.deepEqual(showcase.badgesOf(), []);
 
 // The whole list from a client: icon (animated or not), online members, kept for five minutes, kept when Discord does not answer.

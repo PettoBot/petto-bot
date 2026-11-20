@@ -27,8 +27,6 @@ function badgesOf(features = []) {
         badges.push('verified');
     if (features.includes('DISCOVERABLE'))
         badges.push('discoverable');
-    else if (features.includes('COMMUNITY'))
-        badges.push('community');
     return badges;
 }
 /** The ids of the servers that asked to be left out of the public numbers. */

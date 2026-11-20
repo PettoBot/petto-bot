@@ -1,6 +1,6 @@
 // i18n-ignore-file: the data is for the website (the carousel of the home page); the website writes the words.
 // The servers of the carousel on the home page of the website: the ones with 500 members or more, the biggest first, at most 15, each with its
-// name, icon (animated when it is), the members and how many are online, and the marks Discord gives it (partnered, verified, discoverable, community)
+// name, icon (animated when it is), the members and how many are online, and the marks Discord gives it (partnered, verified, discoverable)
 // and its boost level.
 // A server that chose to be left out of the public numbers (`guilds.global_stats_hidden`, the switch of the dashboard for the public stats) is never in it.
 // When a server with more members than the last one appears, it takes its place and the last one goes out: the list is made again every time.
@@ -15,8 +15,8 @@ export const MAX_SERVERS = 15;
 /** How long the number of online members of a server is kept before it is asked again: it costs one request to Discord for each server. */
 export const ONLINE_EVERY_MS = 5 * 60_000;
 
-/** The marks of a server, in the order the carousel draws them. Discoverable replaces community (a discoverable server is always a community). */
-export type Badge = 'partnered' | 'verified' | 'discoverable' | 'community';
+/** The marks of a server, in the order the carousel draws them (the ones the Discord app itself has an icon for: community alone has none). */
+export type Badge = 'partnered' | 'verified' | 'discoverable';
 
 export interface ShowcaseServer {
   id: string;
@@ -49,7 +49,6 @@ export function badgesOf(features: readonly string[] = []): Badge[] {
   if (features.includes('PARTNERED')) badges.push('partnered');
   if (features.includes('VERIFIED')) badges.push('verified');
   if (features.includes('DISCOVERABLE')) badges.push('discoverable');
-  else if (features.includes('COMMUNITY')) badges.push('community');
   return badges;
 }
 
