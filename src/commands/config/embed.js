@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
 const guildPrefixes = require('../../utils/guildPrefixes');
+const { MAX_NAME_LENGTH } = require('../../utils/embedNameLimit');
 const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeName } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
 const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
@@ -320,7 +321,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
 
-    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one code ({embed}&v{title: Hi}...), or a p2. code for a V2 design').setRequired(false).setMaxLength(6000)))
+    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true).setMaxLength(MAX_NAME_LENGTH)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one code ({embed}&v{title: Hi}...), or a p2. code for a V2 design').setRequired(false).setMaxLength(6000)))
     .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true)))
     .addSubcommand((s) =>
       s
@@ -517,6 +518,10 @@ module.exports = {
           const name = normalizeName(interaction.options.getString('name'));
           if (!name) {
             await interaction.editReply(t(lang, 'embeds.cmd.noCreateName', { example: commandRef(interaction, 'embed create name:my_embed', ctx.prefix) }));
+            return;
+          }
+          if (name.length > MAX_NAME_LENGTH) {
+            await interaction.editReply(t(lang, 'embeds.cmd.nameTooLong', { max: MAX_NAME_LENGTH, length: name.length }));
             return;
           }
           const existing = await getTemplate(guildId, name);

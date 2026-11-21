@@ -1,6 +1,7 @@
 // Handles the interactive embed editor buttons and modals.
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const { getTemplate, upsertTemplate } = require('../db/embedTemplates');
+const { MAX_NAME_LENGTH } = require('../utils/embedNameLimit');
 const { parseColor, buildRawPreview, hasContent } = require('../utils/embedBuilder');
 const { EMOJI } = require('../utils/emojis');
 const { t, languageOf, currentLanguage } = require('../i18n');
@@ -44,6 +45,10 @@ function previewRefFrom(interaction) {
 async function renderPanel(doc, embedName, userId, previewRef = '/embed preview', lang = currentLanguage()) { // i18n-ignore: the default is a command
   const data = doc?.data ?? {};
   const sid = `${userId}::${embedName}`;
+
+  // An embed saved before names had a limit can be too long for the buttons (Discord: 100 characters in a custom id). Without this the
+  // panel throws "Invalid string length"; now it says what to do instead.
+  if (embedName.length > MAX_NAME_LENGTH) return { content: t(lang, 'embeds.panel.nameTooLong', { emoji: EMOJI.DENY, name: embedName, max: MAX_NAME_LENGTH }), embeds: [], components: [] };
 
   const content = t(lang, 'embeds.panel.editing', { emoji: EMOJI.PALETTE, name: embedName, command: previewRef });
 
