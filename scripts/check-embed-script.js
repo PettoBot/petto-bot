@@ -159,8 +159,16 @@ assert.equal(commandRef({ rawMessage: {} }, 'embed edit'), '!embed edit', 'witho
   assert.ok(!store.has('toolong'), 'an embed Discord refuses must not be saved');
   assert.ok(String(i.replies[0]).includes('refuse'));
 
+  // A name Discord cannot hold in the buttons of the editor (custom id: 100 characters) is refused before anything is saved.
+  const longName = 'a'.repeat(51);
+  i = interaction({ name: longName });
+  await embedCommand.execute(i, ctx);
+  assert.ok(!store.has(longName), 'a name that is too long must not be saved');
+  assert.ok(String(i.replies[0]).includes('50 characters'), 'it says the limit');
+
   // The command still offers the optional code and keeps the editor path.
   const create = embedCommand.data.toJSON().options.find((option) => option.name === 'create');
   assert.deepEqual(create.options.map((option) => [option.name, Boolean(option.required)]), [['name', true], ['code', false]]);
+  assert.equal(create.options[0].max_length, 50, 'the name option has the limit, so Discord stops it first');
   console.log('Checked the embed code reader and /embed create code:.');
 })().catch((error) => { console.error(error); process.exit(1); });
