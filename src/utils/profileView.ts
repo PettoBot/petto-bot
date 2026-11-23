@@ -122,7 +122,7 @@ export async function buildProfileImage(opts: { guildId: string; user: UserLike;
   }
   return renderProfileImage({
     name: member?.displayName ?? user.username,
-    avatar, banner: shopBanner ?? banner, planStar, nameFont,
+    avatar, banner: shopBanner ?? banner ?? await artOf('profile-default.webp'), planStar, nameFont,
     stats: [
       { label: t(lang, 'profiles.image.level'), value: row ? formatNumber(lang, Number(row.level ?? 0)) : dash },
       { label: t(lang, 'profiles.image.rank'), value: rank ? `#${formatNumber(lang, rank)}` : dash },
