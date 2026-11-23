@@ -26,7 +26,7 @@ export async function setFrame(userId: string, badgeId: string, from: string, to
 }
 
 /** Saves a badge for a person. Returns whether it was new. */
-export async function addBadge(userId: string, badgeId: string, source: 'self' | 'team' | 'shop'): Promise<boolean> {
+export async function addBadge(userId: string, badgeId: string, source: 'self' | 'team' | 'shop' | 'status'): Promise<boolean> {
   const { rows } = await getPrimaryPool().query(
     'insert into user_badges (user_id, badge_id, source) values ($1, $2, $3) on conflict (user_id, badge_id) do nothing returning badge_id',
     [userId, badgeId, source]);
@@ -61,4 +61,10 @@ export async function deleteProfile(userId: string): Promise<void> {
   const pool = getPrimaryPool();
   await pool.query('delete from user_badges where user_id = $1', [userId]);
   await pool.query('delete from user_profile where user_id = $1', [userId]);
+}
+
+/** The voice time recorded for a person in a server, in seconds (the days the bot keeps in `activity_members`); 0 when there is none. */
+export async function getVoiceSeconds(guildId: string, userId: string): Promise<number> {
+  const { rows } = await getPrimaryPool().query('select coalesce(sum(voice_seconds), 0) as seconds from activity_members where guild_id = $1 and user_id = $2', [guildId, userId]);
+  return Number(rows[0]?.seconds ?? 0);
 }

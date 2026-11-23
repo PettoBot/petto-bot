@@ -124,7 +124,7 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
     const x = nx + i * (boxW + gap);
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.roundRect(x, by, boxW, boxH, 14); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = canvasFont(FONT, 600, 18);
-    ctx.fillText(printable(stat.label).toUpperCase(), x + 16, by + 30);
+    ctx.fillText(fitText(ctx, printable(stat.label).toUpperCase(), boxW - 32), x + 16, by + 30);
     ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, 32);
     ctx.fillText(fitText(ctx, stat.value, boxW - 32), x + 16, by + 66);
   });

@@ -11,6 +11,7 @@ const badges = require('../../utils/profileBadges') as typeof import('../../util
 const shop = require('../../utils/ceramosShop') as typeof import('../../utils/ceramosShop');
 const image = require('../../utils/ceramosImage') as typeof import('../../utils/ceramosImage');
 const view = require('../../utils/profileView') as typeof import('../../utils/profileView');
+const registry = require('../../utils/badgeRegistry') as typeof import('../../utils/badgeRegistry');
 const walletDb = require('../../db/ceramos') as typeof import('../../db/ceramos');
 const profileDb = require('../../db/userProfile') as typeof import('../../db/userProfile');
 
@@ -59,7 +60,9 @@ async function shopView(interaction: ChatInputCommandInteraction, lang: string):
   const category = interaction.options.getString('category') ?? 'country';
   const [data, rows] = await Promise.all([walletDb.getWallet(interaction.user.id), profileDb.getBadgeRows(interaction.user.id)]);
   const have = new Set(rows.map((row) => row.id));
-  const all = badges.SHOP_BADGES.filter((def) => badges.categoryOf(def) === category);
+  await registry.ensure();
+  // What is on sale now and what the person already has (a badge whose sale ended stays in the list of whoever bought it).
+  const all = badges.shopBadges().filter((def) => badges.categoryOf(def) === category && (badges.onSale(def) || have.has(def.id)));
   const pages = Math.max(1, Math.ceil(all.length / SHOP_PAGE));
   const page = Math.min(pages, Math.max(1, interaction.options.getInteger('page') ?? 1));
   const items = [];
@@ -98,7 +101,7 @@ module.exports = {
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('balance').setDescription('See your ceramos and your last movements.'))
     .addSubcommand((s) => s.setName('shop').setDescription('See the badges you can buy with ceramos.')
-      .addStringOption((o) => o.setName('category').setDescription('Countries or languages').addChoices({ name: 'Countries', value: 'country' }, { name: 'Languages', value: 'language' }).setRequired(false))
+      .addStringOption((o) => o.setName('category').setDescription('Countries or languages').addChoices({ name: 'Countries', value: 'country' }, { name: 'Languages', value: 'language' }, { name: 'Special', value: 'special' }).setRequired(false))
       .addIntegerOption((o) => o.setName('page').setDescription('Page').setMinValue(1).setMaxValue(20).setRequired(false)))
     .addSubcommand((s) => s.setName('buy').setDescription('Buy a badge of the shop. You keep it for good.')
       .addStringOption((o) => o.setName('badge').setDescription('Which badge').setRequired(true).setAutocomplete(true)))
@@ -112,7 +115,8 @@ module.exports = {
     const typed = String(focused.value ?? '').toLowerCase().trim();
     const sub = interaction.options.getSubcommand(false);
     const have = new Set((await profileDb.getBadgeRows(interaction.user.id)).map((row) => row.id));
-    const pool = sub === 'upgrade' ? badges.SHOP_BADGES.filter((def) => have.has(def.id)).concat(badges.BADGES.filter((def) => def.unlock !== 'shop' && def.unlock !== 'plan' && have.has(def.id))) : badges.SHOP_BADGES.filter((def) => !have.has(def.id));
+    await registry.ensure();
+    const pool = sub === 'upgrade' ? badges.allBadges().filter((def) => def.unlock !== 'plan' && have.has(def.id)) : badges.shopBadges().filter((def) => !have.has(def.id) && badges.onSale(def));
     const list = pool.map((def) => ({ name: nameOf(lang, def.id), value: def.id })).filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
     await interaction.respond(list.slice(0, 25));
   },

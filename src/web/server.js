@@ -937,7 +937,7 @@ function startServer(client) {
     registerIdentityRoutes(app, { authorize: dashboardCardAccess });
     // Names and avatars of members for the dashboard pages, from the gateway instead of one REST call per person.
     registerMemberRoutes(app, { isAuthorized: dashboardAuthorized, authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
-    registerCeramosRoutes(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter });
+    registerCeramosRoutes(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, raw: express.raw({ type: () => true, limit: '300kb' }) });
     // Forms: accept or deny a submission and post a panel, from the dashboard.
     registerFormRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter, isAuthorized: dashboardAuthorized, client });
     // Live counters: values for the previews, create, quick setup, refresh now and delete.

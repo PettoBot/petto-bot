@@ -8,6 +8,7 @@ exports.removeBadge = removeBadge;
 exports.getShowcase = getShowcase;
 exports.setShowcase = setShowcase;
 exports.deleteProfile = deleteProfile;
+exports.getVoiceSeconds = getVoiceSeconds;
 const { getPrimaryPool } = require('./postgres');
 /** The ids of the badges saved for a person (the badge of a plan is not saved: it follows the plan). */
 async function getSavedBadges(userId) {
@@ -52,4 +53,9 @@ async function deleteProfile(userId) {
     const pool = getPrimaryPool();
     await pool.query('delete from user_badges where user_id = $1', [userId]);
     await pool.query('delete from user_profile where user_id = $1', [userId]);
+}
+/** The voice time recorded for a person in a server, in seconds (the days the bot keeps in `activity_members`); 0 when there is none. */
+async function getVoiceSeconds(guildId, userId) {
+    const { rows } = await getPrimaryPool().query('select coalesce(sum(voice_seconds), 0) as seconds from activity_members where guild_id = $1 and user_id = $2', [guildId, userId]);
+    return Number(rows[0]?.seconds ?? 0);
 }

@@ -43,6 +43,8 @@ module.exports = {
 
     logger.info(`Petto v${require("../../package.json").version} is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
     attachDiscordLogger(client);
+    // The badges that are given to a booster of the support server ask Discord through the bot.
+    require('../utils/badgeRegistry').useDiscord(client, config.supportGuildId);
     // Every blacklisted server Petto is in now (the list was loaded before the login): left one by one, a second apart, in the background.
     guildBlacklist.sweep(client).then((count) => { if (count) logger.info(`Left ${count} blacklisted server(s) at start.`); })
       .catch((err) => logger.warn(`The blacklist sweep failed: ${err?.message ?? err}`));

@@ -3,15 +3,15 @@
 // Pure rules with no database and no Discord, so scripts/check-profile-card.js tests the same code the command runs.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/profileBadges.js.
 
-/** How a badge comes to a person: `plan` follows the plan they pay for (nobody picks it), `self` is turned on and off by the person (an identity badge: nobody gives it, nobody sees it unless they put it), `team` is given by hand, `shop` is bought once with ceramos and then stays. */
-export type BadgeUnlock = 'plan' | 'self' | 'team' | 'shop';
+/** How a badge comes to a person: `plan` follows the plan they pay for (nobody picks it), `self` is turned on and off by the person (an identity badge: nobody gives it, nobody sees it unless they put it), `team` is given by hand, `shop` is bought once with ceramos and then stays, `status` is given by itself while the person is what it says (a voter, a booster). */
+export type BadgeUnlock = 'plan' | 'self' | 'team' | 'shop' | 'status';
 export type PlanKey = 'bronze' | 'silver' | 'gold';
 /** How rare a badge is: it sets what it costs in the shop. */
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 /** The tabs of the page of badges. */
-export type BadgeCategory = 'plan' | 'fablo' | 'country' | 'language' | 'status';
+export type BadgeCategory = 'plan' | 'fablo' | 'country' | 'language' | 'status' | 'special';
 /** What each rarity costs in ceramos (a badge of the shop is bought once and kept). */
-export const RARITY_PRICE: Readonly<Record<Rarity, number>> = { common: 250, rare: 500, epic: 1000, legendary: 2000 };
+export const RARITY_PRICE: Readonly<Record<Rarity, number>> = { common: 20, rare: 50, epic: 120, legendary: 300 };
 
 export interface BadgeDef {
   id: string;
@@ -26,6 +26,24 @@ export interface BadgeDef {
   language?: string;
   /** How rare it is (only the badges of the shop have a price). */
   rarity?: Rarity;
+  /** A badge made in the editor of the team (the rest are in this file). Its picture is in the database, and its words come with it. */
+  custom?: boolean;
+  names?: Record<string, string>;
+  /** The tab it is in (a badge of the editor picks one; the others follow from what they are). */
+  category?: BadgeCategory;
+  /** Its own price (0 is free), instead of the one of its rarity. */
+  price?: number;
+  /** The days it is on sale (ISO times; nothing means always). When the sale ends the ones who have it keep it for good. */
+  saleFrom?: string | null;
+  saleUntil?: string | null;
+  /** Only people with this plan or a better one can get it. */
+  planMin?: PlanKey | null;
+  /** What makes it be given by itself (`voter`, `booster`, `partner`, `server_boost`): see utils/badgeRegistry.ts. */
+  grantRule?: string | null;
+  /** Taken off sale by the team: not in the shop any more, and whoever has it keeps it. */
+  retired?: boolean;
+  /** Changes when the badge is edited: the websites use it to know the picture is a new one. */
+  version?: string;
 }
 
 export const PLAN_KEYS: readonly PlanKey[] = ['bronze', 'silver', 'gold'];
@@ -56,8 +74,36 @@ export const BADGES: readonly BadgeDef[] = [...BASE_BADGES, ...SHOP];
 export const SHOP_BADGES: readonly BadgeDef[] = SHOP;
 
 const BY_ID = new Map(BADGES.map((badge) => [badge.id, badge]));
+let custom: readonly BadgeDef[] = [];
+let customById = new Map<string, BadgeDef>();
 
-export const badgeById = (id: string): BadgeDef | null => BY_ID.get(id) ?? null;
+/** Sets the badges made in the editor (utils/badgeRegistry.ts reads them from the database). */
+export function setCustomBadges(list: readonly BadgeDef[]): void {
+  custom = list;
+  customById = new Map(list.map((badge) => [badge.id, badge]));
+}
+
+/** Every badge that exists: the ones of this file and the ones of the editor. */
+export const allBadges = (): readonly BadgeDef[] => (custom.length ? [...BADGES, ...custom] : BADGES);
+/** The badges that can be bought: the countries and languages, and the ones of the editor that are for sale (even when the sale is not open now). */
+export const shopBadges = (): readonly BadgeDef[] => (custom.length ? [...SHOP_BADGES, ...custom.filter((badge) => badge.unlock === 'shop')] : SHOP_BADGES);
+
+/** Whether the sale is open at a moment (a badge with no dates is always on sale). */
+export function onSale(def: BadgeDef, now: Date = new Date()): boolean {
+  if (def.retired) return false;
+  const at = now.getTime();
+  if (def.saleFrom && new Date(def.saleFrom).getTime() > at) return false;
+  if (def.saleUntil && new Date(def.saleUntil).getTime() <= at) return false;
+  return true;
+}
+
+/** Whether a plan is enough for a badge that asks for one (none asks for none). */
+export function planAllows(def: BadgeDef, plan: PlanKey | null): boolean {
+  if (!def.planMin) return true;
+  return plan !== null && PLAN_KEYS.indexOf(plan) >= PLAN_KEYS.indexOf(def.planMin);
+}
+
+export const badgeById = (id: string): BadgeDef | null => BY_ID.get(id) ?? customById.get(id) ?? null;
 export const isSelfBadge = (id: string): boolean => BY_ID.get(id)?.unlock === 'self';
 
 /** How many badges the showcase of the profile holds, by plan: one with no plan, then 2, 4 and 6. */
@@ -77,7 +123,7 @@ export const planBadgeId = (plan: PlanKey): string => `plan-${plan}`;
 
 /** What a person owns: what they have saved plus the badge of their plan. */
 export function ownedBadges(saved: readonly string[], plan: PlanKey | null): string[] {
-  const owned = new Set(saved.filter((id) => BY_ID.has(id) && BY_ID.get(id)?.unlock !== 'plan'));
+  const owned = new Set(saved.filter((id) => (BY_ID.has(id) || customById.has(id)) && badgeById(id)?.unlock !== 'plan'));
   if (plan) owned.add(planBadgeId(plan));
   return [...owned];
 }
@@ -94,10 +140,11 @@ export function normalizeShowcase(chosen: readonly string[], owned: readonly str
 }
 
 /** What a badge of the shop costs (0 for a badge that is not for sale). */
-export const priceOf = (def: BadgeDef): number => (def.unlock === 'shop' ? RARITY_PRICE[def.rarity ?? 'common'] : 0);
+export const priceOf = (def: BadgeDef): number => (def.unlock === 'shop' ? (def.price ?? RARITY_PRICE[def.rarity ?? 'common']) : 0);
 
 /** The tab a badge belongs to. */
 export function categoryOf(def: BadgeDef): BadgeCategory {
+  if (def.category) return def.category;
   if (def.unlock === 'plan') return 'plan';
   if (def.region) return 'country';
   if (def.language) return 'language';
@@ -113,5 +160,6 @@ export function badgeName(lang: string, def: BadgeDef, tr: (key: string) => stri
     if (def.region) return new Intl.DisplayNames([lang], { type: 'region' }).of(def.region) ?? def.region;
     if (def.language) return new Intl.DisplayNames([lang], { type: 'language' }).of(def.language) ?? def.language;
   } catch { /* an old runtime without names: the code is shown */ }
+  if (def.names) return def.names[lang] ?? def.names[lang.split('-')[0]] ?? def.names.en ?? def.id;
   return tr(`profiles.badge.${def.id}`);
 }

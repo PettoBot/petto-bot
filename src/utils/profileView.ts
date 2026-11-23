@@ -10,6 +10,7 @@ const { loadImage } = require('@napi-rs/canvas') as typeof import('@napi-rs/canv
 const { loadImageFromLink } = require('./safeImage') as { loadImageFromLink: (url: string) => Promise<Image> };
 const { renderProfileImage } = require('./profileImage') as { renderProfileImage: (data: ProfileImageData) => Buffer };
 const badgesRules = require('./profileBadges') as typeof import('./profileBadges');
+const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
 const profileDb = require('../db/userProfile') as typeof import('../db/userProfile');
 const levelUsersDb = require('../db/levelUsers') as { getUser: (g: string, u: string) => Promise<Record<string, unknown> | null>; getRank: (g: string, xp: number) => Promise<number> };
 const { t, formatNumber } = require('../i18n') as { t: (lang: string, key: string, vars?: Record<string, unknown>) => string; formatNumber: (lang: string, n: number) => string };
@@ -47,7 +48,19 @@ async function flagOf(region: string): Promise<Image | null> {
 /** The picture of a badge: the flag of its country, or its art file, or nothing (it is drawn with its colour and its code). */
 export async function artOfBadge(def: import('./profileBadges').BadgeDef): Promise<Image | null> {
   if (def.region) return flagOf(def.region);
+  if (def.custom) return registry.customArt(def);
   return artOf(def.art);
+}
+
+/** A voice time with its unit, short: `45 min`, `5 h 20 m`, `12 h`, `3 d 4 h`. Never a bare number. */
+export function formatVoice(seconds: number): string {
+  const minutes = Math.floor(Math.max(0, seconds) / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 10) return minutes % 60 ? `${hours} h ${minutes % 60} m` : `${hours} h`;
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`;
 }
 
 /** The plan a person pays for, or null. The plans of a person are not sold yet, so nobody has one until that table exists. */
@@ -57,9 +70,19 @@ export async function planOfUser(_userId: string): Promise<PlanKey | null> {
 
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */
 export async function profileState(userId: string): Promise<{ plan: PlanKey | null; owned: string[]; slots: number; showcase: string[]; frames: Record<string, string> }> {
-  const [plan, rows, chosen] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId)]);
-  const owned = badgesRules.ownedBadges(rows.map((row) => row.id), plan);
-  const frames = Object.fromEntries(rows.map((row) => [row.id, row.frame]));
+  await registry.ensure();
+  const [plan, saved, chosen, granted] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId), registry.grantedFor(userId)]);
+  // A badge that is given by itself is had while the person is what it says: it is saved when they first are (so it can have a frame) and left out when they stop.
+  const ruled = new Set(badgesRules.allBadges().filter((def) => def.custom && def.grantRule).map((def) => def.id));
+  const rows = [...saved];
+  for (const id of granted) {
+    if (rows.some((row) => row.id === id)) continue;
+    await profileDb.addBadge(userId, id, 'status').catch(() => false);
+    rows.push({ id, frame: 'normal', source: 'status' });
+  }
+  const effective = rows.filter((row) => !(ruled.has(row.id) && !granted.includes(row.id)));
+  const owned = badgesRules.ownedBadges(effective.map((row) => row.id), plan);
+  const frames = Object.fromEntries(effective.map((row) => [row.id, row.frame]));
   const slots = badgesRules.slotsFor(plan);
   return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames };
 }
@@ -74,7 +97,7 @@ interface UserLike { id: string; username: string; displayAvatarURL: (o: object)
 /** The PNG of the profile of `user` in a server. `member` gives the nickname and the avatar of the server when they have them. */
 export async function buildProfileImage(opts: { guildId: string; user: UserLike; member?: { displayName?: string; displayAvatarURL: (o: object) => string } | null; lang: string }): Promise<Buffer> {
   const { guildId, user, member, lang } = opts;
-  const [state, row] = await Promise.all([profileState(user.id), levelUsersDb.getUser(guildId, user.id).catch(() => null)]);
+  const [state, row, voiceSeconds] = await Promise.all([profileState(user.id), levelUsersDb.getUser(guildId, user.id).catch(() => null), profileDb.getVoiceSeconds(guildId, user.id).catch(() => 0)]);
   const xp = Number(row?.xp ?? 0);
   const rank = xp > 0 ? await levelUsersDb.getRank(guildId, xp).catch(() => null) : null;
   const dash = '–';
@@ -95,7 +118,7 @@ export async function buildProfileImage(opts: { guildId: string; user: UserLike;
       { label: t(lang, 'profiles.image.level'), value: row ? formatNumber(lang, Number(row.level ?? 0)) : dash },
       { label: t(lang, 'profiles.image.rank'), value: rank ? `#${formatNumber(lang, rank)}` : dash },
       { label: t(lang, 'profiles.image.messages'), value: row ? formatNumber(lang, Number(row.messages ?? 0)) : dash },
-      { label: t(lang, 'profiles.image.voice'), value: row ? formatNumber(lang, Number(row.voice_level ?? 0)) : dash },
+      { label: t(lang, 'profiles.image.voice'), value: voiceSeconds > 0 ? formatVoice(voiceSeconds) : dash },
     ],
     showcase, slots: state.slots, showcaseTitle: t(lang, 'profiles.image.badges'),
   });

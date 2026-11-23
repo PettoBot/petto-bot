@@ -8,11 +8,11 @@ exports.DAILY = { none: 2, bronze: 5, silver: 10, gold: 20 };
 const dailyAmount = (plan) => exports.DAILY[plan ?? 'none'];
 exports.dailyAmount = dailyAmount;
 /** The price of a common badge of the shop (bought once, it stays; the ceramos are only for it and for its frames). The other rarities are in RARITY_PRICE of profileBadges.ts. */
-exports.BADGE_PRICE = 250;
+exports.BADGE_PRICE = 20;
 exports.FRAMES = [
     { id: 'normal', level: 0, cost: 0 },
-    { id: 'bright', level: 1, cost: 150 },
-    { id: 'divine', level: 2, cost: 400 },
+    { id: 'bright', level: 1, cost: 15 },
+    { id: 'divine', level: 2, cost: 40 },
 ];
 const frameById = (id) => exports.FRAMES.find((frame) => frame.id === id) ?? exports.FRAMES[0];
 exports.frameById = frameById;

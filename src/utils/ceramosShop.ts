@@ -7,6 +7,8 @@ const rules = require('./ceramos') as typeof import('./ceramos');
 const badges = require('./profileBadges') as typeof import('./profileBadges');
 const walletDb = require('../db/ceramos') as typeof import('../db/ceramos');
 const profileDb = require('../db/userProfile') as typeof import('../db/userProfile');
+const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
+const view = require('./profileView') as typeof import('./profileView');
 
 export type ClaimResult = { ok: true; amount: number; balance: number } | { ok: false; nextAt: Date };
 
@@ -21,21 +23,29 @@ export async function claimToday(userId: string, plan: PlanKey | null, now: Date
   return { ok: true, amount, balance };
 }
 
-export type BuyResult = { ok: true; balance: number; price: number } | { ok: false; reason: 'unknown' | 'owned' | 'poor'; balance: number; price: number };
+export type BuyResult = { ok: true; balance: number; price: number } | { ok: false; reason: 'unknown' | 'owned' | 'poor' | 'closed' | 'plan'; balance: number; price: number };
 
 /** Buys a badge of the shop once: it is kept for good, and the ceramos are spent only if the person did not have it. */
-export async function buyBadge(userId: string, badgeId: string): Promise<BuyResult> {
+export async function buyBadge(userId: string, badgeId: string, now: Date = new Date()): Promise<BuyResult> {
+  await registry.ensure();
   const def = badges.badgeById(badgeId);
-  const price = def ? badges.priceOf(def) || rules.BADGE_PRICE : rules.BADGE_PRICE;
+  const price = def ? (def.custom ? badges.priceOf(def) : badges.priceOf(def) || rules.BADGE_PRICE) : rules.BADGE_PRICE;
   const wallet = await walletDb.getWallet(userId);
   if (!def || def.unlock !== 'shop') return { ok: false, reason: 'unknown', balance: wallet.balance, price };
   const rows = await profileDb.getBadgeRows(userId);
   if (rows.some((row) => row.id === def.id)) return { ok: false, reason: 'owned', balance: wallet.balance, price };
-  const balance = await walletDb.spend(userId, price, 'badge', def.id);
-  if (balance === null) return { ok: false, reason: 'poor', balance: wallet.balance, price };
+  // After the sale nobody can get it any more (the ones who have it keep it), and one that asks for a plan is for the people with that plan.
+  if (!badges.onSale(def, now)) return { ok: false, reason: 'closed', balance: wallet.balance, price };
+  if (!badges.planAllows(def, await view.planOfUser(userId))) return { ok: false, reason: 'plan', balance: wallet.balance, price };
+  let balance = wallet.balance;
+  if (price > 0) {
+    const left = await walletDb.spend(userId, price, 'badge', def.id);
+    if (left === null) return { ok: false, reason: 'poor', balance: wallet.balance, price };
+    balance = left;
+  }
   const added = await profileDb.addBadge(userId, def.id, 'shop');
   if (!added) { // another purchase of the same badge won the race: the ceramos come back
-    const back = await walletDb.give(userId, price, 'refund', def.id);
+    const back = price > 0 ? await walletDb.give(userId, price, 'refund', def.id) : balance;
     return { ok: false, reason: 'owned', balance: back, price };
   }
   return { ok: true, balance, price };
@@ -47,9 +57,11 @@ export type UpgradeResult =
 
 /** Gives an owned badge the next frame, one step at a time (normal, bright, divine). The badge of a plan has no frames. */
 export async function upgradeFrame(userId: string, badgeId: string): Promise<UpgradeResult> {
+  await registry.ensure();
   const wallet = await walletDb.getWallet(userId);
   const def = badges.badgeById(badgeId);
   if (def?.unlock === 'plan') return { ok: false, reason: 'noFrame', balance: wallet.balance, cost: 0 };
+  if (def?.grantRule) await view.profileState(userId); // a badge given by itself is saved the first time it is looked at, so it can have a frame
   const row = (await profileDb.getBadgeRows(userId)).find((each) => each.id === badgeId);
   if (!def || !row) return { ok: false, reason: 'notOwned', balance: wallet.balance, cost: 0 };
   const next = rules.nextFrame(row.frame);

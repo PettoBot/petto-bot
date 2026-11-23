@@ -33,7 +33,7 @@ module.exports = {
   'profiles.image.level': 'Nível',
   'profiles.image.rank': 'Posição',
   'profiles.image.messages': 'Mensagens',
-  'profiles.image.voice': 'Voz',
+  'profiles.image.voice': 'Tempo em voz',
   'profiles.image.badges': 'Insígnias',
   'profiles.image.failed': 'Não consegui desenhar o perfil. Tente de novo em instantes.',
   'profiles.badge.plan-bronze': 'Plano Bronze',

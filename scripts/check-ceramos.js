@@ -23,6 +23,18 @@ stub('src/db/ceramos.js', {
   spend: async (u, amount, reason, ref) => { const w = wallet(u); if (w.balance < amount) return null; wallets.set(u, { ...w, balance: w.balance - amount }); ledger.push({ u, delta: -amount, reason, ref }); return w.balance - amount; },
   lastMovements: async () => [],
 });
+const customRows = new Map(); // id -> row of the editor
+const customImages = new Map();
+const voters = new Set();
+stub('src/db/customBadges.js', {
+  listCustomBadges: async () => [...customRows.values()].map((row) => ({ ...row, hasImage: customImages.has(row.id), updatedAt: row.updatedAt })),
+  getCustomImage: async (id) => (customImages.has(id) ? { ...customImages.get(id), updatedAt: customRows.get(id)?.updatedAt ?? '' } : null),
+  saveCustomBadge: async (input) => { const had = customRows.has(input.id); customRows.set(input.id, { id: input.id, names: input.names, category: input.category, rarity: input.rarity, price: input.price, color: input.color, saleFrom: input.saleFrom, saleUntil: input.saleUntil, planMin: input.planMin, grantRule: input.grantRule, active: customRows.get(input.id)?.active ?? true, updatedAt: new Date().toISOString() }); return !had; },
+  setCustomImage: async (id, bytes, type) => { if (!customRows.has(id)) return false; customImages.set(id, { bytes, type }); return true; },
+  setBadgeActive: async (id, active) => { const row = customRows.get(id); if (!row) return false; row.active = active; return true; },
+  votedRecently: async (userId) => voters.has(userId),
+  ownerCounts: async () => ({}),
+});
 stub('src/db/userProfile.js', {
   getBadgeRows: async (u) => (badgeRows.get(u) ?? []).map((row) => ({ ...row })),
   addBadge: async (u, id, source) => { if (raceOnAdd) return false; const rows = badgeRows.get(u) ?? []; if (rows.some((row) => row.id === id)) return false; rows.push({ id, frame: 'normal', source }); badgeRows.set(u, rows); return true; },
@@ -32,7 +44,8 @@ stub('src/db/userProfile.js', {
   removeBadge: async (u, id) => { const rows = badgeRows.get(u) ?? []; const had = rows.some((row) => row.id === id); badgeRows.set(u, rows.filter((row) => row.id !== id)); showcases.set(u, (showcases.get(u) ?? []).filter((each) => each !== id)); return had; },
   setFrame: async (u, id, from, to) => { const row = (badgeRows.get(u) ?? []).find((each) => each.id === id && each.frame === from); if (!row) return false; row.frame = to; return true; },
 });
-stub('src/config.js', { ownerId: 'owner', developerIds: [] });
+const OWNER = '111111111111111111';
+stub('src/config.js', { ownerId: OWNER, developerIds: [] });
 stub('src/db/database.js', { from() { throw new Error('the database is not used in this check'); } });
 
 const rules = require('../src/utils/ceramos');
@@ -55,8 +68,10 @@ const { loadImage } = require('@napi-rs/canvas');
   assert.equal(done.nextAt.toISOString(), '2026-11-24T00:00:00.000Z');
   assert.equal(rules.parseAmount('250'), 250); assert.equal(rules.parseAmount(0), null); assert.equal(rules.parseAmount('2.5'), null); assert.equal(rules.parseAmount(-3), null); assert.equal(rules.parseAmount(2_000_000), null); assert.equal(rules.parseAmount('abc'), null);
 
-  // Frames: one step at a time, normal, bright (150) and divine (400), and the last one has no next.
-  assert.deepEqual(rules.FRAMES.map((frame) => [frame.id, frame.cost]), [['normal', 0], ['bright', 150], ['divine', 400]]);
+  // Frames: one step at a time, normal, bright (15) and divine (40), and the last one has no next.
+  assert.deepEqual(rules.FRAMES.map((frame) => [frame.id, frame.cost]), [['normal', 0], ['bright', 15], ['divine', 40]]);
+  // The prices are meant to be reachable: a common badge is a day of the best plan, and a week and a bit with no plan.
+  assert.ok(rules.BADGE_PRICE <= rules.DAILY.gold && rules.BADGE_PRICE <= rules.DAILY.none * 14, 'a common badge can be had in two weeks with no plan');
   assert.equal(rules.nextFrame('normal').id, 'bright'); assert.equal(rules.nextFrame('bright').id, 'divine'); assert.equal(rules.nextFrame('divine'), null);
   assert.equal(rules.nextFrame('nonsense').id, 'bright', 'an unknown frame is the first one');
 
@@ -76,19 +91,21 @@ const { loadImage } = require('@napi-rs/canvas');
   assert.equal(badges.badgeName('es', badges.badgeById('country-co'), () => 'x'), 'Colombia');
   assert.equal(badges.badgeName('pt-BR', badges.badgeById('lang-en'), () => 'x'), 'inglês');
   assert.equal(badges.badgeName('en', badges.badgeById('femboy'), (key) => key), 'profiles.badge.femboy');
-  assert.equal(rules.BADGE_PRICE, 250);
+  assert.equal(rules.BADGE_PRICE, 20);
 
   // Buying: not enough, not for sale, bought once (the ceramos go once), and never twice.
-  assert.equal((await shop.buyBadge('ana', 'country-co')).reason, 'poor');
-  assert.equal(wallet('ana').balance, 22, 'a purchase that cannot be paid takes nothing');
+  assert.equal((await shop.buyBadge('zed', 'country-co')).reason, 'poor');
+  assert.equal(wallet('zed').balance, 0, 'a purchase that cannot be paid takes nothing');
+  await require('../src/db/ceramos').give('zed', rules.BADGE_PRICE - 1, 'grant', null);
+  assert.equal((await shop.buyBadge('zed', 'country-co')).reason, 'poor', 'one ceramo short is still short');
   assert.equal((await shop.buyBadge('ana', 'femboy')).reason, 'unknown');
   assert.equal((await shop.buyBadge('ana', 'plan-gold')).reason, 'unknown');
   assert.equal((await shop.buyBadge('ana', 'made-up')).reason, 'unknown');
   await require('../src/db/ceramos').give('ana', 1000, 'grant', null);
   const bought = await shop.buyBadge('ana', 'country-co');
-  assert.deepEqual([bought.ok, bought.balance], [true, 22 + 1000 - 250]);
+  assert.deepEqual([bought.ok, bought.balance], [true, 22 + 1000 - 20]);
   assert.equal((await shop.buyBadge('ana', 'country-co')).reason, 'owned');
-  assert.equal(wallet('ana').balance, 772, 'the second purchase did not charge');
+  assert.equal(wallet('ana').balance, 1002, 'the second purchase did not charge');
   assert.deepEqual(badgeRows.get('ana').map((row) => [row.id, row.source, row.frame]), [['country-co', 'shop', 'normal']]);
 
   // A purchase that loses a race gives the ceramos back.
@@ -96,18 +113,18 @@ const { loadImage } = require('@napi-rs/canvas');
   const lost = await shop.buyBadge('ana', 'lang-es');
   raceOnAdd = false;
   assert.equal(lost.reason, 'owned');
-  assert.equal(wallet('ana').balance, 772, 'the ceramos came back');
+  assert.equal(wallet('ana').balance, 1002, 'the ceramos came back');
   assert.ok(ledger.some((row) => row.reason === 'refund' && row.u === 'ana'));
 
   // Frames: only owned badges, not the badge of a plan, one step each, paid, and the best one has no next.
   assert.equal((await shop.upgradeFrame('ana', 'lang-es')).reason, 'notOwned');
   assert.equal((await shop.upgradeFrame('ana', 'plan-gold')).reason, 'noFrame');
   let up = await shop.upgradeFrame('ana', 'country-co');
-  assert.deepEqual([up.ok, up.frame, up.balance], [true, 'bright', 772 - 150]);
+  assert.deepEqual([up.ok, up.frame, up.balance], [true, 'bright', 1002 - 15]);
   up = await shop.upgradeFrame('ana', 'country-co');
-  assert.deepEqual([up.ok, up.frame, up.balance], [true, 'divine', 772 - 150 - 400]);
+  assert.deepEqual([up.ok, up.frame, up.balance], [true, 'divine', 1002 - 15 - 40]);
   up = await shop.upgradeFrame('ana', 'country-co');
-  assert.equal(up.reason, 'max'); assert.equal(wallet('ana').balance, 222, 'nothing is charged past the best frame');
+  assert.equal(up.reason, 'max'); assert.equal(wallet('ana').balance, 1002 - 55, 'nothing is charged past the best frame');
   await require('../src/db/userProfile').addBadge('bob', 'country-mx', 'shop');
   up = await shop.upgradeFrame('bob', 'country-mx');
   assert.equal(up.reason, 'poor'); assert.equal(badgeRows.get('bob')[0].frame, 'normal', 'a frame that is not paid is not given');
@@ -122,7 +139,7 @@ const { loadImage } = require('@napi-rs/canvas');
   assert.equal(w1.width, 1024); assert.equal(w1.height, image.WALLET_HEIGHT);
   const empty = image.renderWalletImage({ name: 'Ana', avatar: null, balance: '0', title: 'Ceramos', daily: 'Your daily ceramos are ready: /daily', dailyReady: true, movementsTitle: 'Last movements', noMovements: 'No movements yet', movements: [] });
   assert.ok((await loadImage(empty)).width === 1024);
-  const items = (n) => Array.from({ length: n }, (_, i) => ({ badge: { ...dark, frame: ['normal', 'bright', 'divine'][i % 3] }, name: 'Colombia'.repeat(3), price: '250', owned: i % 4 === 0 }));
+  const items = (n) => Array.from({ length: n }, (_, i) => ({ badge: { ...dark, frame: ['normal', 'bright', 'divine'][i % 3] }, name: 'Colombia'.repeat(3), price: '20', owned: i % 4 === 0 }));
   const s6 = await loadImage(image.renderShopImage({ title: 'Badge shop', balanceText: '772', items: items(6), ownedText: 'Yours' }));
   const s13 = await loadImage(image.renderShopImage({ title: 'Badge shop', balanceText: '772', items: items(13), ownedText: 'Yours' }));
   assert.equal(s6.width, 1024); assert.ok(s13.height > s6.height, 'a second and a third row make it taller');
@@ -138,20 +155,20 @@ const { loadImage } = require('@napi-rs/canvas');
   const ask = (userId, sub, values) => admin.execute({ user: { id: userId }, options: { getSubcommand: () => sub, getUser: () => ({ id: 'ana' }), getInteger: () => values.amount, getString: () => values.note ?? null }, reply: async (payload) => { replies.push(payload); } });
   assert.equal(await ask('somebody', 'give', { amount: 50 }), undefined); assert.equal(replies.length, 0, 'nobody but the owner gets an answer');
   const before = wallet('ana').balance;
-  await ask('owner', 'give', { amount: 50, note: 'prize' });
+  await ask(OWNER, 'give', { amount: 50, note: 'prize' });
   assert.equal(wallet('ana').balance, before + 50); assert.equal(replies.length, 1);
-  await ask('owner', 'take', { amount: 10 * before });
+  await ask(OWNER, 'take', { amount: 10 * before });
   assert.equal(wallet('ana').balance, before + 50, 'a take of more than they have takes nothing');
-  await ask('owner', 'take', { amount: 20 });
+  await ask(OWNER, 'take', { amount: 20 });
   assert.equal(wallet('ana').balance, before + 30);
 
-  // The catalog: every country with its flag code, the languages, the Fablo pack and the stars; a common badge costs 250 and the rarities go up.
+  // The catalog: every country with its flag code, the languages, the Fablo pack and the stars; a common badge costs 20 and the rarities go up.
   const api = require('../src/utils/ceramosApi');
-  const cat = api.catalog();
+  const cat = await api.catalog();
   const byCategory = (name) => cat.badges.filter((badge) => badge.category === name);
-  assert.ok(byCategory('country').length >= 240 && byCategory('country').every((badge) => /^[A-Z]{2}$/.test(badge.region) && badge.price === 250 && badge.rarity === 'common'));
+  assert.ok(byCategory('country').length >= 240 && byCategory('country').every((badge) => /^[A-Z]{2}$/.test(badge.region) && badge.price === 20 && badge.rarity === 'common'));
   assert.ok(byCategory('language').length >= 15 && byCategory('fablo').length === 4 && byCategory('plan').length === 3);
-  assert.deepEqual(cat.rarityPrice, { common: 250, rare: 500, epic: 1000, legendary: 2000 });
+  assert.deepEqual(cat.rarityPrice, { common: 20, rare: 50, epic: 120, legendary: 300 });
   assert.deepEqual(cat.slots, { none: 1, bronze: 2, silver: 4, gold: 6 });
   assert.equal(new Set(cat.badges.map((badge) => badge.id)).size, cat.badges.length, 'no two badges share an id');
   // Every flag of the catalog is in the open package (the picture of the badge), and the names come from the language.
@@ -179,11 +196,11 @@ const { loadImage } = require('@napi-rs/canvas');
 
   // The routes: the secret first, then a good user id, a limit of writes, and the answer of the action.
   const handlers = {};
-  const fakeApp = { get: (route, limiter, handler) => { handlers[`GET ${route}`] = handler; }, post: (route, limiter, handler) => { handlers[`POST ${route}`] = handler; } };
+  const fakeApp = { get: (route, ...rest) => { handlers[`GET ${route}`] = rest[rest.length - 1]; }, post: (route, ...rest) => { handlers[`POST ${route}`] = rest[rest.length - 1]; } };
   let authorized = true;
-  require('../src/web/ceramosRoutes').registerCeramosRoutes(fakeApp, { isAuthorized: () => authorized, limiter: (req, res, next) => next() });
-  assert.ok(['GET /api/dashboard/ceramos/catalog', 'GET /api/dashboard/ceramos/state', 'POST /api/dashboard/ceramos/daily', 'POST /api/dashboard/ceramos/buy', 'POST /api/dashboard/ceramos/upgrade', 'POST /api/dashboard/ceramos/identity', 'POST /api/dashboard/ceramos/showcase'].every((route) => handlers[route]));
-  const call = async (route, { query = {}, body = {} } = {}) => { const out = { code: 200 }; await handlers[route]({ query, body }, { status(code) { out.code = code; return this; }, json(payload) { out.body = payload; }, headersSent: false }); return out; };
+  require('../src/web/ceramosRoutes').registerCeramosRoutes(fakeApp, { isAuthorized: () => authorized, limiter: (req, res, next) => next(), raw: (req, res, next) => next() });
+  assert.ok(['GET /api/dashboard/ceramos/admin/badges', 'POST /api/dashboard/ceramos/admin/badge', 'POST /api/dashboard/ceramos/admin/badge-active', 'POST /api/dashboard/ceramos/admin/badge-image', 'GET /api/dashboard/ceramos/badge-art/:id', 'GET /api/dashboard/ceramos/catalog', 'GET /api/dashboard/ceramos/state', 'POST /api/dashboard/ceramos/daily', 'POST /api/dashboard/ceramos/buy', 'POST /api/dashboard/ceramos/upgrade', 'POST /api/dashboard/ceramos/identity', 'POST /api/dashboard/ceramos/showcase'].every((route) => handlers[route]));
+  const call = async (route, { query = {}, body = {}, params = {} } = {}) => { const out = { code: 200 }; await handlers[route]({ query, body, params }, { status(code) { out.code = code; return this; }, json(payload) { out.body = payload; }, set(name, value) { out.headers = { ...out.headers, [name]: value }; return this; }, send(bytes) { out.bytes = bytes; }, headersSent: false }); return out; };
   authorized = false;
   assert.equal((await call('GET /api/dashboard/ceramos/state', { query: { user_id: '123456789012345678' } })).code, 401);
   authorized = true;
@@ -194,13 +211,98 @@ const { loadImage } = require('@napi-rs/canvas');
   assert.equal((await call('POST /api/dashboard/ceramos/buy', { body: { user_id: good, badge: '../x' } })).body.result.reason, 'bad_request');
   await require('../src/db/ceramos').give(good, 5000, 'grant', null);
   const boughtWeb = await call('POST /api/dashboard/ceramos/buy', { body: { user_id: good, badge: 'country-mx' } });
-  assert.deepEqual([boughtWeb.body.result.ok, boughtWeb.body.result.balance], [true, 4750]);
+  assert.deepEqual([boughtWeb.body.result.ok, boughtWeb.body.result.balance], [true, 4980]);
   assert.equal((await call('POST /api/dashboard/ceramos/upgrade', { body: { user_id: good, badge: 'country-mx' } })).body.result.frame, 'bright');
   assert.equal((await call('POST /api/dashboard/ceramos/identity', { body: { user_id: good, badge: 'furro', enabled: 'yes' } })).body.result.reason, 'bad_request');
   assert.equal((await call('POST /api/dashboard/ceramos/showcase', { body: { user_id: good, badges: 'x' } })).body.result.reason, 'bad_request');
   let last;
   for (let i = 0; i < 45; i += 1) last = await call('POST /api/dashboard/ceramos/daily', { body: { user_id: '999999999999999999' } });
   assert.equal(last.code, 429, 'more than 40 writes a minute from one person are refused');
+
+  // ---- The editor of badges (only the owner) ----
+  const rulesOfEditor = require('../src/utils/customBadgeRules');
+  const good1 = { id: 'xmas-2026', names: { en: 'Christmas 2026', es: 'Navidad 2026' }, category: 'special', rarity: 'epic', price: 30, color: '#d9483b', saleFrom: '2026-12-01T00:00:00Z', saleUntil: '2027-01-01T00:00:00Z' };
+  assert.equal(rulesOfEditor.checkBadgeInput(good1).ok, true);
+  assert.equal(rulesOfEditor.checkBadgeInput(good1).value.names['pt-BR'], 'Christmas 2026', 'a missing language takes the English name');
+  for (const [change, error] of [[{ id: 'AB' }, 'bad_id'], [{ id: 'country-xx' }, 'bad_id'], [{ id: 'femboy' }, 'bad_id'], [{ names: { en: '' } }, 'bad_name'], [{ names: { en: 'x'.repeat(41) } }, 'bad_name'], [{ price: -1 }, 'bad_price'], [{ price: 1.5 }, 'bad_price'],
+    [{ saleFrom: 'nope' }, 'bad_date'], [{ saleFrom: '2027-02-01T00:00:00Z' }, 'bad_dates'], [{ planMin: 'diamond' }, 'bad_plan'], [{ grantRule: 'magic' }, 'bad_rule'], [{ grantRule: 'voter', price: 5 }, 'rule_and_price']]) {
+    assert.equal(rulesOfEditor.checkBadgeInput({ ...good1, ...change }).error, error, `${JSON.stringify(change)} is refused`);
+  }
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100)]);
+  assert.deepEqual(rulesOfEditor.checkImage(png), { ok: true, type: 'image/png' });
+  assert.equal(rulesOfEditor.checkImage(Buffer.from('<?php echo 1; ?>')).error, 'bad_image', 'what is not a picture by its bytes is refused');
+  assert.equal(rulesOfEditor.checkImage(Buffer.concat([png, Buffer.alloc(300 * 1024)])).error, 'image_too_big');
+  assert.equal(rulesOfEditor.checkImage(Buffer.alloc(0)).error, 'image_required');
+
+  // How a badge stands, and what a sale does: nobody buys before or after it, the ones who bought keep it, and it can be put back.
+  const editor = require('../src/utils/badgeAdmin');
+  const row = { active: true, grantRule: null, saleFrom: '2026-12-01T00:00:00Z', saleUntil: '2027-01-01T00:00:00Z' };
+  assert.deepEqual([new Date('2026-11-23'), new Date('2026-12-24'), new Date('2027-01-01T00:00:00Z')].map((at) => editor.saleStatus(row, at)), ['scheduled', 'live', 'ended']);
+  assert.equal(editor.saleStatus({ ...row, active: false }, new Date('2026-12-24')), 'retired');
+  assert.equal(editor.saleStatus({ ...row, grantRule: 'voter' }, new Date('2026-12-24')), 'rule');
+  assert.equal((await editor.save(OWNER, { ...good1, id: 'bad id' })).error, 'bad_id');
+  let saved1 = await editor.save(OWNER, good1);
+  assert.deepEqual([saved1.ok, saved1.created], [true, true]);
+  assert.equal((await editor.save(OWNER, { ...good1, price: 25 })).created, false, 'saving again edits it');
+  assert.equal((await editor.setImage('xmas-2026', Buffer.from('nope'))).error, 'bad_image');
+  assert.equal((await editor.setImage('nothing-here', png)).error, 'not_found');
+  assert.equal((await editor.setImage('xmas-2026', png)).ok, true);
+  assert.equal((await editor.list()).badges[0].hasImage, true);
+  await require('../src/utils/badgeRegistry').refresh();
+  const xmas = badges.badgeById('xmas-2026');
+  assert.ok(xmas && xmas.custom && badges.priceOf(xmas) === 25, 'the badge of the editor is in the catalog with its own price');
+  assert.equal(badges.categoryOf(xmas), 'special');
+  assert.equal(badges.badgeName('es', xmas, () => 'x'), 'Navidad 2026');
+  assert.ok(badges.shopBadges().includes(xmas) && !badges.SHOP_BADGES.includes(xmas));
+  const early = new Date('2026-11-30T12:00:00Z'), during = new Date('2026-12-24T12:00:00Z'), after = new Date('2027-01-01T00:00:01Z');
+  await require('../src/db/ceramos').give('nina', 100, 'grant', null);
+  await require('../src/db/ceramos').give('omar', 100, 'grant', null);
+  assert.equal((await shop.buyBadge('nina', 'xmas-2026', early)).reason, 'closed', 'not before the sale');
+  const sold = await shop.buyBadge('nina', 'xmas-2026', during);
+  assert.deepEqual([sold.ok, sold.balance, sold.price], [true, 75, 25]);
+  assert.equal((await shop.buyBadge('omar', 'xmas-2026', after)).reason, 'closed', 'nor after it');
+  assert.equal(wallet('omar').balance, 100, 'nothing was charged');
+  assert.equal((await shop.buyBadge('nina', 'xmas-2026', after)).reason, 'owned');
+  assert.ok((await view.profileState('nina')).owned.includes('xmas-2026'), 'the one who bought it still has it after the sale');
+  await editor.setActive('xmas-2026', false);
+  await require('../src/utils/badgeRegistry').refresh();
+  assert.equal((await shop.buyBadge('omar', 'xmas-2026', during)).reason, 'closed', 'taken off sale, nobody buys it');
+  assert.ok((await view.profileState('nina')).owned.includes('xmas-2026'), 'and whoever has it keeps it');
+  assert.equal((await shop.upgradeFrame('nina', 'xmas-2026')).ok, true, 'it can still be framed');
+  await editor.setActive('xmas-2026', true); await require('../src/utils/badgeRegistry').refresh();
+  assert.equal((await shop.buyBadge('omar', 'xmas-2026', during)).ok, true, 'put back, it is bought again');
+  // A free one is got without spending; one that asks for a plan is for that plan.
+  await editor.save(OWNER, { id: 'gift-badge', names: { en: 'Gift' }, price: 0 });
+  await require('../src/utils/badgeRegistry').refresh();
+  const gift = await shop.buyBadge('zed', 'gift-badge');
+  assert.deepEqual([gift.ok, gift.balance, wallet('zed').balance], [true, rules.BADGE_PRICE - 1, rules.BADGE_PRICE - 1], 'free means no ceramos are taken');
+  assert.equal(badges.planAllows({ planMin: 'silver' }, null), false); assert.equal(badges.planAllows({ planMin: 'silver' }, 'bronze'), false);
+  assert.equal(badges.planAllows({ planMin: 'silver' }, 'gold'), true); assert.equal(badges.planAllows({}, null), true);
+  await editor.save(OWNER, { id: 'gold-only', names: { en: 'Gold only' }, price: 5, planMin: 'gold' });
+  await require('../src/utils/badgeRegistry').refresh();
+  assert.equal((await shop.buyBadge('omar', 'gold-only')).reason, 'plan', 'nobody has a plan yet, so the badge for a plan is closed to them');
+  // A badge given by itself: had while the person is what it says (a voter), and gone when they stop.
+  await editor.save(OWNER, { id: 'voter-badge', names: { en: 'Voter' }, grantRule: 'voter' });
+  await require('../src/utils/badgeRegistry').refresh();
+  assert.equal((await shop.buyBadge('omar', 'voter-badge')).reason, 'unknown', 'a badge given by a rule cannot be bought');
+  assert.equal((await view.profileState('vera')).owned.includes('voter-badge'), false);
+  voters.add('vera');
+  assert.equal((await view.profileState('vera')).owned.includes('voter-badge'), true);
+  assert.equal((await shop.upgradeFrame('vera', 'voter-badge')).reason === 'poor' || (await shop.upgradeFrame('vera', 'voter-badge')).ok, true, 'it can be framed once had (a poor person is told they lack ceramos, not that they do not have it)');
+  voters.delete('vera');
+  assert.equal((await view.profileState('vera')).owned.includes('voter-badge'), false, 'and it goes when they stop being a voter');
+  // The routes: only the owner, the picture and the art.
+  assert.equal((await call('GET /api/dashboard/ceramos/admin/badges', { query: { user_id: good } })).body.error, 'forbidden');
+  assert.equal((await call('POST /api/dashboard/ceramos/admin/badge', { body: { user_id: good, ...good1, id: 'sneaky-one' } })).body.error, 'forbidden');
+  assert.equal((await call('GET /api/dashboard/ceramos/admin/badges', { query: { user_id: OWNER } })).body.badges.length >= 4, true);
+  assert.equal((await call('POST /api/dashboard/ceramos/admin/badge', { body: { user_id: OWNER, ...good1, id: 'new-year-27' } })).body.created, true);
+  assert.equal((await call('POST /api/dashboard/ceramos/admin/badge-image', { query: { user_id: OWNER, id: 'new-year-27' }, body: png })).body.ok, true);
+  assert.equal((await call('POST /api/dashboard/ceramos/admin/badge-image', { query: { user_id: OWNER, id: 'new-year-27' }, body: 'not bytes' })).body.reason, 'bad_request');
+  const art = await call('GET /api/dashboard/ceramos/badge-art/:id', { params: { id: 'new-year-27' } });
+  assert.deepEqual([art.code, art.headers['Content-Type']], [200, 'image/png']);
+  assert.equal((await call('GET /api/dashboard/ceramos/badge-art/:id', { params: { id: 'nothing-here' } })).code, 404);
+  const tagged = (await api.catalog()).badges.find((badge) => badge.id === 'xmas-2026');
+  assert.deepEqual([tagged.custom, tagged.category, tagged.names.es, tagged.onSale, tagged.rarity], [true, 'special', 'Navidad 2026', false, 'epic'], 'the sale of the example starts in December, so today it is not on sale');
 
   console.log('ceramos checks passed'); // i18n-ignore: output of a check
 })().catch((error) => { console.error(error); process.exit(1); });

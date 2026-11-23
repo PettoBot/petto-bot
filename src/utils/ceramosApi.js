@@ -8,13 +8,18 @@ const badges = require('./profileBadges');
 const shop = require('./ceramosShop');
 const actions = require('./profileActions');
 const view = require('./profileView');
+const registry = require('./badgeRegistry');
 const walletDb = require('../db/ceramos');
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
-function catalog() {
+async function catalog() {
+    await registry.ensure();
+    const now = new Date();
     return {
-        badges: badges.BADGES.map((def) => ({
+        badges: badges.allBadges().map((def) => ({
             id: def.id, category: badges.categoryOf(def), unlock: def.unlock, rarity: def.unlock === 'shop' ? (def.rarity ?? 'common') : null, price: badges.priceOf(def),
             color: def.color, region: def.region ?? null, language: def.language ?? null, pack: def.pack ?? null,
+            custom: Boolean(def.custom), names: def.names ?? null, saleFrom: def.saleFrom ?? null, saleUntil: def.saleUntil ?? null, planMin: def.planMin ?? null,
+            grantRule: def.grantRule ?? null, onSale: def.unlock === 'shop' ? badges.onSale(def, now) : false, retired: Boolean(def.retired), hasArt: Boolean(def.art), version: def.version ?? null,
         })),
         frames: rules.FRAMES.map((frame) => ({ id: frame.id, cost: frame.cost })),
         rarityPrice: { ...badges.RARITY_PRICE },

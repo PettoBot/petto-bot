@@ -9,14 +9,14 @@ export const DAILY: Readonly<Record<PlanKey | 'none', number>> = { none: 2, bron
 export const dailyAmount = (plan: PlanKey | null): number => DAILY[plan ?? 'none'];
 
 /** The price of a common badge of the shop (bought once, it stays; the ceramos are only for it and for its frames). The other rarities are in RARITY_PRICE of profileBadges.ts. */
-export const BADGE_PRICE = 250;
+export const BADGE_PRICE = 20;
 
 export type FrameId = 'normal' | 'bright' | 'divine';
 export interface FrameDef { id: FrameId; level: number; /** What it costs to get it from the frame just below. */ cost: number }
 export const FRAMES: readonly FrameDef[] = [
   { id: 'normal', level: 0, cost: 0 },
-  { id: 'bright', level: 1, cost: 150 },
-  { id: 'divine', level: 2, cost: 400 },
+  { id: 'bright', level: 1, cost: 15 },
+  { id: 'divine', level: 2, cost: 40 },
 ];
 export const frameById = (id: string | null | undefined): FrameDef => FRAMES.find((frame) => frame.id === id) ?? FRAMES[0];
 

@@ -8,6 +8,7 @@ const badges = require('./profileBadges') as typeof import('./profileBadges');
 const shop = require('./ceramosShop') as typeof import('./ceramosShop');
 const actions = require('./profileActions') as typeof import('./profileActions');
 const view = require('./profileView') as typeof import('./profileView');
+const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
 const walletDb = require('../db/ceramos') as typeof import('../db/ceramos');
 
 export interface CatalogBadge {
@@ -21,14 +22,29 @@ export interface CatalogBadge {
   language: string | null;
   /** The name of a badge that has no country or language: the website has it in its own catalog by id. */
   pack: string | null;
+  /** The ones of the editor: their words in each language, their days of sale, the plan they ask for, the rule that gives them, and whether they can be bought now. */
+  custom: boolean;
+  names: Record<string, string> | null;
+  saleFrom: string | null;
+  saleUntil: string | null;
+  planMin: string | null;
+  grantRule: string | null;
+  onSale: boolean;
+  retired: boolean;
+  hasArt: boolean;
+  version: string | null;
 }
 
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
-export function catalog(): { badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> } {
+export async function catalog(): Promise<{ badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }> {
+  await registry.ensure();
+  const now = new Date();
   return {
-    badges: badges.BADGES.map((def) => ({
+    badges: badges.allBadges().map((def) => ({
       id: def.id, category: badges.categoryOf(def), unlock: def.unlock, rarity: def.unlock === 'shop' ? (def.rarity ?? 'common') : null, price: badges.priceOf(def),
       color: def.color, region: def.region ?? null, language: def.language ?? null, pack: def.pack ?? null,
+      custom: Boolean(def.custom), names: def.names ?? null, saleFrom: def.saleFrom ?? null, saleUntil: def.saleUntil ?? null, planMin: def.planMin ?? null,
+      grantRule: def.grantRule ?? null, onSale: def.unlock === 'shop' ? badges.onSale(def, now) : false, retired: Boolean(def.retired), hasArt: Boolean(def.art), version: def.version ?? null,
     })),
     frames: rules.FRAMES.map((frame) => ({ id: frame.id, cost: frame.cost })),
     rarityPrice: { ...badges.RARITY_PRICE },

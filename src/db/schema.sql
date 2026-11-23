@@ -5330,3 +5330,25 @@ create table if not exists ceramos_ledger (
 );
 create index if not exists ceramos_ledger_user_idx on ceramos_ledger (user_id, id desc);
 alter table ceramos_ledger enable row level security;
+
+-- Badges made in the editor of the team: the words in each language, the picture, the tab, the rarity, the price (0 is free), the days of the sale, the plan it asks
+-- for and the rule that gives it by itself. Taking one off sale (active = false) hides it from the shop; whoever has it keeps it.
+create table if not exists custom_badges (
+  id          text primary key check (id ~ '^[a-z0-9][a-z0-9-]{2,39}$'),
+  names       jsonb not null,
+  category    text not null default 'special' check (category in ('special', 'status', 'fablo', 'country', 'language')),
+  rarity      text not null default 'common' check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  price       integer not null default 0 check (price >= 0 and price <= 100000),
+  color       text not null default '#8f7bd6' check (color ~ '^#[0-9a-fA-F]{6}$'),
+  image       bytea check (image is null or octet_length(image) <= 262144),
+  image_type  text check (image_type is null or image_type in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')),
+  sale_from   timestamptz,
+  sale_until  timestamptz,
+  plan_min    text check (plan_min in ('bronze', 'silver', 'gold')),
+  grant_rule  text check (grant_rule in ('voter', 'booster', 'partner', 'server_boost')),
+  active      boolean not null default true,
+  created_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table custom_badges enable row level security;
