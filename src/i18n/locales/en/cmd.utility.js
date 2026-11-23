@@ -3,6 +3,8 @@ module.exports = {
   'cmd.utility.ceramos.desc': 'Your ceramos: the wallet, the shop of badges and better frames.',
   'cmd.utility.ceramos.balance.desc': 'See your ceramos and your last movements.',
   'cmd.utility.ceramos.shop.desc': 'See the badges you can buy with ceramos.',
+  'cmd.utility.ceramos.shop.opt.category.desc': 'Countries or languages',
+  'cmd.utility.ceramos.shop.opt.page.desc': 'Page',
   'cmd.utility.ceramos.buy.desc': 'Buy a badge of the shop. You keep it for good.',
   'cmd.utility.ceramos.buy.opt.badge.desc': 'Which badge',
   'cmd.utility.ceramos.upgrade.desc': 'Give a badge of yours a better frame.',

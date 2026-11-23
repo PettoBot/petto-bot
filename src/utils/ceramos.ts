@@ -8,7 +8,7 @@ import type { PlanKey } from './profileBadges';
 export const DAILY: Readonly<Record<PlanKey | 'none', number>> = { none: 2, bronze: 5, silver: 10, gold: 20 };
 export const dailyAmount = (plan: PlanKey | null): number => DAILY[plan ?? 'none'];
 
-/** What a badge of the shop costs (bought once, it stays; the ceramos are only for it and for its frames). */
+/** The price of a common badge of the shop (bought once, it stays; the ceramos are only for it and for its frames). The other rarities are in RARITY_PRICE of profileBadges.ts. */
 export const BADGE_PRICE = 250;
 
 export type FrameId = 'normal' | 'bright' | 'divine';

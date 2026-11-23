@@ -3,7 +3,7 @@
 // modules the server uses, their partnerships (total, this week, today, rank, last one), uploads (the same), the rating of their reviews
 // (average, count, last one) and their requests. Counts, places and times only. `/profile badge` and `/profile showcase` are the badges.
 const { SlashCommandBuilder, MessageFlags, AttachmentBuilder } = require('discord.js');
-const profileDb = require('../../db/userProfile');
+const { setIdentity, saveShowcase } = require('../../utils/profileActions');
 const badgesRules = require('../../utils/profileBadges');
 const { buildProfileImage, profileState } = require('../../utils/profileView');
 const reviewsDb = require('../../db/reviews');
@@ -74,41 +74,29 @@ async function showImage(interaction) {
 
 const badgeNameOf = (lang, id) => { const def = badgesRules.badgeById(id); return def ? badgesRules.badgeName(lang, def, (key) => t(lang, key)) : id; };
 
-/** `/profile badge`: an identity badge is the person's own to turn on and off. A new one goes to the showcase when there is a free place. */
+/** `/profile badge`: a badge of the Fablo pack is the person's own to turn on and off. A new one goes to the showcase when there is a free place. */
 async function setBadge(interaction) {
   const lang = await languageOf(interaction);
   const id = interaction.options.getString('badge', true);
   const enabled = interaction.options.getBoolean('enabled', true);
-  const userId = interaction.user.id;
-  if (!badgesRules.isSelfBadge(id)) return interaction.reply({ content: t(lang, 'profiles.badge.notYours'), flags: MessageFlags.Ephemeral });
-  const name = badgesRules.badgeName(lang, badgesRules.badgeById(id), (key) => t(lang, key));
-  if (!enabled) {
-    const had = await profileDb.removeBadge(userId, id);
-    return interaction.reply({ content: t(lang, had ? 'profiles.badge.off' : 'profiles.badge.alreadyOff', { badge: name }), flags: MessageFlags.Ephemeral });
-  }
-  const isNew = await profileDb.addBadge(userId, id, 'self');
-  if (isNew) {
-    const state = await profileState(userId);
-    if (state.showcase.length < state.slots && !state.showcase.includes(id)) await profileDb.setShowcase(userId, [...state.showcase, id]);
-  }
-  return interaction.reply({ content: t(lang, isNew ? 'profiles.badge.on' : 'profiles.badge.alreadyOn', { badge: name }), flags: MessageFlags.Ephemeral });
+  const result = await setIdentity(interaction.user.id, id, enabled);
+  if (!result.ok) return interaction.reply({ content: t(lang, 'profiles.badge.notYours'), flags: MessageFlags.Ephemeral });
+  const name = badgeNameOf(lang, id);
+  const key = enabled ? (result.changed ? 'profiles.badge.on' : 'profiles.badge.alreadyOn') : (result.changed ? 'profiles.badge.off' : 'profiles.badge.alreadyOff');
+  return interaction.reply({ content: t(lang, key, { badge: name }), flags: MessageFlags.Ephemeral });
 }
 
 /** `/profile showcase`: the badges of the picture, in the order given, cut to what the person has and what their plan holds. */
 async function setShowcase(interaction) {
   const lang = await languageOf(interaction);
-  const userId = interaction.user.id;
   const chosen = [];
   for (let i = 1; i <= badgesRules.MAX_SLOTS; i += 1) {
     const value = interaction.options.getString(`badge${i}`);
     if (value) chosen.push(value);
   }
-  const state = await profileState(userId);
-  const kept = badgesRules.normalizeShowcase(chosen, state.owned, state.slots);
-  const dropped = chosen.filter((id, index) => !kept.includes(id) && chosen.indexOf(id) === index).map((id) => badgeNameOf(lang, id));
-  await profileDb.setShowcase(userId, kept);
-  const lines = [t(lang, kept.length ? 'profiles.showcase.saved' : 'profiles.showcase.empty', { badges: kept.map((id) => badgeNameOf(lang, id)).join(', '), slots: state.slots })];
-  if (dropped.length) lines.push(t(lang, 'profiles.showcase.dropped', { badges: dropped.join(', '), slots: state.slots }));
+  const { kept, dropped, slots } = await saveShowcase(interaction.user.id, chosen);
+  const lines = [t(lang, kept.length ? 'profiles.showcase.saved' : 'profiles.showcase.empty', { badges: kept.map((id) => badgeNameOf(lang, id)).join(', '), slots })];
+  if (dropped.length) lines.push(t(lang, 'profiles.showcase.dropped', { badges: dropped.map((id) => badgeNameOf(lang, id)).join(', '), slots }));
   return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
 }
 

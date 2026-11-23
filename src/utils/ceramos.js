@@ -7,7 +7,7 @@ exports.parseAmount = parseAmount;
 exports.DAILY = { none: 2, bronze: 5, silver: 10, gold: 20 };
 const dailyAmount = (plan) => exports.DAILY[plan ?? 'none'];
 exports.dailyAmount = dailyAmount;
-/** What a badge of the shop costs (bought once, it stays; the ceramos are only for it and for its frames). */
+/** The price of a common badge of the shop (bought once, it stays; the ceramos are only for it and for its frames). The other rarities are in RARITY_PRICE of profileBadges.ts. */
 exports.BADGE_PRICE = 250;
 exports.FRAMES = [
     { id: 'normal', level: 0, cost: 0 },

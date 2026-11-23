@@ -25,8 +25,8 @@ export type BuyResult = { ok: true; balance: number; price: number } | { ok: fal
 
 /** Buys a badge of the shop once: it is kept for good, and the ceramos are spent only if the person did not have it. */
 export async function buyBadge(userId: string, badgeId: string): Promise<BuyResult> {
-  const price = rules.BADGE_PRICE;
   const def = badges.badgeById(badgeId);
+  const price = def ? badges.priceOf(def) || rules.BADGE_PRICE : rules.BADGE_PRICE;
   const wallet = await walletDb.getWallet(userId);
   if (!def || def.unlock !== 'shop') return { ok: false, reason: 'unknown', balance: wallet.balance, price };
   const rows = await profileDb.getBadgeRows(userId);

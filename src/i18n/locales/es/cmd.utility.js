@@ -3,6 +3,8 @@ module.exports = {
   'cmd.utility.ceramos.desc': 'Tus céramos: la billetera, la tienda de insignias y mejores marcos.',
   'cmd.utility.ceramos.balance.desc': 'Mira tus céramos y tus últimos movimientos.',
   'cmd.utility.ceramos.shop.desc': 'Mira las insignias que puedes comprar con céramos.',
+  'cmd.utility.ceramos.shop.opt.category.desc': 'Países o idiomas',
+  'cmd.utility.ceramos.shop.opt.page.desc': 'Página',
   'cmd.utility.ceramos.buy.desc': 'Compra una insignia de la tienda. Es tuya para siempre.',
   'cmd.utility.ceramos.buy.opt.badge.desc': 'Cuál insignia',
   'cmd.utility.ceramos.upgrade.desc': 'Dale un mejor marco a una insignia tuya.',

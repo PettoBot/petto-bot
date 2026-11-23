@@ -4,11 +4,14 @@
 // Pure rules with no database and no Discord, so scripts/check-profile-card.js tests the same code the command runs.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/profileBadges.js.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.badgeLabel = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.SHOP_BADGES = exports.BADGES = exports.PLAN_KEYS = void 0;
+exports.badgeLabel = exports.priceOf = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.SHOP_BADGES = exports.BADGES = exports.PLAN_KEYS = exports.RARITY_PRICE = void 0;
 exports.planOf = planOf;
 exports.ownedBadges = ownedBadges;
 exports.normalizeShowcase = normalizeShowcase;
+exports.categoryOf = categoryOf;
 exports.badgeName = badgeName;
+/** What each rarity costs in ceramos (a badge of the shop is bought once and kept). */
+exports.RARITY_PRICE = { common: 250, rare: 500, epic: 1000, legendary: 2000 };
 exports.PLAN_KEYS = ['bronze', 'silver', 'gold'];
 const BASE_BADGES = [
     { id: 'plan-bronze', unlock: 'plan', art: 'plan-bronze.png', color: '#b9792f' },
@@ -20,12 +23,14 @@ const BASE_BADGES = [
     { id: 'hetero', unlock: 'self', art: 'hetero.png', color: '#6fb4ff', pack: 'fablo' },
     { id: 'femboy', unlock: 'self', art: 'femboy.png', color: '#ff8fc2', pack: 'fablo' },
 ];
-// The shop: countries and languages, each bought once with ceramos (BADGE_PRICE of utils/ceramos.ts). They have no art yet: they are drawn with their code.
-const COUNTRIES = [['CO', '#f2c230'], ['MX', '#3fa66b'], ['ES', '#e0533d'], ['AR', '#6fb7e8'], ['CL', '#4a6fd1'], ['PE', '#d9483b'], ['BR', '#2f9e5b'], ['US', '#4f6bd8']];
-const LANGUAGES = [['es', '#e8794a'], ['en', '#5a8be0'], ['pt', '#3ea37a']];
+// The shop: countries (with the flag of each one) and languages, each bought once with ceramos. A language has no art: it is drawn with its code.
+const COUNTRY_CODES = ["ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az", "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs", "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn", "co", "cp", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dg", "dj", "dk", "dm", "do", "dz", "ec", "ee", "eg", "eh", "er", "es", "et", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm", "hn", "hr", "ht", "hu", "ic", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "ye", "yt", "za", "zm", "zw"];
+const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh', 'ru', 'ar', 'hi', 'tr', 'nl', 'pl', 'sv', 'uk', 'id', 'vi', 'th'];
+const PALETTE = ['#e8794a', '#5a8be0', '#3ea37a', '#c26bd6', '#d9a83a', '#d9483b', '#4fb3c8', '#7a6bd6'];
+const colorOf = (code) => PALETTE[(code.charCodeAt(0) * 31 + code.charCodeAt(1)) % PALETTE.length];
 const SHOP = [
-    ...COUNTRIES.map(([code, color]) => ({ id: `country-${code.toLowerCase()}`, unlock: 'shop', art: null, color, region: code })),
-    ...LANGUAGES.map(([code, color]) => ({ id: `lang-${code}`, unlock: 'shop', art: null, color, language: code })),
+    ...COUNTRY_CODES.map((code) => ({ id: `country-${code}`, unlock: 'shop', art: null, color: colorOf(code), region: code.toUpperCase(), rarity: 'common' })),
+    ...LANGUAGE_CODES.map((code) => ({ id: `lang-${code}`, unlock: 'shop', art: null, color: colorOf(code), language: code, rarity: 'common' })),
 ];
 exports.BADGES = [...BASE_BADGES, ...SHOP];
 exports.SHOP_BADGES = SHOP;
@@ -65,6 +70,19 @@ function normalizeShowcase(chosen, owned, slots) {
             out.push(id);
     }
     return out;
+}
+/** What a badge of the shop costs (0 for a badge that is not for sale). */
+const priceOf = (def) => (def.unlock === 'shop' ? exports.RARITY_PRICE[def.rarity ?? 'common'] : 0);
+exports.priceOf = priceOf;
+/** The tab a badge belongs to. */
+function categoryOf(def) {
+    if (def.unlock === 'plan')
+        return 'plan';
+    if (def.region)
+        return 'country';
+    if (def.language)
+        return 'language';
+    return def.pack === 'fablo' ? 'fablo' : 'status';
 }
 /** The text drawn on a badge that has no art: the code of its country or language. */
 const badgeLabel = (def) => (def.region ?? def.language ?? '').toUpperCase();

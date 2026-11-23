@@ -28,6 +28,28 @@ export async function artOf(file: string | null): Promise<Image | null> {
   } catch { return null; }
 }
 
+const flagCache = new Map<string, Image | null>();
+const FLAGS_DIR = ((): string | null => { try { return path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '1x1'); } catch { return null; } })();
+
+/** The flag of a country (the open `flag-icons` package, square), or null when it is not there: the badge is then drawn with its code. */
+async function flagOf(region: string): Promise<Image | null> {
+  const code = region.toLowerCase();
+  if (!FLAGS_DIR || !/^[a-z]{2}$/.test(code)) return null;
+  if (flagCache.has(code)) return flagCache.get(code) ?? null;
+  try {
+    const image = await loadImage(await require('node:fs/promises').readFile(path.join(FLAGS_DIR, `${code}.svg`)));
+    if (flagCache.size >= 300) flagCache.delete(flagCache.keys().next().value as string);
+    flagCache.set(code, image);
+    return image;
+  } catch { flagCache.set(code, null); return null; }
+}
+
+/** The picture of a badge: the flag of its country, or its art file, or nothing (it is drawn with its colour and its code). */
+export async function artOfBadge(def: import('./profileBadges').BadgeDef): Promise<Image | null> {
+  if (def.region) return flagOf(def.region);
+  return artOf(def.art);
+}
+
 /** The plan a person pays for, or null. The plans of a person are not sold yet, so nobody has one until that table exists. */
 export async function planOfUser(_userId: string): Promise<PlanKey | null> {
   return null;
@@ -64,7 +86,7 @@ export async function buildProfileImage(opts: { guildId: string; user: UserLike;
   const showcase: ShowcaseBadge[] = [];
   for (const id of state.showcase) {
     const def = badgesRules.badgeById(id);
-    if (def) showcase.push({ id, art: await artOf(def.art), color: def.color, label: badgesRules.badgeLabel(def) || undefined, frame: state.frames[id] ?? 'normal' });
+    if (def) showcase.push({ id, art: await artOfBadge(def), color: def.color, label: badgesRules.badgeLabel(def) || undefined, frame: state.frames[id] ?? 'normal' });
   }
   return renderProfileImage({
     name: member?.displayName ?? user.username,

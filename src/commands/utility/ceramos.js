@@ -53,15 +53,20 @@ async function wallet(interaction, lang) {
     });
     await interaction.editReply({ files: [new discord_js_1.AttachmentBuilder(png, { name: 'ceramos.png' })] });
 }
+const SHOP_PAGE = 18;
 async function shopView(interaction, lang) {
     await interaction.deferReply();
+    const category = interaction.options.getString('category') ?? 'country';
     const [data, rows] = await Promise.all([walletDb.getWallet(interaction.user.id), profileDb.getBadgeRows(interaction.user.id)]);
     const have = new Set(rows.map((row) => row.id));
+    const all = badges.SHOP_BADGES.filter((def) => badges.categoryOf(def) === category);
+    const pages = Math.max(1, Math.ceil(all.length / SHOP_PAGE));
+    const page = Math.min(pages, Math.max(1, interaction.options.getInteger('page') ?? 1));
     const items = [];
-    for (const def of badges.SHOP_BADGES) {
-        items.push({ badge: { id: def.id, art: await view.artOf(def.art), color: def.color, label: badges.badgeLabel(def) }, name: nameOf(lang, def.id), price: formatNumber(lang, rules.BADGE_PRICE), owned: have.has(def.id) });
+    for (const def of all.slice((page - 1) * SHOP_PAGE, page * SHOP_PAGE)) {
+        items.push({ badge: { id: def.id, art: await view.artOfBadge(def), color: def.color, label: badges.badgeLabel(def) }, name: nameOf(lang, def.id), price: formatNumber(lang, badges.priceOf(def)), owned: have.has(def.id) });
     }
-    const png = image.renderShopImage({ title: t(lang, 'ceramos.shop.title'), balanceText: formatNumber(lang, data.balance), items, ownedText: t(lang, 'ceramos.shop.owned') });
+    const png = image.renderShopImage({ title: `${t(lang, 'ceramos.shop.title')} · ${t(lang, `ceramos.shop.category.${category}`)} ${page}/${pages}`, balanceText: formatNumber(lang, data.balance), items, ownedText: t(lang, 'ceramos.shop.owned') });
     await interaction.editReply({ content: t(lang, 'ceramos.shop.hint', { price: formatNumber(lang, rules.BADGE_PRICE), bright: formatNumber(lang, rules.FRAMES[1].cost), divine: formatNumber(lang, rules.FRAMES[2].cost) }), files: [new discord_js_1.AttachmentBuilder(png, { name: 'ceramos-shop.png' })] });
 }
 async function buy(interaction, lang) {
@@ -95,7 +100,9 @@ module.exports = {
         .setDescription('Your ceramos: the wallet, the shop of badges and better frames.')
         .setDMPermission(false)
         .addSubcommand((s) => s.setName('balance').setDescription('See your ceramos and your last movements.'))
-        .addSubcommand((s) => s.setName('shop').setDescription('See the badges you can buy with ceramos.'))
+        .addSubcommand((s) => s.setName('shop').setDescription('See the badges you can buy with ceramos.')
+        .addStringOption((o) => o.setName('category').setDescription('Countries or languages').addChoices({ name: 'Countries', value: 'country' }, { name: 'Languages', value: 'language' }).setRequired(false))
+        .addIntegerOption((o) => o.setName('page').setDescription('Page').setMinValue(1).setMaxValue(20).setRequired(false)))
         .addSubcommand((s) => s.setName('buy').setDescription('Buy a badge of the shop. You keep it for good.')
         .addStringOption((o) => o.setName('badge').setDescription('Which badge').setRequired(true).setAutocomplete(true)))
         .addSubcommand((s) => s.setName('upgrade').setDescription('Give a badge of yours a better frame.')

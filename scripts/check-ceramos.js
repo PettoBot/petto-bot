@@ -1,6 +1,7 @@
 // The ceramos: what a day gives by plan, once for each UTC day, buying a badge of the shop once, the frames one step at a time, giving the ceramos back when a purchase
 // cannot be finished, the pictures of the wallet and the shop, and the commands (the team tool is hidden and owner only). No database and no Discord: they are replaced.
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const stub = (relative, exports) => {
@@ -12,6 +13,7 @@ const stub = (relative, exports) => {
 const wallets = new Map(); // user -> { balance, lastDaily }
 const ledger = [];
 const badgeRows = new Map(); // user -> [{ id, frame, source }]
+const showcases = new Map();
 let raceOnAdd = false; // when true, addBadge answers "already there" as if another purchase had won
 const wallet = (u) => wallets.get(u) ?? { balance: 0, lastDaily: null };
 stub('src/db/ceramos.js', {
@@ -24,6 +26,10 @@ stub('src/db/ceramos.js', {
 stub('src/db/userProfile.js', {
   getBadgeRows: async (u) => (badgeRows.get(u) ?? []).map((row) => ({ ...row })),
   addBadge: async (u, id, source) => { if (raceOnAdd) return false; const rows = badgeRows.get(u) ?? []; if (rows.some((row) => row.id === id)) return false; rows.push({ id, frame: 'normal', source }); badgeRows.set(u, rows); return true; },
+  getSavedBadges: async (u) => (badgeRows.get(u) ?? []).map((row) => row.id),
+  getShowcase: async (u) => [...(showcases.get(u) ?? [])],
+  setShowcase: async (u, list) => { showcases.set(u, [...list]); return list; },
+  removeBadge: async (u, id) => { const rows = badgeRows.get(u) ?? []; const had = rows.some((row) => row.id === id); badgeRows.set(u, rows.filter((row) => row.id !== id)); showcases.set(u, (showcases.get(u) ?? []).filter((each) => each !== id)); return had; },
   setFrame: async (u, id, from, to) => { const row = (badgeRows.get(u) ?? []).find((each) => each.id === id && each.frame === from); if (!row) return false; row.frame = to; return true; },
 });
 stub('src/config.js', { ownerId: 'owner', developerIds: [] });
@@ -138,6 +144,63 @@ const { loadImage } = require('@napi-rs/canvas');
   assert.equal(wallet('ana').balance, before + 50, 'a take of more than they have takes nothing');
   await ask('owner', 'take', { amount: 20 });
   assert.equal(wallet('ana').balance, before + 30);
+
+  // The catalog: every country with its flag code, the languages, the Fablo pack and the stars; a common badge costs 250 and the rarities go up.
+  const api = require('../src/utils/ceramosApi');
+  const cat = api.catalog();
+  const byCategory = (name) => cat.badges.filter((badge) => badge.category === name);
+  assert.ok(byCategory('country').length >= 240 && byCategory('country').every((badge) => /^[A-Z]{2}$/.test(badge.region) && badge.price === 250 && badge.rarity === 'common'));
+  assert.ok(byCategory('language').length >= 15 && byCategory('fablo').length === 4 && byCategory('plan').length === 3);
+  assert.deepEqual(cat.rarityPrice, { common: 250, rare: 500, epic: 1000, legendary: 2000 });
+  assert.deepEqual(cat.slots, { none: 1, bronze: 2, silver: 4, gold: 6 });
+  assert.equal(new Set(cat.badges.map((badge) => badge.id)).size, cat.badges.length, 'no two badges share an id');
+  // Every flag of the catalog is in the open package (the picture of the badge), and the names come from the language.
+  const flagsDir = path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '1x1');
+  for (const badge of byCategory('country')) assert.ok(fs.existsSync(path.join(flagsDir, `${badge.region.toLowerCase()}.svg`)), `flag of ${badge.region}`);
+  const view = require('../src/utils/profileView');
+  const flag = await view.artOfBadge(badges.badgeById('country-co'));
+  assert.ok(flag && flag.width > 0, 'the flag of Colombia loads');
+  assert.equal(await view.artOfBadge(badges.badgeById('lang-es')), null, 'a language has no picture: it is drawn with its code');
+
+  // The state and the actions the website uses (the same code as the commands).
+  let st = await api.state('cami', noon);
+  assert.deepEqual([st.balance, st.plan, st.slots, st.owned.length, st.daily.canClaim, st.daily.amount], [0, null, 1, 0, true, 2]);
+  assert.equal((await api.claim('cami')).ok, true);
+  assert.equal((await api.state('cami')).balance, 2);
+  assert.equal((await api.setIdentity('cami', 'plan-gold', true)).reason, 'notYours');
+  let id = await api.setIdentity('cami', 'femboy', true);
+  assert.deepEqual([id.ok, id.changed, id.showcase], [true, true, ['femboy']], 'a new free badge goes to the free place');
+  id = await api.setIdentity('cami', 'hetero', true);
+  assert.deepEqual(id.showcase, ['femboy'], 'with one place only, the second stays out of the showcase');
+  const saved = await api.saveShowcase('cami', ['hetero', 'femboy', 'country-co']);
+  assert.deepEqual([saved.kept, saved.dropped.sort(), saved.slots], [['hetero'], ['country-co', 'femboy'], 1]);
+  id = await api.setIdentity('cami', 'hetero', false);
+  assert.deepEqual([id.changed, id.showcase], [true, []]);
+
+  // The routes: the secret first, then a good user id, a limit of writes, and the answer of the action.
+  const handlers = {};
+  const fakeApp = { get: (route, limiter, handler) => { handlers[`GET ${route}`] = handler; }, post: (route, limiter, handler) => { handlers[`POST ${route}`] = handler; } };
+  let authorized = true;
+  require('../src/web/ceramosRoutes').registerCeramosRoutes(fakeApp, { isAuthorized: () => authorized, limiter: (req, res, next) => next() });
+  assert.ok(['GET /api/dashboard/ceramos/catalog', 'GET /api/dashboard/ceramos/state', 'POST /api/dashboard/ceramos/daily', 'POST /api/dashboard/ceramos/buy', 'POST /api/dashboard/ceramos/upgrade', 'POST /api/dashboard/ceramos/identity', 'POST /api/dashboard/ceramos/showcase'].every((route) => handlers[route]));
+  const call = async (route, { query = {}, body = {} } = {}) => { const out = { code: 200 }; await handlers[route]({ query, body }, { status(code) { out.code = code; return this; }, json(payload) { out.body = payload; }, headersSent: false }); return out; };
+  authorized = false;
+  assert.equal((await call('GET /api/dashboard/ceramos/state', { query: { user_id: '123456789012345678' } })).code, 401);
+  authorized = true;
+  assert.equal((await call('GET /api/dashboard/ceramos/state', { query: { user_id: 'nope' } })).code, 400);
+  const good = '123456789012345678';
+  assert.equal((await call('GET /api/dashboard/ceramos/catalog', { query: { user_id: good } })).body.badges.length, cat.badges.length);
+  assert.equal((await call('POST /api/dashboard/ceramos/buy', { body: { user_id: good, badge: 'country-co' } })).body.result.reason, 'poor');
+  assert.equal((await call('POST /api/dashboard/ceramos/buy', { body: { user_id: good, badge: '../x' } })).body.result.reason, 'bad_request');
+  await require('../src/db/ceramos').give(good, 5000, 'grant', null);
+  const boughtWeb = await call('POST /api/dashboard/ceramos/buy', { body: { user_id: good, badge: 'country-mx' } });
+  assert.deepEqual([boughtWeb.body.result.ok, boughtWeb.body.result.balance], [true, 4750]);
+  assert.equal((await call('POST /api/dashboard/ceramos/upgrade', { body: { user_id: good, badge: 'country-mx' } })).body.result.frame, 'bright');
+  assert.equal((await call('POST /api/dashboard/ceramos/identity', { body: { user_id: good, badge: 'furro', enabled: 'yes' } })).body.result.reason, 'bad_request');
+  assert.equal((await call('POST /api/dashboard/ceramos/showcase', { body: { user_id: good, badges: 'x' } })).body.result.reason, 'bad_request');
+  let last;
+  for (let i = 0; i < 45; i += 1) last = await call('POST /api/dashboard/ceramos/daily', { body: { user_id: '999999999999999999' } });
+  assert.equal(last.code, 429, 'more than 40 writes a minute from one person are refused');
 
   console.log('ceramos checks passed'); // i18n-ignore: output of a check
 })().catch((error) => { console.error(error); process.exit(1); });
