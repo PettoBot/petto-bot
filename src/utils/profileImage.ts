@@ -92,11 +92,11 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
   bg.addColorStop(0, '#17141f'); bg.addColorStop(1, '#2a2140');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, WIDTH, HEIGHT);
   if (data.banner) {
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WIDTH, BANNER_H); ctx.clip(); cover(ctx, data.banner, 0, 0, WIDTH, BANNER_H); ctx.restore();
-    // The banner fades into the dark of the card, so it has no hard edge.
-    const fade = ctx.createLinearGradient(0, 0, 0, BANNER_H);
-    fade.addColorStop(0, 'rgba(14,12,20,0.1)'); fade.addColorStop(0.55, 'rgba(14,12,20,0.55)'); fade.addColorStop(1, '#17141f');
-    ctx.fillStyle = fade; ctx.fillRect(0, 0, WIDTH, BANNER_H);
+    // The banner is the whole card (as on the profile of Vetox), darker toward the bottom so the numbers and the badges stay easy to read; no band of another color under it.
+    cover(ctx, data.banner, 0, 0, WIDTH, HEIGHT);
+    const shade = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+    shade.addColorStop(0, 'rgba(10,8,16,0.12)'); shade.addColorStop(0.5, 'rgba(10,8,16,0.38)'); shade.addColorStop(1, 'rgba(10,8,16,0.72)');
+    ctx.fillStyle = shade; ctx.fillRect(0, 0, WIDTH, HEIGHT);
   }
 
   // Avatar: a circle, no ring.
@@ -114,7 +114,9 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
   const nx = ax + size + 32;
   ctx.fillStyle = '#ffffff'; ctx.font = data.nameFont ? canvasFont(FONT, 700, 48).replace('48px ', `48px "${data.nameFont}", `) : canvasFont(FONT, 700, 48); ctx.textBaseline = 'alphabetic';
   const name = fitText(ctx, printable(data.name), WIDTH - nx - 130);
+  if (data.banner) { ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2; }
   ctx.fillText(name, nx, ay + 58);
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   if (data.planStar) {
     const w = ctx.measureText(name).width;
     ctx.drawImage(data.planStar, nx + w + 14, ay + 16, 52, 52);
@@ -124,7 +126,7 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
   const gap = 14, boxW = (WIDTH - nx - 48 - gap * 3) / 4, boxH = 82, by = ay + 82;
   data.stats.slice(0, 4).forEach((stat, i) => {
     const x = nx + i * (boxW + gap);
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.roundRect(x, by, boxW, boxH, 14); ctx.fill();
+    ctx.fillStyle = data.banner ? 'rgba(8,6,14,0.5)' : 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.roundRect(x, by, boxW, boxH, 14); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = canvasFont(FONT, 600, 18);
     ctx.fillText(fitText(ctx, printable(stat.label).toUpperCase(), boxW - 32), x + 16, by + 30);
     ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, 32);
@@ -132,6 +134,7 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
   });
 
   // Showcase: six hexagons.
+  ctx.fillStyle = 'rgba(8,6,14,0.4)'; ctx.beginPath(); ctx.roundRect(28, 246, WIDTH - 56, HEIGHT - 246 - 22, 22); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = canvasFont(FONT, 600, 18);
   ctx.fillText(printable(data.showcaseTitle).toUpperCase(), 48, 272);
   const r = 48, cy = 338, step = (WIDTH - 96) / 6, startX = 48 + step / 2;

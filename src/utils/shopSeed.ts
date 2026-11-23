@@ -10,19 +10,19 @@ const shopRules = require('./shopRules') as typeof import('./shopRules');
 
 type Rarity = 'rare' | 'epic' | 'legendary';
 /** `slug` is the file in src/assets/fonts (`<slug>-400.woff2`) and the id in the shop. */
-export const FONTS: readonly { slug: string; name: string; rarity: Rarity }[] = [
-  { slug: 'press-start-2p', name: 'Press Start 2P', rarity: 'legendary' }, { slug: 'monoton', name: 'Monoton', rarity: 'legendary' },
+export const FONTS: readonly { slug: string; name: string; rarity: Rarity; pack?: string }[] = [
+  { slug: 'press-start-2p', name: 'Press Start 2P', rarity: 'legendary', pack: 'retro-arcade' }, { slug: 'monoton', name: 'Monoton', rarity: 'legendary', pack: 'retro-arcade' },
   { slug: 'rubik-mono-one', name: 'Rubik Mono One', rarity: 'legendary' }, { slug: 'bungee-shade', name: 'Bungee Shade', rarity: 'legendary' },
-  { slug: 'bungee', name: 'Bungee', rarity: 'legendary' },
-  { slug: 'abril-fatface', name: 'Abril Fatface', rarity: 'epic' }, { slug: 'cinzel', name: 'Cinzel', rarity: 'epic' },
+  { slug: 'bungee', name: 'Bungee', rarity: 'legendary', pack: 'retro-arcade' },
+  { slug: 'abril-fatface', name: 'Abril Fatface', rarity: 'epic', pack: 'elegant-serif' }, { slug: 'cinzel', name: 'Cinzel', rarity: 'epic', pack: 'elegant-serif' },
   { slug: 'zen-dots', name: 'Zen Dots', rarity: 'epic' }, { slug: 'creepster', name: 'Creepster', rarity: 'epic' },
-  { slug: 'orbitron', name: 'Orbitron', rarity: 'epic' }, { slug: 'dm-serif-display', name: 'DM Serif Display', rarity: 'epic' },
+  { slug: 'orbitron', name: 'Orbitron', rarity: 'epic' }, { slug: 'dm-serif-display', name: 'DM Serif Display', rarity: 'epic', pack: 'elegant-serif' },
   { slug: 'bebas-neue', name: 'Bebas Neue', rarity: 'epic' }, { slug: 'anton', name: 'Anton', rarity: 'epic' },
-  { slug: 'alfa-slab-one', name: 'Alfa Slab One', rarity: 'epic' }, { slug: 'great-vibes', name: 'Great Vibes', rarity: 'epic' },
+  { slug: 'alfa-slab-one', name: 'Alfa Slab One', rarity: 'epic' }, { slug: 'great-vibes', name: 'Great Vibes', rarity: 'epic', pack: 'elegant-serif' },
   { slug: 'michroma', name: 'Michroma', rarity: 'epic' }, { slug: 'ultra', name: 'Ultra', rarity: 'epic' },
   { slug: 'lobster', name: 'Lobster', rarity: 'rare' }, { slug: 'pacifico', name: 'Pacifico', rarity: 'rare' },
-  { slug: 'bangers', name: 'Bangers', rarity: 'rare' }, { slug: 'yeseva-one', name: 'Yeseva One', rarity: 'rare' },
-  { slug: 'sacramento', name: 'Sacramento', rarity: 'rare' }, { slug: 'vt323', name: 'VT323', rarity: 'rare' }, { slug: 'caveat', name: 'Caveat', rarity: 'rare' },
+  { slug: 'bangers', name: 'Bangers', rarity: 'rare', pack: 'retro-arcade' }, { slug: 'yeseva-one', name: 'Yeseva One', rarity: 'rare', pack: 'elegant-serif' },
+  { slug: 'sacramento', name: 'Sacramento', rarity: 'rare', pack: 'elegant-serif' }, { slug: 'vt323', name: 'VT323', rarity: 'rare', pack: 'retro-arcade' }, { slug: 'caveat', name: 'Caveat', rarity: 'rare' },
 ];
 
 const DIR = path.join(__dirname, '..', 'assets', 'fonts');
@@ -35,7 +35,7 @@ export async function seedFonts(): Promise<number> {
       const file = await fs.readFile(path.join(DIR, `${font.slug}-400.woff2`));
       const checked = shopRules.checkFont(file);
       if (!checked.ok) continue;
-      if (await shopDb.insertItemIfMissing({ kind: 'font', id: font.slug, names: { en: font.name, es: font.name, 'pt-BR': font.name }, rarity: font.rarity, file, fileType: checked.type })) added += 1;
+      if (await shopDb.insertItemIfMissing({ kind: 'font', id: font.slug, names: { en: font.name, es: font.name, 'pt-BR': font.name }, rarity: font.rarity, file, fileType: checked.type, packId: font.pack ?? null })) added += 1;
     } catch { /* a font that cannot be read is skipped: the rest are still saved */ }
   }
   return added;

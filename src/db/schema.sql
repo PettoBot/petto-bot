@@ -5374,7 +5374,14 @@ create table if not exists shop_packs (
 );
 alter table shop_packs enable row level security;
 insert into shop_packs (id, kind, names, color, free) values ('fablo', 'badge', '{"en": "Fablo pack", "es": "Paquete Fablo", "pt-BR": "Pacote Fablo"}'::jsonb, '#ff8fc2', true) on conflict (id) do nothing;
-insert into shop_packs (id, kind, names, color, free) values ('game-backgrounds', 'banner', '{"en": "Game backgrounds", "es": "Fondos de juegos", "pt-BR": "Fundos de jogos"}'::jsonb, '#7dd3a8', true) on conflict (id) do nothing;
+-- The packs the shop starts with (the team edits them afterwards and a restart never overwrites that): five of banners and two of name fonts.
+insert into shop_packs (id, kind, names, color, free) values ('gta-vi', 'banner', '{"en": "GTA VI", "es": "GTA VI", "pt-BR": "GTA VI"}'::jsonb, '#ff7ab8', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('forza-minecraft-halo', 'banner', '{"en": "Forza, Minecraft and Halo", "es": "Forza, Minecraft y Halo", "pt-BR": "Forza, Minecraft e Halo"}'::jsonb, '#7dd3a8', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('sanrio', 'banner', '{"en": "Sanrio", "es": "Sanrio", "pt-BR": "Sanrio"}'::jsonb, '#ffb3d9', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('call-of-duty', 'banner', '{"en": "Call of Duty", "es": "Call of Duty", "pt-BR": "Call of Duty"}'::jsonb, '#9aa4b2', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free, price) values ('landscapes', 'banner', '{"en": "Cities and landscapes", "es": "Ciudades y paisajes", "pt-BR": "Cidades e paisagens"}'::jsonb, '#7cb7ff', false, 800) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free, price) values ('retro-arcade', 'font', '{"en": "Retro and arcade", "es": "Retro y arcade", "pt-BR": "Retrô e arcade"}'::jsonb, '#c4a5ff', false, 700) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free, price) values ('elegant-serif', 'font', '{"en": "Elegant letters", "es": "Letras elegantes", "pt-BR": "Letras elegantes"}'::jsonb, '#ffd23f', false, 400) on conflict (id) do nothing;
 
 create table if not exists shop_items (
   kind        text not null check (kind in ('banner', 'font')),

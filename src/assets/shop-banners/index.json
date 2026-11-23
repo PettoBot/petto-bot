@@ -6,7 +6,7 @@
    "es": "GTA VI · Gasolinera",
    "pt-BR": "GTA VI · Posto de gasolina"
   },
-  "pack": "game-backgrounds",
+  "pack": "gta-vi",
   "rarity": "common",
   "price": null,
   "credit": "© Rockstar Games / Take-Two"
@@ -18,7 +18,7 @@
    "es": "GTA VI · Auto rojo",
    "pt-BR": "GTA VI · Carro vermelho"
   },
-  "pack": "game-backgrounds",
+  "pack": "gta-vi",
   "rarity": "common",
   "price": null,
   "credit": "© Rockstar Games / Take-Two"
@@ -30,7 +30,7 @@
    "es": "GTA VI · Pareja",
    "pt-BR": "GTA VI · Casal"
   },
-  "pack": "game-backgrounds",
+  "pack": "gta-vi",
   "rarity": "common",
   "price": null,
   "credit": "© Rockstar Games / Take-Two"
@@ -42,7 +42,7 @@
    "es": "GTA VI · Palmeras",
    "pt-BR": "GTA VI · Palmeiras"
   },
-  "pack": "game-backgrounds",
+  "pack": "gta-vi",
   "rarity": "common",
   "price": null,
   "credit": "© Rockstar Games / Take-Two"
@@ -54,7 +54,7 @@
    "es": "GTA VI · Collage",
    "pt-BR": "GTA VI · Colagem"
   },
-  "pack": "game-backgrounds",
+  "pack": "gta-vi",
   "rarity": "common",
   "price": null,
   "credit": "© Rockstar Games / Take-Two"
@@ -66,7 +66,7 @@
    "es": "Forza Horizon 6",
    "pt-BR": "Forza Horizon 6"
   },
-  "pack": "game-backgrounds",
+  "pack": "forza-minecraft-halo",
   "rarity": "common",
   "price": null,
   "credit": "© Microsoft / Playground Games"
@@ -78,7 +78,7 @@
    "es": "Forza Horizon 5",
    "pt-BR": "Forza Horizon 5"
   },
-  "pack": "game-backgrounds",
+  "pack": "forza-minecraft-halo",
   "rarity": "common",
   "price": null,
   "credit": "© Microsoft / Playground Games"
@@ -90,7 +90,7 @@
    "es": "Minecraft",
    "pt-BR": "Minecraft"
   },
-  "pack": "game-backgrounds",
+  "pack": "forza-minecraft-halo",
   "rarity": "common",
   "price": null,
   "credit": "© Mojang Studios"
@@ -102,7 +102,7 @@
    "es": "Halo · Jefe Maestro",
    "pt-BR": "Halo · Master Chief"
   },
-  "pack": "game-backgrounds",
+  "pack": "forza-minecraft-halo",
   "rarity": "common",
   "price": null,
   "credit": "© Microsoft / 343 Industries"
@@ -114,7 +114,7 @@
    "es": "Halo Infinite · Anillos",
    "pt-BR": "Halo Infinite · Anéis"
   },
-  "pack": "game-backgrounds",
+  "pack": "forza-minecraft-halo",
   "rarity": "common",
   "price": null,
   "credit": "© Microsoft / 343 Industries"
@@ -126,7 +126,7 @@
    "es": "Sanrio · Amigos",
    "pt-BR": "Sanrio · Amigos"
   },
-  "pack": "game-backgrounds",
+  "pack": "sanrio",
   "rarity": "common",
   "price": null,
   "credit": "© Sanrio"
@@ -138,7 +138,7 @@
    "es": "Pochacco · Picnic",
    "pt-BR": "Pochacco · Piquenique"
   },
-  "pack": "game-backgrounds",
+  "pack": "sanrio",
   "rarity": "common",
   "price": null,
   "credit": "© Sanrio"
@@ -150,7 +150,7 @@
    "es": "Cinnamoroll · Nubes",
    "pt-BR": "Cinnamoroll · Nuvens"
   },
-  "pack": "game-backgrounds",
+  "pack": "sanrio",
   "rarity": "common",
   "price": null,
   "credit": "© Sanrio"
@@ -162,7 +162,7 @@
    "es": "Call of Duty · Ghost",
    "pt-BR": "Call of Duty · Ghost"
   },
-  "pack": "game-backgrounds",
+  "pack": "call-of-duty",
   "rarity": "common",
   "price": null,
   "credit": "© Activision"
@@ -174,7 +174,7 @@
    "es": "Call of Duty · Price",
    "pt-BR": "Call of Duty · Price"
   },
-  "pack": "game-backgrounds",
+  "pack": "call-of-duty",
   "rarity": "common",
   "price": null,
   "credit": "© Activision"
@@ -186,7 +186,7 @@
    "es": "Bahréin al atardecer",
    "pt-BR": "Bahrein ao entardecer"
   },
-  "pack": null,
+  "pack": "landscapes",
   "rarity": "rare",
   "price": 150,
   "credit": "Photo · source to confirm"
@@ -198,7 +198,7 @@
    "es": "Kuwait · Bahía",
    "pt-BR": "Kuwait · Baía"
   },
-  "pack": null,
+  "pack": "landscapes",
   "rarity": "rare",
   "price": 150,
   "credit": "Photo · source to confirm"
@@ -210,7 +210,7 @@
    "es": "Estambul",
    "pt-BR": "Istambul"
   },
-  "pack": null,
+  "pack": "landscapes",
   "rarity": "epic",
   "price": 200,
   "credit": "Photo · source to confirm"
@@ -222,7 +222,7 @@
    "es": "Beirut · Costa",
    "pt-BR": "Beirute · Costa"
   },
-  "pack": null,
+  "pack": "landscapes",
   "rarity": "epic",
   "price": 200,
   "credit": "Photo · source to confirm"
@@ -234,7 +234,7 @@
    "es": "Bosque con niebla",
    "pt-BR": "Floresta com névoa"
   },
-  "pack": null,
+  "pack": "landscapes",
   "rarity": "rare",
   "price": 150,
   "credit": "Photo · source to confirm"
@@ -246,7 +246,7 @@
    "es": "Jinete en el valle",
    "pt-BR": "Cavaleiro no vale"
   },
-  "pack": null,
+  "pack": "landscapes",
   "rarity": "legendary",
   "price": 300,
   "credit": "Concept art · author to confirm"

@@ -214,5 +214,26 @@ const images = require('../src/utils/shopImages');
   }
   for (const rarity of ['rare', 'epic', 'legendary']) assert.ok(seed.FONTS.some((font) => font.rarity === rarity));
 
+  // The packs the shop starts with: five of banners and two of name fonts, each piece pointing at a pack that exists, and a whole pack never dearer than its pieces.
+  const fsMod = require('node:fs');
+  const schema = fsMod.readFileSync(path.join(__dirname, '../src/db/schema.sql'), 'utf8');
+  const seeded = new Map([...schema.matchAll(/insert into shop_packs \(id, kind, names, color, free(, price)?\) values \('([a-z0-9-]+)', '(badge|banner|font)', '[^']*'::jsonb, '#[0-9a-f]{6}', (true|false)(?:, (\d+))?\)/g)].map((m) => [m[2], { kind: m[3], free: m[4] === 'true', price: m[5] ? Number(m[5]) : null }]));
+  assert.equal([...seeded.values()].filter((pack) => pack.kind === 'banner').length, 5, 'five packs of banners');
+  assert.equal([...seeded.values()].filter((pack) => pack.kind === 'font').length, 2, 'two packs of name fonts');
+  const banners = JSON.parse(fsMod.readFileSync(path.join(__dirname, '../src/assets/shop-banners/index.json'), 'utf8'));
+  const rarityPrice = { common: 20, rare: 50, epic: 120, legendary: 300 };
+  const pieces = new Map();
+  for (const banner of banners) {
+    assert.ok(fsMod.existsSync(path.join(__dirname, '../src/assets/shop-banners', `${banner.id}.webp`)), `${banner.id}.webp exists`);
+    assert.ok(banner.credit, `${banner.id} has its credit`);
+    if (banner.pack) { assert.equal(seeded.get(banner.pack)?.kind, 'banner', `${banner.id} is in a pack of banners that exists`); pieces.set(banner.pack, (pieces.get(banner.pack) ?? 0) + (banner.price ?? rarityPrice[banner.rarity])); }
+  }
+  for (const font of seed.FONTS) if (font.pack) { assert.equal(seeded.get(font.pack)?.kind, 'font', `${font.slug} is in a pack of fonts that exists`); pieces.set(font.pack, (pieces.get(font.pack) ?? 0) + rarityPrice[font.rarity]); }
+  for (const [id, pack] of seeded) {
+    if (pack.kind === 'badge') continue;
+    assert.ok(pieces.get(id) > 0, `${id} has pieces`);
+    if (pack.price !== null) assert.ok(pack.price < pieces.get(id), `${id}: the whole pack (${pack.price}) is cheaper than its pieces (${pieces.get(id)})`);
+  }
+
   console.log('Shop checks passed.');
 })().catch((error) => { console.error(error); process.exit(1); });
