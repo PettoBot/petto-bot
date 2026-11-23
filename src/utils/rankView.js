@@ -1,5 +1,5 @@
 // What /levels rank answers: the rank card, the embed with the progress bar, or both, as the server chose.
-const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
+const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { renderRankCard, CARD_FILE_NAME } = require('./cardService');
 const { buildThinBar } = require('./levelProgressBar');
 const { renderRankBar } = require('./rankBar');
@@ -76,7 +76,19 @@ function buildBoostLine({ data, botId = null, own = true, lang = currentLanguage
  * The message for /levels rank. `style` is `card`, `embed` or `both`. A card that cannot be drawn leaves the embed, so a rank is
  * always answered. `content` is the line about the vote boost, shown above the card or the embed (left out when there is none).
  */
-async function buildRankReply({ style, ctx, data, name, avatarUrl, cardName, source, color = null, botId = null, own = true, lang = currentLanguage() }) {
+async function buildRankReply(options) {
+  const reply = await composeRankReply(options);
+  // Under the rank of the person themselves: a link to the page where they design their own rank card (colors, font, background). Not under somebody else's rank.
+  if (options.own !== false) reply.components = [customizeRow(options.lang ?? currentLanguage())];
+  return reply;
+}
+
+/** The row with the link button to the page "Rank card" of the dashboard. */
+function customizeRow(lang) {
+  return new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(t(lang, 'leveling.rankView.customize')).setURL(`${config.siteUrl}/dash/rank`));
+}
+
+async function composeRankReply({ style, ctx, data, name, avatarUrl, cardName, source, color = null, botId = null, own = true, lang = currentLanguage() }) {
   let file = null;
   if (style !== 'embed') file = await renderRankCard(ctx, cardName, source);
   const useCard = Boolean(file);

@@ -6,6 +6,7 @@ module.exports = {
   'leveling.notify.voiceDefault': '{EMOJI} {user} reached voice level **{level}**!',
   'leveling.rank.noXp': "{user} doesn't have any XP recorded yet.",
   'leveling.rank.noVoiceXp': "{user} doesn't have any voice XP recorded yet.",
+  'leveling.rankView.customize': 'Customize your rank',
   'leveling.rankView.level': 'Level',
   'leveling.rankView.voiceLevel': 'Voice Level',
   'leveling.rankView.serverRank': 'Server Rank',

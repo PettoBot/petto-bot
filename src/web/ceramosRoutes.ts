@@ -69,7 +69,7 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   }));
   // The rank card of a person (the page "Rank card"): what they saved, saving it (the two-color bar costs ceramos once), and putting it back to the default one.
   app.get('/api/dashboard/ceramos/rank-card', limiter, guard(false, async (userId) => api.rankCardState(userId)));
-  app.post('/api/dashboard/ceramos/rank-card', limiter, guard(true, async (userId, body) => ({ result: await api.rankCardSave(userId, body.settings) })));
+  app.post('/api/dashboard/ceramos/rank-card-save', limiter, guard(true, async (userId, body) => ({ result: await api.rankCardSave(userId, body.settings) })));
   app.post('/api/dashboard/ceramos/rank-card-reset', limiter, guard(true, async (userId) => { await api.rankCardReset(userId); return { result: { ok: true } }; }));
   app.get('/api/dashboard/ceramos/design-file/:id/:size', limiter, async (req: Request, res: Response) => {
     if (!isAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
