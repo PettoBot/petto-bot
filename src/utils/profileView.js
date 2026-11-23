@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.artOf = artOf;
 exports.planOfUser = planOfUser;
 exports.profileState = profileState;
 exports.buildProfileImage = buildProfileImage;
@@ -34,10 +35,11 @@ async function planOfUser(_userId) {
 }
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */
 async function profileState(userId) {
-    const [plan, saved, chosen] = await Promise.all([planOfUser(userId), profileDb.getSavedBadges(userId), profileDb.getShowcase(userId)]);
-    const owned = badgesRules.ownedBadges(saved, plan);
+    const [plan, rows, chosen] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId)]);
+    const owned = badgesRules.ownedBadges(rows.map((row) => row.id), plan);
+    const frames = Object.fromEntries(rows.map((row) => [row.id, row.frame]));
     const slots = badgesRules.slotsFor(plan);
-    return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots) };
+    return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames };
 }
 async function picture(url) {
     if (!url)
@@ -65,7 +67,7 @@ async function buildProfileImage(opts) {
     for (const id of state.showcase) {
         const def = badgesRules.badgeById(id);
         if (def)
-            showcase.push({ id, art: await artOf(def.art), color: def.color });
+            showcase.push({ id, art: await artOf(def.art), color: def.color, label: badgesRules.badgeLabel(def) || undefined, frame: state.frames[id] ?? 'normal' });
     }
     return renderProfileImage({
         name: member?.displayName ?? user.username,

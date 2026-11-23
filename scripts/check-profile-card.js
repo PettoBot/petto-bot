@@ -42,7 +42,8 @@ const langs = ['en', 'es', 'pt-BR'];
   // Every badge has its name in the three languages, and the art that is named exists.
   for (const lang of langs) {
     const catalog = require(`../src/i18n/locales/${lang}/profiles.js`);
-    for (const badge of rules.BADGES) assert.ok(catalog[`profiles.badge.${badge.id}`], `${lang}: name of the badge ${badge.id}`);
+    for (const badge of rules.BADGES.filter((each) => !each.region && !each.language)) assert.ok(catalog[`profiles.badge.${badge.id}`], `${lang}: name of the badge ${badge.id}`);
+    for (const badge of rules.SHOP_BADGES) assert.ok(rules.badgeName(lang, badge, () => '') && rules.badgeLabel(badge), `${lang}: a country or language badge is named by the language and drawn with its code`);
     for (const key of ['level', 'rank', 'messages', 'voice', 'badges', 'failed']) assert.ok(catalog[`profiles.image.${key}`], `${lang}: profiles.image.${key}`);
   }
   for (const badge of rules.BADGES.filter((each) => each.art)) assert.ok(fs.existsSync(path.join(root, 'src/assets/badges', badge.art)), `the art ${badge.art} exists`);

@@ -11,8 +11,22 @@ export async function getSavedBadges(userId: string): Promise<string[]> {
   return rows.map((row) => String(row.badge_id));
 }
 
+export interface BadgeRow { id: string; frame: string; source: string }
+
+/** The badges a person has saved with the frame each one has (the badge of a plan is not saved: it follows the plan). */
+export async function getBadgeRows(userId: string): Promise<BadgeRow[]> {
+  const { rows } = await getPrimaryPool().query('select badge_id, frame, source from user_badges where user_id = $1 order by granted_at', [userId]);
+  return rows.map((row) => ({ id: String(row.badge_id), frame: String(row.frame), source: String(row.source) }));
+}
+
+/** Gives a badge a better frame, only if it is the one that follows the current frame (a frame is bought one step at a time). Returns whether it changed. */
+export async function setFrame(userId: string, badgeId: string, from: string, to: string): Promise<boolean> {
+  const { rows } = await getPrimaryPool().query('update user_badges set frame = $4 where user_id = $1 and badge_id = $2 and frame = $3 returning badge_id', [userId, badgeId, from, to]);
+  return rows.length > 0;
+}
+
 /** Saves a badge for a person. Returns whether it was new. */
-export async function addBadge(userId: string, badgeId: string, source: 'self' | 'team'): Promise<boolean> {
+export async function addBadge(userId: string, badgeId: string, source: 'self' | 'team' | 'shop'): Promise<boolean> {
   const { rows } = await getPrimaryPool().query(
     'insert into user_badges (user_id, badge_id, source) values ($1, $2, $3) on conflict (user_id, badge_id) do nothing returning badge_id',
     [userId, badgeId, source]);

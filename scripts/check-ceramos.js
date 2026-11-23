@@ -1,0 +1,143 @@
+// The ceramos: what a day gives by plan, once for each UTC day, buying a badge of the shop once, the frames one step at a time, giving the ceramos back when a purchase
+// cannot be finished, the pictures of the wallet and the shop, and the commands (the team tool is hidden and owner only). No database and no Discord: they are replaced.
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+const stub = (relative, exports) => {
+  const resolved = require.resolve(path.join(__dirname, '..', relative));
+  require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
+};
+
+// An in-memory wallet and badge table that behave like the statements of the database (the balance never goes below zero, a day is claimed once).
+const wallets = new Map(); // user -> { balance, lastDaily }
+const ledger = [];
+const badgeRows = new Map(); // user -> [{ id, frame, source }]
+let raceOnAdd = false; // when true, addBadge answers "already there" as if another purchase had won
+const wallet = (u) => wallets.get(u) ?? { balance: 0, lastDaily: null };
+stub('src/db/ceramos.js', {
+  getWallet: async (u) => ({ ...wallet(u) }),
+  claimDaily: async (u, amount, day) => { const w = wallet(u); if (w.lastDaily && w.lastDaily >= day) return null; wallets.set(u, { balance: w.balance + amount, lastDaily: day }); ledger.push({ u, delta: amount, reason: 'daily' }); return w.balance + amount; },
+  give: async (u, amount, reason, ref) => { const w = wallet(u); wallets.set(u, { ...w, balance: w.balance + amount }); ledger.push({ u, delta: amount, reason, ref }); return w.balance + amount; },
+  spend: async (u, amount, reason, ref) => { const w = wallet(u); if (w.balance < amount) return null; wallets.set(u, { ...w, balance: w.balance - amount }); ledger.push({ u, delta: -amount, reason, ref }); return w.balance - amount; },
+  lastMovements: async () => [],
+});
+stub('src/db/userProfile.js', {
+  getBadgeRows: async (u) => (badgeRows.get(u) ?? []).map((row) => ({ ...row })),
+  addBadge: async (u, id, source) => { if (raceOnAdd) return false; const rows = badgeRows.get(u) ?? []; if (rows.some((row) => row.id === id)) return false; rows.push({ id, frame: 'normal', source }); badgeRows.set(u, rows); return true; },
+  setFrame: async (u, id, from, to) => { const row = (badgeRows.get(u) ?? []).find((each) => each.id === id && each.frame === from); if (!row) return false; row.frame = to; return true; },
+});
+stub('src/config.js', { ownerId: 'owner', developerIds: [] });
+stub('src/db/database.js', { from() { throw new Error('the database is not used in this check'); } });
+
+const rules = require('../src/utils/ceramos');
+const badges = require('../src/utils/profileBadges');
+const shop = require('../src/utils/ceramosShop');
+const image = require('../src/utils/ceramosImage');
+const { loadImage } = require('@napi-rs/canvas');
+
+(async () => {
+  // What a day gives: 2 with no plan, 5, 10 and 20 with a plan.
+  assert.deepEqual([null, 'bronze', 'silver', 'gold'].map((plan) => rules.dailyAmount(plan)), [2, 5, 10, 20]);
+
+  // A day is claimed once: the calendar is UTC, so the same moment is the same day for everybody, and the next claim opens at midnight UTC.
+  const noon = new Date('2026-11-23T12:00:00Z');
+  assert.equal(rules.dayOf(new Date('2026-11-23T23:59:59Z')), '2026-11-23');
+  assert.equal(rules.claimStatus(null, noon).canClaim, true);
+  assert.equal(rules.claimStatus('2026-11-22', noon).canClaim, true);
+  const done = rules.claimStatus('2026-11-23', noon);
+  assert.equal(done.canClaim, false);
+  assert.equal(done.nextAt.toISOString(), '2026-11-24T00:00:00.000Z');
+  assert.equal(rules.parseAmount('250'), 250); assert.equal(rules.parseAmount(0), null); assert.equal(rules.parseAmount('2.5'), null); assert.equal(rules.parseAmount(-3), null); assert.equal(rules.parseAmount(2_000_000), null); assert.equal(rules.parseAmount('abc'), null);
+
+  // Frames: one step at a time, normal, bright (150) and divine (400), and the last one has no next.
+  assert.deepEqual(rules.FRAMES.map((frame) => [frame.id, frame.cost]), [['normal', 0], ['bright', 150], ['divine', 400]]);
+  assert.equal(rules.nextFrame('normal').id, 'bright'); assert.equal(rules.nextFrame('bright').id, 'divine'); assert.equal(rules.nextFrame('divine'), null);
+  assert.equal(rules.nextFrame('nonsense').id, 'bright', 'an unknown frame is the first one');
+
+  // The daily claim: the amount of the plan, once for the day, and again the next day.
+  let claimed = await shop.claimToday('ana', null, noon);
+  assert.deepEqual([claimed.ok, claimed.amount, claimed.balance], [true, 2, 2]);
+  claimed = await shop.claimToday('ana', 'gold', noon);
+  assert.equal(claimed.ok, false, 'a second claim the same day gives nothing');
+  assert.equal(wallet('ana').balance, 2);
+  claimed = await shop.claimToday('ana', 'gold', new Date('2026-11-24T00:00:01Z'));
+  assert.deepEqual([claimed.ok, claimed.amount, claimed.balance], [true, 20, 22]);
+  const bob = await shop.claimToday('bob', 'silver', noon);
+  assert.equal(bob.amount, 10);
+
+  // The shop: countries and languages at 250, with their names from the language and their code on the badge. The free ones and the plan ones are not for sale.
+  assert.ok(badges.SHOP_BADGES.length >= 10 && badges.SHOP_BADGES.every((def) => def.unlock === 'shop' && badges.badgeLabel(def)));
+  assert.equal(badges.badgeName('es', badges.badgeById('country-co'), () => 'x'), 'Colombia');
+  assert.equal(badges.badgeName('pt-BR', badges.badgeById('lang-en'), () => 'x'), 'inglês');
+  assert.equal(badges.badgeName('en', badges.badgeById('femboy'), (key) => key), 'profiles.badge.femboy');
+  assert.equal(rules.BADGE_PRICE, 250);
+
+  // Buying: not enough, not for sale, bought once (the ceramos go once), and never twice.
+  assert.equal((await shop.buyBadge('ana', 'country-co')).reason, 'poor');
+  assert.equal(wallet('ana').balance, 22, 'a purchase that cannot be paid takes nothing');
+  assert.equal((await shop.buyBadge('ana', 'femboy')).reason, 'unknown');
+  assert.equal((await shop.buyBadge('ana', 'plan-gold')).reason, 'unknown');
+  assert.equal((await shop.buyBadge('ana', 'made-up')).reason, 'unknown');
+  await require('../src/db/ceramos').give('ana', 1000, 'grant', null);
+  const bought = await shop.buyBadge('ana', 'country-co');
+  assert.deepEqual([bought.ok, bought.balance], [true, 22 + 1000 - 250]);
+  assert.equal((await shop.buyBadge('ana', 'country-co')).reason, 'owned');
+  assert.equal(wallet('ana').balance, 772, 'the second purchase did not charge');
+  assert.deepEqual(badgeRows.get('ana').map((row) => [row.id, row.source, row.frame]), [['country-co', 'shop', 'normal']]);
+
+  // A purchase that loses a race gives the ceramos back.
+  raceOnAdd = true;
+  const lost = await shop.buyBadge('ana', 'lang-es');
+  raceOnAdd = false;
+  assert.equal(lost.reason, 'owned');
+  assert.equal(wallet('ana').balance, 772, 'the ceramos came back');
+  assert.ok(ledger.some((row) => row.reason === 'refund' && row.u === 'ana'));
+
+  // Frames: only owned badges, not the badge of a plan, one step each, paid, and the best one has no next.
+  assert.equal((await shop.upgradeFrame('ana', 'lang-es')).reason, 'notOwned');
+  assert.equal((await shop.upgradeFrame('ana', 'plan-gold')).reason, 'noFrame');
+  let up = await shop.upgradeFrame('ana', 'country-co');
+  assert.deepEqual([up.ok, up.frame, up.balance], [true, 'bright', 772 - 150]);
+  up = await shop.upgradeFrame('ana', 'country-co');
+  assert.deepEqual([up.ok, up.frame, up.balance], [true, 'divine', 772 - 150 - 400]);
+  up = await shop.upgradeFrame('ana', 'country-co');
+  assert.equal(up.reason, 'max'); assert.equal(wallet('ana').balance, 222, 'nothing is charged past the best frame');
+  await require('../src/db/userProfile').addBadge('bob', 'country-mx', 'shop');
+  up = await shop.upgradeFrame('bob', 'country-mx');
+  assert.equal(up.reason, 'poor'); assert.equal(badgeRows.get('bob')[0].frame, 'normal', 'a frame that is not paid is not given');
+  // The Fablo badges can have a frame too once the person has them.
+  await require('../src/db/userProfile').addBadge('ana', 'femboy', 'self');
+  assert.equal((await shop.upgradeFrame('ana', 'femboy')).ok, true);
+
+  // The pictures: PNG of the right size, the shop grows with its rows, a long name and a huge balance do not break them.
+  const dark = { id: 'country-co', art: null, color: '#f2c230', label: 'CO' };
+  const wallet1 = image.renderWalletImage({ name: 'a'.repeat(120), avatar: null, balance: '12,345,678', title: 'Ceramos', daily: 'Next daily in 5h 12m', dailyReady: false, movementsTitle: 'Last movements', noMovements: 'none', movements: [{ text: 'Daily', amount: '+20', positive: true }, { text: 'Badge Colombia', amount: '−250', positive: false }] });
+  const w1 = await loadImage(wallet1);
+  assert.equal(w1.width, 1024); assert.equal(w1.height, image.WALLET_HEIGHT);
+  const empty = image.renderWalletImage({ name: 'Ana', avatar: null, balance: '0', title: 'Ceramos', daily: 'Your daily ceramos are ready: /daily', dailyReady: true, movementsTitle: 'Last movements', noMovements: 'No movements yet', movements: [] });
+  assert.ok((await loadImage(empty)).width === 1024);
+  const items = (n) => Array.from({ length: n }, (_, i) => ({ badge: { ...dark, frame: ['normal', 'bright', 'divine'][i % 3] }, name: 'Colombia'.repeat(3), price: '250', owned: i % 4 === 0 }));
+  const s6 = await loadImage(image.renderShopImage({ title: 'Badge shop', balanceText: '772', items: items(6), ownedText: 'Yours' }));
+  const s13 = await loadImage(image.renderShopImage({ title: 'Badge shop', balanceText: '772', items: items(13), ownedText: 'Yours' }));
+  assert.equal(s6.width, 1024); assert.ok(s13.height > s6.height, 'a second and a third row make it taller');
+
+  // The commands: /ceramos and /daily are slash commands of the second set; the team tool is prefix only, hidden and for the owner only.
+  const ceramos = require('../src/commands/utility/ceramos');
+  assert.deepEqual(ceramos.data.toJSON().options.map((option) => option.name), ['balance', 'shop', 'buy', 'upgrade']);
+  assert.equal(ceramos.guildScoped, true); assert.equal(require('../src/commands/utility/daily').guildScoped, true);
+  assert.equal(ceramos.prefixDefaultSubcommand, 'balance');
+  const admin = require('../src/commands/info/ceramosadmin');
+  assert.ok(admin.prefixOnly && admin.hiddenEverywhere && admin.teamOnly && admin.ownerOnly);
+  const replies = [];
+  const ask = (userId, sub, values) => admin.execute({ user: { id: userId }, options: { getSubcommand: () => sub, getUser: () => ({ id: 'ana' }), getInteger: () => values.amount, getString: () => values.note ?? null }, reply: async (payload) => { replies.push(payload); } });
+  assert.equal(await ask('somebody', 'give', { amount: 50 }), undefined); assert.equal(replies.length, 0, 'nobody but the owner gets an answer');
+  const before = wallet('ana').balance;
+  await ask('owner', 'give', { amount: 50, note: 'prize' });
+  assert.equal(wallet('ana').balance, before + 50); assert.equal(replies.length, 1);
+  await ask('owner', 'take', { amount: 10 * before });
+  assert.equal(wallet('ana').balance, before + 50, 'a take of more than they have takes nothing');
+  await ask('owner', 'take', { amount: 20 });
+  assert.equal(wallet('ana').balance, before + 30);
+
+  console.log('ceramos checks passed'); // i18n-ignore: output of a check
+})().catch((error) => { console.error(error); process.exit(1); });

@@ -8,7 +8,7 @@ const { registerCardFonts, canvasFont, printable } = require('../imgutils/cardFo
   registerCardFonts: () => void; canvasFont: (family: string, weight: number, size: number) => string; printable: (text: string) => string;
 };
 
-export interface ShowcaseBadge { id: string; art: Image | null; color: string }
+export interface ShowcaseBadge { id: string; art: Image | null; color: string; /** Drawn on a badge with no art. */ label?: string; /** `normal`, `bright` or `divine` (see FRAMES of utils/ceramos.ts). */ frame?: string }
 export interface ProfileImageData {
   name: string;
   avatar: Image | null;
@@ -29,7 +29,7 @@ export const HEIGHT = 420;
 const BANNER_H = 250;
 const FONT = 'Poppins';
 
-function hexPath(ctx: import('@napi-rs/canvas').SKRSContext2D, cx: number, cy: number, r: number): void {
+export function hexPath(ctx: import('@napi-rs/canvas').SKRSContext2D, cx: number, cy: number, r: number): void {
   ctx.beginPath();
   for (let i = 0; i < 6; i += 1) {
     const angle = (Math.PI / 3) * i - Math.PI / 2;
@@ -37,6 +37,33 @@ function hexPath(ctx: import('@napi-rs/canvas').SKRSContext2D, cx: number, cy: n
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.closePath();
+}
+
+
+/** One badge in a hexagon: its art, or its colour with its text; and the frame it was upgraded to (a gold ring, or a double rainbow ring that glows). */
+export function drawBadge(ctx: import('@napi-rs/canvas').SKRSContext2D, badge: ShowcaseBadge, cx: number, cy: number, r: number): void {
+  hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fill();
+  if (badge.art) {
+    ctx.save(); hexPath(ctx, cx, cy, r); ctx.clip();
+    ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2); ctx.restore();
+  } else {
+    hexPath(ctx, cx, cy, r); ctx.fillStyle = badge.color; ctx.fill();
+    hexPath(ctx, cx, cy, r - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+    if (badge.label) {
+      ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, Math.round(r * 0.62)); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(printable(badge.label), cx, cy + 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
+  }
+  if (badge.frame === 'bright') {
+    ctx.save(); ctx.shadowColor = 'rgba(255,214,102,0.9)'; ctx.shadowBlur = 14;
+    hexPath(ctx, cx, cy, r + 3); ctx.lineWidth = 5; ctx.strokeStyle = '#ffd666'; ctx.stroke(); ctx.restore();
+  } else if (badge.frame === 'divine') {
+    ctx.save(); ctx.shadowColor = 'rgba(255,255,255,0.95)'; ctx.shadowBlur = 20;
+    const rainbow = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    ['#ff7aa8', '#ffd666', '#8affc1', '#7ad0ff', '#c79bff'].forEach((color, i, all) => rainbow.addColorStop(i / (all.length - 1), color));
+    hexPath(ctx, cx, cy, r + 6); ctx.lineWidth = 5; ctx.strokeStyle = rainbow; ctx.stroke();
+    hexPath(ctx, cx, cy, r + 1); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke(); ctx.restore();
+  }
 }
 
 function cover(ctx: import('@napi-rs/canvas').SKRSContext2D, img: Image, x: number, y: number, w: number, h: number): void {
@@ -111,14 +138,7 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
     const badge = data.showcase[i];
     const locked = i >= data.slots;
     if (badge) {
-      hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fill();
-      if (badge.art) {
-        ctx.save(); hexPath(ctx, cx, cy, r); ctx.clip();
-        ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2); ctx.restore();
-      } else {
-        hexPath(ctx, cx, cy, r); ctx.fillStyle = badge.color; ctx.fill();
-        hexPath(ctx, cx, cy, r - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
-      }
+      drawBadge(ctx, badge, cx, cy, r);
     } else {
       hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
       ctx.setLineDash([6, 6]); ctx.lineWidth = 2; ctx.strokeStyle = locked ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.35)'; ctx.stroke(); ctx.setLineDash([]);

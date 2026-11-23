@@ -72,6 +72,8 @@ async function showImage(interaction) {
   return interaction.editReply({ files: [new AttachmentBuilder(buffer, { name: 'profile.png' })] });
 }
 
+const badgeNameOf = (lang, id) => { const def = badgesRules.badgeById(id); return def ? badgesRules.badgeName(lang, def, (key) => t(lang, key)) : id; };
+
 /** `/profile badge`: an identity badge is the person's own to turn on and off. A new one goes to the showcase when there is a free place. */
 async function setBadge(interaction) {
   const lang = await languageOf(interaction);
@@ -79,7 +81,7 @@ async function setBadge(interaction) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const userId = interaction.user.id;
   if (!badgesRules.isSelfBadge(id)) return interaction.reply({ content: t(lang, 'profiles.badge.notYours'), flags: MessageFlags.Ephemeral });
-  const name = t(lang, `profiles.badge.${id}`);
+  const name = badgesRules.badgeName(lang, badgesRules.badgeById(id), (key) => t(lang, key));
   if (!enabled) {
     const had = await profileDb.removeBadge(userId, id);
     return interaction.reply({ content: t(lang, had ? 'profiles.badge.off' : 'profiles.badge.alreadyOff', { badge: name }), flags: MessageFlags.Ephemeral });
@@ -103,9 +105,9 @@ async function setShowcase(interaction) {
   }
   const state = await profileState(userId);
   const kept = badgesRules.normalizeShowcase(chosen, state.owned, state.slots);
-  const dropped = chosen.filter((id, index) => !kept.includes(id) && chosen.indexOf(id) === index).map((id) => t(lang, `profiles.badge.${id}`));
+  const dropped = chosen.filter((id, index) => !kept.includes(id) && chosen.indexOf(id) === index).map((id) => badgeNameOf(lang, id));
   await profileDb.setShowcase(userId, kept);
-  const lines = [t(lang, kept.length ? 'profiles.showcase.saved' : 'profiles.showcase.empty', { badges: kept.map((id) => t(lang, `profiles.badge.${id}`)).join(', '), slots: state.slots })];
+  const lines = [t(lang, kept.length ? 'profiles.showcase.saved' : 'profiles.showcase.empty', { badges: kept.map((id) => badgeNameOf(lang, id)).join(', '), slots: state.slots })];
   if (dropped.length) lines.push(t(lang, 'profiles.showcase.dropped', { badges: dropped.join(', '), slots: state.slots }));
   return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
 }
@@ -134,14 +136,26 @@ module.exports = {
       .addBooleanOption((o) => o.setName('enabled').setDescription('On or off').setRequired(true)))
     .addSubcommand((s) => {
       s.setName('showcase').setDescription('Choose the badges of the showcase of your profile picture, in order.');
-      const choices = badgesRules.BADGES.map((b) => ({ name: b.id, value: b.id }));
       for (let i = 1; i <= badgesRules.MAX_SLOTS; i += 1) {
         // i18n-ignore: the real text comes from the catalog (cmd.automation.profile.showcase.opt.badgeN.desc)
-        s.addStringOption((o) => o.setName(`badge${i}`).setDescription(`Badge ${i}`).setRequired(i === 1).addChoices(...choices));
+        s.addStringOption((o) => o.setName(`badge${i}`).setDescription(`Badge ${i}`).setRequired(i === 1).setAutocomplete(true));
       }
       return s;
     }),
     SUBCOMMANDS, loadByName),
+
+  /** The badges of `/profile showcase`: the ones the person has, by their name in the language of the person (there are more than Discord lets a list of choices hold). */
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    if (!/^badge[1-6]$/.test(focused.name)) return interaction.respond([]);
+    const lang = await languageOf(interaction);
+    const typed = String(focused.value ?? '').toLowerCase().trim();
+    const { owned } = await profileState(interaction.user.id);
+    const list = owned.map((id) => ({ id, def: badgesRules.badgeById(id) })).filter((entry) => entry.def)
+      .map((entry) => ({ name: badgesRules.badgeName(lang, entry.def, (key) => t(lang, key)), value: entry.id }))
+      .filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
+    return interaction.respond(list.slice(0, 25));
+  },
 
   async execute(interaction, client) {
     // The group `config` is the old `!profileconfig`: it asks for what that command asks for.

@@ -1,5 +1,13 @@
 // Descriptions of the utility commands, written by scripts/i18n-commands.js from the builders: change the builder, then run it.
 module.exports = {
+  'cmd.utility.ceramos.desc': 'Your ceramos: the wallet, the shop of badges and better frames.',
+  'cmd.utility.ceramos.balance.desc': 'See your ceramos and your last movements.',
+  'cmd.utility.ceramos.shop.desc': 'See the badges you can buy with ceramos.',
+  'cmd.utility.ceramos.buy.desc': 'Buy a badge of the shop. You keep it for good.',
+  'cmd.utility.ceramos.buy.opt.badge.desc': 'Which badge',
+  'cmd.utility.ceramos.upgrade.desc': 'Give a badge of yours a better frame.',
+  'cmd.utility.ceramos.upgrade.opt.badge.desc': 'Which badge',
+  'cmd.utility.daily.desc': 'Claim your daily ceramos.',
   'cmd.utility.247.desc': 'Keep Petto in a voice channel for good, with a status on the channel.',
   'cmd.utility.247.set.desc': 'Pick the voice channel Petto stays in.',
   'cmd.utility.247.set.opt.channel.desc': 'The voice channel',

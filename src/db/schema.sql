@@ -5296,7 +5296,8 @@ alter table user_birthdays enable row level security;
 create table if not exists user_badges (
   user_id    text not null,
   badge_id   text not null check (char_length(badge_id) between 1 and 40),
-  source     text not null check (source in ('self', 'team')),
+  source     text not null check (source in ('self', 'team', 'shop', 'status')),
+  frame      text not null default 'normal' check (frame in ('normal', 'bright', 'divine')),
   granted_at timestamptz not null default now(),
   primary key (user_id, badge_id)
 );
@@ -5308,3 +5309,24 @@ create table if not exists user_profile (
   updated_at timestamptz not null default now()
 );
 alter table user_profile enable row level security;
+
+-- Ceramos: the currency of the profile. One wallet per person (no server) and a ledger of every movement; the balance never goes below zero.
+create table if not exists ceramos_wallets (
+  user_id    text primary key,
+  balance    bigint not null default 0 check (balance >= 0),
+  last_daily date,
+  updated_at timestamptz not null default now()
+);
+alter table ceramos_wallets enable row level security;
+
+create table if not exists ceramos_ledger (
+  id         bigserial primary key,
+  user_id    text not null,
+  delta      bigint not null,
+  reason     text not null check (char_length(reason) between 1 and 40),
+  ref        text check (ref is null or char_length(ref) <= 80),
+  by_user    text,
+  created_at timestamptz not null default now()
+);
+create index if not exists ceramos_ledger_user_idx on ceramos_ledger (user_id, id desc);
+alter table ceramos_ledger enable row level security;

@@ -17,7 +17,7 @@ const { t, formatNumber } = require('../i18n') as { t: (lang: string, key: strin
 const ART_DIR = path.join(__dirname, '..', 'assets', 'badges');
 const artCache = new Map<string, Image>();
 
-async function artOf(file: string | null): Promise<Image | null> {
+export async function artOf(file: string | null): Promise<Image | null> {
   if (!file) return null;
   const cached = artCache.get(file);
   if (cached) return cached;
@@ -34,11 +34,12 @@ export async function planOfUser(_userId: string): Promise<PlanKey | null> {
 }
 
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */
-export async function profileState(userId: string): Promise<{ plan: PlanKey | null; owned: string[]; slots: number; showcase: string[] }> {
-  const [plan, saved, chosen] = await Promise.all([planOfUser(userId), profileDb.getSavedBadges(userId), profileDb.getShowcase(userId)]);
-  const owned = badgesRules.ownedBadges(saved, plan);
+export async function profileState(userId: string): Promise<{ plan: PlanKey | null; owned: string[]; slots: number; showcase: string[]; frames: Record<string, string> }> {
+  const [plan, rows, chosen] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId)]);
+  const owned = badgesRules.ownedBadges(rows.map((row) => row.id), plan);
+  const frames = Object.fromEntries(rows.map((row) => [row.id, row.frame]));
   const slots = badgesRules.slotsFor(plan);
-  return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots) };
+  return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames };
 }
 
 async function picture(url: string | null | undefined): Promise<Image | null> {
@@ -63,7 +64,7 @@ export async function buildProfileImage(opts: { guildId: string; user: UserLike;
   const showcase: ShowcaseBadge[] = [];
   for (const id of state.showcase) {
     const def = badgesRules.badgeById(id);
-    if (def) showcase.push({ id, art: await artOf(def.art), color: def.color });
+    if (def) showcase.push({ id, art: await artOf(def.art), color: def.color, label: badgesRules.badgeLabel(def) || undefined, frame: state.frames[id] ?? 'normal' });
   }
   return renderProfileImage({
     name: member?.displayName ?? user.username,

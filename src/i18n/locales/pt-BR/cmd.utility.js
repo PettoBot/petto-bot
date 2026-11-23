@@ -1,5 +1,13 @@
 // Brazilian Portuguese descriptions of the utility commands (same keys as en/cmd.utility.js).
 module.exports = {
+  'cmd.utility.ceramos.desc': 'Seus céramos: a carteira, a loja de insígnias e molduras melhores.',
+  'cmd.utility.ceramos.balance.desc': 'Veja seus céramos e suas últimas movimentações.',
+  'cmd.utility.ceramos.shop.desc': 'Veja as insígnias que você pode comprar com céramos.',
+  'cmd.utility.ceramos.buy.desc': 'Compre uma insígnia da loja. É sua para sempre.',
+  'cmd.utility.ceramos.buy.opt.badge.desc': 'Qual insígnia',
+  'cmd.utility.ceramos.upgrade.desc': 'Dê uma moldura melhor a uma insígnia sua.',
+  'cmd.utility.ceramos.upgrade.opt.badge.desc': 'Qual insígnia',
+  'cmd.utility.daily.desc': 'Resgate seus céramos do dia.',
   'cmd.utility.247.desc': 'Deixa o Petto num canal de voz para sempre, com um status no canal.',
   'cmd.utility.247.set.desc': 'Escolhe o canal de voz onde o Petto fica.',
   'cmd.utility.247.set.opt.channel.desc': 'O canal de voz',

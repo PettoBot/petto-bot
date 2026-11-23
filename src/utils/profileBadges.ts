@@ -3,8 +3,8 @@
 // Pure rules with no database and no Discord, so scripts/check-profile-card.js tests the same code the command runs.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/profileBadges.js.
 
-/** How a badge comes to a person: `plan` follows the plan they pay for (nobody picks it), `self` is turned on and off by the person (an identity badge: nobody gives it, nobody sees it unless they put it), `team` is given by hand. */
-export type BadgeUnlock = 'plan' | 'self' | 'team';
+/** How a badge comes to a person: `plan` follows the plan they pay for (nobody picks it), `self` is turned on and off by the person (an identity badge: nobody gives it, nobody sees it unless they put it), `team` is given by hand, `shop` is bought once with ceramos and then stays. */
+export type BadgeUnlock = 'plan' | 'self' | 'team' | 'shop';
 export type PlanKey = 'bronze' | 'silver' | 'gold';
 
 export interface BadgeDef {
@@ -15,11 +15,14 @@ export interface BadgeDef {
   color: string;
   /** The pack of badges it belongs to (`fablo` is the free default one), or nothing. */
   pack?: 'fablo';
+  /** A country (a region code) or a language (a language code): its name comes from the language of whoever reads it, and its code is drawn on the badge. */
+  region?: string;
+  language?: string;
 }
 
 export const PLAN_KEYS: readonly PlanKey[] = ['bronze', 'silver', 'gold'];
 
-export const BADGES: readonly BadgeDef[] = [
+const BASE_BADGES: readonly BadgeDef[] = [
   { id: 'plan-bronze', unlock: 'plan', art: 'plan-bronze.png', color: '#b9792f' },
   { id: 'plan-silver', unlock: 'plan', art: 'plan-silver.png', color: '#b8bcc4' },
   { id: 'plan-gold', unlock: 'plan', art: 'plan-gold.png', color: '#f4cf3a' },
@@ -29,6 +32,18 @@ export const BADGES: readonly BadgeDef[] = [
   { id: 'hetero', unlock: 'self', art: 'hetero.png', color: '#6fb4ff', pack: 'fablo' },
   { id: 'femboy', unlock: 'self', art: 'femboy.png', color: '#ff8fc2', pack: 'fablo' },
 ];
+
+
+// The shop: countries and languages, each bought once with ceramos (BADGE_PRICE of utils/ceramos.ts). They have no art yet: they are drawn with their code.
+const COUNTRIES: [string, string][] = [['CO', '#f2c230'], ['MX', '#3fa66b'], ['ES', '#e0533d'], ['AR', '#6fb7e8'], ['CL', '#4a6fd1'], ['PE', '#d9483b'], ['BR', '#2f9e5b'], ['US', '#4f6bd8']];
+const LANGUAGES: [string, string][] = [['es', '#e8794a'], ['en', '#5a8be0'], ['pt', '#3ea37a']];
+const SHOP: BadgeDef[] = [
+  ...COUNTRIES.map(([code, color]): BadgeDef => ({ id: `country-${code.toLowerCase()}`, unlock: 'shop', art: null, color, region: code })),
+  ...LANGUAGES.map(([code, color]): BadgeDef => ({ id: `lang-${code}`, unlock: 'shop', art: null, color, language: code })),
+];
+
+export const BADGES: readonly BadgeDef[] = [...BASE_BADGES, ...SHOP];
+export const SHOP_BADGES: readonly BadgeDef[] = SHOP;
 
 const BY_ID = new Map(BADGES.map((badge) => [badge.id, badge]));
 
@@ -66,4 +81,16 @@ export function normalizeShowcase(chosen: readonly string[], owned: readonly str
     if (have.has(id) && !out.includes(id)) out.push(id);
   }
   return out;
+}
+
+/** The text drawn on a badge that has no art: the code of its country or language. */
+export const badgeLabel = (def: BadgeDef): string => (def.region ?? def.language ?? '').toUpperCase();
+
+/** The name of a badge in a language: a country or a language by the name the language gives it, the rest from the catalog (`tr`). */
+export function badgeName(lang: string, def: BadgeDef, tr: (key: string) => string): string {
+  try {
+    if (def.region) return new Intl.DisplayNames([lang], { type: 'region' }).of(def.region) ?? def.region;
+    if (def.language) return new Intl.DisplayNames([lang], { type: 'language' }).of(def.language) ?? def.language;
+  } catch { /* an old runtime without names: the code is shown */ }
+  return tr(`profiles.badge.${def.id}`);
 }

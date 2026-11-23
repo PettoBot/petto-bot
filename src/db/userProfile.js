@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getSavedBadges = getSavedBadges;
+exports.getBadgeRows = getBadgeRows;
+exports.setFrame = setFrame;
 exports.addBadge = addBadge;
 exports.removeBadge = removeBadge;
 exports.getShowcase = getShowcase;
@@ -11,6 +13,16 @@ const { getPrimaryPool } = require('./postgres');
 async function getSavedBadges(userId) {
     const { rows } = await getPrimaryPool().query('select badge_id from user_badges where user_id = $1 order by granted_at', [userId]);
     return rows.map((row) => String(row.badge_id));
+}
+/** The badges a person has saved with the frame each one has (the badge of a plan is not saved: it follows the plan). */
+async function getBadgeRows(userId) {
+    const { rows } = await getPrimaryPool().query('select badge_id, frame, source from user_badges where user_id = $1 order by granted_at', [userId]);
+    return rows.map((row) => ({ id: String(row.badge_id), frame: String(row.frame), source: String(row.source) }));
+}
+/** Gives a badge a better frame, only if it is the one that follows the current frame (a frame is bought one step at a time). Returns whether it changed. */
+async function setFrame(userId, badgeId, from, to) {
+    const { rows } = await getPrimaryPool().query('update user_badges set frame = $4 where user_id = $1 and badge_id = $2 and frame = $3 returning badge_id', [userId, badgeId, from, to]);
+    return rows.length > 0;
 }
 /** Saves a badge for a person. Returns whether it was new. */
 async function addBadge(userId, badgeId, source) {

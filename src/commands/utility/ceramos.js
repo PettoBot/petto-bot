@@ -1,0 +1,138 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.untilText = untilText;
+// i18n-ignore-file: the texts are in the catalogs (ceramos.*); the builder holds the English descriptions that scripts/i18n-commands.js copies.
+// /ceramos (and `!ceramos`): the wallet as a picture, the shop of badges (countries and languages, bought once), buying and giving a badge a better frame.
+// /daily claims the daily ceramos (src/commands/utility/daily.ts). The balance only changes through db/ceramos.ts. Written in TypeScript: compiled over ceramos.js.
+const discord_js_1 = require("discord.js");
+const { loadImageFromLink } = require('../../utils/safeImage');
+const { t, languageOf, formatNumber } = require('../../i18n');
+const rules = require('../../utils/ceramos');
+const badges = require('../../utils/profileBadges');
+const shop = require('../../utils/ceramosShop');
+const image = require('../../utils/ceramosImage');
+const view = require('../../utils/profileView');
+const walletDb = require('../../db/ceramos');
+const profileDb = require('../../db/userProfile');
+const say = (content) => ({ content, flags: discord_js_1.MessageFlags.Ephemeral });
+const nameOf = (lang, id) => {
+    const def = badges.badgeById(id);
+    return def ? badges.badgeName(lang, def, (key) => t(lang, key)) : id;
+};
+/** `in 5h 12m`, `in 12m`: how long until a moment, in the language of the person. */
+function untilText(lang, nextAt, now = new Date()) {
+    const minutes = Math.max(1, Math.ceil((nextAt.getTime() - now.getTime()) / 60_000));
+    return t(lang, 'ceramos.in', { time: minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m` });
+}
+async function picture(url) {
+    if (!url)
+        return null;
+    try {
+        return await loadImageFromLink(url);
+    }
+    catch {
+        return null;
+    }
+}
+const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund'];
+async function wallet(interaction, lang) {
+    await interaction.deferReply();
+    const user = interaction.user;
+    const [data, moves] = await Promise.all([walletDb.getWallet(user.id), walletDb.lastMovements(user.id, 4)]);
+    const status = rules.claimStatus(data.lastDaily, new Date());
+    const member = interaction.inGuild() ? await interaction.guild?.members.fetch(user.id).catch(() => null) : null;
+    const avatar = await picture((member ?? user).displayAvatarURL({ size: 256, extension: 'png' }));
+    const png = image.renderWalletImage({
+        name: member?.displayName ?? user.username, avatar, balance: formatNumber(lang, data.balance), title: t(lang, 'ceramos.title'),
+        daily: status.canClaim ? t(lang, 'ceramos.daily.ready') : t(lang, 'ceramos.daily.next', { time: untilText(lang, status.nextAt) }), dailyReady: status.canClaim,
+        movementsTitle: t(lang, 'ceramos.movements'), noMovements: t(lang, 'ceramos.noMovements'),
+        movements: moves.map((move) => ({
+            text: REASONS.includes(move.reason) ? t(lang, `ceramos.reason.${move.reason}`, { badge: move.ref ? nameOf(lang, move.ref.split(':')[0]) : '' }) : move.reason,
+            amount: `${move.delta > 0 ? '+' : '−'}${formatNumber(lang, Math.abs(move.delta))}`, positive: move.delta > 0,
+        })),
+    });
+    await interaction.editReply({ files: [new discord_js_1.AttachmentBuilder(png, { name: 'ceramos.png' })] });
+}
+async function shopView(interaction, lang) {
+    await interaction.deferReply();
+    const [data, rows] = await Promise.all([walletDb.getWallet(interaction.user.id), profileDb.getBadgeRows(interaction.user.id)]);
+    const have = new Set(rows.map((row) => row.id));
+    const items = [];
+    for (const def of badges.SHOP_BADGES) {
+        items.push({ badge: { id: def.id, art: await view.artOf(def.art), color: def.color, label: badges.badgeLabel(def) }, name: nameOf(lang, def.id), price: formatNumber(lang, rules.BADGE_PRICE), owned: have.has(def.id) });
+    }
+    const png = image.renderShopImage({ title: t(lang, 'ceramos.shop.title'), balanceText: formatNumber(lang, data.balance), items, ownedText: t(lang, 'ceramos.shop.owned') });
+    await interaction.editReply({ content: t(lang, 'ceramos.shop.hint', { price: formatNumber(lang, rules.BADGE_PRICE), bright: formatNumber(lang, rules.FRAMES[1].cost), divine: formatNumber(lang, rules.FRAMES[2].cost) }), files: [new discord_js_1.AttachmentBuilder(png, { name: 'ceramos-shop.png' })] });
+}
+async function buy(interaction, lang) {
+    const id = interaction.options.getString('badge', true);
+    const result = await shop.buyBadge(interaction.user.id, id);
+    const vars = { badge: nameOf(lang, id), price: formatNumber(lang, result.price), balance: formatNumber(lang, result.balance) };
+    if (result.ok) {
+        await interaction.reply(say(t(lang, 'ceramos.buy.ok', vars)));
+        return;
+    }
+    await interaction.reply(say(t(lang, `ceramos.buy.${result.reason}`, vars)));
+}
+async function upgrade(interaction, lang) {
+    const id = interaction.options.getString('badge', true);
+    const result = await shop.upgradeFrame(interaction.user.id, id);
+    const vars = { badge: nameOf(lang, id), cost: formatNumber(lang, result.cost), balance: formatNumber(lang, result.balance) };
+    if (result.ok) {
+        await interaction.reply(say(t(lang, 'ceramos.upgrade.ok', { ...vars, frame: t(lang, `ceramos.frame.${result.frame}`) })));
+        return;
+    }
+    await interaction.reply(say(t(lang, `ceramos.upgrade.${result.reason}`, vars)));
+}
+module.exports = {
+    // A command of its own in the second set (registered in each server): the 100 global slots of Discord are nearly used (scripts/check-slash-structure.js).
+    registerSlash: true,
+    guildScoped: true,
+    aliases: ['wallet', 'cer'],
+    prefixDefaultSubcommand: 'balance',
+    data: new discord_js_1.SlashCommandBuilder()
+        .setName('ceramos')
+        .setDescription('Your ceramos: the wallet, the shop of badges and better frames.')
+        .setDMPermission(false)
+        .addSubcommand((s) => s.setName('balance').setDescription('See your ceramos and your last movements.'))
+        .addSubcommand((s) => s.setName('shop').setDescription('See the badges you can buy with ceramos.'))
+        .addSubcommand((s) => s.setName('buy').setDescription('Buy a badge of the shop. You keep it for good.')
+        .addStringOption((o) => o.setName('badge').setDescription('Which badge').setRequired(true).setAutocomplete(true)))
+        .addSubcommand((s) => s.setName('upgrade').setDescription('Give a badge of yours a better frame.')
+        .addStringOption((o) => o.setName('badge').setDescription('Which badge').setRequired(true).setAutocomplete(true))),
+    async autocomplete(interaction) {
+        const focused = interaction.options.getFocused(true);
+        if (focused.name !== 'badge') {
+            await interaction.respond([]);
+            return;
+        }
+        const lang = await languageOf(interaction);
+        const typed = String(focused.value ?? '').toLowerCase().trim();
+        const sub = interaction.options.getSubcommand(false);
+        const have = new Set((await profileDb.getBadgeRows(interaction.user.id)).map((row) => row.id));
+        const pool = sub === 'upgrade' ? badges.SHOP_BADGES.filter((def) => have.has(def.id)).concat(badges.BADGES.filter((def) => def.unlock !== 'shop' && def.unlock !== 'plan' && have.has(def.id))) : badges.SHOP_BADGES.filter((def) => !have.has(def.id));
+        const list = pool.map((def) => ({ name: nameOf(lang, def.id), value: def.id })).filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
+        await interaction.respond(list.slice(0, 25));
+    },
+    async execute(interaction) {
+        const lang = await languageOf(interaction);
+        const sub = interaction.options.getSubcommand();
+        try {
+            if (sub === 'shop')
+                return await shopView(interaction, lang);
+            if (sub === 'buy')
+                return await buy(interaction, lang);
+            if (sub === 'upgrade')
+                return await upgrade(interaction, lang);
+            return await wallet(interaction, lang);
+        }
+        catch (error) {
+            console.error('ceramos failed', error); // i18n-ignore: log line
+            const reply = say(t(lang, 'ceramos.failed'));
+            if (interaction.deferred || interaction.replied)
+                await interaction.editReply({ content: reply.content }).catch(() => null);
+            else
+                await interaction.reply(reply).catch(() => null);
+        }
+    },
+};

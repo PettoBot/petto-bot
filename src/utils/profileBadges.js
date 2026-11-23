@@ -4,12 +4,13 @@
 // Pure rules with no database and no Discord, so scripts/check-profile-card.js tests the same code the command runs.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/profileBadges.js.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.BADGES = exports.PLAN_KEYS = void 0;
+exports.badgeLabel = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.SHOP_BADGES = exports.BADGES = exports.PLAN_KEYS = void 0;
 exports.planOf = planOf;
 exports.ownedBadges = ownedBadges;
 exports.normalizeShowcase = normalizeShowcase;
+exports.badgeName = badgeName;
 exports.PLAN_KEYS = ['bronze', 'silver', 'gold'];
-exports.BADGES = [
+const BASE_BADGES = [
     { id: 'plan-bronze', unlock: 'plan', art: 'plan-bronze.png', color: '#b9792f' },
     { id: 'plan-silver', unlock: 'plan', art: 'plan-silver.png', color: '#b8bcc4' },
     { id: 'plan-gold', unlock: 'plan', art: 'plan-gold.png', color: '#f4cf3a' },
@@ -19,6 +20,15 @@ exports.BADGES = [
     { id: 'hetero', unlock: 'self', art: 'hetero.png', color: '#6fb4ff', pack: 'fablo' },
     { id: 'femboy', unlock: 'self', art: 'femboy.png', color: '#ff8fc2', pack: 'fablo' },
 ];
+// The shop: countries and languages, each bought once with ceramos (BADGE_PRICE of utils/ceramos.ts). They have no art yet: they are drawn with their code.
+const COUNTRIES = [['CO', '#f2c230'], ['MX', '#3fa66b'], ['ES', '#e0533d'], ['AR', '#6fb7e8'], ['CL', '#4a6fd1'], ['PE', '#d9483b'], ['BR', '#2f9e5b'], ['US', '#4f6bd8']];
+const LANGUAGES = [['es', '#e8794a'], ['en', '#5a8be0'], ['pt', '#3ea37a']];
+const SHOP = [
+    ...COUNTRIES.map(([code, color]) => ({ id: `country-${code.toLowerCase()}`, unlock: 'shop', art: null, color, region: code })),
+    ...LANGUAGES.map(([code, color]) => ({ id: `lang-${code}`, unlock: 'shop', art: null, color, language: code })),
+];
+exports.BADGES = [...BASE_BADGES, ...SHOP];
+exports.SHOP_BADGES = SHOP;
 const BY_ID = new Map(exports.BADGES.map((badge) => [badge.id, badge]));
 const badgeById = (id) => BY_ID.get(id) ?? null;
 exports.badgeById = badgeById;
@@ -55,4 +65,18 @@ function normalizeShowcase(chosen, owned, slots) {
             out.push(id);
     }
     return out;
+}
+/** The text drawn on a badge that has no art: the code of its country or language. */
+const badgeLabel = (def) => (def.region ?? def.language ?? '').toUpperCase();
+exports.badgeLabel = badgeLabel;
+/** The name of a badge in a language: a country or a language by the name the language gives it, the rest from the catalog (`tr`). */
+function badgeName(lang, def, tr) {
+    try {
+        if (def.region)
+            return new Intl.DisplayNames([lang], { type: 'region' }).of(def.region) ?? def.region;
+        if (def.language)
+            return new Intl.DisplayNames([lang], { type: 'language' }).of(def.language) ?? def.language;
+    }
+    catch { /* an old runtime without names: the code is shown */ }
+    return tr(`profiles.badge.${def.id}`);
 }
