@@ -60,6 +60,20 @@ const langs = ['en', 'es', 'pt-BR'];
     assert.equal(image.width, WIDTH); assert.equal(image.height, HEIGHT);
   }
 
+  // A name font of the shop: the name is drawn big with it (a bad font string once left it at 10 px), and it differs from the default look.
+  const { GlobalFonts, createCanvas } = require('@napi-rs/canvas');
+  const fontFile = path.join(root, 'src/assets/fonts/anton-400.woff2');
+  GlobalFonts.register(fs.readFileSync(fontFile), 'shop-anton');
+  const ink = async (nameFont) => {
+    const png = renderProfileImage({ ...base, name: 'Liam', nameFont, planStar: null, showcase: [], slots: 1 });
+    const canvas = createCanvas(WIDTH, HEIGHT); const c = canvas.getContext('2d'); c.drawImage(await loadImage(png), 0, 0);
+    const { data } = c.getImageData(230, 60, 400, 70);
+    let count = 0; for (let i = 0; i < data.length; i += 4) if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) count += 1;
+    return count;
+  };
+  assert.ok(await ink('shop-anton') > 1500, 'the name is big with a font of the shop');
+  assert.ok(await ink(null) > 1500, 'and with the default font');
+
   // The command: the picture is `show` (and what `!profile @member` runs), the old card is `server`, and the badges have their subcommands.
   const profile = require('../src/commands/automation/profile');
   const json = profile.data.toJSON();

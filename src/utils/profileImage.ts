@@ -112,7 +112,7 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
 
   // Name and the star of the plan.
   const nx = ax + size + 32;
-  ctx.fillStyle = '#ffffff'; ctx.font = data.nameFont ? `48px "${data.nameFont}", ${canvasFont(FONT, 700, 48)}` : canvasFont(FONT, 700, 48); ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff'; ctx.font = data.nameFont ? canvasFont(FONT, 700, 48).replace('48px ', `48px "${data.nameFont}", `) : canvasFont(FONT, 700, 48); ctx.textBaseline = 'alphabetic';
   const name = fitText(ctx, printable(data.name), WIDTH - nx - 130);
   ctx.fillText(name, nx, ay + 58);
   if (data.planStar) {
