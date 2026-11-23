@@ -15,6 +15,8 @@ stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
 stub('src/utils/moderationPermissions.js', { hasConfiguredRole: async () => false }); // read by the umbrella helper that /profile uses for its group config
 
+stub('src/db/userProfile.js', {}); // the badges of the picture of /profile are not read here: the card of the server is `/profile server`
+stub('src/db/levelUsers.js', {});
 let reviewConfig = { reviews_enabled: true, review_channel_id: null };
 let reviews = [];
 stub('src/db/reviews.js', {
@@ -70,13 +72,13 @@ const fakeGuild = (channel) => ({ id: 'g1', members: { fetch: async () => ({ joi
   await talk(profileConfigCommand, 'reviews', { enabled: false }, fakeUser('admin', 'Admin')); assert.match(await talk(reviewCommand, 'give', { user: fakeUser('b', 'Bob'), stars: '4' }), /turned off/); await talk(profileConfigCommand, 'reviews', { enabled: true }, fakeUser('admin', 'Admin'));
 
   // The profile shows only the modules the server uses.
-  let profile = await talk(profileCommand, null, { user: fakeUser('b', 'Bob') });
+  let profile = await talk(profileCommand, 'server', { user: fakeUser('b', 'Bob') });
   assert.match(profile, /Profile of Bob[\s\S]*Joined <t:\d+:D>[\s\S]*Rating: ★★★★★ \*\*4.5\*\* from 2 reviews/); assert.doesNotMatch(profile, /Uploads|Requests|Partnerships/);
   uploadConfig = { enabled: true }; requestConfig = { enabled: true }; partnerConfig = { enabled: true };
-  profile = await talk(profileCommand, null, { user: fakeUser('b', 'Bob') });
+  profile = await talk(profileCommand, 'server', { user: fakeUser('b', 'Bob') });
   assert.match(profile, /Uploads: \*\*2\*\* \(4 files\) · \*\*0\*\* this week · last <t:\d+:R>/); assert.match(profile, /Requests: \*\*3\*\* made, \*\*1\*\* done · \*\*2\*\* finished for others/); assert.match(profile, /Partnerships: \*\*2\*\* · \*\*1\*\* this week/);
-  reviewConfig.reviews_enabled = false; assert.doesNotMatch(await talk(profileCommand, null, { user: fakeUser('b', 'Bob') }), /Rating/, 'the rating is hidden when reviews are off'); reviewConfig.reviews_enabled = true;
-  assert.match(await talk(profileCommand, null, { user: fakeUser('nobody', 'Nobody') }), /Rating: no reviews yet/);
+  reviewConfig.reviews_enabled = false; assert.doesNotMatch(await talk(profileCommand, 'server', { user: fakeUser('b', 'Bob') }), /Rating/, 'the rating is hidden when reviews are off'); reviewConfig.reviews_enabled = true;
+  assert.match(await talk(profileCommand, 'server', { user: fakeUser('nobody', 'Nobody') }), /Rating: no reviews yet/);
   for (const command of [reviewCommand, profileCommand]) assert.ok(!command.prefixOnly && command.registerSlash === true, `/${command.data.name} is a slash command too`);
   assert.equal(profileConfigCommand.prefixOnly, true);
   assert.equal(String(profileConfigCommand.data.default_member_permissions), String(1n << 5n));

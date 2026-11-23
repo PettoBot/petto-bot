@@ -5287,3 +5287,24 @@ create table if not exists user_birthdays (
   updated_at timestamptz not null default now()
 );
 alter table user_birthdays enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- The profile of a person (the image of `/profile`): the badges they have turned on or been given, and the ones they put in the showcase.
+-- It belongs to the person and has no server; `deleteProfile` (db/userProfile.ts) forgets all of it when they ask for their data to be deleted.
+-- The badge of a plan is not here: it follows the plan they pay for.
+-- ---------------------------------------------------------------------------
+create table if not exists user_badges (
+  user_id    text not null,
+  badge_id   text not null check (char_length(badge_id) between 1 and 40),
+  source     text not null check (source in ('self', 'team')),
+  granted_at timestamptz not null default now(),
+  primary key (user_id, badge_id)
+);
+alter table user_badges enable row level security;
+
+create table if not exists user_profile (
+  user_id    text primary key,
+  showcase   text[] not null default '{}' check (cardinality(showcase) <= 6),
+  updated_at timestamptz not null default now()
+);
+alter table user_profile enable row level security;
