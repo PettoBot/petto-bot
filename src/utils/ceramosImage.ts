@@ -26,13 +26,28 @@ function fit(ctx: Ctx, text: string, maxWidth: number): string {
   return `${out}…`;
 }
 
-/** A ceramo: a gold coin with a ring and a shine. */
+/** A ceramo: a gold coin with a rim, a shine and an embossed C (the letter is left out on a tiny coin, where it would only be a smudge). */
 export function drawCoin(ctx: Ctx, cx: number, cy: number, r: number): void {
-  const gold = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  gold.addColorStop(0, '#ffe58a'); gold.addColorStop(1, '#e8a92c');
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = gold; ctx.fill();
-  ctx.beginPath(); ctx.arc(cx, cy, r * 0.72, 0, Math.PI * 2); ctx.lineWidth = Math.max(2, r * 0.1); ctx.strokeStyle = 'rgba(150,90,10,0.55)'; ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx - r * 0.3, cy - r * 0.35, r * 0.16, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill();
+  // The rim.
+  const rim = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  rim.addColorStop(0, '#fff0a8'); rim.addColorStop(0.5, '#f0b53a'); rim.addColorStop(1, '#b8741a');
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = rim; ctx.fill();
+  // The face, a little lighter at the top left.
+  const face = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r * 0.84);
+  face.addColorStop(0, '#ffe48a'); face.addColorStop(1, '#eaa72b');
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2); ctx.fillStyle = face; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2); ctx.lineWidth = Math.max(1.5, r * 0.05); ctx.strokeStyle = 'rgba(150,90,10,0.5)'; ctx.stroke();
+  if (r >= 20) {
+    // The C: a dark copy a little down and right, a light one up and left, then the gold on top, so it looks pressed into the coin.
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = canvasFont(FONT, 700, Math.round(r * 1.15));
+    const o = Math.max(1, r * 0.035);
+    ctx.fillStyle = 'rgba(255,248,205,0.85)'; ctx.fillText('C', cx - o, cy + r * 0.04 - o);
+    ctx.fillStyle = 'rgba(140,80,8,0.75)'; ctx.fillText('C', cx + o, cy + r * 0.04 + o);
+    ctx.fillStyle = '#e3a128'; ctx.fillText('C', cx, cy + r * 0.04);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+  // The shine.
+  ctx.beginPath(); ctx.ellipse(cx - r * 0.4, cy - r * 0.5, r * 0.2, r * 0.1, -0.6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
 }
 
 export interface WalletImageData {
