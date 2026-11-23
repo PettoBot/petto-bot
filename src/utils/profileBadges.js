@@ -4,9 +4,12 @@
 // Pure rules with no database and no Discord, so scripts/check-profile-card.js tests the same code the command runs.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/profileBadges.js.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.badgeLabel = exports.priceOf = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.shopBadges = exports.allBadges = exports.SHOP_BADGES = exports.BADGES = exports.PLAN_KEYS = exports.RARITY_PRICE = void 0;
+exports.badgeLabel = exports.priceOf = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.shopBadges = exports.allBadges = exports.packById = exports.allPacks = exports.SHOP_BADGES = exports.BADGES = exports.PLAN_KEYS = exports.RARITY_PRICE = void 0;
 exports.setCustomBadges = setCustomBadges;
+exports.setBadgeChanges = setBadgeChanges;
+exports.setPacks = setPacks;
 exports.onSale = onSale;
+exports.planNeeded = planNeeded;
 exports.planAllows = planAllows;
 exports.planOf = planOf;
 exports.ownedBadges = ownedBadges;
@@ -37,40 +40,97 @@ const SHOP = [
 ];
 exports.BADGES = [...BASE_BADGES, ...SHOP];
 exports.SHOP_BADGES = SHOP;
-const BY_ID = new Map(exports.BADGES.map((badge) => [badge.id, badge]));
+// What the team changes while the bot runs: the badges of the editor, the changes to the badges of the code, and the packs. Everything below reads the merged list.
 let custom = [];
-let customById = new Map();
+let changes = new Map();
+let packs = new Map();
+let merged = exports.BADGES;
+let mergedById = new Map(exports.BADGES.map((badge) => [badge.id, badge]));
+/** A badge of the code with the changes of the team put over it. The plans never change: their icons are the official ones. */
+function withChange(def) {
+    const change = def.unlock === 'plan' ? undefined : changes.get(def.id);
+    if (!change)
+        return def;
+    const out = { ...def };
+    if (change.names)
+        out.names = change.names;
+    if (change.color)
+        out.color = change.color;
+    if (change.rarity)
+        out.rarity = change.rarity;
+    if (change.price !== undefined && change.price !== null)
+        out.price = change.price;
+    if (change.pack !== undefined && change.pack !== null)
+        out.pack = change.pack;
+    if (change.dbArt) {
+        out.dbArt = true;
+        out.art = 'custom';
+    }
+    if (change.retired)
+        out.retired = true;
+    if (change.version)
+        out.version = change.version;
+    return out;
+}
+function rebuild() {
+    merged = [...exports.BADGES.map(withChange), ...custom];
+    mergedById = new Map(merged.map((badge) => [badge.id, badge]));
+}
 /** Sets the badges made in the editor (utils/badgeRegistry.ts reads them from the database). */
 function setCustomBadges(list) {
     custom = list;
-    customById = new Map(list.map((badge) => [badge.id, badge]));
+    rebuild();
 }
-/** Every badge that exists: the ones of this file and the ones of the editor. */
-const allBadges = () => (custom.length ? [...exports.BADGES, ...custom] : exports.BADGES);
+/** Sets the changes of the team to the badges of the code, keyed by id. */
+function setBadgeChanges(map) {
+    changes = map;
+    rebuild();
+}
+/** Sets the packs (the Fablo pack and the ones of the editor). */
+function setPacks(list) { packs = new Map(list.map((pack) => [pack.id, pack])); }
+const allPacks = () => [...packs.values()];
+exports.allPacks = allPacks;
+const packById = (id) => (id ? packs.get(id) ?? null : null);
+exports.packById = packById;
+/** Every badge that exists: the ones of this file (with the changes of the team) and the ones of the editor. */
+const allBadges = () => merged;
 exports.allBadges = allBadges;
 /** The badges that can be bought: the countries and languages, and the ones of the editor that are for sale (even when the sale is not open now). */
-const shopBadges = () => (custom.length ? [...exports.SHOP_BADGES, ...custom.filter((badge) => badge.unlock === 'shop')] : exports.SHOP_BADGES);
+const shopBadges = () => merged.filter((badge) => badge.unlock === 'shop');
 exports.shopBadges = shopBadges;
-/** Whether the sale is open at a moment (a badge with no dates is always on sale). */
+/** Whether the sale is open at a moment: not taken off sale, inside its days, and inside the days and the active state of its pack (nothing set is always on sale). */
 function onSale(def, now = new Date()) {
     if (def.retired)
         return false;
+    const pack = (0, exports.packById)(def.pack);
+    if (pack?.retired)
+        return false;
     const at = now.getTime();
-    if (def.saleFrom && new Date(def.saleFrom).getTime() > at)
-        return false;
-    if (def.saleUntil && new Date(def.saleUntil).getTime() <= at)
-        return false;
+    for (const part of [def, pack]) {
+        if (part?.saleFrom && new Date(part.saleFrom).getTime() > at)
+            return false;
+        if (part?.saleUntil && new Date(part.saleUntil).getTime() <= at)
+            return false;
+    }
     return true;
 }
-/** Whether a plan is enough for a badge that asks for one (none asks for none). */
-function planAllows(def, plan) {
-    if (!def.planMin)
-        return true;
-    return plan !== null && exports.PLAN_KEYS.indexOf(plan) >= exports.PLAN_KEYS.indexOf(def.planMin);
+/** The plan a piece asks for: the stricter of its own and the one of its pack (null asks for none). */
+function planNeeded(def) {
+    const own = def.planMin ?? null, fromPack = (0, exports.packById)(def.pack)?.planMin ?? null;
+    if (!own || !fromPack)
+        return own ?? fromPack;
+    return exports.PLAN_KEYS.indexOf(own) >= exports.PLAN_KEYS.indexOf(fromPack) ? own : fromPack;
 }
-const badgeById = (id) => BY_ID.get(id) ?? customById.get(id) ?? null;
+/** Whether a plan is enough for a piece that asks for one (none asks for none). */
+function planAllows(def, plan) {
+    const needed = planNeeded(def);
+    if (!needed)
+        return true;
+    return plan !== null && exports.PLAN_KEYS.indexOf(plan) >= exports.PLAN_KEYS.indexOf(needed);
+}
+const badgeById = (id) => mergedById.get(id) ?? null;
 exports.badgeById = badgeById;
-const isSelfBadge = (id) => BY_ID.get(id)?.unlock === 'self';
+const isSelfBadge = (id) => mergedById.get(id)?.unlock === 'self';
 exports.isSelfBadge = isSelfBadge;
 /** How many badges the showcase of the profile holds, by plan: one with no plan, then 2, 4 and 6. */
 exports.SHOWCASE_SLOTS = { none: 1, bronze: 2, silver: 4, gold: 6 };
@@ -87,7 +147,7 @@ const planBadgeId = (plan) => `plan-${plan}`;
 exports.planBadgeId = planBadgeId;
 /** What a person owns: what they have saved plus the badge of their plan. */
 function ownedBadges(saved, plan) {
-    const owned = new Set(saved.filter((id) => (BY_ID.has(id) || customById.has(id)) && (0, exports.badgeById)(id)?.unlock !== 'plan'));
+    const owned = new Set(saved.filter((id) => mergedById.has(id) && (0, exports.badgeById)(id)?.unlock !== 'plan'));
     if (plan)
         owned.add((0, exports.planBadgeId)(plan));
     return [...owned];
@@ -105,7 +165,7 @@ function normalizeShowcase(chosen, owned, slots) {
     return out;
 }
 /** What a badge of the shop costs (0 for a badge that is not for sale). */
-const priceOf = (def) => (def.unlock === 'shop' ? (def.price ?? exports.RARITY_PRICE[def.rarity ?? 'common']) : 0);
+const priceOf = (def) => (def.unlock === 'shop' && !(0, exports.packById)(def.pack)?.free ? (def.price ?? exports.RARITY_PRICE[def.rarity ?? 'common']) : 0);
 exports.priceOf = priceOf;
 /** The tab a badge belongs to. */
 function categoryOf(def) {
@@ -124,6 +184,8 @@ const badgeLabel = (def) => (def.region ?? def.language ?? '').toUpperCase();
 exports.badgeLabel = badgeLabel;
 /** The name of a badge in a language: a country or a language by the name the language gives it, the rest from the catalog (`tr`). */
 function badgeName(lang, def, tr) {
+    if (def.names)
+        return def.names[lang] ?? def.names[lang.split('-')[0]] ?? def.names.en ?? def.id;
     try {
         if (def.region)
             return new Intl.DisplayNames([lang], { type: 'region' }).of(def.region) ?? def.region;
@@ -131,7 +193,5 @@ function badgeName(lang, def, tr) {
             return new Intl.DisplayNames([lang], { type: 'language' }).of(def.language) ?? def.language;
     }
     catch { /* an old runtime without names: the code is shown */ }
-    if (def.names)
-        return def.names[lang] ?? def.names[lang.split('-')[0]] ?? def.names.en ?? def.id;
     return tr(`profiles.badge.${def.id}`);
 }

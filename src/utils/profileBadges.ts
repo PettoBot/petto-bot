@@ -19,8 +19,10 @@ export interface BadgeDef {
   /** The picture file of the badge in src/assets/badges (without folder), or null while the art is not there yet (it is drawn as a plain hexagon with `color`). */
   art: string | null;
   color: string;
-  /** The pack of badges it belongs to (`fablo` is the free default one), or nothing. */
-  pack?: 'fablo';
+  /** The pack of badges it belongs to (`fablo` is the free default one), or nothing. A pack can be made in the editor of the team. */
+  pack?: string;
+  /** Its picture is kept in the database (a badge of the editor, or a badge of the code the team gave another picture). */
+  dbArt?: boolean;
   /** A country (a region code) or a language (a language code): its name comes from the language of whoever reads it, and its code is drawn on the badge. */
   region?: string;
   language?: string;
@@ -45,6 +47,16 @@ export interface BadgeDef {
   /** Changes when the badge is edited: the websites use it to know the picture is a new one. */
   version?: string;
 }
+
+/** What the sale of a badge, a banner or a name font needs to be known: the days, the plan, whether it was taken off sale and the pack it is in. */
+export interface Sellable { retired?: boolean; saleFrom?: string | null; saleUntil?: string | null; planMin?: PlanKey | null; pack?: string }
+/** A pack: a named group that can be free, for a plan, for some days or sold whole. Its days and its plan count for every piece in it. */
+export interface PackDef {
+  id: string; kind: 'badge' | 'banner' | 'font'; names: Record<string, string>; color: string; price: number | null; free: boolean;
+  saleFrom: string | null; saleUntil: string | null; planMin: PlanKey | null; retired: boolean;
+}
+/** What the team changed in a badge of the code: every field is optional, and what is not set stays as the code has it. */
+export interface BadgeChange { names?: Record<string, string> | null; color?: string | null; rarity?: Rarity | null; price?: number | null; pack?: string | null; dbArt?: boolean; retired?: boolean | null; version?: string }
 
 export const PLAN_KEYS: readonly PlanKey[] = ['bronze', 'silver', 'gold'];
 
@@ -73,38 +85,85 @@ const SHOP: BadgeDef[] = [
 export const BADGES: readonly BadgeDef[] = [...BASE_BADGES, ...SHOP];
 export const SHOP_BADGES: readonly BadgeDef[] = SHOP;
 
-const BY_ID = new Map(BADGES.map((badge) => [badge.id, badge]));
+// What the team changes while the bot runs: the badges of the editor, the changes to the badges of the code, and the packs. Everything below reads the merged list.
 let custom: readonly BadgeDef[] = [];
-let customById = new Map<string, BadgeDef>();
+let changes: ReadonlyMap<string, BadgeChange> = new Map();
+let packs: ReadonlyMap<string, PackDef> = new Map();
+let merged: readonly BadgeDef[] = BADGES;
+let mergedById = new Map<string, BadgeDef>(BADGES.map((badge) => [badge.id, badge]));
+
+/** A badge of the code with the changes of the team put over it. The plans never change: their icons are the official ones. */
+function withChange(def: BadgeDef): BadgeDef {
+  const change = def.unlock === 'plan' ? undefined : changes.get(def.id);
+  if (!change) return def;
+  const out: BadgeDef = { ...def };
+  if (change.names) out.names = change.names;
+  if (change.color) out.color = change.color;
+  if (change.rarity) out.rarity = change.rarity;
+  if (change.price !== undefined && change.price !== null) out.price = change.price;
+  if (change.pack !== undefined && change.pack !== null) out.pack = change.pack;
+  if (change.dbArt) { out.dbArt = true; out.art = 'custom'; }
+  if (change.retired) out.retired = true;
+  if (change.version) out.version = change.version;
+  return out;
+}
+
+function rebuild(): void {
+  merged = [...BADGES.map(withChange), ...custom];
+  mergedById = new Map(merged.map((badge) => [badge.id, badge]));
+}
 
 /** Sets the badges made in the editor (utils/badgeRegistry.ts reads them from the database). */
 export function setCustomBadges(list: readonly BadgeDef[]): void {
   custom = list;
-  customById = new Map(list.map((badge) => [badge.id, badge]));
+  rebuild();
 }
 
-/** Every badge that exists: the ones of this file and the ones of the editor. */
-export const allBadges = (): readonly BadgeDef[] => (custom.length ? [...BADGES, ...custom] : BADGES);
-/** The badges that can be bought: the countries and languages, and the ones of the editor that are for sale (even when the sale is not open now). */
-export const shopBadges = (): readonly BadgeDef[] => (custom.length ? [...SHOP_BADGES, ...custom.filter((badge) => badge.unlock === 'shop')] : SHOP_BADGES);
+/** Sets the changes of the team to the badges of the code, keyed by id. */
+export function setBadgeChanges(map: ReadonlyMap<string, BadgeChange>): void {
+  changes = map;
+  rebuild();
+}
 
-/** Whether the sale is open at a moment (a badge with no dates is always on sale). */
-export function onSale(def: BadgeDef, now: Date = new Date()): boolean {
+/** Sets the packs (the Fablo pack and the ones of the editor). */
+export function setPacks(list: readonly PackDef[]): void { packs = new Map(list.map((pack) => [pack.id, pack])); }
+export const allPacks = (): readonly PackDef[] => [...packs.values()];
+export const packById = (id: string | null | undefined): PackDef | null => (id ? packs.get(id) ?? null : null);
+
+/** Every badge that exists: the ones of this file (with the changes of the team) and the ones of the editor. */
+export const allBadges = (): readonly BadgeDef[] => merged;
+/** The badges that can be bought: the countries and languages, and the ones of the editor that are for sale (even when the sale is not open now). */
+export const shopBadges = (): readonly BadgeDef[] => merged.filter((badge) => badge.unlock === 'shop');
+
+/** Whether the sale is open at a moment: not taken off sale, inside its days, and inside the days and the active state of its pack (nothing set is always on sale). */
+export function onSale(def: Sellable, now: Date = new Date()): boolean {
   if (def.retired) return false;
+  const pack = packById(def.pack);
+  if (pack?.retired) return false;
   const at = now.getTime();
-  if (def.saleFrom && new Date(def.saleFrom).getTime() > at) return false;
-  if (def.saleUntil && new Date(def.saleUntil).getTime() <= at) return false;
+  for (const part of [def, pack]) {
+    if (part?.saleFrom && new Date(part.saleFrom).getTime() > at) return false;
+    if (part?.saleUntil && new Date(part.saleUntil).getTime() <= at) return false;
+  }
   return true;
 }
 
-/** Whether a plan is enough for a badge that asks for one (none asks for none). */
-export function planAllows(def: BadgeDef, plan: PlanKey | null): boolean {
-  if (!def.planMin) return true;
-  return plan !== null && PLAN_KEYS.indexOf(plan) >= PLAN_KEYS.indexOf(def.planMin);
+/** The plan a piece asks for: the stricter of its own and the one of its pack (null asks for none). */
+export function planNeeded(def: Sellable): PlanKey | null {
+  const own = def.planMin ?? null, fromPack = packById(def.pack)?.planMin ?? null;
+  if (!own || !fromPack) return own ?? fromPack;
+  return PLAN_KEYS.indexOf(own) >= PLAN_KEYS.indexOf(fromPack) ? own : fromPack;
 }
 
-export const badgeById = (id: string): BadgeDef | null => BY_ID.get(id) ?? customById.get(id) ?? null;
-export const isSelfBadge = (id: string): boolean => BY_ID.get(id)?.unlock === 'self';
+/** Whether a plan is enough for a piece that asks for one (none asks for none). */
+export function planAllows(def: Sellable, plan: PlanKey | null): boolean {
+  const needed = planNeeded(def);
+  if (!needed) return true;
+  return plan !== null && PLAN_KEYS.indexOf(plan) >= PLAN_KEYS.indexOf(needed);
+}
+
+export const badgeById = (id: string): BadgeDef | null => mergedById.get(id) ?? null;
+export const isSelfBadge = (id: string): boolean => mergedById.get(id)?.unlock === 'self';
 
 /** How many badges the showcase of the profile holds, by plan: one with no plan, then 2, 4 and 6. */
 export const SHOWCASE_SLOTS: Readonly<Record<PlanKey | 'none', number>> = { none: 1, bronze: 2, silver: 4, gold: 6 };
@@ -123,7 +182,7 @@ export const planBadgeId = (plan: PlanKey): string => `plan-${plan}`;
 
 /** What a person owns: what they have saved plus the badge of their plan. */
 export function ownedBadges(saved: readonly string[], plan: PlanKey | null): string[] {
-  const owned = new Set(saved.filter((id) => (BY_ID.has(id) || customById.has(id)) && badgeById(id)?.unlock !== 'plan'));
+  const owned = new Set(saved.filter((id) => mergedById.has(id) && badgeById(id)?.unlock !== 'plan'));
   if (plan) owned.add(planBadgeId(plan));
   return [...owned];
 }
@@ -140,7 +199,7 @@ export function normalizeShowcase(chosen: readonly string[], owned: readonly str
 }
 
 /** What a badge of the shop costs (0 for a badge that is not for sale). */
-export const priceOf = (def: BadgeDef): number => (def.unlock === 'shop' ? (def.price ?? RARITY_PRICE[def.rarity ?? 'common']) : 0);
+export const priceOf = (def: BadgeDef): number => (def.unlock === 'shop' && !packById(def.pack)?.free ? (def.price ?? RARITY_PRICE[def.rarity ?? 'common']) : 0);
 
 /** The tab a badge belongs to. */
 export function categoryOf(def: BadgeDef): BadgeCategory {
@@ -156,10 +215,10 @@ export const badgeLabel = (def: BadgeDef): string => (def.region ?? def.language
 
 /** The name of a badge in a language: a country or a language by the name the language gives it, the rest from the catalog (`tr`). */
 export function badgeName(lang: string, def: BadgeDef, tr: (key: string) => string): string {
+  if (def.names) return def.names[lang] ?? def.names[lang.split('-')[0]] ?? def.names.en ?? def.id;
   try {
     if (def.region) return new Intl.DisplayNames([lang], { type: 'region' }).of(def.region) ?? def.region;
     if (def.language) return new Intl.DisplayNames([lang], { type: 'language' }).of(def.language) ?? def.language;
   } catch { /* an old runtime without names: the code is shown */ }
-  if (def.names) return def.names[lang] ?? def.names[lang.split('-')[0]] ?? def.names.en ?? def.id;
   return tr(`profiles.badge.${def.id}`);
 }

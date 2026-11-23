@@ -4,10 +4,13 @@ exports.registerCeramosRoutes = registerCeramosRoutes;
 const api = require('../utils/ceramosApi');
 const admin = require('../utils/badgeAdmin');
 const customDb = require('../db/customBadges');
+const shopAdmin = require('../utils/shopAdmin');
+const shopDb = require('../db/shop');
 const config = require('../config');
 const logger = require('../utils/logger');
 const ID = /^\d{15,25}$/;
 const BADGE = /^[a-z0-9-]{1,40}$/;
+const KIND = /^(banner|font)$/;
 const WRITES_PER_MINUTE = 40;
 const writes = new Map();
 function limited(userId) {
@@ -61,6 +64,18 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const id = badgeOf(body);
         return { result: id && typeof body.enabled === 'boolean' ? await api.setIdentity(userId, id, body.enabled) : bad };
     }));
+    const itemOf = (body) => (typeof body.kind === 'string' && KIND.test(body.kind) && typeof body.id === 'string' && BADGE.test(body.id) ? { kind: body.kind, id: body.id } : null);
+    app.post('/api/dashboard/ceramos/buy-item', limiter, guard(true, async (userId, body) => { const item = itemOf(body); return { result: item ? await api.buyItem(userId, item.kind, item.id) : bad }; }));
+    app.post('/api/dashboard/ceramos/buy-pack', limiter, guard(true, async (userId, body) => { const id = badgeOf({ badge: body.id }); return { result: id ? await api.buyPack(userId, id) : bad }; }));
+    // Puts a banner or a name font on; `id: null` takes it off.
+    app.post('/api/dashboard/ceramos/wear', limiter, guard(true, async (userId, body) => {
+        if (typeof body.kind !== 'string' || !KIND.test(body.kind))
+            return { result: bad };
+        if (body.id === null)
+            return { result: await api.wear(userId, body.kind, null) };
+        const item = itemOf(body);
+        return { result: item ? await api.wear(userId, item.kind, item.id) : bad };
+    }));
     app.post('/api/dashboard/ceramos/showcase', limiter, guard(true, async (userId, body) => {
         const list = Array.isArray(body.badges) ? body.badges.filter((id) => typeof id === 'string' && BADGE.test(id)).slice(0, 6) : null;
         return { result: list ? { ok: true, ...(await api.saveShowcase(userId, list)) } : bad };
@@ -77,6 +92,34 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const id = badgeOf({ badge: body.id });
         return id && typeof body.active === 'boolean' ? admin.setActive(id, body.active) : bad;
     }));
+    // The rest of the editor: packs, banners and name fonts, and the changes to the badges of the code.
+    app.get('/api/dashboard/ceramos/admin/shop', limiter, owner(false, async () => shopAdmin.list()));
+    app.post('/api/dashboard/ceramos/admin/pack', limiter, owner(true, async (_userId, body) => shopAdmin.savePack(body)));
+    app.post('/api/dashboard/ceramos/admin/pack-active', limiter, owner(true, async (_userId, body) => {
+        const id = badgeOf({ badge: body.id });
+        return id && typeof body.active === 'boolean' ? shopAdmin.setPackActive(id, body.active) : bad;
+    }));
+    app.post('/api/dashboard/ceramos/admin/item', limiter, owner(true, async (userId, body) => shopAdmin.saveItem(userId, body)));
+    app.post('/api/dashboard/ceramos/admin/item-active', limiter, owner(true, async (_userId, body) => {
+        const item = itemOf(body);
+        return item && typeof body.active === 'boolean' ? shopAdmin.setItemActive(item.kind, item.id, body.active) : bad;
+    }));
+    app.post('/api/dashboard/ceramos/admin/item-file', limiter, raw, owner(true, async (_userId, _body, req) => {
+        const id = badgeOf({ badge: req.query.id });
+        const kind = typeof req.query.kind === 'string' && KIND.test(req.query.kind) ? req.query.kind : null;
+        const bytes = req.body;
+        return id && kind && Buffer.isBuffer(bytes) ? shopAdmin.setItemFile(kind, id, bytes) : bad;
+    }));
+    app.post('/api/dashboard/ceramos/admin/override', limiter, owner(true, async (_userId, body) => shopAdmin.saveOverride(body)));
+    app.post('/api/dashboard/ceramos/admin/override-reset', limiter, owner(true, async (_userId, body) => {
+        const id = badgeOf({ badge: body.id });
+        return id ? shopAdmin.resetOverride(id) : bad;
+    }));
+    app.post('/api/dashboard/ceramos/admin/override-image', limiter, raw, owner(true, async (_userId, _body, req) => {
+        const id = badgeOf({ badge: req.query.id });
+        const bytes = req.body;
+        return id && Buffer.isBuffer(bytes) ? shopAdmin.setOverrideImage(id, bytes) : bad;
+    }));
     // The picture comes as the bytes themselves (not in JSON, which is limited to 100 KB): `?user_id=...&id=...`.
     app.post('/api/dashboard/ceramos/admin/badge-image', limiter, raw, owner(true, async (_userId, _body, req) => {
         const id = badgeOf({ badge: req.query.id });
@@ -90,7 +133,22 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
             return;
         }
         const id = badgeOf({ badge: req.params?.id });
-        const stored = id ? await customDb.getCustomImage(id).catch(() => null) : null;
+        const stored = id ? (await customDb.getCustomImage(id).catch(() => null)) ?? (await shopDb.getOverrideImage(id).catch(() => null)) : null;
+        if (!stored) {
+            res.status(404).json({ ok: false, error: 'not_found' });
+            return;
+        }
+        res.set('Content-Type', stored.type).set('Cache-Control', 'public, max-age=300').send(stored.bytes);
+    });
+    // The file of a banner (its picture) or of a name font, for the website to show (a font is sent so the page can draw a sample with it).
+    app.get('/api/dashboard/ceramos/item-file/:kind/:id', limiter, async (req, res) => {
+        if (!isAuthorized(req)) {
+            res.status(401).json({ ok: false, error: 'unauthorized' });
+            return;
+        }
+        const id = badgeOf({ badge: req.params?.id });
+        const kind = typeof req.params?.kind === 'string' && KIND.test(req.params.kind) ? req.params.kind : null;
+        const stored = id && kind ? await shopDb.getItemFile(kind, id).catch(() => null) : null;
         if (!stored) {
             res.status(404).json({ ok: false, error: 'not_found' });
             return;

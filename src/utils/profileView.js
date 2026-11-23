@@ -13,6 +13,7 @@ const { renderProfileImage } = require('./profileImage');
 const badgesRules = require('./profileBadges');
 const registry = require('./badgeRegistry');
 const profileDb = require('../db/userProfile');
+const shopDb = require('../db/shop');
 const levelUsersDb = require('../db/levelUsers');
 const { t, formatNumber } = require('../i18n');
 const ART_DIR = path.join(__dirname, '..', 'assets', 'badges');
@@ -86,7 +87,7 @@ async function planOfUser(_userId) {
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */
 async function profileState(userId) {
     await registry.ensure();
-    const [plan, saved, chosen, granted] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId), registry.grantedFor(userId)]);
+    const [plan, saved, chosen, granted, items, active] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId), registry.grantedFor(userId), shopDb.getUserItems(userId), shopDb.getActive(userId)]);
     // A badge that is given by itself is had while the person is what it says: it is saved when they first are (so it can have a frame) and left out when they stop.
     const ruled = new Set(badgesRules.allBadges().filter((def) => def.custom && def.grantRule).map((def) => def.id));
     const rows = [...saved];
@@ -100,7 +101,7 @@ async function profileState(userId) {
     const owned = badgesRules.ownedBadges(effective.map((row) => row.id), plan);
     const frames = Object.fromEntries(effective.map((row) => [row.id, row.frame]));
     const slots = badgesRules.slotsFor(plan);
-    return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames };
+    return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames, items, active };
 }
 async function picture(url) {
     if (!url)
@@ -119,9 +120,13 @@ async function buildProfileImage(opts) {
     const xp = Number(row?.xp ?? 0);
     const rank = xp > 0 ? await levelUsersDb.getRank(guildId, xp).catch(() => null) : null;
     const dash = '–';
-    const [avatar, banner] = await Promise.all([
+    // A banner of the shop that the person put on goes over the banner of their Discord; a name font of the shop changes how their name is drawn.
+    const ownsItem = (kind, id) => Boolean(id) && state.items.some((item) => item.kind === kind && item.id === id);
+    const [avatar, banner, shopBanner, nameFont] = await Promise.all([
         picture((member ?? user).displayAvatarURL({ size: 256, extension: 'png' })),
         picture(user.bannerURL?.({ size: 1024, extension: 'png' })),
+        ownsItem('banner', state.active.banner) ? registry.bannerImage(state.active.banner) : Promise.resolve(null),
+        ownsItem('font', state.active.font) ? registry.fontFamily(state.active.font) : Promise.resolve(null),
     ]);
     const planStar = state.plan ? await artOf(`plan-${state.plan}.png`) : null;
     const showcase = [];
@@ -132,7 +137,7 @@ async function buildProfileImage(opts) {
     }
     return renderProfileImage({
         name: member?.displayName ?? user.username,
-        avatar, banner, planStar,
+        avatar, banner: shopBanner ?? banner, planStar, nameFont,
         stats: [
             { label: t(lang, 'profiles.image.level'), value: row ? formatNumber(lang, Number(row.level ?? 0)) : dash },
             { label: t(lang, 'profiles.image.rank'), value: rank ? `#${formatNumber(lang, rank)}` : dash },

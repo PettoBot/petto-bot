@@ -53,6 +53,7 @@ async function deleteProfile(userId) {
     const pool = getPrimaryPool();
     await pool.query('delete from user_badges where user_id = $1', [userId]);
     await pool.query('delete from user_profile where user_id = $1', [userId]);
+    await pool.query('delete from user_items where user_id = $1', [userId]);
 }
 /** The voice time recorded for a person in a server, in seconds (the days the bot keeps in `activity_members`); 0 when there is none. */
 async function getVoiceSeconds(guildId, userId) {

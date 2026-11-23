@@ -10,6 +10,8 @@ const actions = require('./profileActions') as typeof import('./profileActions')
 const view = require('./profileView') as typeof import('./profileView');
 const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
 const walletDb = require('../db/ceramos') as typeof import('../db/ceramos');
+const shopCatalog = require('./shopCatalog') as typeof import('./shopCatalog');
+const shopBuy = require('./shopBuy') as typeof import('./shopBuy');
 
 export interface CatalogBadge {
   id: string;
@@ -32,11 +34,22 @@ export interface CatalogBadge {
   onSale: boolean;
   retired: boolean;
   hasArt: boolean;
+  /** Its picture is kept in the database (made in the editor, or a badge of the code the team gave another picture): the website asks the bot for it. */
+  dbArt: boolean;
   version: string | null;
 }
 
+export interface CatalogItem {
+  kind: 'banner' | 'font'; id: string; names: Record<string, string>; pack: string | null; rarity: Rarity; price: number; saleFrom: string | null; saleUntil: string | null;
+  planMin: string | null; onSale: boolean; retired: boolean; hasFile: boolean; version: string;
+}
+export interface CatalogPack {
+  id: string; kind: 'badge' | 'banner' | 'font'; names: Record<string, string>; color: string; free: boolean; price: number | null; fullPrice: number; saleFrom: string | null; saleUntil: string | null;
+  planMin: string | null; onSale: boolean; retired: boolean; pieces: string[];
+}
+
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
-export async function catalog(): Promise<{ badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }> {
+export async function catalog(): Promise<{ badges: CatalogBadge[]; items: CatalogItem[]; packs: CatalogPack[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }> {
   await registry.ensure();
   const now = new Date();
   return {
@@ -44,8 +57,19 @@ export async function catalog(): Promise<{ badges: CatalogBadge[]; frames: { id:
       id: def.id, category: badges.categoryOf(def), unlock: def.unlock, rarity: def.unlock === 'shop' ? (def.rarity ?? 'common') : null, price: badges.priceOf(def),
       color: def.color, region: def.region ?? null, language: def.language ?? null, pack: def.pack ?? null,
       custom: Boolean(def.custom), names: def.names ?? null, saleFrom: def.saleFrom ?? null, saleUntil: def.saleUntil ?? null, planMin: def.planMin ?? null,
-      grantRule: def.grantRule ?? null, onSale: def.unlock === 'shop' ? badges.onSale(def, now) : false, retired: Boolean(def.retired), hasArt: Boolean(def.art), version: def.version ?? null,
+      grantRule: def.grantRule ?? null, onSale: def.unlock === 'shop' ? badges.onSale(def, now) : false, retired: Boolean(def.retired), hasArt: Boolean(def.art), dbArt: Boolean(def.custom ? def.art : def.dbArt), version: def.version ?? null,
     })),
+    items: shopCatalog.allItems().map((item) => ({
+      kind: item.kind, id: item.id, names: item.names, pack: item.pack ?? null, rarity: item.rarity, price: shopCatalog.priceOf(item), saleFrom: item.saleFrom ?? null, saleUntil: item.saleUntil ?? null,
+      planMin: item.planMin ?? null, onSale: badges.onSale(item, now), retired: Boolean(item.retired), hasFile: item.hasFile, version: item.version,
+    })),
+    packs: badges.allPacks().map((pack) => {
+      const summary = shopCatalog.packSummary(pack.id, new Set(), null, now);
+      return {
+        id: pack.id, kind: pack.kind, names: pack.names, color: pack.color, free: pack.free, price: pack.price, fullPrice: summary?.fullPrice ?? 0, saleFrom: pack.saleFrom, saleUntil: pack.saleUntil,
+        planMin: pack.planMin, onSale: badges.onSale(pack, now), retired: pack.retired, pieces: summary?.pieces ?? [],
+      };
+    }),
     frames: rules.FRAMES.map((frame) => ({ id: frame.id, cost: frame.cost })),
     rarityPrice: { ...badges.RARITY_PRICE },
     daily: { ...rules.DAILY },
@@ -63,11 +87,16 @@ export async function state(userId: string, now: Date = new Date()) {
     slots: profile.slots,
     owned: profile.owned.map((id) => ({ id, frame: profile.frames[id] ?? 'normal' })),
     showcase: profile.showcase,
+    items: profile.items,
+    active: profile.active,
   };
 }
 
 export const claim = (userId: string) => view.planOfUser(userId).then((plan) => shop.claimToday(userId, plan));
 export const buy = (userId: string, badgeId: string) => shop.buyBadge(userId, badgeId);
 export const upgrade = (userId: string, badgeId: string) => shop.upgradeFrame(userId, badgeId);
+export const buyItem = (userId: string, kind: 'banner' | 'font', id: string) => shopBuy.buyItem(userId, kind, id);
+export const buyPack = (userId: string, id: string) => shopBuy.buyPack(userId, id);
+export const wear = (userId: string, kind: 'banner' | 'font', id: string | null) => shopBuy.wear(userId, kind, id);
 export const saveShowcase = (userId: string, ids: readonly string[]) => actions.saveShowcase(userId, ids);
 export const setIdentity = (userId: string, badgeId: string, enabled: boolean) => actions.setIdentity(userId, badgeId, enabled);

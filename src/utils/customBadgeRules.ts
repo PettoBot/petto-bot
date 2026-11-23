@@ -16,7 +16,7 @@ const BUILT_IN = new Set(['furro', 'boykisser', 'hetero', 'femboy']);
 
 export interface BadgeInput {
   id: string; names: Record<string, string>; category: BadgeCategory; rarity: Rarity; price: number; color: string;
-  saleFrom: string | null; saleUntil: string | null; planMin: PlanKey | null; grantRule: string | null;
+  saleFrom: string | null; saleUntil: string | null; planMin: PlanKey | null; grantRule: string | null; packId: string | null;
 }
 export type Checked = { ok: true; value: BadgeInput } | { ok: false; error: string };
 
@@ -62,7 +62,9 @@ export function checkBadgeInput(body: Record<string, unknown>): Checked {
   const grantRule = body.grantRule ? String(body.grantRule) : null;
   if (grantRule && !(GRANT_RULES as readonly string[]).includes(grantRule)) return { ok: false, error: 'bad_rule' };
   if (grantRule && price > 0) return { ok: false, error: 'rule_and_price' };
-  return { ok: true, value: { id, names, category, rarity, price, color, saleFrom, saleUntil, planMin, grantRule } };
+  const packId = body.packId === null || body.packId === undefined || body.packId === '' ? null : typeof body.packId === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(body.packId) ? body.packId : undefined;
+  if (packId === undefined) return { ok: false, error: 'bad_pack' };
+  return { ok: true, value: { id, names, category, rarity, price, color, saleFrom, saleUntil, planMin, grantRule, packId } };
 }
 
 /** Checks the picture of a badge: not empty, at most 256 KB, and really a PNG, JPEG, GIF or WebP by its first bytes. */

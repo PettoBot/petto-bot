@@ -26,6 +26,8 @@ stub('src/db/ceramos.js', {
 const customRows = new Map(); // id -> row of the editor
 const customImages = new Map();
 const voters = new Set();
+// The shop of banners, fonts and packs has nothing in these checks (scripts/check-shop-packs.js tests it).
+stub('src/db/shop.js', { getUserItems: async () => [], getActive: async () => ({ banner: null, font: null }), listOverrides: async () => [], listPacks: async () => [], listItems: async () => [], getOverrideImage: async () => null, getItemFile: async () => null });
 stub('src/db/customBadges.js', {
   listCustomBadges: async () => [...customRows.values()].map((row) => ({ ...row, hasImage: customImages.has(row.id), updatedAt: row.updatedAt })),
   getCustomImage: async (id) => (customImages.has(id) ? { ...customImages.get(id), updatedAt: customRows.get(id)?.updatedAt ?? '' } : null),

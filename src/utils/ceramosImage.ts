@@ -150,3 +150,71 @@ export function renderShopImage(data: ShopImageData): Buffer {
   });
   return canvas.toBuffer('image/png');
 }
+
+export interface ItemCard {
+  name: string;
+  /** The price as text, or the word that says the person has it. */
+  price: string;
+  owned: boolean;
+  /** A banner: its picture. */
+  picture?: Image | null;
+  /** A name font: the family it was registered under, to draw a sample with it. */
+  fontFamily?: string | null;
+  /** A pack: the colour of its tile and a line of text (how many pieces it holds, what the whole pack costs). */
+  color?: string;
+  line?: string;
+}
+export interface ItemShopImageData { title: string; balanceText: string; ownedText: string; sample: string; cards: ItemCard[] }
+
+const CARD_W = (WIDTH - 96 - 20) / 2, CARD_H = 150;
+
+/** The shop of banners, name fonts and packs: two cards in a row, each with its preview (the banner, a sample of the font, or the colour of the pack), its name and its price. */
+export function renderItemShopImage(data: ItemShopImageData): Buffer {
+  registerCardFonts();
+  const rows = Math.max(1, Math.ceil(data.cards.length / 2));
+  const height = 110 + rows * (CARD_H + 16) + 12;
+  const canvas = createCanvas(WIDTH, height);
+  const ctx = canvas.getContext('2d');
+  background(ctx, height);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, 36);
+  ctx.fillText(fit(ctx, printable(data.title), WIDTH - 260), 48, 66);
+  ctx.textAlign = 'right'; ctx.font = canvasFont(FONT, 700, 26);
+  const w = ctx.measureText(data.balanceText).width;
+  ctx.fillText(data.balanceText, WIDTH - 48, 64); ctx.textAlign = 'left';
+  drawCoin(ctx, WIDTH - 48 - w - 28, 54, 16);
+
+  data.cards.forEach((card, i) => {
+    const row = Math.floor(i / 2), inRow = Math.min(2, data.cards.length - row * 2);
+    // A last card alone is centred, so there is no empty corner.
+    const x = 48 + (inRow === 1 ? (WIDTH - 96 - CARD_W) / 2 : (i % 2) * (CARD_W + 20)), y = 100 + row * (CARD_H + 16);
+    ctx.save();
+    if (card.owned) ctx.globalAlpha = 0.65;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.beginPath(); ctx.roundRect(x, y, CARD_W, CARD_H, 18); ctx.fill();
+    const px = x + 14, py = y + 14, pw = 210, ph = CARD_H - 28;
+    ctx.save(); ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.clip();
+    if (card.picture) {
+      const scale = Math.max(pw / card.picture.width, ph / card.picture.height);
+      ctx.drawImage(card.picture, px + (pw - card.picture.width * scale) / 2, py + (ph - card.picture.height * scale) / 2, card.picture.width * scale, card.picture.height * scale);
+    } else if (card.fontFamily !== undefined) {
+      ctx.fillStyle = '#17141f'; ctx.fillRect(px, py, pw, ph);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = card.fontFamily ? `40px "${card.fontFamily}", ${canvasFont(FONT, 700, 40)}` : canvasFont(FONT, 700, 40);
+      ctx.fillText(fit(ctx, printable(data.sample), pw - 20), px + pw / 2, py + ph / 2);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else {
+      const tile = ctx.createLinearGradient(px, py, px + pw, py + ph);
+      tile.addColorStop(0, card.color ?? '#8f7bd6'); tile.addColorStop(1, '#17141f');
+      ctx.fillStyle = tile; ctx.fillRect(px, py, pw, ph);
+    }
+    ctx.restore();
+    const tx = px + pw + 18, tw = CARD_W - pw - 14 - 18 - 14;
+    ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, 22);
+    ctx.fillText(fit(ctx, printable(card.name), tw), tx, y + 54);
+    if (card.line) { ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = canvasFont(FONT, 500, 16); ctx.fillText(fit(ctx, printable(card.line), tw), tx, y + 82); }
+    ctx.fillStyle = card.owned ? '#8affc1' : '#ffd666'; ctx.font = canvasFont(FONT, 700, 22);
+    ctx.fillText(card.owned ? printable(data.ownedText) : card.price, tx, y + CARD_H - 30);
+    ctx.restore();
+  });
+  return canvas.toBuffer('image/png');
+}

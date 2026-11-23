@@ -68,7 +68,10 @@ function checkBadgeInput(body) {
         return { ok: false, error: 'bad_rule' };
     if (grantRule && price > 0)
         return { ok: false, error: 'rule_and_price' };
-    return { ok: true, value: { id, names, category, rarity, price, color, saleFrom, saleUntil, planMin, grantRule } };
+    const packId = body.packId === null || body.packId === undefined || body.packId === '' ? null : typeof body.packId === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(body.packId) ? body.packId : undefined;
+    if (packId === undefined)
+        return { ok: false, error: 'bad_pack' };
+    return { ok: true, value: { id, names, category, rarity, price, color, saleFrom, saleUntil, planMin, grantRule, packId } };
 }
 /** Checks the picture of a badge: not empty, at most 256 KB, and really a PNG, JPEG, GIF or WebP by its first bytes. */
 function checkImage(bytes) {

@@ -5352,3 +5352,72 @@ create table if not exists custom_badges (
   updated_at  timestamptz not null default now()
 );
 alter table custom_badges enable row level security;
+
+-- Shop of the profile, round two: packs (a named group of badges, banners or name fonts that can be free, for a plan, for a season or sold whole), the pieces of
+-- the shop that are not badges (banners and name fonts, with their file), what a person has of them, the changes the team makes to the badges of the code
+-- (their words, colour, price, picture), and the banner and font a person has on.
+alter table custom_badges add column if not exists pack_id text;
+
+create table if not exists shop_packs (
+  id          text primary key check (id ~ '^[a-z0-9][a-z0-9-]{2,39}$'),
+  kind        text not null check (kind in ('badge', 'banner', 'font')),
+  names       jsonb not null,
+  color       text not null default '#8f7bd6' check (color ~ '^#[0-9a-fA-F]{6}$'),
+  price       integer check (price is null or (price >= 0 and price <= 1000000)),
+  free        boolean not null default false,
+  sale_from   timestamptz,
+  sale_until  timestamptz,
+  plan_min    text check (plan_min in ('bronze', 'silver', 'gold')),
+  active      boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table shop_packs enable row level security;
+insert into shop_packs (id, kind, names, color, free) values ('fablo', 'badge', '{"en": "Fablo pack", "es": "Paquete Fablo", "pt-BR": "Pacote Fablo"}'::jsonb, '#ff8fc2', true) on conflict (id) do nothing;
+
+create table if not exists shop_items (
+  kind        text not null check (kind in ('banner', 'font')),
+  id          text not null check (id ~ '^[a-z0-9][a-z0-9-]{2,39}$'),
+  pack_id     text,
+  names       jsonb not null,
+  rarity      text not null default 'common' check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  price       integer check (price is null or (price >= 0 and price <= 100000)),
+  file        bytea check (file is null or octet_length(file) <= 1048576),
+  file_type   text check (file_type is null or file_type in ('image/png', 'image/jpeg', 'image/webp', 'font/ttf', 'font/otf', 'font/woff2')),
+  sale_from   timestamptz,
+  sale_until  timestamptz,
+  plan_min    text check (plan_min in ('bronze', 'silver', 'gold')),
+  active      boolean not null default true,
+  created_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  primary key (kind, id)
+);
+alter table shop_items enable row level security;
+
+create table if not exists user_items (
+  user_id      text not null,
+  kind         text not null check (kind in ('banner', 'font')),
+  item_id      text not null,
+  source       text not null default 'shop' check (source in ('shop', 'pack', 'free', 'team')),
+  acquired_at  timestamptz not null default now(),
+  primary key (user_id, kind, item_id)
+);
+alter table user_items enable row level security;
+
+create table if not exists badge_overrides (
+  id          text primary key check (id ~ '^[a-z0-9][a-z0-9-]{1,39}$'),
+  names       jsonb,
+  color       text check (color is null or color ~ '^#[0-9a-fA-F]{6}$'),
+  rarity      text check (rarity is null or rarity in ('common', 'rare', 'epic', 'legendary')),
+  price       integer check (price is null or (price >= 0 and price <= 100000)),
+  image       bytea check (image is null or octet_length(image) <= 262144),
+  image_type  text check (image_type is null or image_type in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')),
+  pack_id     text,
+  active      boolean,
+  updated_at  timestamptz not null default now()
+);
+alter table badge_overrides enable row level security;
+
+alter table user_profile add column if not exists banner_id text;
+alter table user_profile add column if not exists font_id text;

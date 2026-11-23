@@ -52,4 +52,10 @@ module.exports = {
   'profiles.showcase.saved': 'Your showcase is now: {badges}. (Your plan holds {slots}.)',
   'profiles.showcase.empty': 'Your showcase is empty now.',
   'profiles.showcase.dropped': 'Left out, because you do not have them or there is no place (your plan holds {slots}): {badges}.',
+  'profiles.banner.on': 'The banner **{name}** is on your profile picture.',
+  'profiles.banner.off': 'Your profile picture goes back to your Discord banner.',
+  'profiles.banner.notYours': 'You do not have that banner. Buy it with `/ceramos buy`.',
+  'profiles.font.on': 'The name font **{name}** is on your profile picture.',
+  'profiles.font.off': 'Your name goes back to the usual font.',
+  'profiles.font.notYours': 'You do not have that name font. Buy it with `/ceramos buy`.',
 };

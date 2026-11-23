@@ -22,6 +22,8 @@ export interface ProfileImageData {
   slots: number;
   /** The word on top of the showcase, such as `Badges`. */
   showcaseTitle: string;
+  /** The family of the name font the person put on (a font of the shop, already registered), or nothing for the usual one. */
+  nameFont?: string | null;
 }
 
 export const WIDTH = 1024;
@@ -110,7 +112,7 @@ export function renderProfileImage(data: ProfileImageData): Buffer {
 
   // Name and the star of the plan.
   const nx = ax + size + 32;
-  ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, 48); ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff'; ctx.font = data.nameFont ? `48px "${data.nameFont}", ${canvasFont(FONT, 700, 48)}` : canvasFont(FONT, 700, 48); ctx.textBaseline = 'alphabetic';
   const name = fitText(ctx, printable(data.name), WIDTH - nx - 130);
   ctx.fillText(name, nx, ay + 58);
   if (data.planStar) {

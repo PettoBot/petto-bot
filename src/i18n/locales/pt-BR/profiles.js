@@ -51,4 +51,10 @@ module.exports = {
   'profiles.showcase.saved': 'Sua vitrine agora é: {badges}. (Seu plano guarda {slots}.)',
   'profiles.showcase.empty': 'Sua vitrine ficou vazia.',
   'profiles.showcase.dropped': 'Ficaram de fora, porque você não as tem ou não há lugar (seu plano guarda {slots}): {badges}.',
+  'profiles.banner.on': 'O banner **{name}** está na sua imagem de perfil.',
+  'profiles.banner.off': 'Sua imagem de perfil volta ao seu banner do Discord.',
+  'profiles.banner.notYours': 'Você não tem esse banner. Compre com `/ceramos buy`.',
+  'profiles.font.on': 'A fonte de nome **{name}** está na sua imagem de perfil.',
+  'profiles.font.off': 'Seu nome volta à fonte de sempre.',
+  'profiles.font.notYours': 'Você não tem essa fonte de nome. Compre com `/ceramos buy`.',
 };

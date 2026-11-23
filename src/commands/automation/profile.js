@@ -5,6 +5,9 @@
 const { SlashCommandBuilder, MessageFlags, AttachmentBuilder } = require('discord.js');
 const { setIdentity, saveShowcase } = require('../../utils/profileActions');
 const badgesRules = require('../../utils/profileBadges');
+const shopCatalog = require('../../utils/shopCatalog');
+const shopBuy = require('../../utils/shopBuy');
+const registry = require('../../utils/badgeRegistry');
 const { buildProfileImage, profileState } = require('../../utils/profileView');
 const reviewsDb = require('../../db/reviews');
 const uploadsDb = require('../../db/uploads');
@@ -100,6 +103,17 @@ async function setShowcase(interaction) {
   return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
 }
 
+/** `/profile banner` and `/profile font`: put a banner or a name font of the shop on, or (with nothing chosen) take it off. It has to be one the person has. */
+async function wearItem(interaction, kind) {
+  const lang = await languageOf(interaction);
+  const id = interaction.options.getString(kind);
+  const result = await shopBuy.wear(interaction.user.id, kind, id || null);
+  if (!result.ok) return interaction.reply({ content: t(lang, `profiles.${kind}.notYours`), flags: MessageFlags.Ephemeral });
+  if (!id) return interaction.reply({ content: t(lang, `profiles.${kind}.off`), flags: MessageFlags.Ephemeral });
+  const item = shopCatalog.itemById(kind, id);
+  return interaction.reply({ content: t(lang, `profiles.${kind}.on`, { name: item ? shopCatalog.itemName(lang, item) : id }), flags: MessageFlags.Ephemeral });
+}
+
 module.exports = {
   subcommands: SUBCOMMANDS,
   // Also a slash command: `/profile show` (the picture), `/profile server` (the card), and, in the group `config`, the subcommands of `!profileconfig` (`/profile config channel`).
@@ -122,6 +136,10 @@ module.exports = {
     .addSubcommand((s) => s.setName('badge').setDescription('Turn one of your identity badges on or off.')
       .addStringOption((o) => o.setName('badge').setDescription('Which badge').setRequired(true).addChoices(...badgesRules.BADGES.filter((b) => b.unlock === 'self').map((b) => ({ name: b.id, value: b.id }))))
       .addBooleanOption((o) => o.setName('enabled').setDescription('On or off').setRequired(true)))
+    .addSubcommand((s) => s.setName('banner').setDescription('Put a banner you bought on your profile (leave empty for your Discord banner).')
+      .addStringOption((o) => o.setName('banner').setDescription('Which banner').setRequired(false).setAutocomplete(true)))
+    .addSubcommand((s) => s.setName('font').setDescription('Put a name font you bought on your profile (leave empty for the usual one).')
+      .addStringOption((o) => o.setName('font').setDescription('Which name font').setRequired(false).setAutocomplete(true)))
     .addSubcommand((s) => {
       s.setName('showcase').setDescription('Choose the badges of the showcase of your profile picture, in order.');
       for (let i = 1; i <= badgesRules.MAX_SLOTS; i += 1) {
@@ -135,9 +153,15 @@ module.exports = {
   /** The badges of `/profile showcase`: the ones the person has, by their name in the language of the person (there are more than Discord lets a list of choices hold). */
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
-    if (!/^badge[1-6]$/.test(focused.name)) return interaction.respond([]);
     const lang = await languageOf(interaction);
     const typed = String(focused.value ?? '').toLowerCase().trim();
+    if (focused.name === 'banner' || focused.name === 'font') {
+      const state = await profileState(interaction.user.id);
+      const items = state.items.filter((row) => row.kind === focused.name).map((row) => shopCatalog.itemById(row.kind, row.id)).filter(Boolean)
+        .map((item) => ({ name: shopCatalog.itemName(lang, item), value: item.id })).filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
+      return interaction.respond(items.slice(0, 25));
+    }
+    if (!/^badge[1-6]$/.test(focused.name)) return interaction.respond([]);
     const { owned } = await profileState(interaction.user.id);
     const list = owned.map((id) => ({ id, def: badgesRules.badgeById(id) })).filter((entry) => entry.def)
       .map((entry) => ({ name: badgesRules.badgeName(lang, entry.def, (key) => t(lang, key)), value: entry.id }))
@@ -150,6 +174,7 @@ module.exports = {
     if (interaction.options.getSubcommandGroup?.(false) === 'config') return runWrapped(interaction, client, 'profileconfig');
     const sub = interaction.options.getSubcommand(false) ?? 'show';
     if (sub === 'badge') return setBadge(interaction);
+    if (sub === 'banner' || sub === 'font') { await registry.ensure(); return wearItem(interaction, sub); }
     if (sub === 'showcase') return setShowcase(interaction);
     if (sub === 'show') return showImage(interaction);
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
