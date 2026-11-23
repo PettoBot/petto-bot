@@ -44,6 +44,7 @@ const catalog = require('../src/utils/shopCatalog');
 const buy = require('../src/utils/shopBuy');
 const seed = require('../src/utils/shopSeed');
 const admin = require('../src/utils/shopAdmin');
+const images = require('../src/utils/shopImages');
 
 (async () => {
   const names = { en: 'Winter', es: 'Invierno', 'pt-BR': 'Inverno' };
@@ -183,6 +184,18 @@ const admin = require('../src/utils/shopAdmin');
   assert.equal((await buy.wear('u1', 'banner', 'zzz')).reason, 'unknown');
   assert.equal((await buy.wear('u1', 'banner', null)).ok, true);
   assert.equal(active.get('u1').banner, null);
+
+  // Every banner is cut to the same size (the middle of the picture, never stretched), so the proportions are right on the profile, the rank card and the shop.
+  const { createCanvas, loadImage } = require('@napi-rs/canvas');
+  const picture = (w, h) => { const c = createCanvas(w, h); const x = c.getContext('2d'); x.fillStyle = '#38bdf8'; x.fillRect(0, 0, w, h); return c.toBuffer('image/png'); };
+  for (const [w, h] of [[1500, 900], [3000, 400], [1024, 320], [900, 900]]) {
+    const out = await images.normalizeBanner(picture(w, h));
+    assert.equal(out.ok, true, `${w}x${h} is accepted`);
+    const image = await loadImage(out.bytes);
+    assert.deepEqual([image.width, image.height, out.type], [images.BANNER_WIDTH, images.BANNER_HEIGHT, 'image/webp'], `${w}x${h} is saved at 1024x320`);
+  }
+  assert.equal((await images.normalizeBanner(picture(600, 600))).error, 'file_too_small');
+  assert.equal((await images.normalizeBanner(Buffer.from('not a picture'))).error, 'bad_file');
 
   // The status of what the editor lists.
   const now = day('2026-12-15T00:00:00Z');

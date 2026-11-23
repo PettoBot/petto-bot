@@ -37,7 +37,7 @@ async function loadDecorationFrames(src) {
 }
 
 /** The functions the renderer needs, wired to one guild and one message. A picture only moves for a Premium server. */
-function depsFor(ctx, guildId, { premium = false, kind = 'welcome' } = {}) {
+function depsFor(ctx, guildId, { premium = false, kind = 'welcome', userBanner = null } = {}) {
   return {
     loadFrames: premium ? loadDecorationFrames : undefined,
     // A background picture that cannot be had (a dead link, a deleted upload) is replaced by the default design of the kind of card.
@@ -49,6 +49,8 @@ function depsFor(ctx, guildId, { premium = false, kind = 'welcome' } = {}) {
     },
     loadSource: async (src) => {
       const own = /^petto:([a-z0-9-]{3,30})$/.exec(src);
+      // The banner the member has on from the shop of the profile: only the one of the person the card is about (see `userBannerFor`).
+      if (own && own[1] === 'user-banner') return userBanner ?? loadDesignImage(null, kind);
       if (own) return loadDesignImage(own[1], kind);
       const asset = /^asset:(\d{1,18})$/.exec(src);
       if (asset) {
@@ -87,7 +89,7 @@ function localizedBasic(basic, kind, lang) {
  * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends. Petto's
  * default texts (the ones a server did not change) are drawn in `lang`.
  */
-async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage() }) {
+async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage(), userBanner = null }) {
   const kind = rawCard?.kind === 'rank' ? 'rank' : 'welcome';
   const input = rawCard && typeof rawCard === 'object' && !Array.isArray(rawCard) ? { ...rawCard, basic: localizedBasic(rawCard.basic, kind, lang) } : rawCard;
   let { card, usesAdvanced } = normalizeCard(input, { premium, lang });
@@ -95,7 +97,21 @@ async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? cu
     const basic = localizedBasic(rawCard?.basic, 'welcome', lang);
     ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
-  return renderCard(card, depsFor(ctx, guildId, { premium, kind: card.kind }));
+  return renderCard(card, depsFor(ctx, guildId, { premium, kind: card.kind, userBanner }));
+}
+
+/** The banner a person put on from the shop of the profile (`/profile banner`), as a picture, or null when they have none on or do not have the one they chose. Never throws. */
+async function userBannerFor(userId) {
+  if (!userId) return null;
+  try {
+    // Loaded here, not at the top: the shop reads the database, and a card that is drawn without a person has no need of it.
+    const registry = require('./badgeRegistry');
+    const shopDb = require('../db/shop');
+    await registry.ensure();
+    const [active, items] = await Promise.all([shopDb.getActive(userId), shopDb.getUserItems(userId)]);
+    if (!active.banner || !items.some((row) => row.kind === 'banner' && row.id === active.banner)) return null;
+    return await registry.bannerImage(active.banner);
+  } catch { return null; }
 }
 
 /**
@@ -121,13 +137,16 @@ async function renderCardForMessage(cardRef, ctx) {
  * The rank card a server has not designed: the layout with the avatar on the left and the bar under the level, in Petto's own colors
  * (peach for messages, teal for voice), over a picture that comes with Petto. Its texts are in `lang`.
  */
-function defaultRankCard(source, lang = currentLanguage()) {
+function defaultRankCard(source, lang = currentLanguage(), withBanner = false) {
   const voice = source === 'voice';
   return {
     kind: 'rank',
     mode: 'basic',
     basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra') },
-    background: { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
+    // With a banner of the shop the picture is the banner of the person, darkened a little so the numbers stay easy to read.
+    background: withBanner
+      ? { color: '#120c1a', image: { src: 'petto:user-banner', fit: 'cover', blur: 0 }, overlay: { color: '#0b0814', opacity: 0.42 } }
+      : { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
   };
 }
 
@@ -142,7 +161,9 @@ async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.la
     let raw = null;
     if (cardName) raw = (await imageCards.getCard(guildId, cardName))?.data ?? null;
     const premium = (await getGuildPremium(guildId)).active;
-    const buffer = await drawCard(raw ?? defaultRankCard(source, lang), ctx, { guildId, premium, lang });
+    // A server that designed its own rank card keeps its design (it can show the banner of each member with the picture `petto:user-banner`); the default card shows it by itself.
+    const userBanner = await userBannerFor((ctx.member ?? ctx.user ?? ctx.message?.author)?.id);
+    const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner)), ctx, { guildId, premium, lang, userBanner });
     return { buffer, name: CARD_FILE_NAME };
   } catch (error) {
     logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);

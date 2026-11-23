@@ -8,6 +8,7 @@ const shopDb = require('../db/shop') as typeof import('../db/shop');
 const customDb = require('../db/customBadges') as typeof import('../db/customBadges');
 const badgeAdmin = require('./badgeAdmin') as typeof import('./badgeAdmin');
 const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
+const images = require('./shopImages') as typeof import('./shopImages');
 
 const fail = (error: string) => ({ ok: false as const, error });
 const err = (checked: unknown): string => (checked as { error: string }).error;
@@ -68,7 +69,13 @@ export async function setItemFile(kind: string, id: string, bytes: Buffer) {
   if (kind !== 'banner' && kind !== 'font') return fail('bad_kind');
   const checked = kind === 'banner' ? rules.checkBanner(bytes) : rules.checkFont(bytes);
   if (!checked.ok) return fail(err(checked));
-  const found = await shopDb.setItemFile(kind, id, bytes, checked.type);
+  let toSave = bytes, type = checked.type;
+  if (kind === 'banner') { // every banner is cut to the same size, so the proportions are right everywhere
+    const normalized = await images.normalizeBanner(bytes);
+    if (!normalized.ok) return fail(normalized.error);
+    toSave = normalized.bytes; type = normalized.type;
+  }
+  const found = await shopDb.setItemFile(kind, id, toSave, type);
   registry.invalidate();
   return found ? { ok: true as const } : fail('not_found');
 }
