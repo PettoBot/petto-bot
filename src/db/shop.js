@@ -48,12 +48,12 @@ async function setPackActive(id, active) {
     const { rows } = await getPrimaryPool().query('update shop_packs set active = $2, updated_at = now() where id = $1 returning id', [id, active]);
     return rows.length > 0;
 }
-const ITEM_COLUMNS = 'kind, id, pack_id, names, rarity, price, (file is not null) as has_file, sale_from, sale_until, plan_min, active, updated_at';
+const ITEM_COLUMNS = 'kind, id, pack_id, names, rarity, price, (file is not null) as has_file, sale_from, sale_until, plan_min, active, updated_at, credit';
 async function listItems() {
     const { rows } = await getPrimaryPool().query(`select ${ITEM_COLUMNS} from shop_items order by created_at, id`);
     return rows.map((row) => ({
         kind: String(row.kind), id: String(row.id), packId: text(row.pack_id), names: row.names, rarity: String(row.rarity), price: num(row.price),
-        hasFile: Boolean(row.has_file), saleFrom: iso(row.sale_from), saleUntil: iso(row.sale_until), planMin: text(row.plan_min), active: Boolean(row.active), updatedAt: iso(row.updated_at) ?? '',
+        hasFile: Boolean(row.has_file), saleFrom: iso(row.sale_from), saleUntil: iso(row.sale_until), planMin: text(row.plan_min), active: Boolean(row.active), updatedAt: iso(row.updated_at) ?? '', credit: text(row.credit),
     }));
 }
 async function getItemFile(kind, id) {
@@ -132,7 +132,7 @@ async function itemOwnerCounts() {
 }
 /** Puts a piece in the shop only if it is not there yet (the bot does it when it starts, so what the team edits afterwards is never overwritten). Returns whether it was added. */
 async function insertItemIfMissing(item) {
-    const { rows } = await getPrimaryPool().query(`insert into shop_items (kind, id, names, rarity, file, file_type, created_by) values ($1, $2, $3::jsonb, $4, $5, $6, 'seed')
-     on conflict (kind, id) do nothing returning id`, [item.kind, item.id, JSON.stringify(item.names), item.rarity, item.file, item.fileType]);
+    const { rows } = await getPrimaryPool().query(`insert into shop_items (kind, id, names, rarity, file, file_type, pack_id, price, credit, created_by) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, 'seed')
+     on conflict (kind, id) do nothing returning id`, [item.kind, item.id, JSON.stringify(item.names), item.rarity, item.file, item.fileType, item.packId ?? null, item.price ?? null, item.credit ?? null]);
     return rows.length > 0;
 }

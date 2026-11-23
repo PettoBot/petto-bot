@@ -7,7 +7,7 @@ const badges = require('./profileBadges') as typeof import('./profileBadges');
 
 export type ItemKind = 'banner' | 'font';
 export interface ItemDef extends Sellable {
-  kind: ItemKind; id: string; names: Record<string, string>; rarity: Rarity; price: number | null; hasFile: boolean; version: string;
+  kind: ItemKind; id: string; names: Record<string, string>; rarity: Rarity; price: number | null; hasFile: boolean; version: string; credit?: string | null;
 }
 
 let items: readonly ItemDef[] = [];

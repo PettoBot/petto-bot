@@ -38,7 +38,7 @@ async function refresh() {
             }])));
         rules.setCustomBadges(badgeRows.map(toDef));
         catalog.setItems(itemRows.map((row) => ({
-            kind: row.kind, id: row.id, names: row.names, rarity: row.rarity, price: row.price, hasFile: row.hasFile, version: row.updatedAt,
+            kind: row.kind, id: row.id, names: row.names, rarity: row.rarity, price: row.price, hasFile: row.hasFile, version: row.updatedAt, credit: row.credit,
             saleFrom: row.saleFrom, saleUntil: row.saleUntil, planMin: row.planMin ?? null, retired: !row.active, pack: row.packId ?? undefined,
         })));
         loadedAt = Date.now();

@@ -48,6 +48,8 @@ module.exports = {
     // The name fonts the shop starts with are saved the first time (what the team edits afterwards is never overwritten).
     require('../utils/shopSeed').seedFonts().then((count) => { if (count) { logger.info(`Added ${count} name font(s) to the shop.`); require('../utils/badgeRegistry').invalidate(); } })
       .catch((err) => logger.warn(`The name fonts of the shop could not be saved: ${err?.message ?? err}`));
+    require('../utils/shopSeed').seedBanners().then((count) => { if (count) { logger.info(`Added ${count} banner(s) to the shop.`); require('../utils/badgeRegistry').invalidate(); } })
+      .catch((err) => logger.warn(`The banners of the shop could not be saved: ${err?.message ?? err}`));
     // Every blacklisted server Petto is in now (the list was loaded before the login): left one by one, a second apart, in the background.
     guildBlacklist.sweep(client).then((count) => { if (count) logger.info(`Left ${count} blacklisted server(s) at start.`); })
       .catch((err) => logger.warn(`The blacklist sweep failed: ${err?.message ?? err}`));

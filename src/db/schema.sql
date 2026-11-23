@@ -5374,6 +5374,7 @@ create table if not exists shop_packs (
 );
 alter table shop_packs enable row level security;
 insert into shop_packs (id, kind, names, color, free) values ('fablo', 'badge', '{"en": "Fablo pack", "es": "Paquete Fablo", "pt-BR": "Pacote Fablo"}'::jsonb, '#ff8fc2', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('game-backgrounds', 'banner', '{"en": "Game backgrounds", "es": "Fondos de juegos", "pt-BR": "Fundos de jogos"}'::jsonb, '#7dd3a8', true) on conflict (id) do nothing;
 
 create table if not exists shop_items (
   kind        text not null check (kind in ('banner', 'font')),
@@ -5394,6 +5395,8 @@ create table if not exists shop_items (
   primary key (kind, id)
 );
 alter table shop_items enable row level security;
+-- Who made the picture of a banner (shown under it in the shop, as "© Studio"); empty for pieces without one.
+alter table shop_items add column if not exists credit text check (credit is null or char_length(credit) <= 120);
 
 create table if not exists user_items (
   user_id      text not null,
@@ -5436,3 +5439,13 @@ create table if not exists user_plans (
   updated_at  timestamptz not null default now()
 );
 alter table user_plans enable row level security;
+
+-- How a person wants their own rank card to look (the one every server that has not designed its own shows): colors of the bar and the text, the font, the layout, the
+-- avatar shape, the theme and the background. `gradient_paid` remembers that the two-color bar was already paid, so changing it back and forth costs nothing more.
+create table if not exists user_rank_card (
+  user_id        text primary key,
+  settings       jsonb not null default '{}'::jsonb,
+  gradient_paid  boolean not null default false,
+  updated_at     timestamptz not null default now()
+);
+alter table user_rank_card enable row level security;

@@ -10,6 +10,7 @@ const customDb = require('../db/customBadges') as typeof import('../db/customBad
 const shopAdmin = require('../utils/shopAdmin') as typeof import('../utils/shopAdmin');
 const shopDb = require('../db/shop') as typeof import('../db/shop');
 const planAdmin = require('../utils/planAdmin') as typeof import('../utils/planAdmin');
+const cardDesigns = require('../utils/cardDesigns') as { getDesign: (id: string) => unknown; designFile: (id: string, thumb: boolean) => { type: string; bytes: Buffer } | null };
 const config = require('../config') as { ownerId: string };
 const logger = require('../utils/logger') as { error: (...args: unknown[]) => void };
 
@@ -66,6 +67,17 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
     const item = itemOf(body);
     return { result: item ? await api.wear(userId, item.kind, item.id) : bad };
   }));
+  // The rank card of a person (the page "Rank card"): what they saved, saving it (the two-color bar costs ceramos once), and putting it back to the default one.
+  app.get('/api/dashboard/ceramos/rank-card', limiter, guard(false, async (userId) => api.rankCardState(userId)));
+  app.post('/api/dashboard/ceramos/rank-card', limiter, guard(true, async (userId, body) => ({ result: await api.rankCardSave(userId, body.settings) })));
+  app.post('/api/dashboard/ceramos/rank-card-reset', limiter, guard(true, async (userId) => { await api.rankCardReset(userId); return { result: { ok: true } }; }));
+  app.get('/api/dashboard/ceramos/design-file/:id/:size', limiter, async (req: Request, res: Response) => {
+    if (!isAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+    const id = req.params?.id ?? '';
+    const file = BADGE.test(id) && cardDesigns.getDesign(id) && (req.params?.size === 'thumb' || req.params?.size === 'full') ? cardDesigns.designFile(id, req.params.size === 'thumb') : null;
+    if (!file) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
+    res.set('Content-Type', file.type).set('Cache-Control', 'public, max-age=3600').send(file.bytes);
+  });
   app.post('/api/dashboard/ceramos/showcase', limiter, guard(true, async (userId, body) => {
     const list = Array.isArray(body.badges) ? body.badges.filter((id): id is string => typeof id === 'string' && BADGE.test(id)).slice(0, 6) : null;
     return { result: list ? { ok: true, ...(await api.saveShowcase(userId, list)) } : bad };

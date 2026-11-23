@@ -40,3 +40,23 @@ export async function seedFonts(): Promise<number> {
   }
   return added;
 }
+
+const BANNERS = path.join(__dirname, '..', 'assets', 'shop-banners');
+interface SeedBanner { id: string; names: Record<string, string>; pack: string | null; rarity: Rarity | 'common'; price: number | null; credit: string | null }
+
+/**
+ * Saves the banners that come with the shop (src/assets/shop-banners, made by scripts/make-shop-banners.js) that are not there yet: the game backgrounds (free for everybody, in the
+ * pack "game-backgrounds") and the landscapes that cost ceramos. Returns how many were added. What the team edits afterwards (the name, the price, taking one off sale) is never undone.
+ */
+export async function seedBanners(): Promise<number> {
+  let added = 0;
+  let list: SeedBanner[] = [];
+  try { list = JSON.parse(await fs.readFile(path.join(BANNERS, 'index.json'), 'utf8')) as SeedBanner[]; } catch { return 0; }
+  for (const banner of list) {
+    try {
+      const file = await fs.readFile(path.join(BANNERS, `${banner.id}.webp`));
+      if (await shopDb.insertItemIfMissing({ kind: 'banner', id: banner.id, names: banner.names, rarity: banner.rarity, file, fileType: 'image/webp', packId: banner.pack, price: banner.price, credit: banner.credit })) added += 1;
+    } catch { /* one that cannot be read is skipped: the rest are still saved */ }
+  }
+  return added;
+}

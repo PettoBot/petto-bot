@@ -14,7 +14,7 @@ export interface PackRow {
 }
 export interface ItemRow {
   kind: ItemKind; id: string; packId: string | null; names: Record<string, string>; rarity: string; price: number | null; hasFile: boolean;
-  saleFrom: string | null; saleUntil: string | null; planMin: string | null; active: boolean; updatedAt: string;
+  saleFrom: string | null; saleUntil: string | null; planMin: string | null; active: boolean; updatedAt: string; credit: string | null;
 }
 export interface OverrideRow {
   id: string; names: Record<string, string> | null; color: string | null; rarity: string | null; price: number | null; hasImage: boolean; packId: string | null; active: boolean | null; updatedAt: string;
@@ -51,13 +51,13 @@ export async function setPackActive(id: string, active: boolean): Promise<boolea
   return rows.length > 0;
 }
 
-const ITEM_COLUMNS = 'kind, id, pack_id, names, rarity, price, (file is not null) as has_file, sale_from, sale_until, plan_min, active, updated_at';
+const ITEM_COLUMNS = 'kind, id, pack_id, names, rarity, price, (file is not null) as has_file, sale_from, sale_until, plan_min, active, updated_at, credit';
 
 export async function listItems(): Promise<ItemRow[]> {
   const { rows } = await getPrimaryPool().query(`select ${ITEM_COLUMNS} from shop_items order by created_at, id`);
   return rows.map((row) => ({
     kind: String(row.kind) as ItemKind, id: String(row.id), packId: text(row.pack_id), names: row.names as Record<string, string>, rarity: String(row.rarity), price: num(row.price),
-    hasFile: Boolean(row.has_file), saleFrom: iso(row.sale_from), saleUntil: iso(row.sale_until), planMin: text(row.plan_min), active: Boolean(row.active), updatedAt: iso(row.updated_at) ?? '',
+    hasFile: Boolean(row.has_file), saleFrom: iso(row.sale_from), saleUntil: iso(row.sale_until), planMin: text(row.plan_min), active: Boolean(row.active), updatedAt: iso(row.updated_at) ?? '', credit: text(row.credit),
   }));
 }
 
@@ -153,9 +153,9 @@ export async function itemOwnerCounts(): Promise<Record<string, number>> {
 }
 
 /** Puts a piece in the shop only if it is not there yet (the bot does it when it starts, so what the team edits afterwards is never overwritten). Returns whether it was added. */
-export async function insertItemIfMissing(item: { kind: ItemKind; id: string; names: Record<string, string>; rarity: string; file: Buffer; fileType: string }): Promise<boolean> {
+export async function insertItemIfMissing(item: { kind: ItemKind; id: string; names: Record<string, string>; rarity: string; file: Buffer; fileType: string; packId?: string | null; price?: number | null; credit?: string | null }): Promise<boolean> {
   const { rows } = await getPrimaryPool().query(
-    `insert into shop_items (kind, id, names, rarity, file, file_type, created_by) values ($1, $2, $3::jsonb, $4, $5, $6, 'seed')
-     on conflict (kind, id) do nothing returning id`, [item.kind, item.id, JSON.stringify(item.names), item.rarity, item.file, item.fileType]);
+    `insert into shop_items (kind, id, names, rarity, file, file_type, pack_id, price, credit, created_by) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, 'seed')
+     on conflict (kind, id) do nothing returning id`, [item.kind, item.id, JSON.stringify(item.names), item.rarity, item.file, item.fileType, item.packId ?? null, item.price ?? null, item.credit ?? null]);
   return rows.length > 0;
 }

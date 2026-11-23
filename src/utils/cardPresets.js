@@ -54,6 +54,11 @@ function panelSettings(input) {
   return out;
 }
 
+/** The second color of the progress bar of a rank card (a gradient). Only kept when set, so cards made before it draw as they did. */
+function accent2Setting(input) {
+  return typeof input.accent2 === 'string' && HEX.test(input.accent2.trim()) ? { accent2: input.accent2.trim().toLowerCase() } : {};
+}
+
 /** The basic settings, checked. Anything missing or wrong becomes the default. `kind` is `welcome` or `rank`. */
 function normalizeBasic(raw, kind = 'welcome') {
   const input = raw && typeof raw === 'object' ? raw : {};
@@ -85,6 +90,7 @@ function normalizeBasic(raw, kind = 'welcome') {
       // The decoration moves (Premium) when it is an animated one; without it, or without Premium, it is the still picture.
       animateDecoration: flag(input.animateDecoration, false),
       ...panelSettings(input),
+      ...accent2Setting(input),
     };
   }
   const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : fallback);
@@ -187,7 +193,7 @@ function buildRankLayers(b, width, height) {
   const layers = [];
   const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
   const bar = (x, y, w, h) => layers.push({
-    id: 'bar', type: 'bar', x, y, w, h, radius: h / 2, fill: b.accent, fill2: '', track: '#000000', trackOpacity: 0.45, value: '{level_progress}', shadow: null,
+    id: 'bar', type: 'bar', x, y, w, h, radius: h / 2, fill: b.accent, fill2: b.accent2 ?? '', track: '#000000', trackOpacity: 0.45, value: '{level_progress}', shadow: null,
   });
   layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: width - 50, h: height - 50, fill: b.panelColor ?? '#000000', radius: 34, opacity: b.panelOpacity ?? 0.45 });
   if (b.preset === 'rankBottom') {

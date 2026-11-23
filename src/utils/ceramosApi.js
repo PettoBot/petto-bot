@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
+exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
 exports.catalog = catalog;
 exports.state = state;
 exports.ledger = ledger;
+exports.rankCardState = rankCardState;
 const rules = require('./ceramos');
 const badges = require('./profileBadges');
 const shop = require('./ceramosShop');
@@ -15,6 +16,10 @@ const shopCatalog = require('./shopCatalog');
 const shopBuy = require('./shopBuy');
 const userPlans = require('./userPlans');
 const plansDb = require('../db/userPlans');
+const rankRules = require('./userRankCard');
+const rankDb = require('../db/userRankCard');
+const rankActions = require('./rankCardActions');
+const designs = require('./cardDesigns');
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
 async function catalog() {
     await registry.ensure();
@@ -28,7 +33,7 @@ async function catalog() {
         })),
         items: shopCatalog.allItems().map((item) => ({
             kind: item.kind, id: item.id, names: item.names, pack: item.pack ?? null, rarity: item.rarity, price: shopCatalog.priceOf(item), saleFrom: item.saleFrom ?? null, saleUntil: item.saleUntil ?? null,
-            planMin: item.planMin ?? null, onSale: badges.onSale(item, now), retired: Boolean(item.retired), hasFile: item.hasFile, version: item.version,
+            planMin: item.planMin ?? null, onSale: badges.onSale(item, now), retired: Boolean(item.retired), hasFile: item.hasFile, version: item.version, credit: item.credit ?? null,
         })),
         packs: badges.allPacks().map((pack) => {
             const summary = shopCatalog.packSummary(pack.id, new Set(), null, now);
@@ -81,3 +86,20 @@ const saveShowcase = (userId, ids) => actions.saveShowcase(userId, ids);
 exports.saveShowcase = saveShowcase;
 const setIdentity = (userId, badgeId, enabled) => actions.setIdentity(userId, badgeId, enabled);
 exports.setIdentity = setIdentity;
+/** The rank card a person designed (the page "Rank card"): what they saved, what costs ceramos, the fonts and the designs of Petto to choose from, and whether they have a banner on. */
+async function rankCardState(userId) {
+    const [row, wallet, profile] = await Promise.all([rankDb.getRankCard(userId), walletDb.getWallet(userId), view.profileState(userId)]);
+    const settings = rankRules.normalize(row?.settings ?? {}, (id) => Boolean(designs.getDesign(id)));
+    return {
+        settings,
+        gradientPaid: row?.gradientPaid ?? false,
+        balance: wallet.balance,
+        prices: { ...rankRules.PRICES },
+        fonts: [...rankRules.FONTS],
+        designs: designs.designCatalog(),
+        hasBanner: Boolean(profile.active?.banner),
+    };
+}
+exports.rankCardSave = rankActions.save;
+const rankCardReset = (userId) => rankDb.resetRankCard(userId);
+exports.rankCardReset = rankCardReset;

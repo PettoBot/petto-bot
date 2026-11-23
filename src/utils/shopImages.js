@@ -13,8 +13,8 @@ exports.BANNER_HEIGHT = 320;
 /** A picture smaller than this is refused: it would look blurry when it is stretched to the banner. */
 exports.MIN_SOURCE_WIDTH = 800;
 exports.MIN_SOURCE_HEIGHT = 200;
-/** Cuts a picture to 1024 x 320 (the middle of it, never stretched) and saves it as WebP. */
-async function normalizeBanner(bytes) {
+/** Cuts a picture to 1024 x 320 (the middle of it, never stretched) and saves it as WebP. `lenient` accepts small pictures (only the pictures the team puts in by hand, never an upload). */
+async function normalizeBanner(bytes, lenient = false) {
     let image;
     try {
         image = await loadImage(bytes);
@@ -22,7 +22,7 @@ async function normalizeBanner(bytes) {
     catch {
         return { ok: false, error: 'bad_file' };
     }
-    if (image.width < exports.MIN_SOURCE_WIDTH || image.height < exports.MIN_SOURCE_HEIGHT)
+    if (!lenient && (image.width < exports.MIN_SOURCE_WIDTH || image.height < exports.MIN_SOURCE_HEIGHT))
         return { ok: false, error: 'file_too_small' };
     const canvas = createCanvas(exports.BANNER_WIDTH, exports.BANNER_HEIGHT);
     const ctx = canvas.getContext('2d');

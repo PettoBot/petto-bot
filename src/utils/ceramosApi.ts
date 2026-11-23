@@ -14,6 +14,10 @@ const shopCatalog = require('./shopCatalog') as typeof import('./shopCatalog');
 const shopBuy = require('./shopBuy') as typeof import('./shopBuy');
 const userPlans = require('./userPlans') as typeof import('./userPlans');
 const plansDb = require('../db/userPlans') as typeof import('../db/userPlans');
+const rankRules = require('./userRankCard') as typeof import('./userRankCard');
+const rankDb = require('../db/userRankCard') as typeof import('../db/userRankCard');
+const rankActions = require('./rankCardActions') as typeof import('./rankCardActions');
+const designs = require('./cardDesigns') as { getDesign: (id: string) => unknown; designCatalog: () => unknown };
 
 export interface CatalogBadge {
   id: string;
@@ -43,7 +47,7 @@ export interface CatalogBadge {
 
 export interface CatalogItem {
   kind: 'banner' | 'font'; id: string; names: Record<string, string>; pack: string | null; rarity: Rarity; price: number; saleFrom: string | null; saleUntil: string | null;
-  planMin: string | null; onSale: boolean; retired: boolean; hasFile: boolean; version: string;
+  planMin: string | null; onSale: boolean; retired: boolean; hasFile: boolean; version: string; credit: string | null;
 }
 export interface CatalogPack {
   id: string; kind: 'badge' | 'banner' | 'font'; names: Record<string, string>; color: string; free: boolean; price: number | null; fullPrice: number; saleFrom: string | null; saleUntil: string | null;
@@ -63,7 +67,7 @@ export async function catalog(): Promise<{ badges: CatalogBadge[]; items: Catalo
     })),
     items: shopCatalog.allItems().map((item) => ({
       kind: item.kind, id: item.id, names: item.names, pack: item.pack ?? null, rarity: item.rarity, price: shopCatalog.priceOf(item), saleFrom: item.saleFrom ?? null, saleUntil: item.saleUntil ?? null,
-      planMin: item.planMin ?? null, onSale: badges.onSale(item, now), retired: Boolean(item.retired), hasFile: item.hasFile, version: item.version,
+      planMin: item.planMin ?? null, onSale: badges.onSale(item, now), retired: Boolean(item.retired), hasFile: item.hasFile, version: item.version, credit: item.credit ?? null,
     })),
     packs: badges.allPacks().map((pack) => {
       const summary = shopCatalog.packSummary(pack.id, new Set(), null, now);
@@ -111,3 +115,21 @@ export const buyPack = (userId: string, id: string) => shopBuy.buyPack(userId, i
 export const wear = (userId: string, kind: 'banner' | 'font', id: string | null) => shopBuy.wear(userId, kind, id);
 export const saveShowcase = (userId: string, ids: readonly string[]) => actions.saveShowcase(userId, ids);
 export const setIdentity = (userId: string, badgeId: string, enabled: boolean) => actions.setIdentity(userId, badgeId, enabled);
+
+/** The rank card a person designed (the page "Rank card"): what they saved, what costs ceramos, the fonts and the designs of Petto to choose from, and whether they have a banner on. */
+export async function rankCardState(userId: string) {
+  const [row, wallet, profile] = await Promise.all([rankDb.getRankCard(userId), walletDb.getWallet(userId), view.profileState(userId)]);
+  const settings = rankRules.normalize(row?.settings ?? {}, (id) => Boolean(designs.getDesign(id)));
+  return {
+    settings,
+    gradientPaid: row?.gradientPaid ?? false,
+    balance: wallet.balance,
+    prices: { ...rankRules.PRICES },
+    fonts: [...rankRules.FONTS],
+    designs: designs.designCatalog(),
+    hasBanner: Boolean(profile.active?.banner),
+  };
+}
+
+export const rankCardSave = rankActions.save;
+export const rankCardReset = (userId: string) => rankDb.resetRankCard(userId);

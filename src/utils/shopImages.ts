@@ -13,11 +13,11 @@ export const MIN_SOURCE_HEIGHT = 200;
 
 export type Normalized = { ok: true; bytes: Buffer; type: 'image/webp' } | { ok: false; error: 'bad_file' | 'file_too_small' };
 
-/** Cuts a picture to 1024 x 320 (the middle of it, never stretched) and saves it as WebP. */
-export async function normalizeBanner(bytes: Buffer): Promise<Normalized> {
+/** Cuts a picture to 1024 x 320 (the middle of it, never stretched) and saves it as WebP. `lenient` accepts small pictures (only the pictures the team puts in by hand, never an upload). */
+export async function normalizeBanner(bytes: Buffer, lenient = false): Promise<Normalized> {
   let image;
   try { image = await loadImage(bytes); } catch { return { ok: false, error: 'bad_file' }; }
-  if (image.width < MIN_SOURCE_WIDTH || image.height < MIN_SOURCE_HEIGHT) return { ok: false, error: 'file_too_small' };
+  if (!lenient && (image.width < MIN_SOURCE_WIDTH || image.height < MIN_SOURCE_HEIGHT)) return { ok: false, error: 'file_too_small' };
   const canvas = createCanvas(BANNER_WIDTH, BANNER_HEIGHT);
   const ctx = canvas.getContext('2d');
   const scale = Math.max(BANNER_WIDTH / image.width, BANNER_HEIGHT / image.height);

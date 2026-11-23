@@ -37,7 +37,7 @@ export async function refresh(): Promise<void> {
     }])));
     rules.setCustomBadges(badgeRows.map(toDef));
     catalog.setItems(itemRows.map((row): import('./shopCatalog').ItemDef => ({
-      kind: row.kind, id: row.id, names: row.names, rarity: row.rarity as Rarity, price: row.price, hasFile: row.hasFile, version: row.updatedAt,
+      kind: row.kind, id: row.id, names: row.names, rarity: row.rarity as Rarity, price: row.price, hasFile: row.hasFile, version: row.updatedAt, credit: row.credit,
       saleFrom: row.saleFrom, saleUntil: row.saleUntil, planMin: (row.planMin as PlanKey | null) ?? null, retired: !row.active, pack: row.packId ?? undefined,
     })));
     loadedAt = Date.now();

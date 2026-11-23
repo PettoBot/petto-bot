@@ -101,7 +101,7 @@ async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? cu
 }
 
 /** The banner a person put on from the shop of the profile (`/profile banner`), as a picture, or null when they have none on or do not have the one they chose. Never throws. */
-async function userBannerFor(userId) {
+async function userBannerFor(userId, chosenId = null) {
   if (!userId) return null;
   try {
     // Loaded here, not at the top: the shop reads the database, and a card that is drawn without a person has no need of it.
@@ -109,8 +109,10 @@ async function userBannerFor(userId) {
     const shopDb = require('../db/shop');
     await registry.ensure();
     const [active, items] = await Promise.all([shopDb.getActive(userId), shopDb.getUserItems(userId)]);
-    if (!active.banner || !items.some((row) => row.kind === 'banner' && row.id === active.banner)) return null;
-    return await registry.bannerImage(active.banner);
+    // The one the person chose for the card on the page "Rank card" (when they have it), otherwise the one they have on in the profile.
+    const owns = (id) => id && items.some((row) => row.kind === 'banner' && row.id === id);
+    const id = owns(chosenId) ? chosenId : (owns(active.banner) ? active.banner : null);
+    return id ? await registry.bannerImage(id) : null;
   } catch { return null; }
 }
 
@@ -137,17 +139,36 @@ async function renderCardForMessage(cardRef, ctx) {
  * The rank card a server has not designed: the layout with the avatar on the left and the bar under the level, in Petto's own colors
  * (peach for messages, teal for voice), over a picture that comes with Petto. Its texts are in `lang`.
  */
-function defaultRankCard(source, lang = currentLanguage(), withBanner = false) {
+function defaultRankCard(source, lang = currentLanguage(), withBanner = false, custom = null) {
   const voice = source === 'voice';
+  // What the person designed on the page "Rank card" (`utils/userRankCard`): its colors, font and layout go over the basic settings, and its background over the picture.
+  const own = custom?.basic ?? {};
+  const background = custom?.background ?? { kind: 'default' };
+  const useBanner = (background.kind === 'banner' || background.kind === 'shop' || background.kind === 'default') && withBanner;
+  const picture = background.kind === 'design' ? `petto:${background.id}` : (voice ? 'petto:rank-voice' : 'petto:rank-default');
   return {
     kind: 'rank',
     mode: 'basic',
-    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra') },
+    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra'), ...own },
     // With a banner of the shop the picture is the banner of the person, darkened a little so the numbers stay easy to read.
-    background: withBanner
+    background: useBanner
       ? { color: '#120c1a', image: { src: 'petto:user-banner', fit: 'cover', blur: 0 }, overlay: { color: '#0b0814', opacity: 0.42 } }
-      : { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
+      : { color: '#120c1a', image: { src: picture, fit: 'cover', blur: 0 } },
   };
+}
+
+/** What a person designed for their own rank card, as `{ basic, background }` for `defaultRankCard`, or null when they designed nothing. Never throws. */
+async function userRankCardFor(userId) {
+  if (!userId) return null;
+  try {
+    const db = require('../db/userRankCard');
+    const rules = require('./userRankCard');
+    const designs = require('./cardDesigns');
+    const row = await db.getRankCard(userId);
+    if (!row || !Object.keys(row.settings).length) return null;
+    const settings = rules.normalize(row.settings, (id) => Boolean(designs.getDesign(id)));
+    return { basic: rules.toBasic(settings), background: rules.backgroundOf(settings) };
+  } catch { return null; }
 }
 
 /**
@@ -162,8 +183,12 @@ async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.la
     if (cardName) raw = (await imageCards.getCard(guildId, cardName))?.data ?? null;
     const premium = (await getGuildPremium(guildId)).active;
     // A server that designed its own rank card keeps its design (it can show the banner of each member with the picture `petto:user-banner`); the default card shows it by itself.
-    const userBanner = await userBannerFor((ctx.member ?? ctx.user ?? ctx.message?.author)?.id);
-    const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner)), ctx, { guildId, premium, lang, userBanner });
+    const personId = (ctx.member ?? ctx.user ?? ctx.message?.author)?.id;
+    // The card the person designed is only for the default card: a server that made its own keeps it.
+    const custom = raw ? null : await userRankCardFor(personId);
+    const userBanner = await userBannerFor(personId, custom?.background.kind === 'shop' ? custom.background.id : null);
+    // The card a person designed is theirs, not the server's: its fonts are the ones of the page (some are Premium ones for a server's own card), so it is not held back by the server's Premium.
+    const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner), custom), ctx, { guildId, premium: custom ? true : premium, lang, userBanner });
     return { buffer, name: CARD_FILE_NAME };
   } catch (error) {
     logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);
@@ -188,4 +213,4 @@ function normalizeCardRef(raw) {
   return { name: imageCards.normalizeName(raw.name), placement: PLACEMENTS.has(raw.placement) ? raw.placement : 'default' };
 }
 
-module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, normalizeCardRef, plainMessage };
+module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, userRankCardFor, normalizeCardRef, plainMessage };

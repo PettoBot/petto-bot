@@ -7,6 +7,7 @@ const customDb = require('../db/customBadges');
 const shopAdmin = require('../utils/shopAdmin');
 const shopDb = require('../db/shop');
 const planAdmin = require('../utils/planAdmin');
+const cardDesigns = require('../utils/cardDesigns');
 const config = require('../config');
 const logger = require('../utils/logger');
 const ID = /^\d{15,25}$/;
@@ -78,6 +79,23 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const item = itemOf(body);
         return { result: item ? await api.wear(userId, item.kind, item.id) : bad };
     }));
+    // The rank card of a person (the page "Rank card"): what they saved, saving it (the two-color bar costs ceramos once), and putting it back to the default one.
+    app.get('/api/dashboard/ceramos/rank-card', limiter, guard(false, async (userId) => api.rankCardState(userId)));
+    app.post('/api/dashboard/ceramos/rank-card', limiter, guard(true, async (userId, body) => ({ result: await api.rankCardSave(userId, body.settings) })));
+    app.post('/api/dashboard/ceramos/rank-card-reset', limiter, guard(true, async (userId) => { await api.rankCardReset(userId); return { result: { ok: true } }; }));
+    app.get('/api/dashboard/ceramos/design-file/:id/:size', limiter, async (req, res) => {
+        if (!isAuthorized(req)) {
+            res.status(401).json({ ok: false, error: 'unauthorized' });
+            return;
+        }
+        const id = req.params?.id ?? '';
+        const file = BADGE.test(id) && cardDesigns.getDesign(id) && (req.params?.size === 'thumb' || req.params?.size === 'full') ? cardDesigns.designFile(id, req.params.size === 'thumb') : null;
+        if (!file) {
+            res.status(404).json({ ok: false, error: 'not_found' });
+            return;
+        }
+        res.set('Content-Type', file.type).set('Cache-Control', 'public, max-age=3600').send(file.bytes);
+    });
     app.post('/api/dashboard/ceramos/showcase', limiter, guard(true, async (userId, body) => {
         const list = Array.isArray(body.badges) ? body.badges.filter((id) => typeof id === 'string' && BADGE.test(id)).slice(0, 6) : null;
         return { result: list ? { ok: true, ...(await api.saveShowcase(userId, list)) } : bad };
