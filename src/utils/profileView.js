@@ -14,6 +14,7 @@ const badgesRules = require('./profileBadges');
 const registry = require('./badgeRegistry');
 const profileDb = require('../db/userProfile');
 const shopDb = require('../db/shop');
+const plansDb = require('../db/userPlans');
 const levelUsersDb = require('../db/levelUsers');
 const { t, formatNumber } = require('../i18n');
 const ART_DIR = path.join(__dirname, '..', 'assets', 'badges');
@@ -80,9 +81,15 @@ function formatVoice(seconds) {
     const days = Math.floor(hours / 24);
     return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`;
 }
-/** The plan a person pays for, or null. The plans of a person are not sold yet, so nobody has one until that table exists. */
-async function planOfUser(_userId) {
-    return null;
+/** The plan a person has right now (given by the team or paid), or null. A plan past its end is not one. A read that fails is no plan: the person is never given more than they have. */
+async function planOfUser(userId) {
+    try {
+        const row = await plansDb.getPlan(userId);
+        return row?.active ? badgesRules.planOf(row.plan) : null;
+    }
+    catch {
+        return null;
+    }
 }
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */
 async function profileState(userId) {

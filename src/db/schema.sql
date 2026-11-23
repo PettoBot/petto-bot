@@ -5421,3 +5421,18 @@ alter table badge_overrides enable row level security;
 
 alter table user_profile add column if not exists banner_id text;
 alter table user_profile add column if not exists font_id text;
+
+-- The plan a person pays for (Bronze, Silver or Gold), one row for each person. `ends_at` is the end of the period that is paid or given (null: no end yet); a plan
+-- that is past its end is not active. `source` says who put it there: the team by hand now, and the payment service later. Nothing of it belongs to a server.
+create table if not exists user_plans (
+  user_id     text primary key,
+  plan        text not null check (plan in ('bronze', 'silver', 'gold')),
+  ends_at     timestamptz,
+  renews      boolean not null default false,
+  source      text not null default 'team' check (source in ('team', 'payment')),
+  granted_by  text,
+  note        text check (note is null or char_length(note) <= 200),
+  started_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table user_plans enable row level security;

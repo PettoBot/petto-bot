@@ -72,7 +72,7 @@ export async function setItemFile(kind: string, id: string, bytes: Buffer) {
   let toSave = bytes, type = checked.type;
   if (kind === 'banner') { // every banner is cut to the same size, so the proportions are right everywhere
     const normalized = await images.normalizeBanner(bytes);
-    if (!normalized.ok) return fail(normalized.error);
+    if (!normalized.ok) return fail((normalized as { error: string }).error);
     toSave = normalized.bytes; type = normalized.type;
   }
   const found = await shopDb.setItemFile(kind, id, toSave, type);

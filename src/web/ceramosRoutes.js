@@ -6,6 +6,7 @@ const admin = require('../utils/badgeAdmin');
 const customDb = require('../db/customBadges');
 const shopAdmin = require('../utils/shopAdmin');
 const shopDb = require('../db/shop');
+const planAdmin = require('../utils/planAdmin');
 const config = require('../config');
 const logger = require('../utils/logger');
 const ID = /^\d{15,25}$/;
@@ -57,6 +58,7 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
     const bad = { ok: false, reason: 'bad_request' };
     app.get('/api/dashboard/ceramos/catalog', limiter, guard(false, async () => api.catalog()));
     app.get('/api/dashboard/ceramos/state', limiter, guard(false, async (userId) => api.state(userId)));
+    app.get('/api/dashboard/ceramos/ledger', limiter, guard(false, async (userId) => api.ledger(userId)));
     app.post('/api/dashboard/ceramos/daily', limiter, guard(true, async (userId) => ({ result: await api.claim(userId) })));
     app.post('/api/dashboard/ceramos/buy', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id ? await api.buy(userId, id) : bad }; }));
     app.post('/api/dashboard/ceramos/upgrade', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id ? await api.upgrade(userId, id) : bad }; }));
@@ -92,6 +94,10 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const id = badgeOf({ badge: body.id });
         return id && typeof body.active === 'boolean' ? admin.setActive(id, body.active) : bad;
     }));
+    // The plans of the people: who has one, give one, end one.
+    app.get('/api/dashboard/ceramos/admin/plans', limiter, owner(false, async () => planAdmin.list()));
+    app.post('/api/dashboard/ceramos/admin/plan-grant', limiter, owner(true, async (userId, body) => planAdmin.grant(userId, body)));
+    app.post('/api/dashboard/ceramos/admin/plan-end', limiter, owner(true, async (_userId, body) => planAdmin.end(body)));
     // The rest of the editor: packs, banners and name fonts, and the changes to the badges of the code.
     app.get('/api/dashboard/ceramos/admin/shop', limiter, owner(false, async () => shopAdmin.list()));
     app.post('/api/dashboard/ceramos/admin/pack', limiter, owner(true, async (_userId, body) => shopAdmin.savePack(body)));

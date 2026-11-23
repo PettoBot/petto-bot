@@ -12,6 +12,8 @@ const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
 const walletDb = require('../db/ceramos') as typeof import('../db/ceramos');
 const shopCatalog = require('./shopCatalog') as typeof import('./shopCatalog');
 const shopBuy = require('./shopBuy') as typeof import('./shopBuy');
+const userPlans = require('./userPlans') as typeof import('./userPlans');
+const plansDb = require('../db/userPlans') as typeof import('../db/userPlans');
 
 export interface CatalogBadge {
   id: string;
@@ -49,7 +51,7 @@ export interface CatalogPack {
 }
 
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
-export async function catalog(): Promise<{ badges: CatalogBadge[]; items: CatalogItem[]; packs: CatalogPack[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }> {
+export async function catalog(): Promise<{ badges: CatalogBadge[]; items: CatalogItem[]; packs: CatalogPack[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number>; plans: Record<string, import('./userPlans').PlanPerks> }> {
   await registry.ensure();
   const now = new Date();
   return {
@@ -74,11 +76,12 @@ export async function catalog(): Promise<{ badges: CatalogBadge[]; items: Catalo
     rarityPrice: { ...badges.RARITY_PRICE },
     daily: { ...rules.DAILY },
     slots: { ...badges.SHOWCASE_SLOTS },
+    plans: { ...userPlans.PLAN_PERKS },
   };
 }
 
 export async function state(userId: string, now: Date = new Date()) {
-  const [wallet, profile] = await Promise.all([walletDb.getWallet(userId), view.profileState(userId)]);
+  const [wallet, profile, planRow] = await Promise.all([walletDb.getWallet(userId), view.profileState(userId), plansDb.getPlan(userId).catch(() => null)]);
   const status = rules.claimStatus(wallet.lastDaily, now);
   return {
     balance: wallet.balance,
@@ -89,7 +92,15 @@ export async function state(userId: string, now: Date = new Date()) {
     showcase: profile.showcase,
     items: profile.items,
     active: profile.active,
+    // The plan in detail for the pages of plans: when it ends, whether it renews and who put it there (the past ones are shown as ended).
+    planInfo: planRow ? { plan: planRow.plan, active: planRow.active, endsAt: planRow.endsAt, renews: planRow.renews, source: planRow.source } : null,
   };
+}
+
+/** The last movements of the wallet of a person (the page of movements): what happened, how many ceramos, about which badge, banner, font or pack, and when. */
+export async function ledger(userId: string, limit = 50) {
+  const moves = await walletDb.lastMovements(userId, Math.min(100, Math.max(1, limit)));
+  return { movements: moves.map((move) => ({ delta: move.delta, reason: move.reason, ref: move.ref, at: move.createdAt.toISOString() })) };
 }
 
 export const claim = (userId: string) => view.planOfUser(userId).then((plan) => shop.claimToday(userId, plan));

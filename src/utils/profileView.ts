@@ -13,6 +13,7 @@ const badgesRules = require('./profileBadges') as typeof import('./profileBadges
 const registry = require('./badgeRegistry') as typeof import('./badgeRegistry');
 const profileDb = require('../db/userProfile') as typeof import('../db/userProfile');
 const shopDb = require('../db/shop') as typeof import('../db/shop');
+const plansDb = require('../db/userPlans') as typeof import('../db/userPlans');
 const levelUsersDb = require('../db/levelUsers') as { getUser: (g: string, u: string) => Promise<Record<string, unknown> | null>; getRank: (g: string, xp: number) => Promise<number> };
 const { t, formatNumber } = require('../i18n') as { t: (lang: string, key: string, vars?: Record<string, unknown>) => string; formatNumber: (lang: string, n: number) => string };
 
@@ -64,9 +65,12 @@ export function formatVoice(seconds: number): string {
   return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`;
 }
 
-/** The plan a person pays for, or null. The plans of a person are not sold yet, so nobody has one until that table exists. */
-export async function planOfUser(_userId: string): Promise<PlanKey | null> {
-  return null;
+/** The plan a person has right now (given by the team or paid), or null. A plan past its end is not one. A read that fails is no plan: the person is never given more than they have. */
+export async function planOfUser(userId: string): Promise<PlanKey | null> {
+  try {
+    const row = await plansDb.getPlan(userId);
+    return row?.active ? badgesRules.planOf(row.plan) : null;
+  } catch { return null; }
 }
 
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
 exports.catalog = catalog;
 exports.state = state;
+exports.ledger = ledger;
 const rules = require('./ceramos');
 const badges = require('./profileBadges');
 const shop = require('./ceramosShop');
@@ -12,6 +13,8 @@ const registry = require('./badgeRegistry');
 const walletDb = require('../db/ceramos');
 const shopCatalog = require('./shopCatalog');
 const shopBuy = require('./shopBuy');
+const userPlans = require('./userPlans');
+const plansDb = require('../db/userPlans');
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
 async function catalog() {
     await registry.ensure();
@@ -38,10 +41,11 @@ async function catalog() {
         rarityPrice: { ...badges.RARITY_PRICE },
         daily: { ...rules.DAILY },
         slots: { ...badges.SHOWCASE_SLOTS },
+        plans: { ...userPlans.PLAN_PERKS },
     };
 }
 async function state(userId, now = new Date()) {
-    const [wallet, profile] = await Promise.all([walletDb.getWallet(userId), view.profileState(userId)]);
+    const [wallet, profile, planRow] = await Promise.all([walletDb.getWallet(userId), view.profileState(userId), plansDb.getPlan(userId).catch(() => null)]);
     const status = rules.claimStatus(wallet.lastDaily, now);
     return {
         balance: wallet.balance,
@@ -52,7 +56,14 @@ async function state(userId, now = new Date()) {
         showcase: profile.showcase,
         items: profile.items,
         active: profile.active,
+        // The plan in detail for the pages of plans: when it ends, whether it renews and who put it there (the past ones are shown as ended).
+        planInfo: planRow ? { plan: planRow.plan, active: planRow.active, endsAt: planRow.endsAt, renews: planRow.renews, source: planRow.source } : null,
     };
+}
+/** The last movements of the wallet of a person (the page of movements): what happened, how many ceramos, about which badge, banner, font or pack, and when. */
+async function ledger(userId, limit = 50) {
+    const moves = await walletDb.lastMovements(userId, Math.min(100, Math.max(1, limit)));
+    return { movements: moves.map((move) => ({ delta: move.delta, reason: move.reason, ref: move.ref, at: move.createdAt.toISOString() })) };
 }
 const claim = (userId) => view.planOfUser(userId).then((plan) => shop.claimToday(userId, plan));
 exports.claim = claim;
