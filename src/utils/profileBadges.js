@@ -13,8 +13,11 @@ exports.BADGES = [
     { id: 'plan-bronze', unlock: 'plan', art: 'plan-bronze.png', color: '#b9792f' },
     { id: 'plan-silver', unlock: 'plan', art: 'plan-silver.png', color: '#b8bcc4' },
     { id: 'plan-gold', unlock: 'plan', art: 'plan-gold.png', color: '#f4cf3a' },
-    { id: 'furra', unlock: 'self', art: 'furra.png', color: '#b98cff' },
-    { id: 'femboy', unlock: 'self', art: 'femboy.png', color: '#ff8fc2' },
+    // The Fablo pack: the free badges everybody can turn on.
+    { id: 'furro', unlock: 'self', art: 'furro.png', color: '#8cc7ff', pack: 'fablo' },
+    { id: 'boykisser', unlock: 'self', art: 'boykisser.png', color: '#b98cff', pack: 'fablo' },
+    { id: 'hetero', unlock: 'self', art: 'hetero.png', color: '#6fb4ff', pack: 'fablo' },
+    { id: 'femboy', unlock: 'self', art: 'femboy.png', color: '#ff8fc2', pack: 'fablo' },
 ];
 const BY_ID = new Map(exports.BADGES.map((badge) => [badge.id, badge]));
 const badgeById = (id) => BY_ID.get(id) ?? null;

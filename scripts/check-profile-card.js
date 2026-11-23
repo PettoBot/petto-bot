@@ -29,13 +29,14 @@ const langs = ['en', 'es', 'pt-BR'];
 
   // What a person owns: what they saved plus the badge of their plan, never a plan badge they only saved, never a made-up one.
   assert.deepEqual(rules.ownedBadges(['femboy', 'plan-gold', 'nope'], null), ['femboy']);
-  assert.deepEqual(rules.ownedBadges(['furra'], 'silver').sort(), ['furra', 'plan-silver']);
+  assert.deepEqual(rules.ownedBadges(['furro'], 'silver').sort(), ['furro', 'plan-silver']);
 
   // The showcase keeps the order, drops repeats and what they do not own, and stops at the places of the plan.
-  assert.deepEqual(rules.normalizeShowcase(['furra', 'furra', 'nope', 'femboy'], ['furra', 'femboy'], 6), ['furra', 'femboy']);
+  assert.deepEqual(rules.normalizeShowcase(['furro', 'furro', 'nope', 'femboy'], ['furro', 'femboy'], 6), ['furro', 'femboy']);
   assert.deepEqual(rules.normalizeShowcase(['a', 'b', 'c'], ['a', 'b', 'c'], 2), ['a', 'b']);
-  assert.deepEqual(rules.normalizeShowcase(['furra'], ['furra'], 0), []);
-  assert.equal(rules.normalizeShowcase(Array(10).fill('furra'), ['furra'], 99).length, 1);
+  assert.deepEqual(rules.normalizeShowcase(['furro'], ['furro'], 0), []);
+  assert.equal(rules.normalizeShowcase(Array(10).fill('furro'), ['furro'], 99).length, 1);
+  assert.deepEqual(rules.BADGES.filter((b) => b.pack === 'fablo').map((b) => b.id), ['furro', 'boykisser', 'hetero', 'femboy'], 'the Fablo pack');
   assert.ok(rules.isSelfBadge('femboy') && !rules.isSelfBadge('plan-gold') && !rules.isSelfBadge('nothing'));
 
   // Every badge has its name in the three languages, and the art that is named exists.
@@ -50,7 +51,7 @@ const langs = ['en', 'es', 'pt-BR'];
   // The picture: a PNG of the right size for each plan, with no throw when the avatar and the banner are missing.
   const art = (file) => (file ? loadImage(path.join(root, 'src/assets/badges', file)) : null);
   const base = { name: 'a'.repeat(120), avatar: null, banner: null, stats: [{ label: 'Level', value: '27' }, { label: 'Rank', value: '#3' }, { label: 'Messages', value: '4,812' }, { label: 'Voice', value: '12' }], showcaseTitle: 'Badges' };
-  for (const [plan, ids] of [[null, ['femboy']], ['bronze', ['plan-bronze', 'femboy']], ['silver', ['plan-silver', 'furra', 'femboy']], ['gold', ['plan-gold', 'furra', 'femboy']]]) {
+  for (const [plan, ids] of [[null, ['femboy']], ['bronze', ['plan-bronze', 'femboy']], ['silver', ['plan-silver', 'furro', 'femboy']], ['gold', ['plan-gold', 'furro', 'boykisser', 'hetero', 'femboy']]]) {
     const showcase = await Promise.all(ids.map(async (id) => { const def = rules.badgeById(id); return { id, art: await art(def.art), color: def.color }; }));
     const png = renderProfileImage({ ...base, planStar: plan ? await art(`plan-${plan}.png`) : null, showcase, slots: rules.slotsFor(plan) });
     assert.ok(Buffer.isBuffer(png) && png.subarray(1, 4).toString() === 'PNG', `a PNG for the plan ${plan}`);
