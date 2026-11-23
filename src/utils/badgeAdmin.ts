@@ -24,7 +24,7 @@ export async function list(now: Date = new Date()) {
 
 export async function save(userId: string, body: Record<string, unknown>) {
   const checked = check.checkBadgeInput(body);
-  if (!checked.ok) return { ok: false as const, error: checked.error };
+  if (!checked.ok) return { ok: false as const, error: (checked as { error: string }).error };
   const created = await customDb.saveCustomBadge(checked.value, userId);
   registry.invalidate();
   return { ok: true as const, created, id: checked.value.id };
@@ -32,7 +32,7 @@ export async function save(userId: string, body: Record<string, unknown>) {
 
 export async function setImage(id: string, bytes: Buffer) {
   const checked = check.checkImage(bytes);
-  if (!checked.ok) return { ok: false as const, error: checked.error };
+  if (!checked.ok) return { ok: false as const, error: (checked as { error: string }).error };
   const found = await customDb.setCustomImage(id, bytes, checked.type);
   registry.invalidate();
   return found ? { ok: true as const } : { ok: false as const, error: 'not_found' };
