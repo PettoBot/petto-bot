@@ -192,7 +192,7 @@ function buildRankLayers(b, width, height) {
   layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: width - 50, h: height - 50, fill: b.panelColor ?? '#000000', radius: 34, opacity: b.panelOpacity ?? 0.45 });
   if (b.preset === 'rankBottom') {
     const size = height * 0.5;
-    if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 60 + size / 2 + 10, y: height * 0.38, size, shape: b.avatarShape, border: { color: b.accent, width: 7 }, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
+    if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 60 + size / 2 + 10, y: height * 0.38, size, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
     if (b.showAvatar && b.showDecoration) layers.push(decorationLayer(b, 60 + size / 2 + 10, height * 0.38, size));
     const x = 60 + size + 50;
     const w = width - x - 70;
@@ -204,7 +204,7 @@ function buildRankLayers(b, width, height) {
     return layers;
   }
   const size = height * 0.56;
-  if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 56 + size / 2 + 14, y: height / 2, size, shape: b.avatarShape, border: { color: b.accent, width: 7 }, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
+  if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 56 + size / 2 + 14, y: height / 2, size, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
   if (b.showAvatar && b.showDecoration) layers.push(decorationLayer(b, 56 + size / 2 + 14, height / 2, size));
   const x = 56 + size + 60;
   const right = width - 70;
@@ -224,7 +224,7 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500, kind = 'welcome'
   const cx = width / 2;
   const layers = [];
   const avatar = (x, y, size) => {
-    if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x, y, size, shape: b.avatarShape, border: { color: b.accent, width: 8 }, shadow: { color: '#000000', blur: 24, x: 0, y: 6 } });
+    if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x, y, size, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 24, x: 0, y: 6 } });
     if (b.showAvatar && b.showDecoration) layers.push(decorationLayer(b, x, y, size));
   };
   const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
