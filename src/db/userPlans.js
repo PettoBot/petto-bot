@@ -4,6 +4,7 @@ exports.getPlan = getPlan;
 exports.setPlan = setPlan;
 exports.endPlan = endPlan;
 exports.listActive = listActive;
+exports.listAll = listAll;
 const { getPrimaryPool } = require('./postgres');
 const iso = (value) => (value ? new Date(String(value)).toISOString() : null);
 const toRow = (row) => ({
@@ -30,4 +31,9 @@ async function endPlan(userId) {
 async function listActive() {
     const { rows } = await getPrimaryPool().query(`select ${COLUMNS} from user_plans where ends_at is null or ends_at > now() order by updated_at desc limit 200`);
     return rows.map(toRow);
+}
+/** Every person who ever had a plan, with whether it is active now (no limit): for the job that gives and takes the roles of the plans. */
+async function listAll() {
+    const { rows } = await getPrimaryPool().query('select user_id, plan, (ends_at is null or ends_at > now()) as active from user_plans');
+    return rows.map((row) => ({ userId: String(row.user_id), plan: String(row.plan), active: Boolean(row.active) }));
 }

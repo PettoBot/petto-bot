@@ -27,6 +27,12 @@ function envBool(name, fallback) {
   return ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());
 }
 
+// An id of a role from the settings of the host: quotes or spaces around it are not part of it. Not a valid id: null.
+function roleIdFromEnv(name) {
+  const id = String(process.env[name] ?? '').replace(/\D/g, '');
+  return /^\d{15,25}$/.test(id) ? id : null;
+}
+
 function envList(name) {
   return [...new Set((process.env[name] || '').split(',').map((id) => id.trim()).filter((id) => /^\d{15,25}$/.test(id)))];
 }
@@ -81,7 +87,8 @@ if (instanceRole === 'worker' && !primaryDatabaseUrl && !dbBridgeUrl) {
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.DISCORD_CLIENT_ID,
-  ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
+  // Quotes, spaces or a mention around the id in the settings of the host are not part of it, so the owner is still the owner.
+  ownerId: roleIdFromEnv('PETTO_OWNER_ID') || '293504726505357312',
   developerIds: envList('PETTO_DEVELOPER_IDS'),
   // Servers that are blacklisted whatever the database says (ids separated by commas): a safety net merged in at start (utils/guildBlacklist.js).
   blacklistedGuildIds: envList('PETTO_BLACKLISTED_GUILD_IDS'),
@@ -242,6 +249,15 @@ module.exports = {
     3: process.env.PETTO_PREMIUM_ROLE_3_ID || '1535057189570478214',
     5: process.env.PETTO_PREMIUM_ROLE_5_ID || '1535057199574032384',
   },
+  // The other roles of the support server that payments give by themselves (all optional; a role that is not set is simply not given):
+  // the role of each plan of a person, the "Code" role of the plans, and "Priority Support" for the plans and for the Premium of a server.
+  planRoleIds: {
+    bronze: roleIdFromEnv('PETTO_PLAN_ROLE_BRONZE_ID'),
+    silver: roleIdFromEnv('PETTO_PLAN_ROLE_SILVER_ID'),
+    gold: roleIdFromEnv('PETTO_PLAN_ROLE_GOLD_ID'),
+  },
+  codeRoleId: roleIdFromEnv('PETTO_CODE_ROLE_ID'),
+  prioritySupportRoleId: roleIdFromEnv('PETTO_PRIORITY_SUPPORT_ROLE_ID'),
   // Who may have a prefix of their own (`!myprefix`): a booster of the support server, a Premium user, a team member
   // (owner, developers and the site team), someone with a partner role, or someone with one of these roles in the support server.
   partnerRoleIds: envList('PETTO_PARTNER_ROLE_IDS'),

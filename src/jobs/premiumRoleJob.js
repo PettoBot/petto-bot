@@ -3,20 +3,23 @@ const database = require('../db/database');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
+const { premiumRoleFor, roleChanges } = require('../utils/managedRoles');
+const userPlans = require('../db/userPlans');
 
 const SYNC_INTERVAL_MS = 2 * 60 * 1000;
 let premiumGuildId = null;
 
+// The server is found by the roles of the Premium (the ones that always exist); the other roles (plans, Code, Priority Support) are given when they are set and exist in it.
 function configuredRoleIds() {
   return Object.values(config.premiumRoleIds).filter(Boolean);
 }
 
+function managedIds() {
+  return { premium: config.premiumRoleIds, plan: config.planRoleIds, code: config.codeRoleId, priority: config.prioritySupportRoleId };
+}
+
 function roleIdForSlots(slots) {
-  const count = Number(slots) || 0;
-  if (count >= 5) return config.premiumRoleIds[5];
-  if (count >= 3) return config.premiumRoleIds[3];
-  if (count >= 1) return config.premiumRoleIds[1];
-  return null;
+  return premiumRoleFor(managedIds(), slots);
 }
 
 function isActive(entitlement) {
@@ -77,16 +80,23 @@ async function activeSlotsForUser(userId) {
     .reduce((highest, entitlement) => Math.max(highest, Number(entitlement.slot_limit) || 0), 0);
 }
 
-async function syncMemberRoles(member, slots) {
-  const allRoleIds = configuredRoleIds();
-  const desiredRoleId = roleIdForSlots(slots);
-  const toRemove = allRoleIds.filter((roleId) => roleId !== desiredRoleId && member.roles.cache.has(roleId));
+async function activePlanForUser(userId) {
+  const row = await userPlans.getPlan(String(userId));
+  return row && row.active ? row.plan : null;
+}
+
+async function syncMemberRoles(member, slots, plan = null) {
+  const guildRoles = member.guild.roles.cache;
+  const { add, remove } = roleChanges(managedIds(), slots, plan, (roleId) => member.roles.cache.has(roleId));
+  const toRemove = remove;
+  // A role that is set but does not exist in this server cannot be given (it would fail the whole change).
+  const toAdd = add.filter((roleId) => guildRoles.has(roleId));
 
   if (toRemove.length) {
-    await member.roles.remove(toRemove, 'Petto Premium plan changed or ended');
+    await member.roles.remove(toRemove, 'Petto Premium or plan changed or ended');
   }
-  if (desiredRoleId && !member.roles.cache.has(desiredRoleId)) {
-    await member.roles.add(desiredRoleId, `Petto Premium ${slots}-slot entitlement`);
+  if (toAdd.length) {
+    await member.roles.add(toAdd, `Petto Premium ${slots}-slot entitlement${plan ? ` and ${plan} plan` : ''}`);
   }
 }
 
@@ -99,8 +109,8 @@ async function syncPremiumRoleForUser(client, userId) {
 
   const member = await guild.members.fetch(String(userId)).catch(() => null);
   if (!member) return false;
-  const slots = await activeSlotsForUser(userId);
-  await syncMemberRoles(member, slots);
+  const [slots, plan] = await Promise.all([activeSlotsForUser(userId), activePlanForUser(userId)]);
+  await syncMemberRoles(member, slots, plan);
   return true;
 }
 
@@ -134,10 +144,17 @@ async function syncAllPremiumRoles(client) {
     slotsByUser.set(userId, Math.max(current, slots));
   }
 
+  // The people with a plan have roles to give or take too (they may have no Premium at all).
+  const planByUser = new Map();
+  for (const row of await userPlans.listAll()) {
+    planByUser.set(row.userId, row.active ? row.plan : null);
+    if (!slotsByUser.has(row.userId)) slotsByUser.set(row.userId, 0);
+  }
+
   await forEachWithConcurrency(slotsByUser, async ([userId, slots]) => {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return;
-    await syncMemberRoles(member, slots).catch((error) => {
+    await syncMemberRoles(member, slots, planByUser.get(userId) ?? null).catch((error) => {
       logger.warn(`Premium role sync failed for ${userId}:`, error.message);
     });
   }, config.jobConcurrency);
