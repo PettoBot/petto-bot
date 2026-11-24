@@ -68,6 +68,7 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
     app.post('/api/dashboard/ceramos/daily', limiter, guard(true, async (userId) => ({ result: await api.claim(userId) })));
     app.post('/api/dashboard/ceramos/buy', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id ? await api.buy(userId, id) : bad }; }));
     app.post('/api/dashboard/ceramos/upgrade', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id ? await api.upgrade(userId, id) : bad }; }));
+    app.post('/api/dashboard/ceramos/frame', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id && typeof body.frame === 'string' ? await api.chooseFrame(userId, id, body.frame) : bad }; }));
     app.post('/api/dashboard/ceramos/identity', limiter, guard(true, async (userId, body) => {
         const id = badgeOf(body);
         return { result: id && typeof body.enabled === 'boolean' ? await api.setIdentity(userId, id, body.enabled) : bad };

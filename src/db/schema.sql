@@ -5301,6 +5301,8 @@ create table if not exists user_badges (
   granted_at timestamptz not null default now(),
   primary key (user_id, badge_id)
 );
+-- The frame a person chose to show on a badge, among the ones they have (nothing: it shows the best one it has, `frame`).
+alter table user_badges add column if not exists shown_frame text check (shown_frame in ('normal', 'bright', 'divine'));
 alter table user_badges enable row level security;
 
 create table if not exists user_profile (
