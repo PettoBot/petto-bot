@@ -2,6 +2,7 @@
 module.exports = {
   'cmd.utility.ceramos.desc': 'Seus céramos: a carteira, a loja de insígnias e molduras melhores.',
   'cmd.utility.ceramos.balance.desc': 'Veja seus céramos e suas últimas movimentações.',
+  'cmd.utility.ceramos.top.desc': 'Veja as pessoas com mais céramos.',
   'cmd.utility.ceramos.shop.desc': 'Veja as insígnias que você pode comprar com céramos.',
   'cmd.utility.ceramos.shop.opt.category.desc': 'Países ou idiomas',
   'cmd.utility.ceramos.shop.opt.page.desc': 'Página',

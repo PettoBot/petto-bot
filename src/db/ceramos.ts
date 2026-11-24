@@ -80,6 +80,12 @@ export async function lastMovements(userId: string, limit = 5): Promise<Movement
 }
 
 /** Forgets the wallet and the ledger of a person (what they ask for when they want their data deleted). */
+/** The richest wallets, the biggest first. */
+export async function topBalances(limit = 10): Promise<{ userId: string; balance: number }[]> {
+  const { rows } = await getPrimaryPool().query(`select user_id, balance from ceramos_wallets where balance > 0 order by balance desc, user_id limit $1`, [Math.max(1, Math.min(25, Math.floor(limit)))]);
+  return rows.map((row) => ({ userId: String(row.user_id), balance: Number(row.balance) }));
+}
+
 export async function deleteCeramos(userId: string): Promise<void> {
   const pool = getPrimaryPool();
   await pool.query('delete from ceramos_ledger where user_id = $1', [userId]);

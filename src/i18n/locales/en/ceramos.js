@@ -66,4 +66,8 @@ module.exports = {
   'ceramos.buy.pack.plan': 'The pack **{name}** is for people with a better plan.',
   'ceramos.buy.pack.unknown': 'That pack is not in the shop.',
   'ceramos.buy.pack.owned': 'You already have every piece of the pack **{name}**.',
+  'ceramos.top.title': 'Richest people',
+  'ceramos.top.empty': 'Nobody has ceramos yet.',
+  'ceramos.top.unknown': 'Someone who left',
+  'ceramos.reason.purchase': 'Pack of ceramos bought',
 };

@@ -43,7 +43,7 @@ async function picture(url: string | null | undefined): Promise<Image | null> {
   try { return await loadImageFromLink(url); } catch { return null; }
 }
 
-const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund', 'banner', 'font', 'pack'];
+const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund', 'banner', 'font', 'pack', 'purchase'];
 
 async function wallet(interaction: ChatInputCommandInteraction, lang: string): Promise<void> {
   await interaction.deferReply();
@@ -101,6 +101,21 @@ async function itemShopView(interaction: ChatInputCommandInteraction, lang: stri
   });
   const hint = cards.length ? t(lang, `ceramos.shop.hint.${category}`) : t(lang, 'ceramos.shop.empty');
   await interaction.editReply({ content: hint, files: [new AttachmentBuilder(png, { name: 'ceramos-shop.png' })] });
+}
+
+/** The ten people with the most ceramos. Only the name is shown (nobody is pinged), and a name that cannot be found is shown as a person who left. */
+async function topView(interaction: ChatInputCommandInteraction, lang: string): Promise<void> {
+  await interaction.deferReply();
+  const rows = await walletDb.topBalances(10);
+  if (!rows.length) { await interaction.editReply({ content: t(lang, 'ceramos.top.empty') }); return; }
+  const medals = ['🥇', '🥈', '🥉'];
+  const lines: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    const user = await interaction.client.users.fetch(row.userId).catch(() => null);
+    const name = user ? (user.globalName ?? user.username) : t(lang, 'ceramos.top.unknown');
+    lines.push(`${medals[index] ?? `**${index + 1}.**`} ${name.replace(/[*_`~|>\\]/g, '')} · **${formatNumber(lang, row.balance)}**`);
+  }
+  await interaction.editReply({ content: `**${t(lang, 'ceramos.top.title')}**\n${lines.join('\n')}`, allowedMentions: { parse: [] } });
 }
 
 async function shopView(interaction: ChatInputCommandInteraction, lang: string): Promise<void> {
@@ -165,6 +180,7 @@ module.exports = {
     .setDescription('Your ceramos: the wallet, the shop of badges and better frames.')
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('balance').setDescription('See your ceramos and your last movements.'))
+    .addSubcommand((s) => s.setName('top').setDescription('See the people with the most ceramos.'))
     .addSubcommand((s) => s.setName('shop').setDescription('See the badges you can buy with ceramos.')
       .addStringOption((o) => o.setName('category').setDescription('Countries or languages').addChoices({ name: 'Countries', value: 'country' }, { name: 'Languages', value: 'language' }, { name: 'Special', value: 'special' }, { name: 'Banners', value: 'banner' }, { name: 'Name fonts', value: 'font' }, { name: 'Packs', value: 'pack' }).setRequired(false))
       .addIntegerOption((o) => o.setName('page').setDescription('Page').setMinValue(1).setMaxValue(20).setRequired(false)))
@@ -197,6 +213,7 @@ module.exports = {
     const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
     try {
+      if (sub === 'top') return await topView(interaction, lang);
       if (sub === 'shop') return await shopView(interaction, lang);
       if (sub === 'buy') return await buy(interaction, lang);
       if (sub === 'upgrade') return await upgrade(interaction, lang);

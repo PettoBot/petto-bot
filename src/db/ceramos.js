@@ -6,6 +6,7 @@ exports.give = give;
 exports.giveOnce = giveOnce;
 exports.spend = spend;
 exports.lastMovements = lastMovements;
+exports.topBalances = topBalances;
 exports.deleteCeramos = deleteCeramos;
 const { getPrimaryPool } = require('./postgres');
 async function getWallet(userId) {
@@ -72,6 +73,11 @@ async function lastMovements(userId, limit = 5) {
     return rows.map((row) => ({ delta: Number(row.delta), reason: String(row.reason), ref: row.ref ?? null, createdAt: new Date(String(row.created_at)) }));
 }
 /** Forgets the wallet and the ledger of a person (what they ask for when they want their data deleted). */
+/** The richest wallets, the biggest first. */
+async function topBalances(limit = 10) {
+    const { rows } = await getPrimaryPool().query(`select user_id, balance from ceramos_wallets where balance > 0 order by balance desc, user_id limit $1`, [Math.max(1, Math.min(25, Math.floor(limit)))]);
+    return rows.map((row) => ({ userId: String(row.user_id), balance: Number(row.balance) }));
+}
 async function deleteCeramos(userId) {
     const pool = getPrimaryPool();
     await pool.query('delete from ceramos_ledger where user_id = $1', [userId]);

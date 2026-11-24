@@ -148,7 +148,7 @@ const { loadImage } = require('@napi-rs/canvas');
 
   // The commands: /ceramos and /daily are slash commands of the second set; the team tool is prefix only, hidden and for the owner only.
   const ceramos = require('../src/commands/utility/ceramos');
-  assert.deepEqual(ceramos.data.toJSON().options.map((option) => option.name), ['balance', 'shop', 'buy', 'upgrade']);
+  assert.deepEqual(ceramos.data.toJSON().options.map((option) => option.name), ['balance', 'top', 'shop', 'buy', 'upgrade']);
   assert.equal(ceramos.guildScoped, true); assert.equal(require('../src/commands/utility/daily').guildScoped, true);
   assert.equal(ceramos.prefixDefaultSubcommand, 'balance');
   const admin = require('../src/commands/info/ceramosadmin');
