@@ -179,7 +179,9 @@ const { loadImage } = require('@napi-rs/canvas');
   const view = require('../src/utils/profileView');
   const flag = await view.artOfBadge(badges.badgeById('country-co'));
   assert.ok(flag && flag.width > 0, 'the flag of Colombia loads');
-  assert.equal(await view.artOfBadge(badges.badgeById('lang-es')), null, 'a language has no picture: it is drawn with its code');
+  const spanish = await view.artOfBadge(badges.badgeById('lang-es'));
+  assert.ok(spanish && spanish.width > 0, 'a language carries the flag of the country that stands for it');
+  assert.equal(await view.artOfBadge({ id: 'lang-zz', language: 'zz', art: null, color: '#000000' }), null, 'a language with no flag is drawn with its code');
 
   // The state and the actions the website uses (the same code as the commands).
   let st = await api.state('cami', noon);

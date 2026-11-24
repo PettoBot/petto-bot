@@ -50,6 +50,7 @@ async function flagOf(region: string): Promise<Image | null> {
 /** The picture of a badge: the flag of its country, or its art file, or nothing (it is drawn with its colour and its code). */
 export async function artOfBadge(def: import('./profileBadges').BadgeDef): Promise<Image | null> {
   if (def.region) return flagOf(def.region);
+  if (def.flag) return flagOf(def.flag);
   if (def.custom) return registry.customArt(def);
   return artOf(def.art);
 }

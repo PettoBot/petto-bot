@@ -64,6 +64,8 @@ async function flagOf(region) {
 async function artOfBadge(def) {
     if (def.region)
         return flagOf(def.region);
+    if (def.flag)
+        return flagOf(def.flag);
     if (def.custom)
         return registry.customArt(def);
     return artOf(def.art);

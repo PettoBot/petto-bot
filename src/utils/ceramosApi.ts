@@ -30,6 +30,8 @@ export interface CatalogBadge {
   color: string;
   region: string | null;
   language: string | null;
+  /** The country whose flag is drawn on a language badge. */
+  flag: string | null;
   /** The name of a badge that has no country or language: the website has it in its own catalog by id. */
   pack: string | null;
   /** The ones of the editor: their words in each language, their days of sale, the plan they ask for, the rule that gives them, and whether they can be bought now. */
@@ -63,7 +65,7 @@ export async function catalog(): Promise<{ badges: CatalogBadge[]; items: Catalo
   return {
     badges: badges.allBadges().map((def) => ({
       id: def.id, category: badges.categoryOf(def), unlock: def.unlock, rarity: def.unlock === 'shop' ? (def.rarity ?? 'common') : null, price: badges.priceOf(def),
-      color: def.color, region: def.region ?? null, language: def.language ?? null, pack: def.pack ?? null,
+      color: def.color, region: def.region ?? null, language: def.language ?? null, flag: def.flag ?? null, pack: def.pack ?? null,
       custom: Boolean(def.custom), names: def.names ?? null, saleFrom: def.saleFrom ?? null, saleUntil: def.saleUntil ?? null, planMin: def.planMin ?? null,
       grantRule: def.grantRule ?? null, onSale: def.unlock === 'shop' ? badges.onSale(def, now) : false, retired: Boolean(def.retired), hasArt: Boolean(def.art), dbArt: Boolean(def.custom ? def.art : def.dbArt), version: def.version ?? null,
     })),

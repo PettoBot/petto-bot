@@ -21,7 +21,7 @@ export async function list(now: Date = new Date()) {
   const builtIn = badges.allBadges().filter((def) => !def.custom && def.unlock !== 'plan').map((def) => {
     const row = changed.get(def.id);
     return {
-      id: def.id, region: def.region ?? null, language: def.language ?? null, unlock: def.unlock, color: def.color, rarity: def.rarity ?? null, price: badges.priceOf(def), names: def.names ?? null,
+      id: def.id, region: def.region ?? null, language: def.language ?? null, flag: def.flag ?? null, unlock: def.unlock, color: def.color, rarity: def.rarity ?? null, price: badges.priceOf(def), names: def.names ?? null,
       pack: def.pack ?? null, hasImage: Boolean(row?.hasImage), changed: Boolean(row), retired: Boolean(def.retired), owners: owners[def.id] ?? 0,
     };
   });
