@@ -89,5 +89,18 @@ const langs = ['en', 'es', 'pt-BR'];
   }
   assert.equal(typeof profile.profileText, 'function', 'the card of the server is still there');
 
+  // The frames of the badges (iron, gold, mithril) are pictures: each one loads, and a badge drawn with one is not the same picture as without it; a plan star is drawn alone.
+  const view = require('../src/utils/profileView');
+  for (const id of ['normal', 'bright', 'divine']) assert.ok(await view.frameOf(id), `the picture of the frame ${id} loads`);
+  assert.equal(await view.frameOf('whatever'), await view.frameOf('normal'), 'an unknown frame is the iron one');
+  const flagArt = await loadImage(path.join(root, 'node_modules/flag-icons/flags/1x1/es.svg'));
+  const withFrame = (frame, id = 'country-es') => ({ id, art: flagArt, color: '#456', frame });
+  const draw = async (badge) => { const canvas = require('@napi-rs/canvas').createCanvas(120, 140); const ctx = canvas.getContext('2d'); require('../src/utils/profileImage').drawBadge(ctx, badge, 60, 70, 50); return canvas.toBuffer('image/png'); };
+  const plain = await draw(withFrame('divine'));
+  const framed = await draw({ ...withFrame('divine'), frameArt: await view.frameOf('divine') });
+  assert.notDeepEqual(plain, framed, 'the frame picture is drawn over the badge');
+  const starArt = await view.artOf('plan-gold.png');
+  assert.deepEqual(await draw({ id: 'plan-gold', art: starArt, color: '#f4cf3a', frame: 'divine', frameArt: await view.frameOf('divine') }), await draw({ id: 'plan-gold', art: starArt, color: '#f4cf3a' }), 'the star of a plan has no frame');
+
   console.log('profile card checks passed'); // i18n-ignore: output of a check
 })().catch((error) => { console.error(error); process.exit(1); });

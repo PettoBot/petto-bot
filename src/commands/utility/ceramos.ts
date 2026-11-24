@@ -131,7 +131,7 @@ async function shopView(interaction: ChatInputCommandInteraction, lang: string):
   const page = Math.min(pages, Math.max(1, interaction.options.getInteger('page') ?? 1));
   const items = [];
   for (const def of all.slice((page - 1) * SHOP_PAGE, page * SHOP_PAGE)) {
-    items.push({ badge: { id: def.id, art: await view.artOfBadge(def), color: def.color, label: badges.badgeLabel(def) }, name: nameOf(lang, def.id), price: formatNumber(lang, badges.priceOf(def)), owned: have.has(def.id) });
+    items.push({ badge: { id: def.id, art: await view.artOfBadge(def), color: def.color, label: badges.badgeLabel(def), frame: 'normal', frameArt: await view.frameOf('normal') }, name: nameOf(lang, def.id), price: formatNumber(lang, badges.priceOf(def)), owned: have.has(def.id) });
   }
   const png = image.renderShopImage({ title: `${t(lang, 'ceramos.shop.title')} · ${t(lang, `ceramos.shop.category.${category}`)} ${page}/${pages}`, balanceText: formatNumber(lang, data.balance), items, ownedText: t(lang, 'ceramos.shop.owned') });
   await interaction.editReply({ content: t(lang, 'ceramos.shop.hint', { price: formatNumber(lang, rules.BADGE_PRICE), bright: formatNumber(lang, rules.FRAMES[1].cost), divine: formatNumber(lang, rules.FRAMES[2].cost) }), files: [new AttachmentBuilder(png, { name: 'ceramos-shop.png' })] });
