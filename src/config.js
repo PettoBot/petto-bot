@@ -27,6 +27,12 @@ function envBool(name, fallback) {
   return ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());
 }
 
+// The owners from PETTO_OWNER_ID (one id or several); the default owner when it holds none.
+function ownerIdsFromEnv() {
+  const listed = String(process.env.PETTO_OWNER_ID ?? '').split(/[\s,;]+/).map((part) => part.replace(/\D/g, '')).filter((id) => /^\d{15,25}$/.test(id));
+  return listed.length ? [...new Set(listed)] : ['293504726505357312'];
+}
+
 // An id of a role from the settings of the host: quotes or spaces around it are not part of it. Not a valid id: null.
 function roleIdFromEnv(name) {
   const id = String(process.env[name] ?? '').replace(/\D/g, '');
@@ -87,8 +93,10 @@ if (instanceRole === 'worker' && !primaryDatabaseUrl && !dbBridgeUrl) {
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.DISCORD_CLIENT_ID,
-  // Quotes, spaces or a mention around the id in the settings of the host are not part of it, so the owner is still the owner.
-  ownerId: roleIdFromEnv('PETTO_OWNER_ID') || '293504726505357312',
+  // PETTO_OWNER_ID holds one id or several (separated by commas, spaces or semicolons); quotes or a mention around an id are not part of it. `ownerId` is the first one
+  // and `ownerIds` is every one of them: all of them are owners.
+  ownerId: ownerIdsFromEnv()[0],
+  ownerIds: ownerIdsFromEnv(),
   developerIds: envList('PETTO_DEVELOPER_IDS'),
   // Servers that are blacklisted whatever the database says (ids separated by commas): a safety net merged in at start (utils/guildBlacklist.js).
   blacklistedGuildIds: envList('PETTO_BLACKLISTED_GUILD_IDS'),

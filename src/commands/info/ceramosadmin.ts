@@ -3,13 +3,13 @@
 // team is a slash command: scripts/check-team-not-slash.js). Written in TypeScript: `npm run build:ts` compiles it over ceramosadmin.js.
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import type { ChatInputCommandInteraction } from 'discord.js';
-const config = require('../../config') as { ownerId: string };
+const config = require('../../config') as { ownerId: string; ownerIds?: string[] };
 const { COLORS } = require('../../utils/colors') as { COLORS: { GREEN: number; RED: number } };
 const rules = require('../../utils/ceramos') as typeof import('../../utils/ceramos');
 const walletDb = require('../../db/ceramos') as typeof import('../../db/ceramos');
 
 /** Only the Petto OWNER changes ceramos by hand (a developer of the team may not): for everybody else this is not a command at all. */
-const isOwner = (userId: string | undefined): boolean => String(userId ?? '') === String(config.ownerId);
+const isOwner = (userId: string | undefined): boolean => (config.ownerIds ?? [config.ownerId]).includes(String(userId ?? ''));
 
 const ok = (interaction: ChatInputCommandInteraction, content: string) => interaction.reply({ embeds: [new EmbedBuilder().setColor(COLORS.GREEN).setDescription(`✅ ${content}`)], allowedMentions: { parse: [] } });
 const fail = (interaction: ChatInputCommandInteraction, content: string) => interaction.reply({ embeds: [new EmbedBuilder().setColor(COLORS.RED).setDescription(`⚠️ ${content}`)], flags: MessageFlags.Ephemeral as const, allowedMentions: { parse: [] } });

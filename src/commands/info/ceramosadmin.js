@@ -9,7 +9,7 @@ const { COLORS } = require('../../utils/colors');
 const rules = require('../../utils/ceramos');
 const walletDb = require('../../db/ceramos');
 /** Only the Petto OWNER changes ceramos by hand (a developer of the team may not): for everybody else this is not a command at all. */
-const isOwner = (userId) => String(userId ?? '') === String(config.ownerId);
+const isOwner = (userId) => (config.ownerIds ?? [config.ownerId]).includes(String(userId ?? ''));
 const ok = (interaction, content) => interaction.reply({ embeds: [new discord_js_1.EmbedBuilder().setColor(COLORS.GREEN).setDescription(`✅ ${content}`)], allowedMentions: { parse: [] } });
 const fail = (interaction, content) => interaction.reply({ embeds: [new discord_js_1.EmbedBuilder().setColor(COLORS.RED).setDescription(`⚠️ ${content}`)], flags: discord_js_1.MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 module.exports = {

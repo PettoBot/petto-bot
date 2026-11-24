@@ -9,6 +9,8 @@ const shopDb = require('../db/shop');
 const planAdmin = require('../utils/planAdmin');
 const cardDesigns = require('../utils/cardDesigns');
 const config = require('../config');
+/** Every id in PETTO_OWNER_ID is an owner (`ownerIds`); a config with only `ownerId` has that one. */
+const isOwner = (userId) => (config.ownerIds ?? [config.ownerId]).map(String).includes(String(userId ?? ''));
 const logger = require('../utils/logger');
 const ID = /^\d{15,25}$/;
 const BADGE = /^[a-z0-9-]{1,40}$/;
@@ -105,7 +107,7 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
     }));
     // The editor of badges: only the owner (the website says who is logged in, and the bot checks it is the owner).
     const owner = (write, handler) => guard(write, async (userId, body, req) => {
-        if (String(userId) !== String(config.ownerId))
+        if (!isOwner(userId))
             return { ok: false, error: 'forbidden' };
         return handler(userId, body, req);
     });
@@ -122,7 +124,7 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
     app.get('/api/dashboard/ceramos/admin/uploads', limiter, owner(false, async () => api.uploads.queue()));
     app.post('/api/dashboard/ceramos/admin/upload-review', limiter, owner(true, async (userId, body) => api.uploads.review(userId, body)));
     app.get('/api/dashboard/ceramos/admin/upload-file', limiter, async (req, res) => {
-        if (!isAuthorized(req) || String(req.query.user_id ?? '') !== String(config.ownerId)) {
+        if (!isAuthorized(req) || !isOwner(req.query.user_id)) {
             res.status(401).json({ ok: false, error: 'unauthorized' });
             return;
         }
@@ -140,7 +142,7 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
     app.get('/api/dashboard/ceramos/admin/own-badges', limiter, owner(false, async () => api.ownBadges.queue()));
     app.post('/api/dashboard/ceramos/admin/own-badge-review', limiter, owner(true, async (userId, body) => api.ownBadges.review(userId, body)));
     app.get('/api/dashboard/ceramos/admin/own-badge-file', limiter, async (req, res) => {
-        if (!isAuthorized(req) || String(req.query.user_id ?? '') !== String(config.ownerId)) {
+        if (!isAuthorized(req) || !isOwner(req.query.user_id)) {
             res.status(401).json({ ok: false, error: 'unauthorized' });
             return;
         }
@@ -182,8 +184,8 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         return;
     } res.json(api.apiKeys.publicInfo()); });
     // Giving ceramos from the dashboard: the owner and the people the owner lists (the bot checks who is asking), with limits the owner sets.
-    app.get('/api/dashboard/ceramos/admin/grant', limiter, guard(false, async (userId) => api.grantState(userId, String(config.ownerId))));
-    app.post('/api/dashboard/ceramos/admin/grant', limiter, guard(true, async (userId, body) => api.grantCeramos(userId, String(config.ownerId), body)));
+    app.get('/api/dashboard/ceramos/admin/grant', limiter, guard(false, async (userId) => api.grantState(userId, isOwner(userId) ? String(userId) : String(config.ownerId))));
+    app.post('/api/dashboard/ceramos/admin/grant', limiter, guard(true, async (userId, body) => api.grantCeramos(userId, isOwner(userId) ? String(userId) : String(config.ownerId), body)));
     app.post('/api/dashboard/ceramos/admin/grant-settings', limiter, owner(true, async (_userId, body) => api.grantSaveSettings(body)));
     // The plans of the people: who has one, give one, end one.
     app.get('/api/dashboard/ceramos/admin/plans', limiter, owner(false, async () => planAdmin.list()));
