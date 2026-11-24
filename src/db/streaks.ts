@@ -20,6 +20,12 @@ export async function daysOf(guildId: string, userId: string): Promise<{ day: st
   return rows.map((row) => ({ day: String(row.day), messages: Number(row.messages), voiceSeconds: Number(row.voice_seconds) }));
 }
 
+/** What a person did in every server: messages and seconds in voice (activity_members already leaves out who asked not to be counted). */
+export async function totalsOf(userId: string): Promise<{ messages: number; voiceSeconds: number }> {
+  const { rows } = await getPrimaryPool().query(`select coalesce(sum(messages), 0) as messages, coalesce(sum(voice_seconds), 0) as voice from activity_members where user_id = $1`, [userId]);
+  return { messages: Number(rows[0]?.messages ?? 0), voiceSeconds: Number(rows[0]?.voice ?? 0) };
+}
+
 /** The servers where a person has been active, the latest first (at most 10). */
 export async function guildsOf(userId: string): Promise<string[]> {
   const { rows } = await getPrimaryPool().query(`select guild_id from activity_members where user_id = $1 group by guild_id order by max(day) desc limit 10`, [userId]);

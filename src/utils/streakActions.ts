@@ -25,6 +25,12 @@ export async function inGuild(userId: string, guildId: string, now: Date = new D
   return oneGuild(guildId, userId, await freezesOf(userId), now);
 }
 
+/** The summary of a person: what they did in every server, and their streaks. */
+export async function summary(userId: string, now: Date = new Date()) {
+  const [totals, streak] = await Promise.all([db.totalsOf(userId), mine(userId, now)]);
+  return { ...streak, totals };
+}
+
 /** The streaks of a person in the servers where they have been active, with the best of all. */
 export async function mine(userId: string, now: Date = new Date()) {
   const freezes = await freezesOf(userId);

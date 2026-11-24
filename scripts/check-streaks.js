@@ -36,7 +36,7 @@ assert.equal(s.compute([...days(5, 6), ...days(6)], day(6), 0).current, 2);
 // The actions: the plan gives the freezes, a server can turn streaks off, and the rules of the server decide the days.
 const stub = (file, exports) => { const full = require.resolve(path.join('..', 'src', 'db', file)); require.cache[full] = { id: full, filename: full, loaded: true, exports }; };
 let config = { enabled: true, minMessages: 1, minVoiceMinutes: 0 }; let plan = null;
-stub('streaks', { getConfig: async () => config, daysOf: async () => rows.concat([{ day: day(5), messages: 3, voiceSeconds: 0 }, { day: day(7), messages: 3, voiceSeconds: 0 }]), guildsOf: async () => ['100000000000000001', '100000000000000002'] });
+stub('streaks', { totalsOf: async () => ({ messages: 120, voiceSeconds: 7200 }), getConfig: async () => config, daysOf: async () => rows.concat([{ day: day(5), messages: 3, voiceSeconds: 0 }, { day: day(7), messages: 3, voiceSeconds: 0 }]), guildsOf: async () => ['100000000000000001', '100000000000000002'] });
 stub('userPlans', { getPlan: async () => plan });
 const actions = require('../src/utils/streakActions');
 const now = new Date('2026-11-07T10:00:00Z');
@@ -53,5 +53,7 @@ const now = new Date('2026-11-07T10:00:00Z');
   config = { enabled: true, minMessages: 1, minVoiceMinutes: 0 }; plan = { plan: 'silver', active: true };
   const all = await actions.mine('1', now);
   assert.equal(all.servers.length, 2); assert.equal(all.freezes, 3); assert.ok(all.bestEver >= all.longestNow);
+  const sum = await actions.summary('1', now);
+  assert.deepEqual(sum.totals, { messages: 120, voiceSeconds: 7200 }); assert.equal(sum.servers.length, 2);
   console.log('streaks: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

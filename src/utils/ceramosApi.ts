@@ -154,5 +154,6 @@ export const missionsClaim = missionActions.claim;
 
 const streakActions = require('./streakActions') as typeof import('./streakActions');
 export const streaksMine = streakActions.mine;
+export const summaryOf = streakActions.summary;
 
 export const uploads = require('./uploadActions') as typeof import('./uploadActions');

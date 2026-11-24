@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.inGuild = inGuild;
+exports.summary = summary;
 exports.mine = mine;
 // i18n-ignore-file: the answers are codes and numbers; the website and the command write the words.
 // The streaks of a person: in one server, or in every server where they have been active. Each server decides what an active day is; the plan gives the freezes.
@@ -25,6 +26,11 @@ async function oneGuild(guildId, userId, freezes, now) {
 /** The streak of a person in one server. */
 async function inGuild(userId, guildId, now = new Date()) {
     return oneGuild(guildId, userId, await freezesOf(userId), now);
+}
+/** The summary of a person: what they did in every server, and their streaks. */
+async function summary(userId, now = new Date()) {
+    const [totals, streak] = await Promise.all([db.totalsOf(userId), mine(userId, now)]);
+    return { ...streak, totals };
 }
 /** The streaks of a person in the servers where they have been active, with the best of all. */
 async function mine(userId, now = new Date()) {
