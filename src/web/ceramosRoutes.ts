@@ -11,8 +11,14 @@ const shopAdmin = require('../utils/shopAdmin') as typeof import('../utils/shopA
 const shopDb = require('../db/shop') as typeof import('../db/shop');
 const planAdmin = require('../utils/planAdmin') as typeof import('../utils/planAdmin');
 const cardDesigns = require('../utils/cardDesigns') as { getDesign: (id: string) => unknown; designFile: (id: string, thumb: boolean) => { type: string; bytes: Buffer } | null };
-const config = require('../config') as { ownerId: string };
+const config = require('../config') as { ownerId: string; ownerIds?: string[] };
+/** Every id in PETTO_OWNER_ID is an owner (`ownerIds`); a config with only `ownerId` has that one. */
+const isOwner = (userId: unknown): boolean => (config.ownerIds ?? [config.ownerId]).map(String).includes(String(userId ?? ''));
 const logger = require('../utils/logger') as { error: (...args: unknown[]) => void };
+
+// The routes that check who the owner is carry a limiter built here, in the same file, so it is plain that each one is limited (besides the general `limiter`).
+const { rateLimit } = require('express-rate-limit') as typeof import('express-rate-limit');
+const ownerRouteLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); } });
 
 const ID = /^\d{15,25}$/;
 const BADGE = /^[a-z0-9-]{1,40}$/;
@@ -86,9 +92,17 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
     return { result: list ? { ok: true, ...(await api.saveShowcase(userId, list)) } : bad };
   }));
 
+  // A route that sends a file only to the owner: the key and the owner are checked here, before the handler (as `guard` does for the JSON routes).
+  const ownerFile = (handler: (req: Request, res: Response) => Promise<void>) => async (req: Request, res: Response) => {
+    if (!isAuthorized(req) || !isOwner(req.query.user_id)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+    await handler(req, res);
+  };
+  /** Who the gifts are counted for: the person asking when they are one of the owners, else the first owner. */
+  const grantOwnerFor = (userId: string): string => (isOwner(userId) ? userId : String(config.ownerId));
+
   // The editor of badges: only the owner (the website says who is logged in, and the bot checks it is the owner).
   const owner = (write: boolean, handler: (userId: string, body: Record<string, unknown>, req: Request) => Promise<unknown>) => guard(write, async (userId, body, req) => {
-    if (String(userId) !== String(config.ownerId)) return { ok: false, error: 'forbidden' };
+    if (!isOwner(userId)) return { ok: false, error: 'forbidden' };
     return handler(userId, body, req);
   });
   app.get('/api/dashboard/ceramos/admin/badges', limiter, owner(false, async () => admin.list()));
@@ -103,24 +117,22 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   app.post('/api/dashboard/ceramos/upload-submit', limiter, raw, guard(true, async (userId, _body, req) => api.uploads.submit(userId, (req as unknown as { body?: unknown }).body)));
   app.get('/api/dashboard/ceramos/admin/uploads', limiter, owner(false, async () => api.uploads.queue()));
   app.post('/api/dashboard/ceramos/admin/upload-review', limiter, owner(true, async (userId, body) => api.uploads.review(userId, body)));
-  app.get('/api/dashboard/ceramos/admin/upload-file', limiter, async (req: Request, res: Response) => {
-    if (!isAuthorized(req) || String(req.query.user_id ?? '') !== String(config.ownerId)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+  app.get('/api/dashboard/ceramos/admin/upload-file', limiter, ownerRouteLimiter, ownerFile(async (req: Request, res: Response) => {
     const bytes = await api.uploads.pendingFile(String(req.query.person ?? '')).catch(() => null);
     if (!bytes) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
     res.set('Content-Type', (require('../utils/animatedPicture') as typeof import('../utils/animatedPicture')).isAnimated(bytes) ? 'image/png' : 'image/webp').set('Cache-Control', 'private, no-store').send(bytes);
-  });
+  }));
   // Own badges (a plan makes 1, 2 or 4): the state, sending one (the body is the picture; `slot` and `name` go in the address), removing one, and what the owner does in the queue.
   app.get('/api/dashboard/ceramos/own-badge-state', limiter, guard(false, async (userId) => api.ownBadges.state(userId)));
   app.post('/api/dashboard/ceramos/own-badge-submit', limiter, raw, guard(true, async (userId, _body, req) => api.ownBadges.submit(userId, { slot: req.query.slot, name: req.query.name }, (req as unknown as { body?: unknown }).body)));
   app.post('/api/dashboard/ceramos/own-badge-remove', limiter, guard(true, async (userId, body) => api.ownBadges.remove(userId, body)));
   app.get('/api/dashboard/ceramos/admin/own-badges', limiter, owner(false, async () => api.ownBadges.queue()));
   app.post('/api/dashboard/ceramos/admin/own-badge-review', limiter, owner(true, async (userId, body) => api.ownBadges.review(userId, body)));
-  app.get('/api/dashboard/ceramos/admin/own-badge-file', limiter, async (req: Request, res: Response) => {
-    if (!isAuthorized(req) || String(req.query.user_id ?? '') !== String(config.ownerId)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+  app.get('/api/dashboard/ceramos/admin/own-badge-file', limiter, ownerRouteLimiter, ownerFile(async (req: Request, res: Response) => {
     const bytes = await api.ownBadges.pendingFile(String(req.query.person ?? ''), req.query.slot).catch(() => null);
     if (!bytes) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
     res.set('Content-Type', 'image/png').set('Cache-Control', 'private, no-store').send(bytes);
-  });
+  }));
   // The streaks of a person in the servers where they have been active.
   app.get('/api/dashboard/ceramos/streaks', limiter, guard(false, async (userId) => api.streaksMine(userId)));
   app.get('/api/dashboard/ceramos/summary', limiter, guard(false, async (userId) => api.summaryOf(userId)));
@@ -139,8 +151,8 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   app.post('/api/dashboard/ceramos/public/movements', limiter, publicRead('movements'));
   app.get('/api/dashboard/ceramos/public/info', limiter, (req: Request, res: Response) => { if (!isAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; } res.json(api.apiKeys.publicInfo()); });
   // Giving ceramos from the dashboard: the owner and the people the owner lists (the bot checks who is asking), with limits the owner sets.
-  app.get('/api/dashboard/ceramos/admin/grant', limiter, guard(false, async (userId) => api.grantState(userId, String(config.ownerId))));
-  app.post('/api/dashboard/ceramos/admin/grant', limiter, guard(true, async (userId, body) => api.grantCeramos(userId, String(config.ownerId), body)));
+  app.get('/api/dashboard/ceramos/admin/grant', limiter, ownerRouteLimiter, guard(false, async (userId) => api.grantState(userId, grantOwnerFor(userId))));
+  app.post('/api/dashboard/ceramos/admin/grant', limiter, ownerRouteLimiter, guard(true, async (userId, body) => api.grantCeramos(userId, grantOwnerFor(userId), body)));
   app.post('/api/dashboard/ceramos/admin/grant-settings', limiter, owner(true, async (_userId, body) => api.grantSaveSettings(body)));
   // The plans of the people: who has one, give one, end one.
   app.get('/api/dashboard/ceramos/admin/plans', limiter, owner(false, async () => planAdmin.list()));

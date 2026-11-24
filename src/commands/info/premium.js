@@ -87,7 +87,7 @@ module.exports = {
 
 // The owner may read the status of anybody (a member reads only their own): this is a look, not a team action.
 function isOwner(interaction) {
-  return interaction.user?.id === config.ownerId;
+  return (config.ownerIds ?? [config.ownerId]).includes(interaction.user?.id);
 }
 
 async function status(interaction, lang) {

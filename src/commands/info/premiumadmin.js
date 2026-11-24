@@ -12,7 +12,7 @@ const logger = require('../../utils/logger');
 const { syncPremiumRoleForUser } = require('../../jobs/premiumRoleJob');
 
 /** Only the Petto OWNER may change Premium (a developer of the team may not): for everybody else this is not a command at all. */
-const isOwner = (userId) => String(userId ?? '') === String(config.ownerId);
+const isOwner = (userId) => (config.ownerIds ?? [config.ownerId]).includes(String(userId ?? ''));
 
 /**
  * `!premiumadmin grant|assign|unassign|revoke`: the owner-only actions of Petto Premium. They used to be subcommands of `/premium` (and so of `/bot premium`), which showed

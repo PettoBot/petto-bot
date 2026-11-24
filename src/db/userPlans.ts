@@ -39,3 +39,9 @@ export async function listActive(): Promise<PlanRow[]> {
   const { rows } = await getPrimaryPool().query(`select ${COLUMNS} from user_plans where ends_at is null or ends_at > now() order by updated_at desc limit 200`);
   return rows.map(toRow);
 }
+
+/** Every person who ever had a plan, with whether it is active now (no limit): for the job that gives and takes the roles of the plans. */
+export async function listAll(): Promise<{ userId: string; plan: string; active: boolean }[]> {
+  const { rows } = await getPrimaryPool().query('select user_id, plan, (ends_at is null or ends_at > now()) as active from user_plans');
+  return rows.map((row) => ({ userId: String(row.user_id), plan: String(row.plan), active: Boolean(row.active) }));
+}
