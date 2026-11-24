@@ -295,6 +295,8 @@ module.exports = {
   // Optional dedicated PostgreSQL database for Petto Vault backups and audit history.
   // Discloud's private VLAN hostname can override an older Tailscale URL safely.
   vaultDatabaseUrl: resolveVaultDatabaseUrl(),
+  // TLS of the Vault connection: PETTO_VAULT_DATABASE_SSL=true or false decides; when it is not set the address decides (see db/vault.js sslFor).
+  vaultDatabaseSsl: process.env.PETTO_VAULT_DATABASE_SSL ? envBool('PETTO_VAULT_DATABASE_SSL', true) : null,
   // Optional dedicated PostgreSQL database for the data that custom commands written in code store. Without it the
   // main database is used.
   codeDatabaseUrl: process.env.PETTO_CODE_DATABASE_URL?.trim() || null,

@@ -4,21 +4,28 @@ const config = require('../config');
 let pool;
 let schemaPromise;
 
+/**
+ * Whether the Vault connection uses TLS. `PETTO_VAULT_DATABASE_SSL` (true or false) decides when it is set; otherwise the address does: `sslmode=require`, `verify-ca`
+ * or `verify-full` ask for it (a managed database such as Aiven), and an address without it connects in plain, as the Discloud database does (it answers "The server does
+ * not support SSL connections" to anything else).
+ */
+function sslFor(url, setting) {
+  if (typeof setting === 'boolean') return setting;
+  return ['require', 'verify-ca', 'verify-full'].includes(String(url.searchParams.get('sslmode') ?? '').toLowerCase());
+}
+
 function getPool() {
   // A second instance that reaches the Vault through the SQL bridge of the primary (src/db/bridgeTargets.js).
   if (!config.vaultDatabaseUrl) return require('./bridgeTargets').has('vault') ? require('./bridgeTargets').poolFor('vault') : null;
   if (!pool) {
-    // Aiven requires TLS for managed PostgreSQL. Keep the Vault connection
-    // aligned with the primary migration client so pg accepts its certificate
-    // chain in the Discloud runtime.
     const connectionUrl = new URL(config.vaultDatabaseUrl);
-    // pg's connection-string parser can override the explicit ssl object when
-    // sslmode is present in the URI. Remove only that option and configure the
-    // TLS behavior below so Aiven works consistently across host runtimes.
+    const useSsl = sslFor(connectionUrl, config.vaultDatabaseSsl);
+    // pg's connection-string parser can override the explicit ssl object when sslmode is present in the URI. Remove only that option and configure the
+    // TLS behavior below, so it is the same on every host runtime.
     connectionUrl.searchParams.delete('sslmode');
     pool = new Pool({
       connectionString: connectionUrl.toString(),
-      ssl: { rejectUnauthorized: false },
+      ssl: useSsl ? { rejectUnauthorized: false } : false,
       max: 4,
       connectionTimeoutMillis: 8000,
       idleTimeoutMillis: 30_000,
@@ -218,4 +225,4 @@ async function listBackupGuilds() {
   return rows;
 }
 
-module.exports = { getPool, deleteBackup, deleteAllBackups, listBackupGuilds, isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };
+module.exports = { sslFor, getPool, deleteBackup, deleteAllBackups, listBackupGuilds, isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };
