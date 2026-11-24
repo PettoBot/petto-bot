@@ -5560,6 +5560,27 @@ alter table streak_config add column if not exists grace_minutes int not null de
 alter table streak_config add column if not exists dm_reminder boolean not null default false;
 alter table streak_config add column if not exists dm_lost boolean not null default false;
 alter table streak_config add column if not exists nickname_enabled boolean not null default false;
+-- What counts as a message for the streak (all of it off by default, so the streaks keep reading activity_members): at least this many characters, one counted message every so many
+-- seconds, only (or everywhere but) some channels or roles, and a reaction that counts as a message. When any of it is on, the messages of the days from `counting_since` on are
+-- counted apart in streak_days (a number for each person and day, never what was said); the days before keep what activity_members says.
+alter table streak_config add column if not exists min_length int not null default 0 check (min_length between 0 and 500);
+alter table streak_config add column if not exists cooldown_seconds int not null default 0 check (cooldown_seconds between 0 and 3600);
+alter table streak_config add column if not exists channel_mode text not null default 'all' check (channel_mode in ('all', 'only', 'except'));
+alter table streak_config add column if not exists channel_ids text[] not null default '{}';
+alter table streak_config add column if not exists role_mode text not null default 'all' check (role_mode in ('all', 'only', 'except'));
+alter table streak_config add column if not exists role_ids text[] not null default '{}';
+alter table streak_config add column if not exists reactions_count boolean not null default false;
+alter table streak_config add column if not exists counting_since date;
+create table if not exists streak_days (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  day      date not null,
+  messages int not null default 0 check (messages >= 0),
+  primary key (guild_id, user_id, day)
+);
+create index if not exists idx_streak_days_guild_day on streak_days(guild_id, day);
+alter table streak_days enable row level security;
+
 alter table streak_config add column if not exists nickname_emoji text not null default '🔥' check (char_length(nickname_emoji) <= 8);
 alter table streak_config enable row level security;
 -- Members who asked not to get the messages of the streaks (the reminder and the lost streak by DM) nor the streak in their nickname.

@@ -101,10 +101,13 @@ async function setOptOut(userId, value) {
 async function deleteMemberCounts(userId) {
   const { data, error } = await database.from('activity_members').delete().eq('user_id', userId).select('day');
   if (error) throw error;
-  return (data ?? []).length;
+  // The days a server counts apart for its streaks are counts per member too.
+  const counted = await database.from('streak_days').delete().eq('user_id', userId).select('day');
+  if (counted.error) throw counted.error;
+  return (data ?? []).length + (counted.data ?? []).length;
 }
 
-const GUILD_TABLES = ['activity_stats', 'activity_hourly', 'activity_members', 'member_flow', 'activity_content', 'member_lifespan'];
+const GUILD_TABLES = ['activity_stats', 'activity_hourly', 'activity_members', 'streak_days', 'member_flow', 'activity_content', 'member_lifespan'];
 
 /** Deletes every counter of a server. Returns how many rows went. */
 async function deleteGuildCounts(guildId) {
@@ -124,7 +127,8 @@ const dayBefore = (days) => new Date(Date.now() - days * 86_400_000).toISOString
 
 /** Deletes the counters older than they are kept. */
 async function pruneOld() {
-  const limits = [['activity_members', KEEP_MEMBER_DAYS]].concat(GUILD_TABLES.filter((table) => table !== 'activity_members').map((table) => [table, KEEP_TOTAL_DAYS]));
+  const perMember = ['activity_members', 'streak_days'];
+  const limits = perMember.map((table) => [table, KEEP_MEMBER_DAYS]).concat(GUILD_TABLES.filter((table) => !perMember.includes(table)).map((table) => [table, KEEP_TOTAL_DAYS]));
   for (const [table, days] of limits) {
     const { error } = await database.from(table).delete().lt('day', dayBefore(days));
     if (error) throw error;

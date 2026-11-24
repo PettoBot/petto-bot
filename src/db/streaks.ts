@@ -5,9 +5,9 @@ interface Pool { query(sql: string, params?: unknown[]): Promise<{ rows: Record<
 const { getPrimaryPool } = require('./postgres') as { getPrimaryPool: () => Pool };
 
 export type Mode = 'messages' | 'voice' | 'any' | 'both';
-export interface Config { enabled: boolean; mode: Mode; minMessages: number; minVoiceMinutes: number; announceChannelId: string | null; milestones: number[]; guildFreezes: number; resetAt: string | null; graceMinutes: number; dmReminder: boolean; dmLost: boolean; nicknameEnabled: boolean; nicknameEmoji: string }
+export interface Config { enabled: boolean; mode: Mode; minMessages: number; minVoiceMinutes: number; announceChannelId: string | null; milestones: number[]; guildFreezes: number; resetAt: string | null; graceMinutes: number; dmReminder: boolean; dmLost: boolean; nicknameEnabled: boolean; nicknameEmoji: string; countingSince: string | null }
 export const DEFAULT_MILESTONES = [3, 7, 14, 30, 60, 100, 365];
-export const DEFAULT_CONFIG: Config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥' };
+export const DEFAULT_CONFIG: Config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥', countingSince: null };
 export interface DayRow { day: string; messages: number; voiceSeconds: number }
 
 const MODES: Mode[] = ['messages', 'voice', 'any', 'both'];
@@ -18,9 +18,10 @@ function toConfig(row: Record<string, unknown>): Config {
     milestones: Array.isArray(row.milestones) ? (row.milestones as unknown[]).map(Number).filter((n) => n >= 1 && n <= 3650).sort((a, b) => a - b) : DEFAULT_MILESTONES,
     guildFreezes: Number(row.guild_freezes ?? 0), resetAt: row.reset_at ? String(row.reset_at).slice(0, 10) : null,
     graceMinutes: Number(row.grace_minutes ?? 0), dmReminder: Boolean(row.dm_reminder), dmLost: Boolean(row.dm_lost), nicknameEnabled: Boolean(row.nickname_enabled), nicknameEmoji: String(row.nickname_emoji || '🔥'),
+    countingSince: row.counting_since ? String(row.counting_since).slice(0, 10) : null,
   };
 }
-const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji`;
+const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji, to_char(counting_since, 'YYYY-MM-DD') as counting_since`;
 
 export async function getConfig(guildId: string): Promise<Config> {
   const { rows } = await getPrimaryPool().query(`select ${COLUMNS} from streak_config where guild_id = $1`, [guildId]);
@@ -36,10 +37,24 @@ export async function guildsWithRewards(): Promise<string[]> {
 
 const mapDays = (rows: Record<string, unknown>[]): DayRow[] => rows.map((row) => ({ day: String(row.day), messages: Number(row.messages), voiceSeconds: Number(row.voice_seconds) }));
 
+// The days of a person: what activity_members says, except that from the day the server started to filter what counts (`counting_since`) the messages are the ones of streak_days
+// (a day with only a counted reaction has a row there and none in activity_members, hence the full join). The voice time always comes from activity_members.
+const FLOOR = `greatest(current_date - 400, coalesce($RESET::date, date '1970-01-01'))`;
+const daysSql = (guild: string, users: string, reset: string, select: string) => `
+  with since as (select counting_since as day from streak_config where guild_id = ${guild}),
+  a as (select user_id, day, messages, voice_seconds from activity_members where guild_id = ${guild} and ${users} and day >= ${FLOOR.replace('$RESET', reset)}),
+  s as (select user_id, day, messages from streak_days where guild_id = ${guild} and ${users} and day >= ${FLOOR.replace('$RESET', reset)})
+  select ${select}
+  from a full join s on a.user_id = s.user_id and a.day = s.day
+  where a.day is not null or s.day >= (select day from since)
+  order by 1, 2`;
+const dayColumns = `to_char(coalesce(a.day, s.day), 'YYYY-MM-DD') as day,
+    case when (select day from since) is not null and coalesce(a.day, s.day) >= (select day from since) then coalesce(s.messages, 0) else coalesce(a.messages, 0) end as messages,
+    coalesce(a.voice_seconds, 0) as voice_seconds`;
+
 /** The days of a person in a server over the last 400 days (after the last reset of the server). */
 export async function daysOf(guildId: string, userId: string, resetAt: string | null = null): Promise<DayRow[]> {
-  const { rows } = await getPrimaryPool().query(
-    `select to_char(day, 'YYYY-MM-DD') as day, messages, voice_seconds from activity_members where guild_id = $1 and user_id = $2 and day >= greatest(current_date - 400, coalesce($3::date, date '1970-01-01')) order by day`, [guildId, userId, resetAt]);
+  const { rows } = await getPrimaryPool().query(daysSql('$1', 'user_id = $2', '$3', `${dayColumns}`).replace('order by 1, 2', 'order by 1'), [guildId, userId, resetAt]);
   return mapDays(rows);
 }
 
@@ -47,8 +62,7 @@ export async function daysOf(guildId: string, userId: string, resetAt: string | 
 export async function daysOfMany(guildId: string, userIds: string[], resetAt: string | null = null): Promise<Map<string, DayRow[]>> {
   const out = new Map<string, DayRow[]>();
   if (!userIds.length) return out;
-  const { rows } = await getPrimaryPool().query(
-    `select user_id, to_char(day, 'YYYY-MM-DD') as day, messages, voice_seconds from activity_members where guild_id = $1 and user_id = any($2::text[]) and day >= greatest(current_date - 400, coalesce($3::date, date '1970-01-01')) order by day`, [guildId, userIds, resetAt]);
+  const { rows } = await getPrimaryPool().query(daysSql('$1', 'user_id = any($2::text[])', '$3', `coalesce(a.user_id, s.user_id) as user_id, ${dayColumns}`).replace('order by 1, 2', 'order by 2'), [guildId, userIds, resetAt]);
   for (const row of rows) {
     const list = out.get(String(row.user_id)) ?? [];
     list.push(...mapDays([row]));
@@ -60,13 +74,13 @@ export async function daysOfMany(guildId: string, userIds: string[], resetAt: st
 /** The members with the most active days in a server (the candidates of the board): at most `limit`. */
 export async function busiestMembers(guildId: string, resetAt: string | null, limit = 1000): Promise<string[]> {
   const { rows } = await getPrimaryPool().query(
-    `select user_id from activity_members where guild_id = $1 and day >= greatest(current_date - 400, coalesce($2::date, date '1970-01-01')) group by user_id order by count(*) desc limit $3`, [guildId, resetAt, limit]);
+    `select user_id from (select user_id, day from activity_members where guild_id = $1 union select user_id, day from streak_days where guild_id = $1) d where day >= greatest(current_date - 400, coalesce($2::date, date '1970-01-01')) group by user_id order by count(*) desc limit $3`, [guildId, resetAt, limit]);
   return rows.map((row) => String(row.user_id));
 }
 
 /** The members who did something today or yesterday (UTC): the only ones whose streak can have moved. */
 export async function recentMembers(guildId: string, limit = 5000, sinceDays = 1): Promise<string[]> {
-  const { rows } = await getPrimaryPool().query(`select distinct user_id from activity_members where guild_id = $1 and day >= current_date - $3::int limit $2`, [guildId, limit, sinceDays]);
+  const { rows } = await getPrimaryPool().query(`select user_id from (select user_id, day from activity_members where guild_id = $1 union select user_id, day from streak_days where guild_id = $1) d where day >= current_date - $3::int group by user_id limit $2`, [guildId, limit, sinceDays]);
   return rows.map((row) => String(row.user_id));
 }
 
