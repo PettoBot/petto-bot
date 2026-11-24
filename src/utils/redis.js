@@ -61,8 +61,17 @@ function start() {
 }
 
 function deliver(channel, message) {
+  // A second instance (a worker) has no Redis: what the dashboard says here reaches it through the link (utils/linkRuntime.ts).
+  try { require('./linkRuntime').relayEvent(channel.slice(PREFIX.length), message); } catch { /* the link is optional */ }
   for (const handler of listeners.get(channel) ?? []) {
     Promise.resolve().then(() => handler(message)).catch((error) => warn(`a message on ${channel} could not be handled: ${error?.message ?? error}`, 60_000));
+  }
+}
+
+/** Calls the handlers of `petto:<channel>` as if the message had come from Redis: on a worker (no Redis) it is what the primary tells it through the link. */
+function deliverLocal(channel, message) {
+  for (const handler of listeners.get(PREFIX + channel) ?? []) {
+    Promise.resolve().then(() => handler(String(message))).catch((error) => warn(`a message on ${channel} could not be handled: ${error?.message ?? error}`, 60_000));
   }
 }
 
@@ -170,7 +179,13 @@ async function getJsonMany(keys) {
 
 /** Publishes `message` on `petto:<channel>`. False when there is no Redis (nobody is told, and nothing waits). */
 async function publish(channel, message) {
-  return run(async (redis) => { await redis.publish(PREFIX + channel, String(message)); return true; }, false);
+  const sent = await run(async (redis) => { await redis.publish(PREFIX + channel, String(message)); return true; }, false);
+  if (sent) return true;
+  // No Redis here: a worker says it to the primary through the link, and the primary (that has none either) tells the workers directly.
+  try {
+    const link = require('./linkRuntime');
+    return link.sendFromWorker(channel, String(message)) || link.relayEvent(channel, String(message)) > 0;
+  } catch { return false; }
 }
 
 /**
@@ -178,8 +193,14 @@ async function publish(channel, message) {
  * Redis it is never called (and this answers false): whatever the messages would have done then happens when the caches expire.
  */
 function subscribe(channel, handler) {
-  if (!enabled() || typeof handler !== 'function') return false;
+  if (typeof handler !== 'function') return false;
   const full = PREFIX + channel;
+  // Without Redis the handler still waits for what a worker is told through the link (deliverLocal); the answer stays false, as the callers know it.
+  if (!enabled()) {
+    if (!listeners.has(full)) listeners.set(full, new Set());
+    listeners.get(full).add(handler);
+    return false;
+  }
   const known = listeners.has(full);
   if (!known) listeners.set(full, new Set());
   listeners.get(full).add(handler);
@@ -188,4 +209,4 @@ function subscribe(channel, handler) {
   return true;
 }
 
-module.exports = { PREFIX, enabled, start, available, getJson, getJsonMany, setJson, del, claim, countThisSecond, incr, publish, subscribe };
+module.exports = { PREFIX, enabled, start, available, getJson, getJsonMany, setJson, del, claim, countThisSecond, incr, publish, subscribe, deliverLocal };

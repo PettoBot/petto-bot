@@ -13,10 +13,11 @@ let dedicated;
 let schemaReady;
 
 /** True when there is a second database (the data is not in the main one). */
-const isSeparate = () => Boolean(config.data2DatabaseUrl);
+const isSeparate = () => Boolean(config.data2DatabaseUrl) || require('./bridgeTargets').has('data2');
 
 function rawPool() {
   if (!isSeparate()) return getPrimaryPool();
+  if (!config.data2DatabaseUrl) return require('./bridgeTargets').poolFor('data2'); // through the SQL bridge of the primary
   if (!dedicated) {
     const url = new URL(config.data2DatabaseUrl);
     url.searchParams.delete('sslmode'); // pg would override the ssl option below with it
@@ -44,4 +45,4 @@ const database = createPostgresClient(pool, { announce: false });
 
 const closeSecondary = async () => { if (dedicated) { await dedicated.end().catch(() => {}); dedicated = null; schemaReady = null; } };
 
-module.exports = { isSeparate, pool, database, ready, closeSecondary, SCHEMA };
+module.exports = { rawPool, isSeparate, pool, database, ready, closeSecondary, SCHEMA };

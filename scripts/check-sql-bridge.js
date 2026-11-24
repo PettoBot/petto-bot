@@ -163,10 +163,60 @@ function fakePool() {
   await assert.rejects(remote4.connect(), /too many sessions|bridge answered 429/);
   server4.close(); assert.equal(server4.openSessions(), 0);
 
+
+  // ---- Several databases, one trip for queries of the same moment, and a few seconds of memory -----------------------------------------
+  clock = 2_000_000_000_000;
+  const vaultPool = fakePool(); const mainPool = fakePool();
+  const multi = bridge.createBridgeServer({ pools: { primary: () => mainPool, vault: () => vaultPool, code: () => null }, secret: SECRET, now });
+  const askMulti = async (payload, id) => { const body = JSON.stringify(payload); return multi.handle({ headers: { 'x-bridge-time': String(clock), 'x-bridge-id': id, 'x-bridge-signature': bridge.sign(SECRET, clock, id, body) }, body }); };
+  const info = await askMulti({ op: 'info' }, '31'.repeat(8));
+  assert.deepEqual(info.json.targets, ['primary', 'vault'], 'a database the primary does not have is not offered');
+  assert.equal((await askMulti({ op: 'query', db: 'code', text: 'select 1' }, '32'.repeat(8))).status, 400, 'a database that is not there');
+  assert.equal((await askMulti({ op: 'query', db: 'nope', text: 'select 1' }, '33'.repeat(8))).status, 400);
+  assert.equal((await askMulti({ op: 'query', db: '__proto__', text: 'select 1' }, '34'.repeat(8))).status, 400, 'a name from the prototype is not a database');
+  await askMulti({ op: 'query', db: 'vault', text: 'select 1' }, '35'.repeat(8));
+  assert.equal(vaultPool.state.queries.length, 1); assert.equal(mainPool.state.queries.length, 0, 'the query went to the database that was asked');
+  await askMulti({ op: 'query', text: 'select 1' }, '36'.repeat(8));
+  assert.equal(mainPool.state.queries.length, 1, 'without a name it is the main one');
+
+  const trips = bridge.createBridgeServer({ pools: { primary: () => mainPool, vault: () => vaultPool }, secret: SECRET, now });
+  const counted = wire(trips);
+  const sharing = bridge.createBridgePool({ url: 'https://x', secret: SECRET, fetcher: counted.fetcher, wait: async () => {}, now, db: 'vault', batchMs: 5 });
+  const before = vaultPool.state.queries.length;
+  const [one, two, three] = await Promise.all([sharing.query('select echo', [1]), sharing.query('select echo', [2]), sharing.query('insert duplicate').catch((error) => error)]);
+  assert.equal(counted.stats.calls, 1, 'three queries of the same moment made one trip');
+  assert.equal(vaultPool.state.queries.length - before, 3, 'and all three ran on the vault');
+  assert.deepEqual([one.rows[0].values, two.rows[0].values], [[1], [2]], 'each got its own answer, in order');
+  assert.equal(three.code, '23505', 'a database error reaches only the query that had it');
+  assert.equal(sharing.stats().batches, 1);
+  assert.deepEqual(await sharing.info(), ['primary', 'vault']);
+
+  const remembering = bridge.createBridgePool({ url: 'https://x', secret: SECRET, fetcher: wire(trips).fetcher, wait: async () => {}, now, cacheMs: 3_000, batchMs: 0 });
+  const first1 = await remembering.query('select echo', [7]);
+  first1.rows[0].values.push('changed by the caller');
+  const again1 = await remembering.query('select echo', [7]);
+  assert.deepEqual(again1.rows[0].values, [7], 'a reader that changes its rows does not change what is remembered');
+  assert.equal(remembering.stats().cacheHits, 1);
+  await Promise.all([remembering.query('select echo', [8]), remembering.query('select echo', [8])]); // the same question at the same time is asked once
+  assert.equal(remembering.stats().cacheHits, 2);
+  clock += 4_000;
+  await remembering.query('select echo', [7]);
+  assert.equal(remembering.stats().cacheHits, 2, 'after the time it asks again');
+  await remembering.query('select echo', [7]);
+  await remembering.query('insert into t values (1)');
+  await remembering.query('select echo', [7]);
+  assert.equal(remembering.stats().cacheHits, 3, 'a write of this instance makes it forget what it remembered');
+  assert.equal(bridge.cacheable('select now()'), false); assert.equal(bridge.cacheable('select * from t for update'), false); assert.equal(bridge.cacheable('update t set a = 1 returning a'), false);
+  assert.equal(bridge.cacheable('select nextval(\'x\')'), false); assert.equal(bridge.cacheable('select * from t where d = current_date'), false);
+  assert.equal(bridge.cacheable('select * from t where a = $1'), true); assert.equal(bridge.cacheable('with x as (select 1) select * from x'), true);
+  const plain = bridge.createBridgePool({ url: 'https://x', secret: SECRET, fetcher: wire(trips).fetcher, wait: async () => {}, now, cacheMs: 0, batchMs: 0 });
+  await plain.query('select echo', [9]); await plain.query('select echo', [9]);
+  assert.equal(plain.stats().cacheHits, 0, 'with the memory off nothing is remembered');
+
   // ---- The role of an instance ----------------------------------------------------------------------------------------------------
   assert.equal(role.roleOf({}), 'primary'); assert.equal(role.roleOf({ PETTO_ROLE: 'Worker' }), 'worker'); assert.equal(role.roleOf({ PETTO_ROLE: 'junk' }), 'primary');
-  assert.equal(role.workerJobsOf({}), 'essential'); assert.equal(role.workerJobsOf({ PETTO_WORKER_JOBS: 'GUILD' }), 'guild'); assert.equal(role.workerJobsOf({ PETTO_WORKER_JOBS: 'x' }), 'essential');
-  const primary = {}; const worker = { PETTO_ROLE: 'worker' }; const workerGuild = { PETTO_ROLE: 'worker', PETTO_WORKER_JOBS: 'guild' }; const workerAll = { PETTO_ROLE: 'worker', PETTO_WORKER_JOBS: 'all' };
+  assert.equal(role.workerJobsOf({}), 'guild'); assert.equal(role.workerJobsOf({ PETTO_WORKER_JOBS: 'ESSENTIAL' }), 'essential'); assert.equal(role.workerJobsOf({ PETTO_WORKER_JOBS: 'x' }), 'guild');
+  const primary = {}; const worker = { PETTO_ROLE: 'worker', PETTO_WORKER_JOBS: 'essential' }; const workerGuild = { PETTO_ROLE: 'worker' }; const workerAll = { PETTO_ROLE: 'worker', PETTO_WORKER_JOBS: 'all' };
   for (const name of ['startStreakJob', 'startGuildPurgeJob', 'startActivityStatsJob']) assert.equal(role.shouldRun(name, primary), true, `the primary runs ${name}`);
   assert.equal(role.shouldRun('startActivityStatsJob', worker), true, 'a worker keeps what it buffers');
   assert.equal(role.shouldRun('startVoiceXpJob', worker), true);
@@ -174,7 +224,7 @@ function fakePool() {
   assert.equal(role.shouldRun('startGuildPurgeJob', worker), false);
   assert.equal(role.shouldRun('startStreakJob', workerGuild), true);
   assert.equal(role.shouldRun('startGuildPurgeJob', workerGuild), false, 'what must run once never runs on a worker');
-  assert.equal(role.shouldRun('startGuildPurgeJob', workerAll), true);
+  assert.equal(role.shouldRun('startGuildPurgeJob', workerAll), true); assert.equal(role.shouldRun('startStreakJob', { PETTO_ROLE: 'worker' }), true, 'a worker runs the jobs of its own servers by default');
   for (const name of role.ESSENTIAL_JOBS) assert.equal(role.ONE_PER_BOT.has(name), false, `${name} is not both essential and one per bot`);
   // Every job that index.js starts is known by name, so none is renamed by mistake.
   const fs = require('node:fs');

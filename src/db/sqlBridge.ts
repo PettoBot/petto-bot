@@ -87,10 +87,19 @@ export interface BridgeRequest { headers: Record<string, string | undefined>; bo
 export interface BridgeResponse { status: number; json: Record<string, unknown> }
 interface PoolLike { query: (text: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number | null; command?: string; fields?: { name: string; dataTypeID?: number }[] }>; connect: () => Promise<ClientLike> }
 interface ClientLike { query: PoolLike['query']; release: (error?: unknown) => void }
-export interface BridgeServerOptions { pool: PoolLike; secret: string; now?: () => number; maxRunning?: number; maxSessions?: number; sessionTtlMs?: number; maxSkewMs?: number }
+export const MAX_BATCH = 32;
+/** The databases a bridge can reach: the main one, and the others the instance that serves it has (`vault`, `code`, `data2`). A function answers null when that database is not configured. */
+export type PoolMap = Record<string, () => PoolLike | null>;
+export interface BridgeServerOptions { pool?: PoolLike; pools?: PoolMap; secret: string; now?: () => number; maxRunning?: number; maxSessions?: number; sessionTtlMs?: number; maxSkewMs?: number }
 
-export function createBridgeServer({ pool, secret, now = Date.now, maxRunning = MAX_RUNNING, maxSessions = MAX_SESSIONS, sessionTtlMs = SESSION_TTL_MS, maxSkewMs = MAX_SKEW_MS }: BridgeServerOptions) {
+export function createBridgeServer({ pool, pools, secret, now = Date.now, maxRunning = MAX_RUNNING, maxSessions = MAX_SESSIONS, sessionTtlMs = SESSION_TTL_MS, maxSkewMs = MAX_SKEW_MS }: BridgeServerOptions) {
   if (!validSecret(secret)) throw new Error(`PETTO_BRIDGE_SECRET needs at least ${MIN_SECRET_LENGTH} characters.`);
+  const map: PoolMap = pools ?? { primary: () => pool ?? null };
+  const poolOf = (name: unknown): PoolLike | null => {
+    const key = name === undefined || name === null ? 'primary' : String(name);
+    if (!Object.prototype.hasOwnProperty.call(map, key)) return null;
+    try { return map[key]() ?? null; } catch { return null; }
+  };
   const seen = new Map<string, number>(); // request id -> time (the same id twice is a replay, or a retry that already ran)
   const answers = new Map<string, BridgeResponse>(); // the answer of a request that ran, so a retry of it (the answer got lost) gets the same one instead of running twice
   const sessions = new Map<string, { client: ClientLike; touched: number }>();
@@ -136,13 +145,23 @@ export function createBridgeServer({ pool, secret, now = Date.now, maxRunning = 
       if (running >= maxRunning) { seen.delete(id); return { status: 429, json: { ok: false, error: { message: 'busy' } } }; }
       running += 1;
       try {
-        let payload: { op?: string; text?: unknown; values?: unknown; session?: unknown };
+        let payload: { op?: string; text?: unknown; values?: unknown; session?: unknown; db?: unknown; items?: unknown };
         try { payload = JSON.parse(body) as typeof payload; } catch { return { status: 400, json: { ok: false, error: { message: 'Invalid body.' } } }; }
         let response: BridgeResponse;
-        if (payload.op === 'connect') {
+        const target = poolOf(payload.db);
+        if (payload.op === 'info') {
+          response = { status: 200, json: { ok: true, targets: Object.keys(map).filter((name) => poolOf(name)) } };
+        } else if (payload.op !== 'release' && !(payload.op === 'query' && payload.session !== undefined) && !target) {
+          response = { status: 400, json: { ok: false, error: { message: 'Unknown database.' } } };
+        } else if (payload.op === 'batch') {
+          // Several independent queries that left the other instance in the same moment: one trip, run together (never inside a transaction: those use a session).
+          const items = Array.isArray(payload.items) ? payload.items.slice(0, MAX_BATCH) as { text?: unknown; values?: unknown }[] : [];
+          const results = await Promise.all(items.map((item) => run(target as PoolLike, item?.text, item?.values)));
+          response = { status: 200, json: { ok: true, results: results.map((result) => result.json) } };
+        } else if (payload.op === 'connect') {
           if (sessions.size >= maxSessions) response = { status: 429, json: { ok: false, error: { message: 'too many sessions' } } };
           else {
-            const client = await pool.connect();
+            const client = await (target as PoolLike).connect();
             const session = randomBytes(12).toString('hex');
             sessions.set(session, { client, touched: now() });
             response = { status: 200, json: { ok: true, session } };
@@ -161,7 +180,7 @@ export function createBridgeServer({ pool, secret, now = Date.now, maxRunning = 
             const session = sessions.get(String(payload.session));
             if (!session) response = { status: 410, json: { ok: false, error: { message: 'session expired' } } };
             else { session.touched = now(); response = await run(session.client, payload.text, payload.values); }
-          } else response = await run(pool, payload.text, payload.values);
+          } else response = await run(target as PoolLike, payload.text, payload.values);
         } else response = { status: 400, json: { ok: false, error: { message: 'Unknown operation.' } } };
         answers.set(id, response);
         return response;
@@ -178,7 +197,16 @@ export function createBridgeServer({ pool, secret, now = Date.now, maxRunning = 
 }
 
 // ---- The pool of the second instance ---------------------------------------------------------------------------------------------------------------------------
-export interface BridgePoolOptions { url: string; secret: string; fetcher?: typeof fetch; timeoutMs?: number; retries?: number; now?: () => number; wait?: (ms: number) => Promise<void> }
+export interface BridgePoolOptions {
+  url: string; secret: string;
+  /** Which database of the primary this pool is: `primary` (default), `vault`, `code` or `data2`. */
+  db?: string;
+  fetcher?: typeof fetch; timeoutMs?: number; retries?: number; now?: () => number; wait?: (ms: number) => Promise<void>;
+  /** Queries asked in the same moment go in one trip: how long to wait for company (ms, 0 = no batching) and how many at most. */
+  batchMs?: number; maxBatch?: number;
+  /** How long a plain SELECT is remembered (ms, 0 = never). Any write from this instance forgets all of them. */
+  cacheMs?: number;
+}
 
 export class BridgeError extends Error {
   code?: string; detail?: string; hint?: string; constraint?: string; table?: string; column?: string; schema?: string;
@@ -189,66 +217,144 @@ export class BridgeError extends Error {
   }
 }
 
-export function createBridgePool({ url, secret, fetcher = fetch, timeoutMs = 15_000, retries = 2, now = Date.now, wait = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)) }: BridgePoolOptions) {
+type QueryResult = { rows: unknown[]; rowCount: number | null; command: string | null; fields: { name: string; dataTypeID: number }[] };
+
+/** A SELECT that may be remembered for a few seconds: no lock, no clock, no random, no sequence, no advisory lock. */
+export function cacheable(sql: string): boolean {
+  return /^\s*(with\b[\s\S]*?\bselect|select)\b/i.test(sql) && !/\b(for\s+(update|share|no\s+key)|nextval|random\s*\(|now\s*\(|clock_timestamp|statement_timestamp|current_timestamp|pg_advisory|txid_current|current_date|current_time|localtime|insert\b|update\b|delete\b)/i.test(sql);
+}
+
+export function createBridgePool({ url, secret, db = 'primary', fetcher = fetch, timeoutMs = 15_000, retries = 2, now = Date.now, wait = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)), batchMs = 2, maxBatch = 16, cacheMs = 0 }: BridgePoolOptions) {
   if (!validSecret(secret)) throw new Error(`PETTO_BRIDGE_SECRET needs at least ${MIN_SECRET_LENGTH} characters.`);
   if (!/^https?:\/\//i.test(url)) throw new Error('PETTO_DB_BRIDGE_URL must be an http(s) address.');
 
+  const stats = { requests: 0, queries: 0, batches: 0, batchedQueries: 0, cacheHits: 0, errors: 0, totalMs: 0, lastMs: 0, maxMs: 0 };
+
   async function post(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const body = JSON.stringify(payload);
+    const body = JSON.stringify({ db, ...payload });
     const id = randomBytes(12).toString('hex'); // the same id on every try: if the answer got lost the server gives the one it already had instead of running twice
     let lastError: unknown;
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-      const timestamp = now();
-      try {
-        const response = await fetcher(url, {
-          method: 'POST', signal: AbortSignal.timeout(timeoutMs), body,
-          headers: { 'Content-Type': 'application/octet-stream', 'x-bridge-time': String(timestamp), 'x-bridge-id': id, 'x-bridge-signature': sign(secret, timestamp, id, body) },
-        });
-        const json = await response.json().catch(() => null) as Record<string, unknown> | null;
-        if (response.status === 429 || response.status >= 502) { lastError = new Error(`the bridge answered ${response.status}`); await wait(200 * (attempt + 1)); continue; }
-        if (!json) throw new Error(`the bridge answered ${response.status} without a body`);
-        return json;
-      } catch (error) {
-        lastError = error;
-        if (attempt < retries) await wait(200 * (attempt + 1));
+    const started = Date.now();
+    stats.requests += 1;
+    try {
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        const timestamp = now();
+        try {
+          const response = await fetcher(url, {
+            method: 'POST', signal: AbortSignal.timeout(timeoutMs), body,
+            headers: { 'Content-Type': 'application/octet-stream', 'x-bridge-time': String(timestamp), 'x-bridge-id': id, 'x-bridge-signature': sign(secret, timestamp, id, body) },
+          });
+          const json = await response.json().catch(() => null) as Record<string, unknown> | null;
+          if (response.status === 429 || response.status >= 502) { lastError = new Error(`the bridge answered ${response.status}`); await wait(200 * (attempt + 1)); continue; }
+          if (!json) throw new Error(`the bridge answered ${response.status} without a body`);
+          return json;
+        } catch (error) {
+          lastError = error;
+          if (attempt < retries) await wait(200 * (attempt + 1));
+        }
       }
+      stats.errors += 1;
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    } finally {
+      const took = Date.now() - started;
+      stats.totalMs += took; stats.lastMs = took; stats.maxMs = Math.max(stats.maxMs, took);
     }
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
-  async function query(text: string, values?: unknown[], session?: string): Promise<{ rows: unknown[]; rowCount: number | null; command: string | null; fields: { name: string; dataTypeID: number }[] }> {
-    const answer = await post({ op: 'query', text, values: values ? values.map(encode) : undefined, ...(session ? { session } : {}) });
-    if (!answer.ok) throw new BridgeError((answer.error ?? {}) as Record<string, unknown>);
-    const result = answer.result as { rows: unknown; rowCount: number | null; command: string | null; fields: { name: string; dataTypeID: number }[] };
-    return { ...result, rows: decode(result.rows) as unknown[] };
+  const reviveResult = (result: { rows: unknown; rowCount: number | null; command: string | null; fields: { name: string; dataTypeID: number }[] }): QueryResult => ({ ...result, rows: decode(result.rows) as unknown[] });
+
+  // ---- one trip for the queries of the same moment ----
+  type Pending = { sql: string; params?: unknown[]; resolve: (value: QueryResult) => void; reject: (error: unknown) => void };
+  let queue: Pending[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  async function flush(): Promise<void> {
+    const batch = queue; queue = []; timer = null;
+    if (!batch.length) return;
+    if (batch.length === 1) {
+      const only = batch[0];
+      try {
+        const answer = await post({ op: 'query', text: only.sql, values: only.params ? only.params.map(encode) : undefined });
+        if (!answer.ok) only.reject(new BridgeError((answer.error ?? {}) as Record<string, unknown>)); else only.resolve(reviveResult(answer.result as never));
+      } catch (error) { only.reject(error); }
+      return;
+    }
+    stats.batches += 1; stats.batchedQueries += batch.length;
+    try {
+      const answer = await post({ op: 'batch', items: batch.map((item) => ({ text: item.sql, values: item.params ? item.params.map(encode) : undefined })) });
+      if (!answer.ok || !Array.isArray(answer.results)) throw new BridgeError((answer.error ?? { message: 'bad batch answer' }) as Record<string, unknown>);
+      batch.forEach((item, index) => {
+        const one = (answer.results as Record<string, unknown>[])[index];
+        if (one?.ok) item.resolve(reviveResult(one.result as never)); else item.reject(new BridgeError(((one?.error) ?? { message: 'missing answer' }) as Record<string, unknown>));
+      });
+    } catch (error) { batch.forEach((item) => item.reject(error)); }
   }
 
-  const counters = { running: 0 };
+  function enqueue(sql: string, params?: unknown[]): Promise<QueryResult> {
+    stats.queries += 1;
+    return new Promise<QueryResult>((resolve, reject) => {
+      queue.push({ sql, params, resolve, reject });
+      if (batchMs <= 0 || queue.length >= maxBatch) { if (timer) clearTimeout(timer); void flush(); return; }
+      timer ??= setTimeout(() => { void flush(); }, batchMs);
+    });
+  }
+
+  // ---- a few seconds of memory for plain SELECTs; any write of this instance (or an event from the primary) forgets everything ----
+  const remembered = new Map<string, { at: number; result: Promise<QueryResult> }>();
+  const keyOf = (sql: string, params?: unknown[]): string => `${sql}\u0000${JSON.stringify(encode(params ?? []))}`;
+  const copy = (result: QueryResult): QueryResult => ({ ...result, rows: decode(encode(result.rows)) as unknown[] }); // whoever gets rows may change them
+
+  async function run(sql: string, params?: unknown[]): Promise<QueryResult> {
+    if (cacheMs > 0 && cacheable(sql)) {
+      const key = keyOf(sql, params);
+      const hit = remembered.get(key);
+      if (hit && now() - hit.at < cacheMs) { stats.cacheHits += 1; return copy(await hit.result); }
+      const result = enqueue(sql, params);
+      remembered.set(key, { at: now(), result });
+      result.catch(() => { if (remembered.get(key)?.result === result) remembered.delete(key); });
+      if (remembered.size > 500) remembered.delete(remembered.keys().next().value as string);
+      return copy(await result);
+    }
+    if (cacheMs > 0 && !/^\s*(select|with|show|explain)\b/i.test(sql)) remembered.clear(); // this instance wrote: what it remembered may be wrong now
+    return enqueue(sql, params);
+  }
+
+  const sqlOf = (text: unknown): string => (typeof text === 'string' ? text : String((text as { text?: string } | null)?.text ?? ''));
+  const paramsOf = (text: unknown, values?: unknown): unknown[] | undefined => (Array.isArray(values) ? values : (text as { values?: unknown[] } | null)?.values);
+
   return {
     isBridge: true as const,
+    db,
     totalCount: 0, idleCount: 0, waitingCount: 0,
     /** Same as `pool.query(text, values)` (the callback form is not used by Petto). */
-    async query(text: unknown, values?: unknown): Promise<ReturnType<typeof query> extends Promise<infer R> ? R : never> {
-      const sql = typeof text === 'string' ? text : String((text as { text?: string } | null)?.text ?? '');
-      const params = Array.isArray(values) ? values : (text as { values?: unknown[] } | null)?.values;
-      counters.running += 1;
-      try { return await query(sql, params); } finally { counters.running -= 1; }
-    },
-    /** A connection kept on the other side, for a transaction (BEGIN ... COMMIT). `release()` gives it back (and rolls back what was left open). */
+    query: (text: unknown, values?: unknown): Promise<QueryResult> => run(sqlOf(text), paramsOf(text, values)),
+    /** A connection kept on the other side, for a transaction (BEGIN ... COMMIT). `release()` gives it back (and rolls back what was left open). Its queries are never batched or remembered. */
     async connect() {
+      remembered.clear();
       const answer = await post({ op: 'connect' });
       if (!answer.ok) throw new BridgeError((answer.error ?? {}) as Record<string, unknown>);
       const session = String(answer.session);
       let released = false;
       return {
-        query: async (text: unknown, values?: unknown): Promise<Awaited<ReturnType<typeof query>>> => {
+        query: async (text: unknown, values?: unknown): Promise<QueryResult> => {
           if (released) throw new Error('Client has already been released.');
-          const sql = typeof text === 'string' ? text : String((text as { text?: string } | null)?.text ?? '');
-          return query(sql, Array.isArray(values) ? values : (text as { values?: unknown[] } | null)?.values, session);
+          const reply = await post({ op: 'query', text: sqlOf(text), values: paramsOf(text, values)?.map(encode), session });
+          if (!reply.ok) throw new BridgeError((reply.error ?? {}) as Record<string, unknown>);
+          return reviveResult(reply.result as never);
         },
-        release: (): void => { if (released) return; released = true; post({ op: 'release', session }).catch(() => {}); },
+        release: (): void => { if (released) return; released = true; remembered.clear(); post({ op: 'release', session }).catch(() => {}); },
       };
     },
+    /** Which databases the primary has (`primary`, and `vault`, `code`, `data2` when they are configured there). */
+    async info(): Promise<string[]> {
+      const answer = await post({ op: 'info' });
+      if (!answer.ok) throw new BridgeError((answer.error ?? {}) as Record<string, unknown>);
+      return (answer.targets as string[]) ?? [];
+    },
+    /** Forget what was remembered (the primary said something changed). */
+    clearCache(): void { remembered.clear(); },
+    /** For `!perf`: how the trips to the primary go. */
+    stats: () => ({ ...stats, avgMs: stats.requests ? stats.totalMs / stats.requests : 0, remembered: remembered.size }),
     on(): void { /* the errors of a connection are the ones of a request here */ },
     async end(): Promise<void> { /* nothing is kept open */ },
   };

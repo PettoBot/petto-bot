@@ -1,6 +1,7 @@
 # A second instance of Petto (a worker) on a VPS, next to the one that has the database. It holds its own shards and sends its SQL, signed, to the primary's bridge.
 #   docker compose -f docker-compose.worker.yml up -d --build
 # Put the values in a `.env.worker` file next to this one (never in this file, and never in git): see docs/SECOND_INSTANCE.md.
+# It needs: PETTO_DB_BRIDGE_URL, PETTO_BRIDGE_SECRET, PETTO_DASHBOARD_API_SECRET, DISCORD_TOKEN, DISCORD_CLIENT_ID, DISCORD_SHARDS and DISCORD_SHARD_COUNT. No database URL and no Redis.
 services:
   petto-worker:
     build: .

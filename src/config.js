@@ -260,6 +260,9 @@ module.exports = {
   readDatabaseUrl: process.env.PETTO_READ_DATABASE_URL?.trim() || null,
   readDatabaseSsl: envBool('PETTO_READ_DATABASE_SSL', false),
   dbBridgeSecret,
+  // Through the bridge: how long a plain SELECT is remembered (ms, 0 = never) and how long queries wait for company to share a trip (ms, 0 = never).
+  bridgeCacheMs: envInt('PETTO_BRIDGE_CACHE_MS', 3_000, 0, 60_000),
+  bridgeBatchMs: envInt('PETTO_BRIDGE_BATCH_MS', 2, 0, 50),
   instanceRole,
   primaryDatabaseSsl: envBool('DISCLOUD_DATABASE_SSL', false),
   databasePoolMax: envInt('PETTO_DATABASE_POOL_MAX', 10, 1, 50),

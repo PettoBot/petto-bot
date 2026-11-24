@@ -2,14 +2,16 @@
 // i18n-ignore-file: internal plumbing between instances of the bot (operator logs only).
 // The role of an instance. `primary` (the default) is the one that has the database and runs everything. `worker` is a second instance (a VPS, a Docker container) that holds its own
 // shards (DISCORD_SHARDS and DISCORD_SHARD_COUNT) and shares the database through the bridge (src/db/sqlBridge.ts). A worker does not serve the web API, does not register the slash commands,
-// does not change the schema and, of the background jobs, runs only what `PETTO_WORKER_JOBS` says:
-//   essential (default)  only the jobs that hold the memory of this instance (buffered activity, voice XP, command data, staying in voice): without them what its own members do is lost;
-//   guild                everything except the jobs that must run once for the whole bot (`ONE_PER_BOT`): for the servers of its shards too, but those jobs were not checked one by one
-//                        for servers the instance does not hold, so it is for testing;
+// does not change the schema and, of the background jobs, runs what `PETTO_WORKER_JOBS` says:
+//   guild (default)      everything except the jobs that must run once for the whole bot (`ONE_PER_BOT`), for the servers of its own shards: a job of a split instance only sees the rows of its own
+//                        servers (src/db/postgres.js: the query builder adds the condition, a raw SELECT drops the other rows, and the claim of the code schedule names the shards), so the two
+//                        instances never do the same work twice or give up on a server they do not hold;
+//   essential            only the jobs that hold the memory of this instance (buffered activity, voice XP, command data, staying in voice), the rest is left to the primary;
 //   all                  everything, as the primary does.
 // Plain functions, checked on their own (scripts/check-instance-role.js).
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isWorker = exports.ONE_PER_BOT = exports.ESSENTIAL_JOBS = void 0;
+exports.isGlobalJob = isGlobalJob;
 exports.roleOf = roleOf;
 exports.workerJobsOf = workerJobsOf;
 exports.shouldRun = shouldRun;
@@ -21,12 +23,18 @@ exports.ONE_PER_BOT = new Set([
     'startStatusHeartbeatJob', 'startStatusProbeJob', 'startGlobalStatsJob', 'startGuildPurgeJob', 'startQuestAlertsJob', 'startRolloutAlertsJob',
     'startPremiumRoleJob', 'startPremiumCleanupJob', 'startPremiumLogJob', 'startPremiumWatchJob', 'startFormCleanupJob', 'startAppealCleanupJob', 'startVerifyChecksJob',
 ]);
+/** The names the perf measurement gives to those jobs (`startGuildPurgeJob` -> `guildPurgeJob`, with a possible `@60s` suffix for a second interval of the same job). */
+const GLOBAL_JOB_NAMES = new Set([...exports.ONE_PER_BOT].map((name) => name.replace(/^start/, '').replace(/^./, (letter) => letter.toLowerCase())));
+/** Whether a measured job name (`guildPurgeJob`, `guildPurgeJob@60s`) is one of the jobs that work on the whole bot, never on the servers of a shard. */
+function isGlobalJob(name) {
+    return GLOBAL_JOB_NAMES.has(String(name ?? '').split('@')[0]);
+}
 function roleOf(env = process.env) {
     return String(env.PETTO_ROLE ?? 'primary').trim().toLowerCase() === 'worker' ? 'worker' : 'primary';
 }
 function workerJobsOf(env = process.env) {
-    const value = String(env.PETTO_WORKER_JOBS ?? 'essential').trim().toLowerCase();
-    return value === 'guild' || value === 'all' ? value : 'essential';
+    const value = String(env.PETTO_WORKER_JOBS ?? 'guild').trim().toLowerCase();
+    return value === 'essential' || value === 'all' ? value : 'guild';
 }
 const isWorker = (env = process.env) => roleOf(env) === 'worker';
 exports.isWorker = isWorker;

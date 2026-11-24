@@ -183,6 +183,7 @@ async function shutdown(signal, code = 0) {
     require('./src/jobs/omniplexStatsJob').postOffline(client),
     new Promise((resolve) => setTimeout(resolve, 3_000)),
   ]);
+  require('./src/utils/linkRuntime').stopAll();
   client.destroy();
   // The connections to the database are closed before the process stops (a restart for a new device comes through here too).
   await Promise.race([
@@ -202,6 +203,8 @@ async function main() {
 
   logger.info(`Instance: ${instanceRole.describe()}.`); // i18n-ignore: operator log
   await runMigrations();
+  // A worker asks the primary which other databases (the Vault, the code database) it can reach through the bridge.
+  await require('./src/db/bridgeTargets').load();
   // Which servers have the log of messages on: the others do not keep their messages for an hour in memory (utils/messageInterest.js).
   messageInterest.start();
   // The blacklist of servers is read into memory before the login, so the first guildCreate and the first message already know it (and every few minutes after).
@@ -265,6 +268,22 @@ async function main() {
   if (!instanceRole.isWorker()) {
     startServer(client);
     startCloudflareTunnel(config.cloudflareTunnelToken);
+  } else {
+    // A worker serves the same routes only on 127.0.0.1 and keeps a WebSocket open to the primary, which sends it the dashboard requests for the servers of its shards.
+    const app = startServer(client);
+    const server = app?.locals?.httpServer;
+    if (!server || !config.dbBridgeUrl || !config.dbBridgeSecret) {
+      logger.warn('Link: this worker has no web routes or no bridge settings (PETTO_DASHBOARD_API_SECRET, PETTO_DB_BRIDGE_URL, PETTO_BRIDGE_SECRET): the dashboard cannot reach the servers of its shards.'); // i18n-ignore: operator log
+    } else {
+      server.once('listening', () => {
+        require('./src/utils/linkRuntime').startWorkerLink({
+          bridgeUrl: config.dbBridgeUrl, secret: config.dbBridgeSecret, port: server.address().port, worker: process.env.PETTO_WORKER_ID || require('node:os').hostname(),
+          // What the dashboard said on Redis reaches this worker (it has none) through the link: its caches forget it, and so does what the bridge remembered.
+          onEvent: ({ channel, message }) => { require('./src/db/postgres').clearBridgeCaches(); require('./src/utils/redis').deliverLocal(channel, message); },
+        });
+      });
+      if (server.listening) server.emit('listening');
+    }
   }
   // The measurements (the loop, the CPU, the memory), the circuit breaker and the watchdog start last, once everything else is running.
   perf.startSampler();

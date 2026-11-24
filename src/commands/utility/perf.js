@@ -70,6 +70,8 @@ function summary(client, probe) {
     `**Commands running** ${limiter.running}/${limiter.max} (${limiter.waiting} waiting, ${limiter.reserve} kept for staff) · dropped (1 h) ${JSON.stringify(limiter.lastHour)}`,
     `**Shed (1 h)** ${Object.keys(guard.shedLastHour).length ? Object.entries(guard.shedLastHour).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, count]) => `${key} ${count}`).join(', ') : 'nothing'}`,
     `**Watchdog** ${wd.running ? 'on' : 'off'}${wd.thread ? ' (thread on)' : ''} · restarts in the last hour ${wd.restartsLastHour}/${config.watchdogMaxRestartsPerHour}${wd.holding ? ' · HOLDING (no restarts left)' : ''}${wd.lastDecision?.reason ? ` · last decision ${wd.lastDecision.action}: ${wd.lastDecision.reason}` : ''}`,
+    bridgeLine(),
+    workersLine(),
     `**Quarantine** ${quarantine.status().filter((part) => part.state !== 'open').map((part) => part.key).join(', ') || 'nothing resting'}`,
     `**Gateway** ${JSON.stringify((({ recentGateway, ...rest2 }) => rest2)(processGuards.stats()))} · ping ${client.ws.ping} ms`,
   ].filter(Boolean);
@@ -95,6 +97,19 @@ function restSection() {
 function slowSection() {
   const rows = perf.slowestCommands(10);
   return ['**10 slowest commands (last hour)**', ...(rows.length ? rows.map((row) => `${ago(row.at)} ${pad(row.name, 22)} total ${ms(row.total)} · first answer ${ms(row.ack)}\n    ${perf.describeRecord(row)}${row.error ? ` · error ${row.error}` : ''}`) : ['none yet'])].join('\n');
+}
+
+function bridgeLine() {
+  const stats = require('../../db/postgres').bridgeStats();
+  if (!stats.length) return null; // an instance with its own connection has no bridge
+  const link = require('../../utils/linkRuntime');
+  const lines = stats.map((row) => `${row.db}: ${row.requests} trips (avg ${Math.round(row.avgMs)} ms, last ${Math.round(row.lastMs)} ms, max ${Math.round(row.maxMs)} ms), ${row.queries} queries, ${row.batches} shared trips, ${row.cacheHits} answered from memory, ${row.errors} failed`);
+  return `**SQL bridge** ${lines.join(' · ')}${link.getClient() ? ` · link ${link.getClient().isConnected() ? 'up' : 'down'}` : ''}`;
+}
+
+function workersLine() {
+  const workers = require('../../utils/linkRuntime').getHub()?.workersConnected() ?? [];
+  return workers.length ? `**Workers** ${workers.map((worker) => `${worker.worker} (shards ${worker.shards.join(',')} of ${worker.count})`).join(', ')}` : null;
 }
 
 function quarantineSection() {

@@ -226,11 +226,21 @@ function startServer(client) {
   // from the Components V2 verification DM, since Discord needs a real image URL.
   app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
 
-  // The SQL bridge: a second instance of the bot (PETTO_ROLE=worker) that cannot reach the database sends its queries here, signed (src/db/sqlBridge.ts).
-  // Only the instance that has the database serves it, and only with PETTO_BRIDGE_SECRET (at least 32 characters). Without it the route does not exist.
-  if (config.primaryDatabaseUrl && config.instanceRole !== 'worker' && require('../db/sqlBridge').validSecret(config.dbBridgeSecret)) {
-    const bridgeLib = require('../db/sqlBridge');
-    const bridge = bridgeLib.createBridgeServer({ pool: require('../db/postgres').getPrimaryPool(), secret: config.dbBridgeSecret });
+  // The SQL bridge and the link: a second instance of the bot (PETTO_ROLE=worker) that cannot reach the databases sends its queries here, signed (src/db/sqlBridge.ts), and keeps a
+  // WebSocket open to this instance (src/utils/instanceLink.ts) so the dashboard and the API can reach the servers of its shards. Only the instance that has the database serves them,
+  // and only with PETTO_BRIDGE_SECRET (at least 32 characters). Without it the routes do not exist.
+  const bridgeLib = require('../db/sqlBridge');
+  const linkLib = require('../utils/instanceLink');
+  const linkRuntime = require('../utils/linkRuntime');
+  let linkHub = null;
+  if (config.primaryDatabaseUrl && config.instanceRole !== 'worker' && bridgeLib.validSecret(config.dbBridgeSecret)) {
+    const pools = {
+      primary: () => require('../db/postgres').getPrimaryPool(),
+      vault: () => (config.vaultDatabaseUrl ? require('../db/vault').getPool() : null),
+      code: () => (config.codeDatabaseUrl ? require('../db/commandData').getPool() : null),
+      data2: () => (config.data2DatabaseUrl ? require('../db/secondary').rawPool() : null),
+    };
+    const bridge = bridgeLib.createBridgeServer({ pools, secret: config.dbBridgeSecret });
     const bridgeLimiter = rateLimit({ windowMs: 60_000, limit: 6_000, standardHeaders: true, legacyHeaders: false, message: { ok: false, error: { message: 'busy' } } }); // i18n-ignore: answer of the bridge for the other instance, not for a person
     app.post('/api/bridge/db', bridgeLimiter, express.raw({ type: () => true, limit: bridgeLib.MAX_BODY_BYTES }), async (req, res) => {
       const body = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : null;
@@ -238,7 +248,19 @@ function startServer(client) {
       const answer = await bridge.handle({ headers: { 'x-bridge-time': req.get('x-bridge-time'), 'x-bridge-id': req.get('x-bridge-id'), 'x-bridge-signature': req.get('x-bridge-signature') }, body });
       return res.status(answer.status).json(answer.json);
     });
-    logger.info('SQL bridge: serving /api/bridge/db for a second instance.'); // i18n-ignore: operator log
+    // What a worker says on `petto:*` (it has no Redis): through Redis when there is one (it comes back and reaches every worker), straight to the workers when there is not.
+    linkHub = linkRuntime.startHub(config.dbBridgeSecret, ({ channel, message, worker }) => {
+      const redis = require('../utils/redis');
+      if (redis.available()) { redis.publish(channel, message).catch(() => {}); return; }
+      redis.deliverLocal(channel, message);
+      linkRuntime.relayEvent(channel, message, worker);
+    });
+    // A request for a server that lives on a shard of a worker goes through the link; one for a server nobody holds answers 503. Every route with a :guildId passes here.
+    const ownerOf = linkRuntime.ownership();
+    app.param('guildId', (req, res, next, guildId) => {
+      linkLib.routeGuildRequest(linkHub, ownerOf, req, res, guildId).then((handled) => { if (!handled) next(); }).catch(next);
+    });
+    logger.info('SQL bridge and link: serving /api/bridge/db and /api/bridge/link for a second instance.'); // i18n-ignore: operator log
   }
 
   function dashboardAuthorized(req) {
@@ -1572,9 +1594,25 @@ function startServer(client) {
     res.status(404).send(t(requestLanguage(req), 'web.notFound'));
   });
 
-  app.listen(config.webPort, () => {
-    logger.info(`Verification web server listening on port ${config.webPort} (public: ${config.verifyBaseUrl}).`);
-  });
+  // A worker listens only on 127.0.0.1 (a free port, or PETTO_WORKER_LOCAL_PORT): only the link of the primary talks to it.
+  const isWorker = config.instanceRole === 'worker';
+  const listenPort = isWorker ? Number(process.env.PETTO_WORKER_LOCAL_PORT) || 0 : config.webPort;
+  const httpServer = isWorker
+    ? app.listen(listenPort, '127.0.0.1', () => logger.info(`Local web routes for the link of the primary listening on 127.0.0.1:${httpServer.address().port}.`)) // i18n-ignore: operator log
+    : app.listen(config.webPort, () => {
+      logger.info(`Verification web server listening on port ${config.webPort} (public: ${config.verifyBaseUrl}).`);
+    });
+  app.locals.httpServer = httpServer;
+  if (linkHub) {
+    // The workers call this address (a WebSocket that goes out from the worker); the hello is checked before the connection is accepted.
+    const { WebSocketServer } = require('ws');
+    const sockets = new WebSocketServer({ noServer: true, maxPayload: linkLib.MAX_FRAME_BYTES });
+    httpServer.on('upgrade', (req, socket, head) => {
+      if (String(req.url ?? '').split('?')[0] !== linkLib.LINK_PATH) { socket.destroy(); return; }
+      if (!linkLib.verifyHello(config.dbBridgeSecret, req.headers)) { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); socket.destroy(); return; } // i18n-ignore: HTTP status line for the other instance
+      sockets.handleUpgrade(req, socket, head, (ws) => { if (!linkHub.accept(ws, req.headers)) ws.close(1008, 'refused'); });
+    });
+  }
 
   return app;
 }
