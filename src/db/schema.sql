@@ -5536,4 +5536,25 @@ create table if not exists streak_config (
   min_voice_minutes  int not null default 0 check (min_voice_minutes between 0 and 1440),
   updated_at         timestamptz not null default now()
 );
+alter table streak_config add column if not exists mode text not null default 'any' check (mode in ('messages', 'voice', 'any', 'both'));
+alter table streak_config add column if not exists announce_channel_id text;
+alter table streak_config add column if not exists milestones int[] not null default '{3,7,14,30,60,100,365}';
+alter table streak_config add column if not exists guild_freezes int not null default 0 check (guild_freezes between 0 and 10);
+alter table streak_config add column if not exists reset_at date;
 alter table streak_config enable row level security;
+-- Roles given when a streak reaches a number of days, and what was already given or announced (so nothing is repeated).
+create table if not exists streak_roles (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  days     int  not null check (days between 1 and 3650),
+  role_id  text not null,
+  primary key (guild_id, days)
+);
+alter table streak_roles enable row level security;
+create table if not exists streak_awards (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  days       int  not null,
+  awarded_at timestamptz not null default now(),
+  primary key (guild_id, user_id, days)
+);
+alter table streak_awards enable row level security;

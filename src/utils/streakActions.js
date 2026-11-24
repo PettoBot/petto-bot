@@ -1,5 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.freezesFor = void 0;
+exports.board = board;
+exports.planFreezesOf = planFreezesOf;
 exports.inGuild = inGuild;
 exports.summary = summary;
 exports.mine = mine;
@@ -15,13 +18,48 @@ async function freezesOf(userId) {
     const tier = row && row.active ? row.plan : 'free';
     return plans.PLAN_PERKS[tier]?.streakFreezes ?? 0;
 }
-async function oneGuild(guildId, userId, freezes, now) {
+/** The freezes of a plan (a person's own) and the ones the server gives to everyone together. */
+const freezesFor = (planFreezes, guildFreezes) => planFreezes + guildFreezes;
+exports.freezesFor = freezesFor;
+async function oneGuild(guildId, userId, planFreezes, now) {
     const config = await db.getConfig(guildId);
     if (!config.enabled)
         return { guildId, enabled: false };
-    const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes };
-    const days = streaks.activeDays(await db.daysOf(guildId, userId), rules);
+    const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
+    const days = streaks.activeDays(await db.daysOf(guildId, userId, config.resetAt), rules);
+    const freezes = (0, exports.freezesFor)(planFreezes, config.guildFreezes);
     return { guildId, enabled: true, ...streaks.compute(days, streaks.dayOf(now), freezes), freezes, rules };
+}
+const BOARD_PLACES = 25;
+const boardCache = new Map();
+/** The best streaks of a server: the 25 members with the longest current streak (kind `current`) or the longest ever (kind `longest`). The plans of the members count, so it is the same number they see. */
+async function board(guildId, kind, now = new Date()) {
+    const key = `${guildId}:${kind}`;
+    const hit = boardCache.get(key);
+    if (hit && now.getTime() - hit.at < 60_000)
+        return { ok: true, entries: hit.value };
+    const config = await db.getConfig(guildId);
+    if (!config.enabled)
+        return { ok: true, entries: [] };
+    const ids = await db.busiestMembers(guildId, config.resetAt);
+    const [days, plans] = await Promise.all([db.daysOfMany(guildId, ids, config.resetAt), db.plansOf(ids)]);
+    const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
+    const today = streaks.dayOf(now);
+    const all = ids.map((userId) => {
+        const planFreezes = planFreezesOf(plans.get(userId));
+        const result = streaks.compute(streaks.activeDays(days.get(userId) ?? [], rules), today, (0, exports.freezesFor)(planFreezes, config.guildFreezes));
+        return { userId, current: result.current, best: result.best };
+    }).filter((entry) => (kind === 'current' ? entry.current : entry.best) > 0);
+    all.sort((a, b) => (kind === 'current' ? b.current - a.current || b.best - a.best : b.best - a.best || b.current - a.current));
+    const value = all.slice(0, BOARD_PLACES);
+    if (boardCache.size > 200)
+        boardCache.clear();
+    boardCache.set(key, { at: now.getTime(), value });
+    return { ok: true, entries: value };
+}
+/** The freezes a plan gives (0 for no plan). */
+function planFreezesOf(plan) {
+    return plan ? plans.PLAN_PERKS[plan]?.streakFreezes ?? 0 : 0;
 }
 /** The streak of a person in one server. */
 async function inGuild(userId, guildId, now = new Date()) {

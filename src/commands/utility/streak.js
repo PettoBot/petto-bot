@@ -25,7 +25,7 @@ module.exports = {
                 t(lang, 'streaks.best', { days: streak.best, n: formatNumber(lang, streak.best) }),
                 t(lang, streak.activeToday ? 'streaks.today.yes' : 'streaks.today.no'),
                 t(lang, 'streaks.freezes', { used: streak.freezesUsed, total: streak.freezes }),
-                t(lang, 'streaks.rule', { messages: streak.rules.minMessages, minutes: streak.rules.minVoiceMinutes }),
+                t(lang, `streaks.rule.${streak.rules.mode}`, { messages: streak.rules.minMessages, minutes: streak.rules.minVoiceMinutes }),
             ];
             await interaction.reply({ content: lines.join('\n'), flags: discord_js_1.MessageFlags.Ephemeral });
         }

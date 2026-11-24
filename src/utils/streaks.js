@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.dayOf = exports.DEFAULT_RULES = void 0;
 exports.activeDays = activeDays;
 exports.compute = compute;
-exports.DEFAULT_RULES = { minMessages: 1, minVoiceMinutes: 0 };
+exports.DEFAULT_RULES = { minMessages: 1, minVoiceMinutes: 0, mode: 'any' };
 const DAY_MS = 86_400_000;
 const dayNumber = (day) => Math.floor(Date.parse(`${day}T00:00:00Z`) / DAY_MS);
 const dayOf = (when) => when.toISOString().slice(0, 10);
@@ -11,7 +11,26 @@ exports.dayOf = dayOf;
 /** The active days (sorted, with no repeats). With a minimum of 0 for both, a day is active when there was any message or any voice. */
 function activeDays(rows, rules) {
     const out = new Set();
+    const mode = rules.mode ?? 'any';
     for (const row of rows) {
+        // One thing only (messages or voice), both on the same day, or either of them (the default). A minimum of 0 counts as 1.
+        const needMessages = Math.max(1, rules.minMessages);
+        const needVoice = Math.max(1, rules.minVoiceMinutes) * 60;
+        if (mode === 'messages') {
+            if (row.messages >= needMessages)
+                out.add(row.day);
+            continue;
+        }
+        if (mode === 'voice') {
+            if (row.voiceSeconds >= needVoice)
+                out.add(row.day);
+            continue;
+        }
+        if (mode === 'both') {
+            if (row.messages >= needMessages && row.voiceSeconds >= needVoice)
+                out.add(row.day);
+            continue;
+        }
         const byMessages = rules.minMessages > 0 && row.messages >= rules.minMessages;
         const byVoice = rules.minVoiceMinutes > 0 && row.voiceSeconds >= rules.minVoiceMinutes * 60;
         const any = rules.minMessages === 0 && rules.minVoiceMinutes === 0 && (row.messages > 0 || row.voiceSeconds > 0);

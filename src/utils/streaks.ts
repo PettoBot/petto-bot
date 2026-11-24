@@ -3,8 +3,9 @@
 // freezes: each one covers a missed day inside a streak (a streak never starts or ends with a freeze). Pure functions, so the checks can run them alone.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/streaks.js.
 export interface DayRow { day: string; messages: number; voiceSeconds: number }
-export interface StreakRules { minMessages: number; minVoiceMinutes: number }
-export const DEFAULT_RULES: StreakRules = { minMessages: 1, minVoiceMinutes: 0 };
+export type StreakMode = 'messages' | 'voice' | 'any' | 'both';
+export interface StreakRules { minMessages: number; minVoiceMinutes: number; mode?: StreakMode }
+export const DEFAULT_RULES: StreakRules = { minMessages: 1, minVoiceMinutes: 0, mode: 'any' };
 
 const DAY_MS = 86_400_000;
 const dayNumber = (day: string): number => Math.floor(Date.parse(`${day}T00:00:00Z`) / DAY_MS);
@@ -13,7 +14,14 @@ export const dayOf = (when: Date): string => when.toISOString().slice(0, 10);
 /** The active days (sorted, with no repeats). With a minimum of 0 for both, a day is active when there was any message or any voice. */
 export function activeDays(rows: DayRow[], rules: StreakRules): string[] {
   const out = new Set<string>();
+  const mode = rules.mode ?? 'any';
   for (const row of rows) {
+    // One thing only (messages or voice), both on the same day, or either of them (the default). A minimum of 0 counts as 1.
+    const needMessages = Math.max(1, rules.minMessages);
+    const needVoice = Math.max(1, rules.minVoiceMinutes) * 60;
+    if (mode === 'messages') { if (row.messages >= needMessages) out.add(row.day); continue; }
+    if (mode === 'voice') { if (row.voiceSeconds >= needVoice) out.add(row.day); continue; }
+    if (mode === 'both') { if (row.messages >= needMessages && row.voiceSeconds >= needVoice) out.add(row.day); continue; }
     const byMessages = rules.minMessages > 0 && row.messages >= rules.minMessages;
     const byVoice = rules.minVoiceMinutes > 0 && row.voiceSeconds >= rules.minVoiceMinutes * 60;
     const any = rules.minMessages === 0 && rules.minVoiceMinutes === 0 && (row.messages > 0 || row.voiceSeconds > 0);

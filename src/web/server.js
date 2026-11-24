@@ -907,6 +907,25 @@ function startServer(client) {
       }
     });
 
+    // The best streaks of a server (the 25 longest current ones, or the longest ever) with the names and pictures of the members, for the Streaks page of the dashboard.
+    app.get('/api/dashboard/guild/:guildId/streak-board', dashboardDatabaseRateLimiter, async (req, res) => {
+      if (!dashboardAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+      const guild = client?.guilds?.cache?.get(String(req.params.guildId || ''));
+      if (!guild) { res.status(404).json({ ok: false, error: 'guild_not_found' }); return; }
+      try {
+        const kind = req.query.kind === 'longest' ? 'longest' : 'current';
+        const { entries } = await require('../utils/streakActions').board(guild.id, kind);
+        const members = await guild.members.fetch({ user: entries.map((entry) => entry.userId) }).catch(() => null);
+        res.json({ ok: true, kind, entries: entries.map((entry) => {
+          const member = members?.get(entry.userId);
+          return { ...entry, name: member?.displayName ?? null, avatar: member?.displayAvatarURL({ size: 64, extension: 'png' }) ?? null };
+        }) });
+      } catch (err) {
+        logger.error(`Dashboard streak board failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'board_failed' });
+      }
+    });
+
     // The message of a poll as the bot draws it (the default card or a saved V2 design), for the dashboard to post or update.
     app.post('/api/dashboard/guild/:guildId/poll-message', dashboardDatabaseRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {

@@ -21,6 +21,7 @@ const { startCountingRoleJob } = require('./src/jobs/countingRoleJob');
 const { startRoleQuotaJob } = require('./src/jobs/roleQuotaJob');
 const { startActivityLeaderboardJob } = require('./src/jobs/activityLeaderboardJob');
 const { startAgedRolesJob } = require('./src/jobs/agedRolesJob');
+const { startStreakJob } = require('./src/jobs/streakJob');
 const { startMessageRolesJob } = require('./src/jobs/messageRolesJob');
 const { startStayVoiceJob } = require('./src/jobs/stayVoiceJob');
 const { startStatusHeartbeatJob } = require('./src/jobs/statusHeartbeatJob');
@@ -215,6 +216,7 @@ async function main() {
   startRoleQuotaJob(client);
   startActivityLeaderboardJob(client);
   startAgedRolesJob(client);
+  startStreakJob(client);
   startMessageRolesJob(client);
   startStayVoiceJob(client);
   startVerifyPanelJob(client);
