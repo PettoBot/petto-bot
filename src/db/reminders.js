@@ -9,9 +9,22 @@ async function countActive(guildId, userId) {
   return count ?? 0;
 }
 
+/** How many reminders a person can have waiting: the base number, plus the limits bonus of their plan (Bronze 25 %, Silver 50 %, Gold 100 %). A plan that cannot be read gives the base. */
+async function limitFor(userId) {
+  try {
+    const row = await require('./userPlans').getPlan(userId);
+    const tier = row && row.active ? row.plan : 'free';
+    const bonus = require('../utils/userPlans').PLAN_PERKS[tier]?.limitsBonus ?? 0;
+    return Math.floor(MAX_PER_USER * (1 + bonus / 100));
+  } catch {
+    return MAX_PER_USER;
+  }
+}
+
 async function createReminder({ guildId, channelId, userId, message, remindAt }) {
   const active = await countActive(guildId, userId);
-  if (active >= MAX_PER_USER) throw Object.assign(new Error(t(currentLanguage(), 'utility.db.reminderLimit', { max: MAX_PER_USER })), { userFacing: true });
+  const max = await limitFor(userId);
+  if (active >= max) throw Object.assign(new Error(t(currentLanguage(), 'utility.db.reminderLimit', { max })), { userFacing: true });
 
   const { data, error } = await database.from('reminders').insert({ guild_id: guildId, channel_id: channelId, user_id: userId, message, remind_at: remindAt.toISOString() }).select('*').single();
   if (error) throw error;
@@ -41,4 +54,4 @@ async function markSent(id) {
   if (error) throw error;
 }
 
-module.exports = { createReminder, listActive, cancelReminder, listDue, markSent, MAX_PER_USER };
+module.exports = { createReminder, listActive, cancelReminder, listDue, markSent, MAX_PER_USER, limitFor };

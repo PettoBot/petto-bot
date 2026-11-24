@@ -37,7 +37,7 @@ async function loadDecorationFrames(src) {
 }
 
 /** The functions the renderer needs, wired to one guild and one message. A picture only moves for a Premium server. */
-function depsFor(ctx, guildId, { premium = false, kind = 'welcome' } = {}) {
+function depsFor(ctx, guildId, { premium = false, kind = 'welcome', userBanner = null } = {}) {
   return {
     loadFrames: premium ? loadDecorationFrames : undefined,
     // A background picture that cannot be had (a dead link, a deleted upload) is replaced by the default design of the kind of card.
@@ -49,6 +49,8 @@ function depsFor(ctx, guildId, { premium = false, kind = 'welcome' } = {}) {
     },
     loadSource: async (src) => {
       const own = /^petto:([a-z0-9-]{3,30})$/.exec(src);
+      // The banner the member has on from the shop of the profile: only the one of the person the card is about (see `userBannerFor`).
+      if (own && own[1] === 'user-banner') return userBanner ?? loadDesignImage(null, kind);
       if (own) return loadDesignImage(own[1], kind);
       const asset = /^asset:(\d{1,18})$/.exec(src);
       if (asset) {
@@ -87,7 +89,7 @@ function localizedBasic(basic, kind, lang) {
  * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends. Petto's
  * default texts (the ones a server did not change) are drawn in `lang`.
  */
-async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage() }) {
+async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage(), userBanner = null, bannerFrames = null }) {
   const kind = rawCard?.kind === 'rank' ? 'rank' : 'welcome';
   const input = rawCard && typeof rawCard === 'object' && !Array.isArray(rawCard) ? { ...rawCard, basic: localizedBasic(rawCard.basic, kind, lang) } : rawCard;
   let { card, usesAdvanced } = normalizeCard(input, { premium, lang });
@@ -95,7 +97,39 @@ async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? cu
     const basic = localizedBasic(rawCard?.basic, 'welcome', lang);
     ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
-  return renderCard(card, depsFor(ctx, guildId, { premium, kind: card.kind }));
+  return renderCard(card, { ...depsFor(ctx, guildId, { premium, kind: card.kind, userBanner }), backgroundFrames: bannerFrames ?? undefined });
+}
+
+/** The frames of the own picture of a person when it moves and their plan lets it (Gold), or null. Never throws. */
+async function ownFramesFor(userId) {
+  try {
+    const actions = require('./uploadActions');
+    if (!(await actions.mayAnimate(userId))) return null;
+    const bytes = await require('../db/userUploads').approvedBytes(userId);
+    const animated = require('./animatedPicture');
+    return bytes && animated.isAnimated(bytes) ? await animated.framesOf(bytes) : null;
+  } catch { return null; }
+}
+
+/** The banner a person put on from the shop of the profile (`/profile banner`), as a picture, or null when they have none on or do not have the one they chose. Never throws. */
+async function userBannerFor(userId, chosenId = null) {
+  if (!userId) return null;
+  try {
+    // Loaded here, not at the top: the shop reads the database, and a card that is drawn without a person has no need of it.
+    const registry = require('./badgeRegistry');
+    const shopDb = require('../db/shop');
+    await registry.ensure();
+    const [active, items] = await Promise.all([shopDb.getActive(userId), shopDb.getUserItems(userId)]);
+    // An own picture the team approved (only that one is ever drawn).
+    if (chosenId === 'upload:own') {
+      const own = await require('../db/userUploads').approvedBytes(userId);
+      if (own) { const { loadImage } = require('@napi-rs/canvas'); return await loadImage(own); }
+    }
+    // The one the person chose for the card on the page "Rank card" (when they have it), otherwise the one they have on in the profile.
+    const owns = (id) => id && items.some((row) => row.kind === 'banner' && row.id === id);
+    const id = owns(chosenId) ? chosenId : (owns(active.banner) ? active.banner : null);
+    return id ? await registry.bannerImage(id) : null;
+  } catch { return null; }
 }
 
 /**
@@ -121,14 +155,36 @@ async function renderCardForMessage(cardRef, ctx) {
  * The rank card a server has not designed: the layout with the avatar on the left and the bar under the level, in Petto's own colors
  * (peach for messages, teal for voice), over a picture that comes with Petto. Its texts are in `lang`.
  */
-function defaultRankCard(source, lang = currentLanguage()) {
+function defaultRankCard(source, lang = currentLanguage(), withBanner = false, custom = null) {
   const voice = source === 'voice';
+  // What the person designed on the page "Rank card" (`utils/userRankCard`): its colors, font and layout go over the basic settings, and its background over the picture.
+  const own = custom?.basic ?? {};
+  const background = custom?.background ?? { kind: 'default' };
+  const useBanner = (background.kind === 'banner' || background.kind === 'shop' || background.kind === 'upload' || background.kind === 'default') && withBanner;
+  const picture = background.kind === 'design' ? `petto:${background.id}` : (voice ? 'petto:rank-voice' : 'petto:rank-default');
   return {
     kind: 'rank',
     mode: 'basic',
-    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra') },
-    background: { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
+    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra'), ...own },
+    // With a banner of the shop the picture is the banner of the person, darkened a little so the numbers stay easy to read.
+    background: useBanner
+      ? { color: '#120c1a', image: { src: 'petto:user-banner', fit: 'cover', blur: 0 }, overlay: { color: '#0b0814', opacity: 0.42 } }
+      : { color: '#120c1a', image: { src: picture, fit: 'cover', blur: 0 } },
   };
+}
+
+/** What a person designed for their own rank card, as `{ basic, background }` for `defaultRankCard`, or null when they designed nothing. Never throws. */
+async function userRankCardFor(userId) {
+  if (!userId) return null;
+  try {
+    const db = require('../db/userRankCard');
+    const rules = require('./userRankCard');
+    const designs = require('./cardDesigns');
+    const row = await db.getRankCard(userId);
+    if (!row || !Object.keys(row.settings).length) return null;
+    const settings = rules.normalize(row.settings, (id) => Boolean(designs.getDesign(id)));
+    return { basic: rules.toBasic(settings), background: rules.backgroundOf(settings) };
+  } catch { return null; }
 }
 
 /**
@@ -142,7 +198,16 @@ async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.la
     let raw = null;
     if (cardName) raw = (await imageCards.getCard(guildId, cardName))?.data ?? null;
     const premium = (await getGuildPremium(guildId)).active;
-    const buffer = await drawCard(raw ?? defaultRankCard(source, lang), ctx, { guildId, premium, lang });
+    const personId = (ctx.member ?? ctx.user ?? ctx.message?.author)?.id;
+    // The card a person designed is theirs, and it shows in every server (that is what a person makes it for): it goes over the card a server chose. A server that designed its own card
+    // keeps it for the people who designed nothing (it can show the banner of each member with the picture `petto:user-banner`).
+    const custom = await userRankCardFor(personId);
+    const userBanner = await userBannerFor(personId, custom?.background.kind === 'shop' ? custom.background.id : (custom?.background.kind === 'upload' ? 'upload:own' : null));
+    // The fonts of a card a person designed are the ones of the page (some are Premium ones for a server's own card), so it is not held back by the server's Premium.
+    // The own picture of a Gold plan moves on it.
+    const bannerFrames = custom && userBanner && custom.background.kind === 'upload' ? await ownFramesFor(personId) : null;
+    const card = custom ? defaultRankCard(source, lang, Boolean(userBanner), custom) : (raw ?? defaultRankCard(source, lang, Boolean(userBanner), null));
+    const buffer = await drawCard(card, ctx, { guildId, premium: custom ? true : premium, lang, userBanner, bannerFrames });
     return { buffer, name: CARD_FILE_NAME };
   } catch (error) {
     logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);
@@ -167,4 +232,4 @@ function normalizeCardRef(raw) {
   return { name: imageCards.normalizeName(raw.name), placement: PLACEMENTS.has(raw.placement) ? raw.placement : 'default' };
 }
 
-module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, normalizeCardRef, plainMessage };
+module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, userRankCardFor, normalizeCardRef, plainMessage };

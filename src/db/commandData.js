@@ -50,7 +50,8 @@ let dedicatedPool;
 let schemaReady;
 
 function getPool() {
-  if (!config.codeDatabaseUrl) return getPrimaryPool();
+  // A second instance reaches the code database through the SQL bridge when the primary has one apart (src/db/bridgeTargets.js).
+  if (!config.codeDatabaseUrl) return require('./bridgeTargets').has('code') ? require('./bridgeTargets').poolFor('code') : getPrimaryPool();
   if (!dedicatedPool) {
     const url = new URL(config.codeDatabaseUrl);
     url.searchParams.delete('sslmode'); // pg would override the ssl option below with it
@@ -235,7 +236,10 @@ const schedule = {
     const client = await pool.connect();
     try {
       await client.query('begin');
-      const { rows } = await client.query('select * from custom_command_schedule where run_at <= now() order by run_at limit $1 for update skip locked', [limit]);
+      // Only the servers of this instance's shards (when the servers are split between instances): the other instance runs the others.
+      const values = [limit];
+      const owned = require('./postgres').ownedShardsSql('guild_id', values);
+      const { rows } = await client.query(`select * from custom_command_schedule where run_at <= now()${owned} order by run_at limit $1 for update skip locked`, values);
       for (const row of rows) {
         const next = nextRepeat(row);
         if (next) await client.query('update custom_command_schedule set run_at = to_timestamp($4 / 1000.0) where guild_id = $1 and name = $2 and id = $3', [row.guild_id, row.name, row.id, next]);
@@ -266,4 +270,4 @@ const settings = {
   },
 };
 
-module.exports = { forGuild, purgeExpired, deleteGuildData, schedule, settings, nextRepeat, MAX_ENTRIES_PER_GUILD, SCHEMA };
+module.exports = { getPool, forGuild, purgeExpired, deleteGuildData, schedule, settings, nextRepeat, MAX_ENTRIES_PER_GUILD, SCHEMA };

@@ -1,0 +1,28 @@
+// Streaks (/streak): days in a row with activity in a server.
+// Reference catalog: es and pt-BR must have the same keys and placeholders.
+module.exports = {
+  'streaks.milestone': '🔥 {user} chegou a uma sequência de **{days} dias**! Continue assim!',
+  'streaks.dm.reminder': '🔥 Sua sequência de **{days} dias** em **{server}** termina em cerca de {hours} h. Envie uma mensagem ou entre em um canal de voz para mantê-la.\n-# Desligue estas mensagens com `/streak notifications:false`.',
+  'streaks.dm.lost': '💔 Sua sequência de **{days} dias** em **{server}** terminou. Comece uma nova hoje!\n-# Desligue estas mensagens com `/streak notifications:false`.',
+  'streaks.notifications.on': 'Mensagens e apelido das suas sequências: LIGADOS.',
+  'streaks.notifications.off': 'Mensagens e apelido das suas sequências: DESLIGADOS. O Petto não vai te enviar DMs sobre elas nem mudar seu apelido.',
+  'streaks.title': 'Sua sequência',
+  'streaks.off': 'Este servidor não conta sequências.',
+  'streaks.failed': 'Não consegui fazer isso. Tente de novo em instantes.',
+  'streaks.current': '🔥 Sequência atual: **{n}** dias',
+  'streaks.best': '🏆 Melhor sequência: **{n}** dias',
+  'streaks.today.yes': '✅ Hoje já conta.',
+  'streaks.today.no': '▫️ Hoje ainda não conta: seja ativo antes de o dia acabar (GMT-5) para mantê-la.',
+  'streaks.freezes': '❄️ Congelamentos usados nesta sequência: {used} de {total} (vêm com o seu plano).',
+  'streaks.rule.messages': 'Um dia conta com pelo menos {messages} mensagens neste servidor.',
+  'streaks.rule.voice': 'Um dia conta com pelo menos {minutes} minutos em voz neste servidor.',
+  'streaks.rule.any': 'Um dia conta com pelo menos {messages} mensagens ou {minutes} minutos em voz neste servidor.',
+  'streaks.rule.both': 'Um dia conta com pelo menos {messages} mensagens e {minutes} minutos em voz neste servidor.',
+  'streaks.rule.length': 'Só contam mensagens com {n} caracteres ou mais.',
+  'streaks.rule.cooldown': 'Uma mensagem conta a cada {n} segundos.',
+  'streaks.rule.channels.only': 'Só contam mensagens em alguns canais.',
+  'streaks.rule.channels.except': 'Mensagens em alguns canais não contam.',
+  'streaks.rule.roles.only': 'Só contam membros com alguns cargos.',
+  'streaks.rule.roles.except': 'Membros com alguns cargos não contam.',
+  'streaks.rule.reactions': 'Uma reação conta como mensagem.',
+};

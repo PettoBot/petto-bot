@@ -20,7 +20,7 @@ const SHED_IN_DEGRADED_JOBS = new Set([
   'feedsJob', 'guildSnapshotJob', 'counterJob', 'bumpReminderJob', 'globalStatsJob', 'statsCategoryJob', 'omniplexStatsJob', 'commandDataJob', 'afkMentionsJob', 'birthdayJob',
   'forumJob', 'questAlertsJob', 'rolloutAlertsJob', 'requestTimeoutJob', 'formCleanupJob', 'backupVaultJob', 'appealCleanupJob',
   'premiumCleanupJob', 'premiumLogJob', 'premiumRoleJob', 'premiumWatchJob', 'ticketAutoDeleteJob', 'ticketChannelJob', 'ticketReminderJob', 'ticketAutocloseJob',
-  'pollAutocloseJob', 'verifyChecksJob', 'countingRoleJob', 'roleQuotaJob', 'activityLeaderboardJob', 'agedRolesJob', 'messageRolesJob', 'guildPurgeJob', 'discordOps', 'guildSnapshots',
+  'pollAutocloseJob', 'verifyChecksJob', 'countingRoleJob', 'roleQuotaJob', 'activityLeaderboardJob', 'agedRolesJob', 'streakJob', 'messageRolesJob', 'guildPurgeJob', 'discordOps', 'guildSnapshots',
 ]);
 // Listeners of events that only write a log of low value: skipped when degraded.
 const SHED_IN_DEGRADED_EVENTS = new Set([
@@ -33,6 +33,7 @@ const SHED_IN_DEGRADED_EVENTS = new Set([
 const ESSENTIAL_EVENT = /^(interactionCreate|ready|guildCreate|guildDelete|messageCreate(Commands|Ticket|AntiScam|AntiNuke|Automod|MediaOnly)|guildMemberAdd(Verification|Jail|AntiRaid|AntiAlt|AntiNukeBot|Poj)|guildMemberUpdateJail|channelCreateJail|guildBan|voiceMaster|channelDeleteTicket)|AntiNuke|Ticket/;
 
 const essentialEvent = (file) => ESSENTIAL_EVENT.test(String(file ?? ''));
+const isEssentialJob = (name) => ESSENTIAL_JOBS.has(String(name ?? ''));
 
 /** The thresholds a metric trips: `{ loop: [degraded, critical], restWait: [..], restQueue: [..], rssPercent: [..] }`. */
 function createBreaker({ thresholds, calmMs = 90_000, now = () => Date.now(), onChange = () => {} } = {}) {
@@ -224,6 +225,6 @@ function reset() { stop(); breaker = null; shedCounts.clear(); shedRecent.length
 
 module.exports = {
   announce,
-  LEVELS, createBreaker, essentialEvent,
+  LEVELS, createBreaker, essentialEvent, isEssentialJob,
   start, stop, tick, level, isDegraded, allowsJob, allowsEvent, allowsOptional, stickyFactor, policy, stats, force, setAlertSink, setDropCaches, dropCaches, readMetrics, reset,
 };

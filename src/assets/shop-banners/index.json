@@ -1,0 +1,254 @@
+[
+ {
+  "id": "gta-vi-gas-station",
+  "names": {
+   "en": "GTA VI · Gas station",
+   "es": "GTA VI · Gasolinera",
+   "pt-BR": "GTA VI · Posto de gasolina"
+  },
+  "pack": "gta-vi",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Rockstar Games / Take-Two"
+ },
+ {
+  "id": "gta-vi-red-car",
+  "names": {
+   "en": "GTA VI · Red car",
+   "es": "GTA VI · Auto rojo",
+   "pt-BR": "GTA VI · Carro vermelho"
+  },
+  "pack": "gta-vi",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Rockstar Games / Take-Two"
+ },
+ {
+  "id": "gta-vi-couple",
+  "names": {
+   "en": "GTA VI · Couple",
+   "es": "GTA VI · Pareja",
+   "pt-BR": "GTA VI · Casal"
+  },
+  "pack": "gta-vi",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Rockstar Games / Take-Two"
+ },
+ {
+  "id": "gta-vi-palms",
+  "names": {
+   "en": "GTA VI · Palms",
+   "es": "GTA VI · Palmeras",
+   "pt-BR": "GTA VI · Palmeiras"
+  },
+  "pack": "gta-vi",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Rockstar Games / Take-Two"
+ },
+ {
+  "id": "gta-vi-collage",
+  "names": {
+   "en": "GTA VI · Collage",
+   "es": "GTA VI · Collage",
+   "pt-BR": "GTA VI · Colagem"
+  },
+  "pack": "gta-vi",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Rockstar Games / Take-Two"
+ },
+ {
+  "id": "forza-horizon-6",
+  "names": {
+   "en": "Forza Horizon 6",
+   "es": "Forza Horizon 6",
+   "pt-BR": "Forza Horizon 6"
+  },
+  "pack": "forza-minecraft-halo",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Microsoft / Playground Games"
+ },
+ {
+  "id": "forza-horizon-5",
+  "names": {
+   "en": "Forza Horizon 5",
+   "es": "Forza Horizon 5",
+   "pt-BR": "Forza Horizon 5"
+  },
+  "pack": "forza-minecraft-halo",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Microsoft / Playground Games"
+ },
+ {
+  "id": "minecraft",
+  "names": {
+   "en": "Minecraft",
+   "es": "Minecraft",
+   "pt-BR": "Minecraft"
+  },
+  "pack": "forza-minecraft-halo",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Mojang Studios"
+ },
+ {
+  "id": "halo-master-chief",
+  "names": {
+   "en": "Halo · Master Chief",
+   "es": "Halo · Jefe Maestro",
+   "pt-BR": "Halo · Master Chief"
+  },
+  "pack": "forza-minecraft-halo",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Microsoft / 343 Industries"
+ },
+ {
+  "id": "halo-infinite-rings",
+  "names": {
+   "en": "Halo Infinite · Rings",
+   "es": "Halo Infinite · Anillos",
+   "pt-BR": "Halo Infinite · Anéis"
+  },
+  "pack": "forza-minecraft-halo",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Microsoft / 343 Industries"
+ },
+ {
+  "id": "sanrio-friends",
+  "names": {
+   "en": "Sanrio · Friends",
+   "es": "Sanrio · Amigos",
+   "pt-BR": "Sanrio · Amigos"
+  },
+  "pack": "sanrio",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Sanrio"
+ },
+ {
+  "id": "pochacco-picnic",
+  "names": {
+   "en": "Pochacco · Picnic",
+   "es": "Pochacco · Picnic",
+   "pt-BR": "Pochacco · Piquenique"
+  },
+  "pack": "sanrio",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Sanrio"
+ },
+ {
+  "id": "cinnamoroll-clouds",
+  "names": {
+   "en": "Cinnamoroll · Clouds",
+   "es": "Cinnamoroll · Nubes",
+   "pt-BR": "Cinnamoroll · Nuvens"
+  },
+  "pack": "sanrio",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Sanrio"
+ },
+ {
+  "id": "cod-ghost",
+  "names": {
+   "en": "Call of Duty · Ghost",
+   "es": "Call of Duty · Ghost",
+   "pt-BR": "Call of Duty · Ghost"
+  },
+  "pack": "call-of-duty",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Activision"
+ },
+ {
+  "id": "cod-price",
+  "names": {
+   "en": "Call of Duty · Price",
+   "es": "Call of Duty · Price",
+   "pt-BR": "Call of Duty · Price"
+  },
+  "pack": "call-of-duty",
+  "rarity": "common",
+  "price": null,
+  "credit": "© Activision"
+ },
+ {
+  "id": "bahrain-sunset",
+  "names": {
+   "en": "Bahrain at sunset",
+   "es": "Bahréin al atardecer",
+   "pt-BR": "Bahrein ao entardecer"
+  },
+  "pack": "landscapes",
+  "rarity": "rare",
+  "price": 150,
+  "credit": "Photo · source to confirm"
+ },
+ {
+  "id": "kuwait-bay",
+  "names": {
+   "en": "Kuwait · Bay",
+   "es": "Kuwait · Bahía",
+   "pt-BR": "Kuwait · Baía"
+  },
+  "pack": "landscapes",
+  "rarity": "rare",
+  "price": 150,
+  "credit": "Photo · source to confirm"
+ },
+ {
+  "id": "istanbul",
+  "names": {
+   "en": "Istanbul",
+   "es": "Estambul",
+   "pt-BR": "Istambul"
+  },
+  "pack": "landscapes",
+  "rarity": "epic",
+  "price": 200,
+  "credit": "Photo · source to confirm"
+ },
+ {
+  "id": "beirut-coast",
+  "names": {
+   "en": "Beirut · Coast",
+   "es": "Beirut · Costa",
+   "pt-BR": "Beirute · Costa"
+  },
+  "pack": "landscapes",
+  "rarity": "epic",
+  "price": 200,
+  "credit": "Photo · source to confirm"
+ },
+ {
+  "id": "misty-forest",
+  "names": {
+   "en": "Misty forest",
+   "es": "Bosque con niebla",
+   "pt-BR": "Floresta com névoa"
+  },
+  "pack": "landscapes",
+  "rarity": "rare",
+  "price": 150,
+  "credit": "Photo · source to confirm"
+ },
+ {
+  "id": "rider-in-the-valley",
+  "names": {
+   "en": "Rider in the valley",
+   "es": "Jinete en el valle",
+   "pt-BR": "Cavaleiro no vale"
+  },
+  "pack": "landscapes",
+  "rarity": "legendary",
+  "price": 300,
+  "credit": "Concept art · author to confirm"
+ }
+]

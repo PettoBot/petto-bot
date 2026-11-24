@@ -84,7 +84,7 @@ function instrumentPool(pool, { backgroundLimit = Math.max(1, config.databasePoo
     const context = perf.current();
     const background = !(context && context.interactive);
     const run = () => original(...args).then(
-      (result) => { perf.recordDb(performance.now() - started, 0, true); return result; },
+      (result) => { perf.recordDb(performance.now() - started, 0, true); return onlyOwnServers(result, args[0]); },
       (error) => { perf.recordDb(performance.now() - started, 0, false); throw error; },
     );
     if (!background) return run();
@@ -97,12 +97,90 @@ function instrumentPool(pool, { backgroundLimit = Math.max(1, config.databasePoo
   return pool;
 }
 
+// ---- Servers of other shards -------------------------------------------------------------------------------------------------------------------
+// When the servers are split between instances (DISCORD_SHARDS and DISCORD_SHARD_COUNT), a background job of this instance must only see the rows of its own servers: for the others it has no
+// server in memory, and a job that finds none could give up on a sanction, a reminder or a ticket that the other instance still has to do. So a plain read (the query builder) of a table that has a
+// `guild_id` column, made inside a job, only returns the servers whose shard this instance holds. The jobs that work on the whole bot (src/utils/instanceRole.ts `isGlobalJob`) see everything.
+let guildTableNames;
+function guildTables() {
+  if (!guildTableNames) {
+    guildTableNames = new Set();
+    try {
+      const sql = require('node:fs').readFileSync(require('node:path').join(__dirname, 'schema.sql'), 'utf8');
+      for (const block of sql.split(/create table if not exists /i).slice(1)) {
+        const name = /^"?([a-z0-9_]+)"?/i.exec(block)?.[1];
+        const body = block.slice(0, block.indexOf(');') > 0 ? block.indexOf(');') : block.length);
+        if (name && /(^|[\s,(])guild_id\s+(text|bigint)\b/i.test(body)) guildTableNames.add(name.toLowerCase());
+      }
+    } catch { /* without the schema nothing is filtered */ }
+  }
+  return guildTableNames;
+}
+
+/** The shards this instance holds when a job should only see them, or null (a single instance, an event, a web request, a global job). */
+function ownShardsForJob() {
+  const own = require('../utils/linkRuntime').ownership();
+  if (!own) return null;
+  const context = perf.current();
+  if (!context || context.kind !== 'job' || require('../utils/instanceRole').isGlobalJob(context.name)) return null;
+  return own;
+}
+
+/**
+ * A plain SELECT of raw SQL made by a job: the rows of servers on other shards are dropped from the answer (the builder does it in SQL, see `ownedWhere`). A query that locks rows
+ * (`for update`: a claim) is left alone, since it already took them: those queries name the shards themselves (`ownedShardsSql`).
+ */
+function onlyOwnServers(result, text) {
+  if (!result || result.command !== 'SELECT' || !Array.isArray(result.rows) || !result.rows.length || typeof result.rows[0]?.guild_id !== 'string') return result;
+  if (/for\s+(update|share|no\s+key)/i.test(String(text?.text ?? text ?? ''))) return result;
+  const own = ownShardsForJob();
+  if (!own) return result;
+  const link = require('../utils/instanceLink');
+  const rows = result.rows.filter((row) => typeof row?.guild_id !== 'string' || link.owns(own, row.guild_id));
+  return rows.length === result.rows.length ? result : { ...result, rows, rowCount: rows.length };
+}
+
+/** For a raw query that claims rows: ` and <condition>` that keeps only the servers of this instance's shards (pushes the shard list on `values`), or an empty text when every server is ours. */
+function ownedShardsSql(column, values) {
+  const own = ownShardsForJob();
+  if (!own) return '';
+  values.push(own.shards);
+  return ` and CASE WHEN ${column}::text ~ '^[0-9]{15,19}$' THEN (((${column}::text)::bigint >> 22) % ${Number(own.count)}) = ANY($${values.length}::int[]) ELSE TRUE END`;
+}
+
 let primaryPool;
+const bridgePools = new Map();
+
+/** A pool that goes to one database of the primary through the SQL bridge (`primary`, `vault`, `code`, `data2`). Queries of the same moment share a trip and plain reads are remembered for PETTO_BRIDGE_CACHE_MS. */
+function makeBridgePool(db) {
+  if (!bridgePools.has(db)) bridgePools.set(db, require('./sqlBridge').createBridgePool({ url: config.dbBridgeUrl, secret: config.dbBridgeSecret, db, cacheMs: config.bridgeCacheMs, batchMs: config.bridgeBatchMs }));
+  return bridgePools.get(db);
+}
+
+/** For `!perf`: how the trips to the primary go, by database (empty when this instance has its own connection). */
+/** The primary said something changed: what the bridge pools remembered is forgotten. */
+const clearBridgeCaches = () => { for (const pool of bridgePools.values()) pool.clearCache(); };
+
+const bridgeStats = () => [...bridgePools.entries()].map(([db, pool]) => ({ db, ...pool.stats() }));
 
 function getPrimaryPool() {
-  if (!config.primaryDatabaseUrl) throw new Error('DISCLOUD_DATABASE_URL is not configured.');
-  if (!primaryPool) primaryPool = createPool(config.primaryDatabaseUrl, config.primaryDatabaseSsl);
+  if (!config.primaryDatabaseUrl && !config.dbBridgeUrl) throw new Error('DISCLOUD_DATABASE_URL is not configured.');
+  if (!primaryPool) {
+    // Without a direct address the pool is the bridge to the instance that has the database (src/db/sqlBridge.ts): the same shape as `pg.Pool`, so nothing else changes.
+    primaryPool = config.primaryDatabaseUrl
+      ? createPool(config.primaryDatabaseUrl, config.primaryDatabaseSsl)
+      : instrumentPool(makeBridgePool('primary'));
+  }
   return primaryPool;
+}
+
+let readPool;
+
+/** The pool for the heavy reads: the read-only copy (PETTO_READ_DATABASE_URL) when there is one, the main database otherwise. Only plain reads may use it: a copy can be a little behind. */
+function getReadPool() {
+  if (!config.readDatabaseUrl) return getPrimaryPool();
+  if (!readPool) readPool = createPool(config.readDatabaseUrl, config.readDatabaseSsl);
+  return readPool;
 }
 
 function addValue(state, value) {
@@ -344,9 +422,19 @@ class PostgresQuery {
     return { columns, quotedColumns, values };
   }
 
+  /** ` WHERE ...` with the condition of the servers of this instance's shards added, for a read made by a background job (see `ownShardsForJob`). */
+  ownedWhere(where, state) {
+    if (this.action !== 'select' || this.schemaName !== 'public' || !guildTables().has(this.tableName.toLowerCase())) return where;
+    const own = ownShardsForJob();
+    if (!own) return where;
+    const placeholder = addValue(state, own.shards);
+    const clause = `CASE WHEN "guild_id"::text ~ '^[0-9]{15,19}$' THEN ((("guild_id"::text)::bigint >> 22) % ${Number(own.count)}) = ANY(${placeholder}::int[]) ELSE TRUE END`;
+    return where ? `${where} AND ${clause}` : ` WHERE ${clause}`;
+  }
+
   build() {
     const state = { values: [] };
-    const where = this.buildWhere(state);
+    const where = this.ownedWhere(this.buildWhere(state), state);
     if (this.action === 'select') {
       if (this.countMode === 'exact' && this.head) {
         return { text: `SELECT COUNT(*)::int AS count FROM ${this.table}${where}`, values: state.values, countOnly: true, head: this.head };
@@ -469,11 +557,17 @@ function createPostgresClient(pool, options = {}) {
 }
 
 function closePools() {
-  return primaryPool?.end();
+  return Promise.all([primaryPool?.end(), readPool?.end()]);
 }
 
 module.exports = {
   createPostgresClient,
   getPrimaryPool,
+  getReadPool,
+  makeBridgePool,
+  ownedShardsSql,
+  __wrapForCheck: (pool) => instrumentPool(pool), // for scripts/check-instance-link.js: a fake pool measured like the real ones
+  bridgeStats,
+  clearBridgeCaches,
   closePools,
 };

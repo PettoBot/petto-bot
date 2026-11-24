@@ -1,5 +1,6 @@
 // Backups of a server (Petto Vault): !backup, its menu and forms, and the scheduled backups. Reference catalog: es and pt-BR must have the same keys and placeholders.
 module.exports = {
+  'backup.premium.required': '{emoji} Backups are a Premium feature. Add Premium to this server to make and schedule backups: {url}\nThe backups you already have can still be listed, exported, restored and deleted.',
   'backup.loading.panel': 'Loading your backup center...',
   'backup.loading.create': 'Creating a complete server configuration backup...',
   'backup.loading.list': 'Loading saved backups...',

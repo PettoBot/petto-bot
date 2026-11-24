@@ -5287,3 +5287,338 @@ create table if not exists user_birthdays (
   updated_at timestamptz not null default now()
 );
 alter table user_birthdays enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- The profile of a person (the image of `/profile`): the badges they have turned on or been given, and the ones they put in the showcase.
+-- It belongs to the person and has no server; `deleteProfile` (db/userProfile.ts) forgets all of it when they ask for their data to be deleted.
+-- The badge of a plan is not here: it follows the plan they pay for.
+-- ---------------------------------------------------------------------------
+create table if not exists user_badges (
+  user_id    text not null,
+  badge_id   text not null check (char_length(badge_id) between 1 and 40),
+  source     text not null check (source in ('self', 'team', 'shop', 'status')),
+  frame      text not null default 'normal' check (frame in ('normal', 'bright', 'divine')),
+  granted_at timestamptz not null default now(),
+  primary key (user_id, badge_id)
+);
+alter table user_badges enable row level security;
+
+create table if not exists user_profile (
+  user_id    text primary key,
+  showcase   text[] not null default '{}' check (cardinality(showcase) <= 6),
+  updated_at timestamptz not null default now()
+);
+alter table user_profile enable row level security;
+
+-- Ceramos: the currency of the profile. One wallet per person (no server) and a ledger of every movement; the balance never goes below zero.
+create table if not exists ceramos_wallets (
+  user_id    text primary key,
+  balance    bigint not null default 0 check (balance >= 0),
+  last_daily date,
+  updated_at timestamptz not null default now()
+);
+alter table ceramos_wallets enable row level security;
+
+create table if not exists ceramos_ledger (
+  id         bigserial primary key,
+  user_id    text not null,
+  delta      bigint not null,
+  reason     text not null check (char_length(reason) between 1 and 40),
+  ref        text check (ref is null or char_length(ref) <= 80),
+  by_user    text,
+  created_at timestamptz not null default now()
+);
+create index if not exists ceramos_ledger_user_idx on ceramos_ledger (user_id, id desc);
+alter table ceramos_ledger enable row level security;
+
+-- Badges made in the editor of the team: the words in each language, the picture, the tab, the rarity, the price (0 is free), the days of the sale, the plan it asks
+-- for and the rule that gives it by itself. Taking one off sale (active = false) hides it from the shop; whoever has it keeps it.
+create table if not exists custom_badges (
+  id          text primary key check (id ~ '^[a-z0-9][a-z0-9-]{2,39}$'),
+  names       jsonb not null,
+  category    text not null default 'special' check (category in ('special', 'status', 'fablo', 'country', 'language')),
+  rarity      text not null default 'common' check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  price       integer not null default 0 check (price >= 0 and price <= 100000),
+  color       text not null default '#8f7bd6' check (color ~ '^#[0-9a-fA-F]{6}$'),
+  image       bytea check (image is null or octet_length(image) <= 262144),
+  image_type  text check (image_type is null or image_type in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')),
+  sale_from   timestamptz,
+  sale_until  timestamptz,
+  plan_min    text check (plan_min in ('bronze', 'silver', 'gold')),
+  grant_rule  text check (grant_rule in ('voter', 'booster', 'partner', 'server_boost')),
+  active      boolean not null default true,
+  created_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table custom_badges enable row level security;
+
+-- Shop of the profile, round two: packs (a named group of badges, banners or name fonts that can be free, for a plan, for a season or sold whole), the pieces of
+-- the shop that are not badges (banners and name fonts, with their file), what a person has of them, the changes the team makes to the badges of the code
+-- (their words, colour, price, picture), and the banner and font a person has on.
+alter table custom_badges add column if not exists pack_id text;
+
+create table if not exists shop_packs (
+  id          text primary key check (id ~ '^[a-z0-9][a-z0-9-]{2,39}$'),
+  kind        text not null check (kind in ('badge', 'banner', 'font')),
+  names       jsonb not null,
+  color       text not null default '#8f7bd6' check (color ~ '^#[0-9a-fA-F]{6}$'),
+  price       integer check (price is null or (price >= 0 and price <= 1000000)),
+  free        boolean not null default false,
+  sale_from   timestamptz,
+  sale_until  timestamptz,
+  plan_min    text check (plan_min in ('bronze', 'silver', 'gold')),
+  active      boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table shop_packs enable row level security;
+insert into shop_packs (id, kind, names, color, free) values ('fablo', 'badge', '{"en": "Fablo pack", "es": "Paquete Fablo", "pt-BR": "Pacote Fablo"}'::jsonb, '#ff8fc2', true) on conflict (id) do nothing;
+-- The packs the shop starts with (the team edits them afterwards and a restart never overwrites that): five of banners and two of name fonts.
+insert into shop_packs (id, kind, names, color, free) values ('gta-vi', 'banner', '{"en": "GTA VI", "es": "GTA VI", "pt-BR": "GTA VI"}'::jsonb, '#ff7ab8', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('forza-minecraft-halo', 'banner', '{"en": "Forza, Minecraft and Halo", "es": "Forza, Minecraft y Halo", "pt-BR": "Forza, Minecraft e Halo"}'::jsonb, '#7dd3a8', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('sanrio', 'banner', '{"en": "Sanrio", "es": "Sanrio", "pt-BR": "Sanrio"}'::jsonb, '#ffb3d9', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free) values ('call-of-duty', 'banner', '{"en": "Call of Duty", "es": "Call of Duty", "pt-BR": "Call of Duty"}'::jsonb, '#9aa4b2', true) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free, price) values ('landscapes', 'banner', '{"en": "Cities and landscapes", "es": "Ciudades y paisajes", "pt-BR": "Cidades e paisagens"}'::jsonb, '#7cb7ff', false, 800) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free, price) values ('retro-arcade', 'font', '{"en": "Retro and arcade", "es": "Retro y arcade", "pt-BR": "Retrô e arcade"}'::jsonb, '#c4a5ff', false, 700) on conflict (id) do nothing;
+insert into shop_packs (id, kind, names, color, free, price) values ('elegant-serif', 'font', '{"en": "Elegant letters", "es": "Letras elegantes", "pt-BR": "Letras elegantes"}'::jsonb, '#ffd23f', false, 400) on conflict (id) do nothing;
+
+create table if not exists shop_items (
+  kind        text not null check (kind in ('banner', 'font')),
+  id          text not null check (id ~ '^[a-z0-9][a-z0-9-]{2,39}$'),
+  pack_id     text,
+  names       jsonb not null,
+  rarity      text not null default 'common' check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  price       integer check (price is null or (price >= 0 and price <= 100000)),
+  file        bytea check (file is null or octet_length(file) <= 1048576),
+  file_type   text check (file_type is null or file_type in ('image/png', 'image/jpeg', 'image/webp', 'font/ttf', 'font/otf', 'font/woff2')),
+  sale_from   timestamptz,
+  sale_until  timestamptz,
+  plan_min    text check (plan_min in ('bronze', 'silver', 'gold')),
+  active      boolean not null default true,
+  created_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  primary key (kind, id)
+);
+alter table shop_items enable row level security;
+-- Who made the picture of a banner (shown under it in the shop, as "© Studio"); empty for pieces without one.
+alter table shop_items add column if not exists credit text check (credit is null or char_length(credit) <= 120);
+
+create table if not exists user_items (
+  user_id      text not null,
+  kind         text not null check (kind in ('banner', 'font')),
+  item_id      text not null,
+  source       text not null default 'shop' check (source in ('shop', 'pack', 'free', 'team')),
+  acquired_at  timestamptz not null default now(),
+  primary key (user_id, kind, item_id)
+);
+alter table user_items enable row level security;
+
+create table if not exists badge_overrides (
+  id          text primary key check (id ~ '^[a-z0-9][a-z0-9-]{1,39}$'),
+  names       jsonb,
+  color       text check (color is null or color ~ '^#[0-9a-fA-F]{6}$'),
+  rarity      text check (rarity is null or rarity in ('common', 'rare', 'epic', 'legendary')),
+  price       integer check (price is null or (price >= 0 and price <= 100000)),
+  image       bytea check (image is null or octet_length(image) <= 262144),
+  image_type  text check (image_type is null or image_type in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')),
+  pack_id     text,
+  active      boolean,
+  updated_at  timestamptz not null default now()
+);
+alter table badge_overrides enable row level security;
+
+alter table user_profile add column if not exists banner_id text;
+alter table user_profile add column if not exists font_id text;
+
+-- The plan a person pays for (Bronze, Silver or Gold), one row for each person. `ends_at` is the end of the period that is paid or given (null: no end yet); a plan
+-- that is past its end is not active. `source` says who put it there: the team by hand now, and the payment service later. Nothing of it belongs to a server.
+create table if not exists user_plans (
+  user_id     text primary key,
+  plan        text not null check (plan in ('bronze', 'silver', 'gold')),
+  ends_at     timestamptz,
+  renews      boolean not null default false,
+  source      text not null default 'team' check (source in ('team', 'payment')),
+  granted_by  text,
+  note        text check (note is null or char_length(note) <= 200),
+  started_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table user_plans enable row level security;
+
+-- How a person wants their own rank card to look (the one every server that has not designed its own shows): colors of the bar and the text, the font, the layout, the
+-- avatar shape, the theme and the background. `gradient_paid` remembers that the two-color bar was already paid, so changing it back and forth costs nothing more.
+create table if not exists user_rank_card (
+  user_id        text primary key,
+  settings       jsonb not null default '{}'::jsonb,
+  gradient_paid  boolean not null default false,
+  updated_at     timestamptz not null default now()
+);
+alter table user_rank_card enable row level security;
+
+-- The packs of ceramos that were paid (one row for each payment of the payment service): the order id is the key, so the same payment arriving twice (the service sends events again)
+-- gives the ceramos only once.
+create table if not exists ceramos_orders (
+  order_id    text primary key,
+  user_id     text not null,
+  pack        text not null,
+  coins       integer not null check (coins > 0),
+  created_at  timestamptz not null default now()
+);
+alter table ceramos_orders add column if not exists refunded_at timestamptz;
+alter table ceramos_orders enable row level security;
+
+-- Who of the team may give ceramos from the dashboard, and how much (one row). The owner can always give and has no daily limit.
+create table if not exists ceramos_grant_settings (
+  id            int primary key default 1 check (id = 1),
+  enabled       boolean not null default true,
+  max_per_grant int not null default 5000,
+  max_per_day   int not null default 20000,
+  people        text[] not null default '{}',
+  updated_at    timestamptz not null default now()
+);
+alter table ceramos_grant_settings enable row level security;
+
+-- Keys of the read-only API: each person can make up to 3. Only the hash of a key is kept (the key itself is shown once, when it is made).
+create table if not exists api_keys (
+  id         bigserial primary key,
+  user_id    text not null,
+  key_hash   text not null unique,
+  label      text not null default '',
+  created_at timestamptz not null default now(),
+  last_used  timestamptz
+);
+create index if not exists api_keys_user_idx on api_keys (user_id);
+alter table api_keys enable row level security;
+
+-- Missions already claimed: one row for each person, mission and period (the day or the week), so a mission pays once for each period.
+create table if not exists mission_claims (
+  user_id    text not null,
+  mission_id text not null,
+  period_key text not null,
+  claimed_at timestamptz not null default now(),
+  primary key (user_id, mission_id, period_key)
+);
+alter table mission_claims enable row level security;
+
+-- Own pictures (a background of the rank card made by the person): the policy they accepted, the picture waiting for review and the one that was approved (one of each at most),
+-- and the people who cannot upload any more. Only a picture the team approved is ever drawn.
+create table if not exists user_policy (
+  user_id     text primary key,
+  version     int not null,
+  accepted_at timestamptz not null default now()
+);
+alter table user_policy enable row level security;
+create table if not exists user_uploads (
+  user_id            text primary key,
+  approved           bytea check (approved is null or octet_length(approved) <= 1048576),
+  approved_at        timestamptz,
+  pending            bytea check (pending is null or octet_length(pending) <= 1048576),
+  pending_at         timestamptz,
+  last_reject_reason text,
+  last_reject_at     timestamptz,
+  removed_reason     text
+);
+alter table user_uploads add column if not exists screened boolean not null default false;
+alter table user_uploads enable row level security;
+create table if not exists upload_blocks (
+  user_id    text primary key,
+  reason     text not null default '',
+  by_user    text,
+  created_at timestamptz not null default now()
+);
+alter table upload_blocks enable row level security;
+
+-- Own badges (Bronze 1, Silver 2, Gold 4): the badge a person made (a name and a picture) waits here for the team. When it is approved it becomes a badge of the editor
+-- (`custom_badges`, id `own-<person>-<slot>`, off sale, so only its maker has it) and this row goes away; a new one for the same slot waits here until it is approved.
+create table if not exists user_own_badges (
+  user_id      text not null,
+  slot         smallint not null check (slot between 1 and 4),
+  name         text not null check (char_length(name) between 2 and 24),
+  image        bytea not null check (octet_length(image) <= 262144),
+  screened     boolean not null default false,
+  submitted_at timestamptz not null default now(),
+  primary key (user_id, slot)
+);
+alter table user_own_badges enable row level security;
+
+-- Streaks: each server decides what counts as an active day (messages and minutes in voice that day). The streak itself is worked out from activity_members, so nothing is stored for it.
+create table if not exists streak_config (
+  guild_id           text primary key references guilds(guild_id) on delete cascade,
+  enabled            boolean not null default true,
+  min_messages       int not null default 1 check (min_messages between 0 and 1000),
+  min_voice_minutes  int not null default 0 check (min_voice_minutes between 0 and 1440),
+  updated_at         timestamptz not null default now()
+);
+alter table streak_config add column if not exists mode text not null default 'any' check (mode in ('messages', 'voice', 'any', 'both'));
+alter table streak_config add column if not exists announce_channel_id text;
+alter table streak_config add column if not exists milestones int[] not null default '{3,7,14,30,60,100,365}';
+alter table streak_config add column if not exists guild_freezes int not null default 0 check (guild_freezes between 0 and 10);
+alter table streak_config add column if not exists reset_at date;
+alter table streak_config add column if not exists grace_minutes int not null default 0 check (grace_minutes between 0 and 180);
+alter table streak_config add column if not exists dm_reminder boolean not null default false;
+alter table streak_config add column if not exists dm_lost boolean not null default false;
+alter table streak_config add column if not exists nickname_enabled boolean not null default false;
+-- What counts as a message for the streak (all of it off by default, so the streaks keep reading activity_members): at least this many characters, one counted message every so many
+-- seconds, only (or everywhere but) some channels or roles, and a reaction that counts as a message. When any of it is on, the messages of the days from `counting_since` on are
+-- counted apart in streak_days (a number for each person and day, never what was said); the days before keep what activity_members says.
+alter table streak_config add column if not exists min_length int not null default 0 check (min_length between 0 and 500);
+alter table streak_config add column if not exists cooldown_seconds int not null default 0 check (cooldown_seconds between 0 and 3600);
+alter table streak_config add column if not exists channel_mode text not null default 'all' check (channel_mode in ('all', 'only', 'except'));
+alter table streak_config add column if not exists channel_ids text[] not null default '{}';
+alter table streak_config add column if not exists role_mode text not null default 'all' check (role_mode in ('all', 'only', 'except'));
+alter table streak_config add column if not exists role_ids text[] not null default '{}';
+alter table streak_config add column if not exists reactions_count boolean not null default false;
+alter table streak_config add column if not exists counting_since date;
+create table if not exists streak_days (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  day      date not null,
+  messages int not null default 0 check (messages >= 0),
+  primary key (guild_id, user_id, day)
+);
+create index if not exists idx_streak_days_guild_day on streak_days(guild_id, day);
+alter table streak_days enable row level security;
+
+alter table streak_config add column if not exists nickname_emoji text not null default '🔥' check (char_length(nickname_emoji) <= 8);
+alter table streak_config enable row level security;
+-- Members who asked not to get the messages of the streaks (the reminder and the lost streak by DM) nor the streak in their nickname.
+create table if not exists streak_optout (
+  user_id text primary key,
+  created_at timestamptz not null default now()
+);
+alter table streak_optout enable row level security;
+-- The contact email a person chose to give (optional): the Terms say Petto may write to it about the policies and about what was asked to delete. It is saved only by the person,
+-- from the Preferences page of the dashboard, and it is deleted with the rest of their data.
+create table if not exists user_contact (
+  user_id    text primary key,
+  email      text not null check (char_length(email) between 5 and 254),
+  updated_at timestamptz not null default now()
+);
+alter table user_contact enable row level security;
+-- What was already sent (a reminder or a lost-streak message at most once a day for each member and server).
+create table if not exists streak_notices (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  kind     text not null check (kind in ('reminder', 'lost')),
+  day      date not null,
+  primary key (guild_id, user_id, kind, day)
+);
+alter table streak_notices enable row level security;
+-- Roles given when a streak reaches a number of days, and what was already given or announced (so nothing is repeated).
+create table if not exists streak_roles (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  days     int  not null check (days between 1 and 3650),
+  role_id  text not null,
+  primary key (guild_id, days)
+);
+alter table streak_roles enable row level security;
+create table if not exists streak_awards (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  days       int  not null,
+  awarded_at timestamptz not null default now(),
+  primary key (guild_id, user_id, days)
+);
+alter table streak_awards enable row level security;

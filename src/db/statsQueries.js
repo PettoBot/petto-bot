@@ -1,14 +1,19 @@
 // What `!stats` reads. The small counters (per channel, hour, day, content, stay) come with a plain select; what is per member is added up by the
 // database, so a big server does not send a row for every member and every day.
 const database = require('./database');
-const { getPrimaryPool } = require('./postgres');
+const { getPrimaryPool, getReadPool } = require('./postgres');
+const config = require('../config');
 const { botDay } = require('../utils/botTime');
 
 const DAY_MS = 86_400_000;
 const startOf = (days, now = new Date()) => botDay(new Date(now.getTime() - Math.max(0, days - 1) * DAY_MS));
 
+// The statistics are plain reads: with a read-only copy (PETTO_READ_DATABASE_URL) they go there and take that load off the main database.
+const readPool = () => (config.readDatabaseUrl ? getReadPool() : getPrimaryPool());
+const readFrom = (table) => (config.readDatabaseUrl ? require('./readDatabase') : database).from(table);
+
 async function select(table, columns, guildId, fromDay) {
-  const { data, error } = await database.from(table).select(columns).eq('guild_id', guildId).gte('day', fromDay).order('day', { ascending: true });
+  const { data, error } = await readFrom(table).select(columns).eq('guild_id', guildId).gte('day', fromDay).order('day', { ascending: true });
   if (error) throw error;
   return data ?? [];
 }
@@ -20,7 +25,7 @@ async function select(table, columns, guildId, fromDay) {
 async function readServerStats(guildId, days, { perMember = true, now = new Date() } = {}) {
   const from = startOf(days * 2, now);
   const currentFrom = startOf(days, now);
-  const pool = getPrimaryPool();
+  const pool = readPool();
   const [channelRows, hourlyRows, flowRows, contentRows, lifespanRows, memberDaily, memberTotals, distinct] = await Promise.all([
     select('activity_stats', 'channel_id, day, messages, reactions, voice_seconds', guildId, from),
     select('activity_hourly', 'day, hour, messages, voice_seconds', guildId, currentFrom),
@@ -39,7 +44,7 @@ async function readServerStats(guildId, days, { perMember = true, now = new Date
  * of every member in the period (for their place).
  */
 async function readMemberStats(guildId, userId, days, { now = new Date() } = {}) {
-  const pool = getPrimaryPool();
+  const pool = readPool();
   const [userRows, memberTotals] = await Promise.all([
     pool.query('select day::text as day, messages, voice_seconds from activity_members where guild_id = $1 and user_id = $2 and day >= $3 order by day', [guildId, userId, startOf(Math.max(days * 2, 30), now)]).then((r) => r.rows),
     pool.query('select user_id, sum(messages)::int as messages, sum(voice_seconds)::int as voice_seconds from activity_members where guild_id = $1 and day >= $2 group by user_id', [guildId, startOf(days, now)]).then((r) => r.rows),

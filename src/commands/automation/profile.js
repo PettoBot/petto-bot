@@ -1,6 +1,14 @@
-// The profile of a member, one card: when they joined and, for the modules the server uses, their partnerships (total, this week, today,
-// rank, last one), uploads (the same), the rating of their reviews (average, count, last one) and their requests. Counts, places and times only.
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+// The profile of a member. `/profile` (and `!profile`) is a PICTURE: their avatar and banner, level, rank, messages and voice of the server and
+// the badges they put in the showcase (utils/profileView.ts). `/profile server` is the card of the server: when they joined and, for the
+// modules the server uses, their partnerships (total, this week, today, rank, last one), uploads (the same), the rating of their reviews
+// (average, count, last one) and their requests. Counts, places and times only. `/profile badge` and `/profile showcase` are the badges.
+const { SlashCommandBuilder, MessageFlags, AttachmentBuilder } = require('discord.js');
+const { setIdentity, saveShowcase } = require('../../utils/profileActions');
+const badgesRules = require('../../utils/profileBadges');
+const shopCatalog = require('../../utils/shopCatalog');
+const shopBuy = require('../../utils/shopBuy');
+const registry = require('../../utils/badgeRegistry');
+const { buildProfileImage, profileState } = require('../../utils/profileView');
 const reviewsDb = require('../../db/reviews');
 const uploadsDb = require('../../db/uploads');
 const requestsDb = require('../../db/requests');
@@ -50,9 +58,65 @@ function placeOf(rows, userId) {
 // What the command holds besides its own subcommands: the group `config` is the old `!profileconfig`.
 const SUBCOMMANDS = [{ group: 'config', wraps: 'profileconfig', description: 'Set up reviews and profiles.' }];
 
+/** `/profile show`: the picture. A failure to draw is said in a line, never a blank reply. */
+async function showImage(interaction) {
+  await interaction.deferReply();
+  const lang = await languageOf(interaction);
+  const asked = interaction.options.getUser('user') ?? interaction.user;
+  const user = await asked.fetch(true).catch(() => asked); // the banner only comes with a full fetch
+  const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+  let buffer;
+  try {
+    buffer = await buildProfileImage({ guildId: interaction.guild.id, user, member, lang });
+  } catch (error) {
+    console.error('profile image failed', error); // i18n-ignore: log line
+    return interaction.editReply({ content: t(lang, 'profiles.image.failed') });
+  }
+  return interaction.editReply({ files: [new AttachmentBuilder(buffer, { name: 'profile.png' })] });
+}
+
+const badgeNameOf = (lang, id) => { const def = badgesRules.badgeById(id); return def ? badgesRules.badgeName(lang, def, (key) => t(lang, key)) : id; };
+
+/** `/profile badge`: a badge of the Fablo pack is the person's own to turn on and off. A new one goes to the showcase when there is a free place. */
+async function setBadge(interaction) {
+  const lang = await languageOf(interaction);
+  const id = interaction.options.getString('badge', true);
+  const enabled = interaction.options.getBoolean('enabled', true);
+  const result = await setIdentity(interaction.user.id, id, enabled);
+  if (!result.ok) return interaction.reply({ content: t(lang, 'profiles.badge.notYours'), flags: MessageFlags.Ephemeral });
+  const name = badgeNameOf(lang, id);
+  const key = enabled ? (result.changed ? 'profiles.badge.on' : 'profiles.badge.alreadyOn') : (result.changed ? 'profiles.badge.off' : 'profiles.badge.alreadyOff');
+  return interaction.reply({ content: t(lang, key, { badge: name }), flags: MessageFlags.Ephemeral });
+}
+
+/** `/profile showcase`: the badges of the picture, in the order given, cut to what the person has and what their plan holds. */
+async function setShowcase(interaction) {
+  const lang = await languageOf(interaction);
+  const chosen = [];
+  for (let i = 1; i <= badgesRules.MAX_SLOTS; i += 1) {
+    const value = interaction.options.getString(`badge${i}`);
+    if (value) chosen.push(value);
+  }
+  const { kept, dropped, slots } = await saveShowcase(interaction.user.id, chosen);
+  const lines = [t(lang, kept.length ? 'profiles.showcase.saved' : 'profiles.showcase.empty', { badges: kept.map((id) => badgeNameOf(lang, id)).join(', '), slots })];
+  if (dropped.length) lines.push(t(lang, 'profiles.showcase.dropped', { badges: dropped.map((id) => badgeNameOf(lang, id)).join(', '), slots }));
+  return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
+}
+
+/** `/profile banner` and `/profile font`: put a banner or a name font of the shop on, or (with nothing chosen) take it off. It has to be one the person has. */
+async function wearItem(interaction, kind) {
+  const lang = await languageOf(interaction);
+  const id = interaction.options.getString(kind);
+  const result = await shopBuy.wear(interaction.user.id, kind, id || null);
+  if (!result.ok) return interaction.reply({ content: t(lang, `profiles.${kind}.notYours`), flags: MessageFlags.Ephemeral });
+  if (!id) return interaction.reply({ content: t(lang, `profiles.${kind}.off`), flags: MessageFlags.Ephemeral });
+  const item = shopCatalog.itemById(kind, id);
+  return interaction.reply({ content: t(lang, `profiles.${kind}.on`, { name: item ? shopCatalog.itemName(lang, item) : id }), flags: MessageFlags.Ephemeral });
+}
+
 module.exports = {
   subcommands: SUBCOMMANDS,
-  // Also a slash command: `/profile show` and, in the group `config`, the subcommands of `!profileconfig` (`/profile config channel`).
+  // Also a slash command: `/profile show` (the picture), `/profile server` (the card), and, in the group `config`, the subcommands of `!profileconfig` (`/profile config channel`).
   registerSlash: true,
   aliases: ['perfil'],
   profileLines,
@@ -67,12 +131,52 @@ module.exports = {
     .setName('profile')
     .setDescription('The profile of a member and its settings: rating, uploads, requests and partnerships.')
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('show').setDescription('The profile of a member: rating, uploads, requests and partnerships.').addUserOption((o) => o.setName('user').setDescription('Who (you by default)').setRequired(false))),
+    .addSubcommand((s) => s.setName('show').setDescription('The profile of a member as a picture: level, rank, messages, voice and badges.').addUserOption((o) => o.setName('user').setDescription('Who (you by default)').setRequired(false)))
+    .addSubcommand((s) => s.setName('server').setDescription('The card of a member in this server: rating, uploads, requests and partnerships.').addUserOption((o) => o.setName('user').setDescription('Who (you by default)').setRequired(false)))
+    .addSubcommand((s) => s.setName('badge').setDescription('Turn one of your identity badges on or off.')
+      .addStringOption((o) => o.setName('badge').setDescription('Which badge').setRequired(true).addChoices(...badgesRules.BADGES.filter((b) => b.unlock === 'self').map((b) => ({ name: b.id, value: b.id }))))
+      .addBooleanOption((o) => o.setName('enabled').setDescription('On or off').setRequired(true)))
+    .addSubcommand((s) => s.setName('banner').setDescription('Put a banner you bought on your profile (leave empty for your Discord banner).')
+      .addStringOption((o) => o.setName('banner').setDescription('Which banner').setRequired(false).setAutocomplete(true)))
+    .addSubcommand((s) => s.setName('font').setDescription('Put a name font you bought on your profile (leave empty for the usual one).')
+      .addStringOption((o) => o.setName('font').setDescription('Which name font').setRequired(false).setAutocomplete(true)))
+    .addSubcommand((s) => {
+      s.setName('showcase').setDescription('Choose the badges of the showcase of your profile picture, in order.');
+      for (let i = 1; i <= badgesRules.MAX_SLOTS; i += 1) {
+        // i18n-ignore: the real text comes from the catalog (cmd.automation.profile.showcase.opt.badgeN.desc)
+        s.addStringOption((o) => o.setName(`badge${i}`).setDescription(`Badge ${i}`).setRequired(i === 1).setAutocomplete(true));
+      }
+      return s;
+    }),
     SUBCOMMANDS, loadByName),
+
+  /** The badges of `/profile showcase`: the ones the person has, by their name in the language of the person (there are more than Discord lets a list of choices hold). */
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    const lang = await languageOf(interaction);
+    const typed = String(focused.value ?? '').toLowerCase().trim();
+    if (focused.name === 'banner' || focused.name === 'font') {
+      const state = await profileState(interaction.user.id);
+      const items = state.items.filter((row) => row.kind === focused.name).map((row) => shopCatalog.itemById(row.kind, row.id)).filter(Boolean)
+        .map((item) => ({ name: shopCatalog.itemName(lang, item), value: item.id })).filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
+      return interaction.respond(items.slice(0, 25));
+    }
+    if (!/^badge[1-6]$/.test(focused.name)) return interaction.respond([]);
+    const { owned } = await profileState(interaction.user.id);
+    const list = owned.map((id) => ({ id, def: badgesRules.badgeById(id) })).filter((entry) => entry.def)
+      .map((entry) => ({ name: badgesRules.badgeName(lang, entry.def, (key) => t(lang, key)), value: entry.id }))
+      .filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
+    return interaction.respond(list.slice(0, 25));
+  },
 
   async execute(interaction, client) {
     // The group `config` is the old `!profileconfig`: it asks for what that command asks for.
     if (interaction.options.getSubcommandGroup?.(false) === 'config') return runWrapped(interaction, client, 'profileconfig');
+    const sub = interaction.options.getSubcommand(false) ?? 'show';
+    if (sub === 'badge') return setBadge(interaction);
+    if (sub === 'banner' || sub === 'font') { await registry.ensure(); return wearItem(interaction, sub); }
+    if (sub === 'showcase') return setShowcase(interaction);
+    if (sub === 'show') return showImage(interaction);
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const lang = await languageOf(interaction);
     const guildId = interaction.guild.id;

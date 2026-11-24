@@ -9,8 +9,9 @@ const cpuProfile = require('../../utils/cpuProfile');
 const watchdog = require('../../utils/watchdog');
 const processGuards = require('../../utils/processGuards');
 const { commandLimiter } = require('../../utils/rateLimits');
+const quarantine = require('../../utils/eventQuarantine');
 
-const SECTIONS = ['summary', 'rest', 'slow', 'jobs', 'listeners', 'limits', 'level', 'probe', 'cpu'];
+const SECTIONS = ['summary', 'rest', 'slow', 'jobs', 'listeners', 'limits', 'quarantine', 'level', 'probe', 'cpu'];
 const ms = (value) => (Number.isFinite(value) ? `${Math.round(value)} ms` : 'n/a');
 const mb = (bytes) => `${Math.round(bytes / 1048576)} MB`;
 const pad = (value, length) => String(value).slice(0, length).padEnd(length);
@@ -69,13 +70,16 @@ function summary(client, probe) {
     `**Commands running** ${limiter.running}/${limiter.max} (${limiter.waiting} waiting, ${limiter.reserve} kept for staff) · dropped (1 h) ${JSON.stringify(limiter.lastHour)}`,
     `**Shed (1 h)** ${Object.keys(guard.shedLastHour).length ? Object.entries(guard.shedLastHour).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, count]) => `${key} ${count}`).join(', ') : 'nothing'}`,
     `**Watchdog** ${wd.running ? 'on' : 'off'}${wd.thread ? ' (thread on)' : ''} · restarts in the last hour ${wd.restartsLastHour}/${config.watchdogMaxRestartsPerHour}${wd.holding ? ' · HOLDING (no restarts left)' : ''}${wd.lastDecision?.reason ? ` · last decision ${wd.lastDecision.action}: ${wd.lastDecision.reason}` : ''}`,
+    bridgeLine(),
+    workersLine(),
+    `**Quarantine** ${quarantine.status().filter((part) => part.state !== 'open').map((part) => part.key).join(', ') || 'nothing resting'}`,
     `**Gateway** ${JSON.stringify((({ recentGateway, ...rest2 }) => rest2)(processGuards.stats()))} · ping ${client.ws.ping} ms`,
   ].filter(Boolean);
   if (probe) lines.push('**REST probe now**', ...probeLines(probe).map((line) => `  ${line}`));
   lines.push('**Slowest commands (1 h)**');
   const slow = snapshot.slowest.slice(0, 5);
   lines.push(...(slow.length ? slow.map((row) => `  ${pad(row.name, 22)} ${ms(row.total)} (first answer ${ms(row.ack)}) db ${row.db.n}q ${ms(row.db.ms)} · rest ${row.rest.n}req ${ms(row.rest.ms)} (queue ${ms(row.rest.gate)}, net ${ms(row.rest.net)})`) : ['  none yet']));
-  lines.push('-# `!perf rest`, `slow`, `jobs`, `listeners`, `limits`, `probe`, `cpu [seconds]`, `level <normal|degraded|critical|auto>`');
+  lines.push('-# `!perf rest`, `slow`, `jobs`, `listeners`, `limits`, `quarantine`, `probe`, `cpu [seconds]`, `level <normal|degraded|critical|auto>`');
   return lines.join('\n');
 }
 
@@ -93,6 +97,27 @@ function restSection() {
 function slowSection() {
   const rows = perf.slowestCommands(10);
   return ['**10 slowest commands (last hour)**', ...(rows.length ? rows.map((row) => `${ago(row.at)} ${pad(row.name, 22)} total ${ms(row.total)} · first answer ${ms(row.ack)}\n    ${perf.describeRecord(row)}${row.error ? ` · error ${row.error}` : ''}`) : ['none yet'])].join('\n');
+}
+
+function bridgeLine() {
+  const stats = require('../../db/postgres').bridgeStats();
+  if (!stats.length) return null; // an instance with its own connection has no bridge
+  const link = require('../../utils/linkRuntime');
+  const lines = stats.map((row) => `${row.db}: ${row.requests} trips (avg ${Math.round(row.avgMs)} ms, last ${Math.round(row.lastMs)} ms, max ${Math.round(row.maxMs)} ms), ${row.queries} queries, ${row.batches} shared trips, ${row.cacheHits} answered from memory, ${row.errors} failed`);
+  return `**SQL bridge** ${lines.join(' · ')}${link.getClient() ? ` · link ${link.getClient().isConnected() ? 'up' : 'down'}` : ''}`;
+}
+
+function workersLine() {
+  const workers = require('../../utils/linkRuntime').getHub()?.workersConnected() ?? [];
+  return workers.length ? `**Workers** ${workers.map((worker) => `${worker.worker} (shards ${worker.shards.join(',')} of ${worker.count})`).join(', ')}` : null;
+}
+
+function quarantineSection() {
+  const parts = quarantine.status();
+  const left = (until) => `${Math.max(0, Math.round((until - Date.now()) / 1000))} s`;
+  return ['**Quarantine** (a part that keeps failing rests, then one trial run decides if it comes back)', ...(parts.length
+    ? parts.map((part) => `${pad(part.key, 34)} ${pad(part.state, 8)} ${part.state === 'open' ? 'back' : `rests ${left(part.restUntil)} (${duration(part.restMs)})`} · times ${part.times} · last error ${part.lastError || 'n/a'}`)
+    : ['nothing has been put apart'])].join('\n');
 }
 
 function jobsSection() {
@@ -133,7 +158,7 @@ module.exports = {
   teamOnly: true,
   team: {
     summary: 'Shows how the bot is doing: database and Discord REST latency, event loop lag, memory, the slowest commands, the rate limits, the load level and the watchdog. It can also time Discord right now, profile the processor for a few seconds (which functions and files use it) and force a load level to test it.',
-    usage: ['!perf', '!perf rest|slow|jobs|listeners|limits|probe', '!perf cpu [seconds]', '!perf level normal|degraded|critical|auto'],
+    usage: ['!perf', '!perf rest|slow|jobs|listeners|limits|quarantine|probe', '!perf cpu [seconds]', '!perf level normal|degraded|critical|auto'],
     who: 'owner and developers (forcing a level: the owner)',
     area: 'bot',
     examples: ['!perf', '!perf rest', '!perf probe', '!perf cpu 15', '!perf level auto'],
@@ -146,7 +171,7 @@ module.exports = {
     .setName('perf')
     .setDescription('Private tool: how the bot is doing (latency, rate limits, load level).')
     .setDMPermission(false)
-    .addStringOption((option) => option.setName('section').setDescription('rest, slow, jobs, listeners, limits, probe, cpu or level').setRequired(false))
+    .addStringOption((option) => option.setName('section').setDescription('rest, slow, jobs, listeners, limits, quarantine, probe, cpu or level').setRequired(false))
     .addStringOption((option) => option.setName('value').setDescription('For level: normal, degraded, critical or auto. For cpu: seconds (3 to 30)').setRequired(false)),
 
   async execute(interaction) {
@@ -173,6 +198,7 @@ module.exports = {
     else if (section === 'jobs') text = jobsSection();
     else if (section === 'listeners') text = listenersSection();
     else if (section === 'limits') text = limitsSection();
+    else if (section === 'quarantine') text = quarantineSection();
     else if (section === 'probe') text = probeLines(await probeRest(interaction.client)).join('\n');
     else text = summary(interaction.client, await probeRest(interaction.client).catch(() => null));
     return interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x8799ff)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });

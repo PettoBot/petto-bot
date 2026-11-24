@@ -1,0 +1,120 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.approvedImage = exports.REASONS = exports.MAX_UPLOAD_BYTES = exports.POLICY_VERSION = void 0;
+exports.planTier = planTier;
+exports.state = state;
+exports.acceptPolicy = acceptPolicy;
+exports.submit = submit;
+exports.queue = queue;
+exports.pendingFile = pendingFile;
+exports.review = review;
+exports.mayAnimate = mayAnimate;
+// i18n-ignore-file: the answers are codes; the website writes the words.
+// Own pictures (a background of the rank card made by the person): the plan that allows it, the policy they accept first, the picture waiting for review, and what the team does
+// with it (approve, reject, take down, block). Only an approved picture is drawn. Kept apart from the API of the pages so the checks can run it alone.
+// Written in TypeScript: `npm run build:ts` compiles it over utils/uploadActions.js.
+const uploadsDb = require('../db/userUploads');
+const plansDb = require('../db/userPlans');
+const plans = require('./userPlans');
+const images = require('./shopImages');
+const detector = require('./imageScreen');
+const animatedPictures = require('./animatedPicture');
+const gifs = require('../imgutils/gif');
+/** The version of the policy of the user. A new one is asked again to everybody who accepted an older one. */
+exports.POLICY_VERSION = 1;
+exports.MAX_UPLOAD_BYTES = 1_048_576;
+const ID = /^\d{15,25}$/;
+exports.REASONS = ['sexual', 'minor', 'violence', 'hate', 'illegal', 'private', 'copyright', 'quality', 'other'];
+/** What the plan of a person allows for an own picture: none, a still one or an animated one (an animated one is a GIF, kept as an APNG). */
+async function planTier(userId) {
+    const row = await plansDb.getPlan(userId).catch(() => null);
+    return row && row.active ? row.plan : 'free';
+}
+async function perkOf(userId) {
+    const row = await plansDb.getPlan(userId).catch(() => null);
+    const tier = row && row.active ? row.plan : 'free';
+    return plans.PLAN_PERKS[tier]?.ownBackground ?? 'none';
+}
+async function state(userId) {
+    const [perk, version, blocked, upload] = await Promise.all([perkOf(userId), uploadsDb.policyVersionOf(userId), uploadsDb.isBlocked(userId), uploadsDb.getState(userId)]);
+    return { ok: true, allowed: perk !== 'none', perk, policyAccepted: version >= exports.POLICY_VERSION, policyVersion: exports.POLICY_VERSION, blocked, upload };
+}
+async function acceptPolicy(userId) {
+    await uploadsDb.acceptPolicy(userId, exports.POLICY_VERSION);
+    return { ok: true };
+}
+/** Receives a picture: it waits for review (nobody sees it until it is approved). */
+async function submit(userId, bytes) {
+    if (await uploadsDb.isBlocked(userId))
+        return { ok: false, error: 'blocked' };
+    if (await perkOf(userId) === 'none')
+        return { ok: false, error: 'premium_required' };
+    if ((await uploadsDb.policyVersionOf(userId)) < exports.POLICY_VERSION)
+        return { ok: false, error: 'policy_required' };
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0)
+        return { ok: false, error: 'bad_file' };
+    if (bytes.length > exports.MAX_UPLOAD_BYTES)
+        return { ok: false, error: 'too_big' };
+    // A GIF only moves with the Gold plan; for the others its first picture is the picture.
+    const moving = gifs.isGif(bytes) && (await perkOf(userId)) === 'animated';
+    const animated = moving ? await animatedPictures.normalizeAnimated(bytes) : null;
+    let done;
+    const failed = animated && !animated.ok ? animated.error : null;
+    if (animated && animated.ok)
+        done = { ok: true, bytes: animated.bytes, look: animated.samples, mime: 'image/png' };
+    else if (failed && failed !== 'not_animated')
+        done = { ok: false, error: failed };
+    else {
+        const still = await images.normalizeBanner(bytes);
+        done = still.ok ? { ok: true, bytes: still.bytes, look: [still.bytes], mime: 'image/webp' } : { ok: false, error: still.error };
+    }
+    if (!done.ok)
+        return { ok: false, error: done.error };
+    // The detector looks first. A picture with a minor is never kept and the person is blocked (the team can undo it); one it flags is not accepted; the rest goes to the team,
+    // marked as checked when the detector looked at it.
+    const verdict = await detector.screen(done.look, fetch, done.mime);
+    if (verdict.checked && verdict.minor) {
+        await uploadsDb.block(userId, 'minor', 'detector');
+        return { ok: false, error: 'blocked' };
+    }
+    if (verdict.checked && verdict.reasons.length)
+        return { ok: false, error: 'detector', reasons: verdict.reasons };
+    await uploadsDb.setPending(userId, done.bytes, verdict.checked);
+    return { ok: true };
+}
+/** The picture that is drawn for a person: the approved one, or null. */
+const approvedImage = (userId) => uploadsDb.approvedBytes(userId);
+exports.approvedImage = approvedImage;
+// ---- the team (the routes check that the person is the owner)
+async function queue() {
+    const [pending, blocked] = await Promise.all([uploadsDb.listPending(30), uploadsDb.listBlocked(50)]);
+    return { ok: true, pending, blocked };
+}
+async function pendingFile(userId) { return ID.test(userId) ? uploadsDb.pendingBytes(userId) : null; }
+/** `action`: approve, reject (with a reason; `block` also stops the person), takedown (removes what they have, with a reason; `block` also stops them) or unblock. */
+async function review(adminId, body) {
+    const person = typeof body.person === 'string' && ID.test(body.person) ? body.person : null;
+    if (!person)
+        return { ok: false, error: 'bad_person' };
+    const action = body.action;
+    const reason = exports.REASONS.includes(body.reason) ? body.reason : 'other';
+    if (action === 'approve')
+        return (await uploadsDb.approve(person)) ? { ok: true } : { ok: false, error: 'nothing_pending' };
+    if (action === 'unblock')
+        return (await uploadsDb.unblock(person)) ? { ok: true } : { ok: false, error: 'not_blocked' };
+    if (action === 'reject' || action === 'takedown') {
+        // A picture with a minor is never kept: it is removed, the person is blocked, and the team has to report it as the law asks (nothing here sends it anywhere).
+        const must = reason === 'minor';
+        const did = action === 'reject' ? await uploadsDb.reject(person, reason) : await uploadsDb.takedown(person, reason);
+        if (!did)
+            return { ok: false, error: action === 'reject' ? 'nothing_pending' : 'nothing_to_remove' };
+        if (must)
+            await uploadsDb.takedown(person, reason);
+        if (must || body.block === true)
+            await uploadsDb.block(person, reason, adminId);
+        return { ok: true, blocked: must || body.block === true };
+    }
+    return { ok: false, error: 'bad_request' };
+}
+/** True when the plan of a person lets their own picture move. */
+async function mayAnimate(userId) { return (await perkOf(userId)) === 'animated'; }

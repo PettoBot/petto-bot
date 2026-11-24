@@ -5,7 +5,8 @@ let pool;
 let schemaPromise;
 
 function getPool() {
-  if (!config.vaultDatabaseUrl) return null;
+  // A second instance that reaches the Vault through the SQL bridge of the primary (src/db/bridgeTargets.js).
+  if (!config.vaultDatabaseUrl) return require('./bridgeTargets').has('vault') ? require('./bridgeTargets').poolFor('vault') : null;
   if (!pool) {
     // Aiven requires TLS for managed PostgreSQL. Keep the Vault connection
     // aligned with the primary migration client so pg accepts its certificate
@@ -217,4 +218,4 @@ async function listBackupGuilds() {
   return rows;
 }
 
-module.exports = { deleteBackup, deleteAllBackups, listBackupGuilds, isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };
+module.exports = { getPool, deleteBackup, deleteAllBackups, listBackupGuilds, isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };

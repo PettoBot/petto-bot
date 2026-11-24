@@ -12,6 +12,14 @@ function stub(relative, exports) {
 stub('src/db/imageCards.js', { getCard: async () => null });
 stub('src/db/cardAssets.js', { getAsset: async () => null });
 stub('src/db/premium.js', { getGuildPremium: async () => ({ active: false }) });
+// The banner a person has on from the shop of the profile: a sample picture for the person '2', nothing for the person '1'.
+const { createCanvas } = require('@napi-rs/canvas');
+const sample = createCanvas(1024, 320); { const c = sample.getContext('2d'); c.fillStyle = '#38bdf8'; c.fillRect(0, 0, 1024, 320); c.fillStyle = '#ff7a59'; c.fillRect(0, 0, 512, 320); }
+stub('src/db/shop.js', {
+  getActive: async (id) => (id === '2' ? { banner: 'sky', font: null } : { banner: null, font: null }),
+  getUserItems: async (id) => (id === '2' ? [{ kind: 'banner', id: 'sky' }] : []),
+});
+stub('src/utils/badgeRegistry.js', { ensure: async () => {}, bannerImage: async () => require('@napi-rs/canvas').loadImage(sample.toBuffer('image/png')) });
 const { defaultRankCard, renderRankCard } = require('../src/utils/cardService');
 const { normalizeCard, source } = require('../src/utils/cardSchema');
 
@@ -38,5 +46,17 @@ const { normalizeCard, source } = require('../src/utils/cardSchema');
     assert.ok(file && file.buffer.length > 20_000, `the ${kind} card is drawn`);
     assert.deepEqual([...file.buffer.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'as a PNG');
   }
+  // A person with a banner of the shop gets it as the background of the default card, darkened; a server that designed its own card keeps its design.
+  const withBanner = defaultRankCard('messages', 'en', true);
+  assert.equal(withBanner.background.image.src, 'petto:user-banner');
+  assert.ok(withBanner.background.overlay.opacity > 0, 'darkened so the numbers stay easy to read');
+  assert.equal(normalizeCard(withBanner, { premium: false }).card.background.image.src, 'petto:user-banner', 'the schema keeps it');
+  assert.equal(defaultRankCard('messages', 'en').background.image.src, 'petto:rank-default', 'without a banner it is the picture of Petto');
+  const levelData = { level: 12, xp: 23450, xpNeeded: 2350, xpCurrent: 1420, xpToNext: 930, progress: 60, rank: 3, total: 120, source: 'text' };
+  const asker = (id) => ({ guild, member: { ...member, id }, user: { ...user, id }, levelData });
+  const plain = await renderRankCard(asker('1'), null, 'messages');
+  const banner = await renderRankCard(asker('2'), null, 'messages');
+  assert.ok(banner && banner.buffer.length > 20_000, 'the card with the banner is drawn');
+  assert.notDeepEqual(banner.buffer, plain.buffer, 'and it is not the same card');
   console.log('Checked the default rank card: the layout, the pictures that come with Petto and the drawing.');
 })().catch((error) => { console.error(error); process.exit(1); });

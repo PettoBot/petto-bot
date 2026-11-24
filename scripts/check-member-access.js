@@ -116,7 +116,7 @@ const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(Bi
 // ---------------------------------------------------------------- what was decided (written here, apart from the commands)
 // Open at Discord and in the code, for everybody (read something, or work on the member's own data).
 const EVERYDAY = new Set([
-  'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
+  'ceramos', 'missions', 'streak', 'daily', 'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
   'channels', 'roles', 'emojis', 'boosters', 'inrole', 'rolemembers', 'servericon', 'serverbanner', 'serversplash', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'variables', 'premium', 'globalranking', 'cmdconfig',
   'afk', 'remind', 'poll', 'rank', 'leaderboard', 'birthday', 'suggest', 'feedback', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'action', 'image',
@@ -150,7 +150,7 @@ const SELF_GATED = {
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
-const TEAM = new Set(['slots', 'botstatus', 'perf', 'guildsend', 'leaveguild', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin']);
+const TEAM = new Set(['slots', 'botstatus', 'perf', 'guildsend', 'leaveguild', 'guilddebug', 'music', 'blacklist', 'team', 'premiumadmin', 'ceramosadmin']);
 
 
 // ---------------------------------------------------------------- a fake Discord for the probes: it records what changes the server
@@ -262,6 +262,7 @@ for (const command of all) {
 
 // What a plain member may write: their own data, nothing else. `command leaf`: why.
 const OWN_DATA = {
+  'streak': 'their own choice to get the DMs and the nickname of the streaks',
   'lastfm unlink': 'forgets their own Last.fm name', 'afk set': 'their own AFK status', 'birthday set': 'their own birthday', 'birthday remove': 'their own birthday',
   'globalranking on': 'their own visibility in the public ranking', 'globalranking off': 'their own visibility in the public ranking',
   'me birthday': 'their own birthday', 'me birthday-remove': 'their own birthday', 'me prefix-reset': 'their own prefix', 'me history-clear': 'their own saved names',
@@ -270,6 +271,7 @@ const OWN_DATA = {
   'me reputation-give': 'giving a reputation point is for every member', 'social reputation give': 'giving a reputation point is for every member', 'social birthday set': 'their own birthday', 'social birthday remove': 'their own birthday', 'search lastfm unlink': 'forgets their own Last.fm name', 'myprefix reset': 'their own prefix', 'profilehistory clear': 'their own saved names',
   'profilehistory record': 'their own choice to save names', 'profilehistory names': 'their own names (it saves the current one)', 'profilehistory nicknames': 'their own nicknames (it saves the current one)',
   'rep give': 'giving a reputation point is for every member',
+  'profile badge': 'their own identity badge on their own profile picture',
   // (`review remove` writes only their own review: with a `reviewer` given, which this check always fills, a plain member is refused and writes nothing, see check-community-modules.js)
 };
 const FLAGS_EPHEMERAL = 64;

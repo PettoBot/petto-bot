@@ -1,5 +1,6 @@
 // Backups de um servidor (Petto Vault): !backup, seu menu e formulários, e os backups agendados.
 module.exports = {
+  'backup.premium.required': '{emoji} Os backups são um recurso Premium. Ative o Premium neste servidor para criar e agendar backups: {url}\nOs backups que você já tem ainda podem ser listados, exportados, restaurados e apagados.',
   'backup.loading.panel': 'Carregando sua central de backups...',
   'backup.loading.create': 'Criando um backup completo da configuração do servidor...',
   'backup.loading.list': 'Carregando os backups salvos...',

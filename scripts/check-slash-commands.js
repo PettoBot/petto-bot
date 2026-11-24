@@ -58,7 +58,7 @@ const ESSENTIAL = [
 // The second set: the commands that are registered in each server (Discord gives 100 chat commands to the app and another 100 to each server). A command goes there when
 // `guildScoped: true` is added to it (and it is listed here): the rarely used ones, so the global 100 keep some room.
 const GUILD_SET = [
-  '247', 'appeals', 'banlist', 'clearinvites', 'giveawaypreset', 'pauseinvites', 'stripstaff', 'cmdconfig', 'counter', 'counting', 'customize', 'disablecommand', 'imageonly', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'language', 'linkonly', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'messagerole', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'support', 'warnescalation',
+  '247', 'appeals', 'banlist', 'ceramos', 'missions', 'streak', 'daily', 'clearinvites', 'giveawaypreset', 'pauseinvites', 'stripstaff', 'cmdconfig', 'counter', 'counting', 'customize', 'disablecommand', 'imageonly', 'imagemute', 'imageunmute', 'jaillist', 'jailsetup', 'language', 'linkonly', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'messagerole', 'mhistory', 'moderation', 'mutelist', 'nuke', 'raid', 'reactionmute', 'reactionunmute', 'restrictcommand', 'sanctionmessage', 'statsconfig', 'support', 'warnescalation',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;

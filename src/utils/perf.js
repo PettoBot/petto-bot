@@ -580,6 +580,9 @@ function trackJob(name, everyMs, task) {
   return (...args) => runJob(entry, () => task(...args));
 }
 
+/** The quarantine, loaded when first needed (it needs the logger, which needs this file). */
+function quarantine() { return require('./eventQuarantine'); }
+
 function jobAllowed(name) {
   try { return require('./loadGuard').allowsJob(name); } catch { return true; }
 }
@@ -618,7 +621,14 @@ function trackIntervals() {
     return original(function trackedTick(...tickArgs) {
       // Under pressure the load guard pauses the jobs that can wait (utils/loadGuard.js): the tick is skipped and the next one catches up.
       if (!jobAllowed(base)) return undefined;
-      return runJob(bound, () => callback.apply(this, tickArgs));
+      // A job that keeps failing rests for a while (utils/quarantine.ts); one trial tick decides if it comes back. The essential jobs are never put apart.
+      const quarantineKey = `job:${base}`;
+      if (quarantine().blocked(quarantineKey)) return undefined;
+      let result;
+      try { result = runJob(bound, () => callback.apply(this, tickArgs)); } catch (error) { quarantine().fail(quarantineKey, error); throw error; }
+      if (result && typeof result.then === 'function') return result.then((value) => { quarantine().succeed(quarantineKey); return value; }, (error) => { quarantine().fail(quarantineKey, error); throw error; });
+      quarantine().succeed(quarantineKey);
+      return result;
     }, delay, ...args);
   };
 }
@@ -631,7 +641,7 @@ function safe(callback) { try { return callback(); } catch { return null; } }
 
 /** Everything, for the `!perf` tool and the checks. */
 function snapshot() {
-  return { database: databaseStats(), redis: redisWindow.stats(), rest: restStats(), loop: loopStats(), listeners: listenerStats(), jobs: jobStats(), slowest: slowestCommands(10), recent: records.length, slowCommands: slowCommandCounter.total };
+  return { database: databaseStats(), redis: redisWindow.stats(), rest: restStats(), loop: loopStats(), listeners: listenerStats(), jobs: jobStats(), slowest: slowestCommands(10), recent: records.length, slowCommands: slowCommandCounter.total, quarantine: safe(() => quarantine().status()) ?? [] };
 }
 
 /** For the checks: forgets everything measured. */

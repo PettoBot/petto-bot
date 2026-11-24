@@ -8,6 +8,7 @@ const stub = (rel, exports) => { require.cache[resolve(rel)] = { id: resolve(rel
 
 stub('src/config.js', { verifyTokenSecret: 'a-secret-for-the-check-of-the-export-card' });
 stub('src/utils/logger.js', { warn() {}, info() {}, error() {} });
+stub('src/utils/backupAccess.js', { backupsAllowed: async () => true, premiumUrl: () => 'https://example.test/premium' });
 stub('src/db/backups.js', {
   createBackup: async () => null, listBackups: async () => [], deleteBackup: async () => null, deleteAllBackups: async () => null,
   recordAudit: async () => null, listAudit: async () => [], vault: {},

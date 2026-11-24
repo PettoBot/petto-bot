@@ -38,6 +38,11 @@ async function applySchema({ connectionString, sslEnabled, label }) {
  * Applies schema.sql only to Petto's Discloud PostgreSQL database.
  */
 async function runMigrations() {
+  // The schema is applied by the instance that has the database; one that works through the bridge (or a worker) leaves it alone.
+  if (!config.primaryDatabaseUrl || config.instanceRole === 'worker') {
+    logger.info('Database schema: left to the main instance.'); // i18n-ignore: operator log
+    return;
+  }
   await applySchema({
     connectionString: config.primaryDatabaseUrl,
     sslEnabled: config.primaryDatabaseSsl,

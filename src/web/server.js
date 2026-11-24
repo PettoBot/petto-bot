@@ -26,6 +26,7 @@ const verificationSignals = require('../db/verificationSignals');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { applyVerificationRoles } = require('../utils/verifyApply');
 const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, vault } = require('../db/backups');
+const { backupsAllowed } = require('../utils/backupAccess');
 const { planRestore, restoreParts, backupContents } = require('../utils/backupRestore');
 const backupJobs = require('../utils/backupJobs');
 const { buildFullSnapshot } = require('../commands/config/backup');
@@ -42,6 +43,7 @@ const { registerAppealImageRoutes } = require('./appealImageRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
+const { registerCeramosRoutes } = require('./ceramosRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
 const { registerFeedRoutes } = require('./feedRoutes');
@@ -224,6 +226,43 @@ function startServer(client) {
   // from the Components V2 verification DM, since Discord needs a real image URL.
   app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
 
+  // The SQL bridge and the link: a second instance of the bot (PETTO_ROLE=worker) that cannot reach the databases sends its queries here, signed (src/db/sqlBridge.ts), and keeps a
+  // WebSocket open to this instance (src/utils/instanceLink.ts) so the dashboard and the API can reach the servers of its shards. Only the instance that has the database serves them,
+  // and only with PETTO_BRIDGE_SECRET (at least 32 characters). Without it the routes do not exist.
+  const bridgeLib = require('../db/sqlBridge');
+  const linkLib = require('../utils/instanceLink');
+  const linkRuntime = require('../utils/linkRuntime');
+  let linkHub = null;
+  if (config.primaryDatabaseUrl && config.instanceRole !== 'worker' && bridgeLib.validSecret(config.dbBridgeSecret)) {
+    const pools = {
+      primary: () => require('../db/postgres').getPrimaryPool(),
+      vault: () => (config.vaultDatabaseUrl ? require('../db/vault').getPool() : null),
+      code: () => (config.codeDatabaseUrl ? require('../db/commandData').getPool() : null),
+      data2: () => (config.data2DatabaseUrl ? require('../db/secondary').rawPool() : null),
+    };
+    const bridge = bridgeLib.createBridgeServer({ pools, secret: config.dbBridgeSecret });
+    const bridgeLimiter = rateLimit({ windowMs: 60_000, limit: 6_000, standardHeaders: true, legacyHeaders: false, message: { ok: false, error: { message: 'busy' } } }); // i18n-ignore: answer of the bridge for the other instance, not for a person
+    app.post('/api/bridge/db', bridgeLimiter, express.raw({ type: () => true, limit: bridgeLib.MAX_BODY_BYTES }), async (req, res) => {
+      const body = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : null;
+      if (body === null) return res.status(400).json({ ok: false, error: { message: 'Invalid body.' } }); // i18n-ignore: answer of the bridge for the other instance, not for a person
+      const answer = await bridge.handle({ headers: { 'x-bridge-time': req.get('x-bridge-time'), 'x-bridge-id': req.get('x-bridge-id'), 'x-bridge-signature': req.get('x-bridge-signature') }, body });
+      return res.status(answer.status).json(answer.json);
+    });
+    // What a worker says on `petto:*` (it has no Redis): through Redis when there is one (it comes back and reaches every worker), straight to the workers when there is not.
+    linkHub = linkRuntime.startHub(config.dbBridgeSecret, ({ channel, message, worker }) => {
+      const redis = require('../utils/redis');
+      if (redis.available()) { redis.publish(channel, message).catch(() => {}); return; }
+      redis.deliverLocal(channel, message);
+      linkRuntime.relayEvent(channel, message, worker);
+    });
+    // A request for a server that lives on a shard of a worker goes through the link; one for a server nobody holds answers 503. Every route with a :guildId passes here.
+    const ownerOf = linkRuntime.ownership();
+    app.param('guildId', (req, res, next, guildId) => {
+      linkLib.routeGuildRequest(linkHub, ownerOf, req, res, guildId).then((handled) => { if (!handled) next(); }).catch(next);
+    });
+    logger.info('SQL bridge and link: serving /api/bridge/db and /api/bridge/link for a second instance.'); // i18n-ignore: operator log
+  }
+
   function dashboardAuthorized(req) {
     return Boolean(config.dashboardApiSecret && req.get('x-petto-dashboard-key') === config.dashboardApiSecret);
   }
@@ -301,7 +340,8 @@ function startServer(client) {
       vault.getSchedule(guildId),
       vault.listAudit(guildId, 20),
     ]);
-    return { backups, schedule, audit, restoreJob: backupJobs.describeJob(backupJobs.getJob(guildId)) };
+    // `premium`: making and scheduling backups needs Premium on the server (the page shows the notice when it is false).
+    return { backups, schedule, audit, restoreJob: backupJobs.describeJob(backupJobs.getJob(guildId)), premium: await backupsAllowed(guildId) };
   }
 
   if (dashboardEnabled) {
@@ -906,6 +946,25 @@ function startServer(client) {
       }
     });
 
+    // The best streaks of a server (the 25 longest current ones, or the longest ever) with the names and pictures of the members, for the Streaks page of the dashboard.
+    app.get('/api/dashboard/guild/:guildId/streak-board', dashboardDatabaseRateLimiter, async (req, res) => {
+      if (!dashboardAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+      const guild = client?.guilds?.cache?.get(String(req.params.guildId || ''));
+      if (!guild) { res.status(404).json({ ok: false, error: 'guild_not_found' }); return; }
+      try {
+        const kind = req.query.kind === 'longest' ? 'longest' : 'current';
+        const { entries } = await require('../utils/streakActions').board(guild.id, kind);
+        const members = await guild.members.fetch({ user: entries.map((entry) => entry.userId) }).catch(() => null);
+        res.json({ ok: true, kind, entries: entries.map((entry) => {
+          const member = members?.get(entry.userId);
+          return { ...entry, name: member?.displayName ?? null, avatar: member?.displayAvatarURL({ size: 64, extension: 'png' }) ?? null };
+        }) });
+      } catch (err) {
+        logger.error(`Dashboard streak board failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'board_failed' });
+      }
+    });
+
     // The message of a poll as the bot draws it (the default card or a saved V2 design), for the dashboard to post or update.
     app.post('/api/dashboard/guild/:guildId/poll-message', dashboardDatabaseRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
@@ -936,6 +995,7 @@ function startServer(client) {
     registerIdentityRoutes(app, { authorize: dashboardCardAccess });
     // Names and avatars of members for the dashboard pages, from the gateway instead of one REST call per person.
     registerMemberRoutes(app, { isAuthorized: dashboardAuthorized, authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    registerCeramosRoutes(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, raw: express.raw({ type: () => true, limit: '300kb' }) });
     // Forms: accept or deny a submission and post a panel, from the dashboard.
     registerFormRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter, isAuthorized: dashboardAuthorized, client });
     // Live counters: values for the previews, create, quick setup, refresh now and delete.
@@ -1029,6 +1089,11 @@ function startServer(client) {
       const { guild, userId } = authorized;
       const action = String(req.body?.action || '');
       try {
+        if ((action === 'create' || action === 'schedule') && !(await backupsAllowed(guild.id))) {
+          // Making and scheduling backups is Premium; the page shows the notice.
+          res.status(402).json({ ok: false, error: 'premium_required' });
+          return;
+        }
         if (action === 'create') {
           await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
           const snapshot = await buildFullSnapshot(guild);
@@ -1529,9 +1594,25 @@ function startServer(client) {
     res.status(404).send(t(requestLanguage(req), 'web.notFound'));
   });
 
-  app.listen(config.webPort, () => {
-    logger.info(`Verification web server listening on port ${config.webPort} (public: ${config.verifyBaseUrl}).`);
-  });
+  // A worker listens only on 127.0.0.1 (a free port, or PETTO_WORKER_LOCAL_PORT): only the link of the primary talks to it.
+  const isWorker = config.instanceRole === 'worker';
+  const listenPort = isWorker ? Number(process.env.PETTO_WORKER_LOCAL_PORT) || 0 : config.webPort;
+  const httpServer = isWorker
+    ? app.listen(listenPort, '127.0.0.1', () => logger.info(`Local web routes for the link of the primary listening on 127.0.0.1:${httpServer.address().port}.`)) // i18n-ignore: operator log
+    : app.listen(config.webPort, () => {
+      logger.info(`Verification web server listening on port ${config.webPort} (public: ${config.verifyBaseUrl}).`);
+    });
+  app.locals.httpServer = httpServer;
+  if (linkHub) {
+    // The workers call this address (a WebSocket that goes out from the worker); the hello is checked before the connection is accepted.
+    const { WebSocketServer } = require('ws');
+    const sockets = new WebSocketServer({ noServer: true, maxPayload: linkLib.MAX_FRAME_BYTES });
+    httpServer.on('upgrade', (req, socket, head) => {
+      if (String(req.url ?? '').split('?')[0] !== linkLib.LINK_PATH) { socket.destroy(); return; }
+      if (!linkLib.verifyHello(config.dbBridgeSecret, req.headers)) { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); socket.destroy(); return; } // i18n-ignore: HTTP status line for the other instance
+      sockets.handleUpgrade(req, socket, head, (ws) => { if (!linkHub.accept(ws, req.headers)) ws.close(1008, 'refused'); });
+    });
+  }
 
   return app;
 }

@@ -110,6 +110,16 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'p
   assert.equal(reply.embeds[0].toJSON().image.url, 'attachment://rank-bar.png');
   reply = await buildRankReply({ ...base, style: 'embed', lang: 'es' });
   assert.equal(reply.embeds[0].toJSON().fields[0].name, 'Nivel', 'the language reaches the embed');
+  // Under the rank of the person themselves there is a link button to the page where they design their rank card; under somebody else's there is none.
+  reply = await buildRankReply({ ...base, style: 'card' });
+  const button = reply.components[0].toJSON().components[0];
+  assert.equal(button.style, 5, 'a link button');
+  assert.equal(button.label, 'Customize your rank');
+  assert.ok(/^https:\/\/[^/]+\/dash\/rank$/.test(button.url), 'to the page Rank card');
+  reply = await buildRankReply({ ...base, style: 'card', lang: 'es' });
+  assert.equal(reply.components[0].toJSON().components[0].label, 'Personaliza tu rango');
+  reply = await buildRankReply({ ...base, style: 'card', own: false });
+  assert.equal(reply.components, undefined, 'no button under the rank of somebody else');
 
   // The line about the vote boost is the text of the message, above the card or the embed, in every style.
   cardBuffer = Buffer.from('png');
@@ -129,7 +139,7 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'p
     assert.equal('content' in reply, false, `no line when the server has the boost off (${style})`);
   }
   reply = await buildRankReply({ ...base, style: 'card', data: canVote, botId: '77' });
-  assert.deepEqual(Object.keys(reply).sort(), ['content', 'files'], 'a card alone is the text and the picture');
+  assert.deepEqual(Object.keys(reply).sort(), ['components', 'content', 'files'], 'a card alone is the text, the picture and the link to customize it');
   assert.equal(reply.embeds, undefined);
   cardBuffer = null;
   reply = await buildRankReply({ ...base, style: 'card', data: active, botId: '77' });

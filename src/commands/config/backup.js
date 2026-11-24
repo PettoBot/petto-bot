@@ -18,6 +18,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require('discord.js');
+const { backupsAllowed, premiumUrl } = require('../../utils/backupAccess');
 const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, listAudit, vault } = require('../../db/backups');
 const { planRestore } = require('../../utils/backupRestore');
 const jobs = require('../../utils/backupJobs');
@@ -90,6 +91,15 @@ async function create(interaction) {
 async function createBackupForInteraction(interaction, label = null) {
   const lang = await languageOf(interaction);
   await beginOperation(interaction, t(lang, 'backup.loading.create'), lang);
+  if (!vault.isConfigured()) {
+    await finish(interaction, buildStatusCard(t(lang, 'backup.vault.notConnected'), COLORS.RED, interaction, lang));
+    return;
+  }
+  // Making a backup is a Premium feature of the server (seeing, exporting, restoring and deleting the ones it has stays open).
+  if (!(await backupsAllowed(interaction.guild.id))) {
+    await finish(interaction, buildStatusCard(t(lang, 'backup.premium.required', { emoji: EMOJI.DENY, url: premiumUrl() }), COLORS.RED, interaction, lang));
+    return;
+  }
   await fetchSnapshotResources(interaction.guild);
   const snapshot = await buildFullSnapshot(interaction.guild);
   const hidden = countObfuscated([...interaction.guild.channels.cache.values()].filter((channel) => !channel.isThread?.()));
@@ -402,6 +412,10 @@ async function scheduleForInteraction(interaction, { hours, retention = 7 }) {
   await beginOperation(interaction, t(lang, 'backup.loading.schedule'), lang);
   if (!vault.isConfigured()) {
     await finish(interaction, buildStatusCard(t(lang, 'backup.vault.notConnected'), COLORS.RED, interaction, lang));
+    return;
+  }
+  if (!(await backupsAllowed(interaction.guild.id))) {
+    await finish(interaction, buildStatusCard(t(lang, 'backup.premium.required', { emoji: EMOJI.DENY, url: premiumUrl() }), COLORS.RED, interaction, lang));
     return;
   }
 
