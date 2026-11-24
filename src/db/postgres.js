@@ -100,9 +100,23 @@ function instrumentPool(pool, { backgroundLimit = Math.max(1, config.databasePoo
 let primaryPool;
 
 function getPrimaryPool() {
-  if (!config.primaryDatabaseUrl) throw new Error('DISCLOUD_DATABASE_URL is not configured.');
-  if (!primaryPool) primaryPool = createPool(config.primaryDatabaseUrl, config.primaryDatabaseSsl);
+  if (!config.primaryDatabaseUrl && !config.dbBridgeUrl) throw new Error('DISCLOUD_DATABASE_URL is not configured.');
+  if (!primaryPool) {
+    // Without a direct address the pool is the bridge to the instance that has the database (src/db/sqlBridge.ts): the same shape as `pg.Pool`, so nothing else changes.
+    primaryPool = config.primaryDatabaseUrl
+      ? createPool(config.primaryDatabaseUrl, config.primaryDatabaseSsl)
+      : instrumentPool(require('./sqlBridge').createBridgePool({ url: config.dbBridgeUrl, secret: config.dbBridgeSecret }));
+  }
   return primaryPool;
+}
+
+let readPool;
+
+/** The pool for the heavy reads: the read-only copy (PETTO_READ_DATABASE_URL) when there is one, the main database otherwise. Only plain reads may use it: a copy can be a little behind. */
+function getReadPool() {
+  if (!config.readDatabaseUrl) return getPrimaryPool();
+  if (!readPool) readPool = createPool(config.readDatabaseUrl, config.readDatabaseSsl);
+  return readPool;
 }
 
 function addValue(state, value) {
@@ -469,11 +483,12 @@ function createPostgresClient(pool, options = {}) {
 }
 
 function closePools() {
-  return primaryPool?.end();
+  return Promise.all([primaryPool?.end(), readPool?.end()]);
 }
 
 module.exports = {
   createPostgresClient,
   getPrimaryPool,
+  getReadPool,
   closePools,
 };

@@ -226,6 +226,21 @@ function startServer(client) {
   // from the Components V2 verification DM, since Discord needs a real image URL.
   app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
 
+  // The SQL bridge: a second instance of the bot (PETTO_ROLE=worker) that cannot reach the database sends its queries here, signed (src/db/sqlBridge.ts).
+  // Only the instance that has the database serves it, and only with PETTO_BRIDGE_SECRET (at least 32 characters). Without it the route does not exist.
+  if (config.primaryDatabaseUrl && config.instanceRole !== 'worker' && require('../db/sqlBridge').validSecret(config.dbBridgeSecret)) {
+    const bridgeLib = require('../db/sqlBridge');
+    const bridge = bridgeLib.createBridgeServer({ pool: require('../db/postgres').getPrimaryPool(), secret: config.dbBridgeSecret });
+    const bridgeLimiter = rateLimit({ windowMs: 60_000, limit: 6_000, standardHeaders: true, legacyHeaders: false, message: { ok: false, error: { message: 'busy' } } }); // i18n-ignore: answer of the bridge for the other instance, not for a person
+    app.post('/api/bridge/db', bridgeLimiter, express.raw({ type: () => true, limit: bridgeLib.MAX_BODY_BYTES }), async (req, res) => {
+      const body = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : null;
+      if (body === null) return res.status(400).json({ ok: false, error: { message: 'Invalid body.' } }); // i18n-ignore: answer of the bridge for the other instance, not for a person
+      const answer = await bridge.handle({ headers: { 'x-bridge-time': req.get('x-bridge-time'), 'x-bridge-id': req.get('x-bridge-id'), 'x-bridge-signature': req.get('x-bridge-signature') }, body });
+      return res.status(answer.status).json(answer.json);
+    });
+    logger.info('SQL bridge: serving /api/bridge/db for a second instance.'); // i18n-ignore: operator log
+  }
+
   function dashboardAuthorized(req) {
     return Boolean(config.dashboardApiSecret && req.get('x-petto-dashboard-key') === config.dashboardApiSecret);
   }

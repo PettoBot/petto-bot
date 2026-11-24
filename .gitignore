@@ -50,3 +50,6 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 native/wordmatch/target/
+
+# The settings of a worker instance (see docker-compose.worker.yml)
+.env.worker

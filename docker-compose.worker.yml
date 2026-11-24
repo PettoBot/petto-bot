@@ -1,0 +1,16 @@
+# A second instance of Petto (a worker) on a VPS, next to the one that has the database. It holds its own shards and sends its SQL, signed, to the primary's bridge.
+#   docker compose -f docker-compose.worker.yml up -d --build
+# Put the values in a `.env.worker` file next to this one (never in this file, and never in git): see docs/SECOND_INSTANCE.md.
+services:
+  petto-worker:
+    build: .
+    image: petto-bot:worker
+    restart: unless-stopped
+    env_file: .env.worker
+    environment:
+      PETTO_ROLE: worker
+      # Which shards this instance holds, and how many there are in all (the primary holds the others).
+      # DISCORD_SHARDS: "1"
+      # DISCORD_SHARD_COUNT: "2"
+    mem_limit: 1g
+    # No ports: a worker serves no web API.

@@ -1,0 +1,23 @@
+# What the image does not need (and must never carry: secrets stay out of it).
+.git
+.github
+node_modules
+npm-debug.log
+.env*
+.claude.env*
+.discloud.env*
+secrets
+private
+*.pem
+*.key
+coverage
+out
+dist
+build
+docs
+scripts
+native/target
+**/*.md
+!README.md
+Dockerfile
+docker-compose*.yml

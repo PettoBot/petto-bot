@@ -71,6 +71,13 @@ const loadGuard = require('./src/utils/loadGuard');
 const watchdog = require('./src/utils/watchdog');
 const processGuards = require('./src/utils/processGuards');
 const messageInterest = require('./src/utils/messageInterest');
+const instanceRole = require('./src/utils/instanceRole');
+// Whether this instance starts a background job: a worker leaves some to the primary (src/utils/instanceRole.ts).
+function runsJob(name) {
+  if (instanceRole.shouldRun(name)) return true;
+  logger.info(`Job ${name}: left to the primary instance.`); // i18n-ignore: operator log
+  return false;
+}
 
 // Every interval job of Petto is measured from here on (runs, time, queries and requests of each tick, utils/perf.js) and paused by the load guard when the bot is under pressure.
 perf.trackIntervals();
@@ -193,6 +200,7 @@ async function main() {
   loadEvents(client);
   music.init(client); // before the login: the connection to the node waits for the client to be ready by itself
 
+  logger.info(`Instance: ${instanceRole.describe()}.`); // i18n-ignore: operator log
   await runMigrations();
   // Which servers have the log of messages on: the others do not keep their messages for an hour in memory (utils/messageInterest.js).
   messageInterest.start();
@@ -202,58 +210,62 @@ async function main() {
   // The device saved with `!botstatus device` wins over PETTO_MOBILE_STATUS. The gateway reads the names when it connects (the login
   // below), so the database being ready here is early enough; if it cannot be read the environment keeps deciding and the boot goes on.
   await require('./src/utils/botDevice').applySavedDevice().catch((err) => logger.warn('Could not apply the saved device of the bot:', err.message));
-  await deployCommands();
+  // The slash commands are registered once for the whole bot, by the primary.
+  if (!instanceRole.isWorker()) await deployCommands();
   await client.login(config.token);
-  startExpiryJob(client);
-  startBumpReminderJob(client);
-  startVoiceXpJob(client);
-  startActivityStatsJob(client);
-  startGiveawayJob(client);
-  startReminderJob(client);
-  startAutoMessageJob(client);
-  startBirthdayJob(client);
-  startCountingRoleJob(client);
-  startRoleQuotaJob(client);
-  startActivityLeaderboardJob(client);
-  startAgedRolesJob(client);
-  startStreakJob(client);
-  startMessageRolesJob(client);
-  startStayVoiceJob(client);
-  startVerifyPanelJob(client);
-  startStatusHeartbeatJob(client);
-  startStatusProbeJob(client);
-  startBulkRoleJob(client);
-  startTicketAutocloseJob(client);
-  startTicketReminderJob(client);
-  startAntiScamJob();
-  startLockdownJob(client);
-  startAppealCleanupJob(client);
-  startTicketAutoDeleteJob(client);
-  startTicketChannelJob(client);
-  startPollAutocloseJob(client);
-  startCounterJob(client);
-  startBackupVaultJob(client);
-  startPremiumRoleJob(client);
-  startPremiumCleanupJob(client);
-  startPremiumLogJob(client);
-  startPremiumWatchJob(client);
-  startQuestAlertsJob(client);
-  startRolloutAlertsJob(client);
-  startRequestTimeoutJob(client);
-  startGlobalStatsJob(client);
-  startStatsCategoryJob(client);
-  startGuildSnapshotJob(client);
-  startCommandDataJob();
-  startCodeScheduleJob(client);
-  startFormCleanupJob();
-  startJoinGateJob(client);
-  startForumJob(client);
-  startVerifyChecksJob();
-  startAfkMentionsJob();
-  startFeedsJob(client);
-  startGuildPurgeJob(client);
-  startServer(client);
-  startCloudflareTunnel(config.cloudflareTunnelToken);
+  if (runsJob('startExpiryJob')) startExpiryJob(client);
+  if (runsJob('startBumpReminderJob')) startBumpReminderJob(client);
+  if (runsJob('startVoiceXpJob')) startVoiceXpJob(client);
+  if (runsJob('startActivityStatsJob')) startActivityStatsJob(client);
+  if (runsJob('startGiveawayJob')) startGiveawayJob(client);
+  if (runsJob('startReminderJob')) startReminderJob(client);
+  if (runsJob('startAutoMessageJob')) startAutoMessageJob(client);
+  if (runsJob('startBirthdayJob')) startBirthdayJob(client);
+  if (runsJob('startCountingRoleJob')) startCountingRoleJob(client);
+  if (runsJob('startRoleQuotaJob')) startRoleQuotaJob(client);
+  if (runsJob('startActivityLeaderboardJob')) startActivityLeaderboardJob(client);
+  if (runsJob('startAgedRolesJob')) startAgedRolesJob(client);
+  if (runsJob('startStreakJob')) startStreakJob(client);
+  if (runsJob('startMessageRolesJob')) startMessageRolesJob(client);
+  if (runsJob('startStayVoiceJob')) startStayVoiceJob(client);
+  if (runsJob('startVerifyPanelJob')) startVerifyPanelJob(client);
+  if (runsJob('startStatusHeartbeatJob')) startStatusHeartbeatJob(client);
+  if (runsJob('startStatusProbeJob')) startStatusProbeJob(client);
+  if (runsJob('startBulkRoleJob')) startBulkRoleJob(client);
+  if (runsJob('startTicketAutocloseJob')) startTicketAutocloseJob(client);
+  if (runsJob('startTicketReminderJob')) startTicketReminderJob(client);
+  if (runsJob('startAntiScamJob')) startAntiScamJob();
+  if (runsJob('startLockdownJob')) startLockdownJob(client);
+  if (runsJob('startAppealCleanupJob')) startAppealCleanupJob(client);
+  if (runsJob('startTicketAutoDeleteJob')) startTicketAutoDeleteJob(client);
+  if (runsJob('startTicketChannelJob')) startTicketChannelJob(client);
+  if (runsJob('startPollAutocloseJob')) startPollAutocloseJob(client);
+  if (runsJob('startCounterJob')) startCounterJob(client);
+  if (runsJob('startBackupVaultJob')) startBackupVaultJob(client);
+  if (runsJob('startPremiumRoleJob')) startPremiumRoleJob(client);
+  if (runsJob('startPremiumCleanupJob')) startPremiumCleanupJob(client);
+  if (runsJob('startPremiumLogJob')) startPremiumLogJob(client);
+  if (runsJob('startPremiumWatchJob')) startPremiumWatchJob(client);
+  if (runsJob('startQuestAlertsJob')) startQuestAlertsJob(client);
+  if (runsJob('startRolloutAlertsJob')) startRolloutAlertsJob(client);
+  if (runsJob('startRequestTimeoutJob')) startRequestTimeoutJob(client);
+  if (runsJob('startGlobalStatsJob')) startGlobalStatsJob(client);
+  if (runsJob('startStatsCategoryJob')) startStatsCategoryJob(client);
+  if (runsJob('startGuildSnapshotJob')) startGuildSnapshotJob(client);
+  if (runsJob('startCommandDataJob')) startCommandDataJob();
+  if (runsJob('startCodeScheduleJob')) startCodeScheduleJob(client);
+  if (runsJob('startFormCleanupJob')) startFormCleanupJob();
+  if (runsJob('startJoinGateJob')) startJoinGateJob(client);
+  if (runsJob('startForumJob')) startForumJob(client);
+  if (runsJob('startVerifyChecksJob')) startVerifyChecksJob();
+  if (runsJob('startAfkMentionsJob')) startAfkMentionsJob();
+  if (runsJob('startFeedsJob')) startFeedsJob(client);
+  if (runsJob('startGuildPurgeJob')) startGuildPurgeJob(client);
+  // The web API (and the SQL bridge in it) and the tunnel belong to the instance that has the database; a worker has neither.
+  if (!instanceRole.isWorker()) {
+    startServer(client);
+    startCloudflareTunnel(config.cloudflareTunnelToken);
+  }
   // The measurements (the loop, the CPU, the memory), the circuit breaker and the watchdog start last, once everything else is running.
   perf.startSampler();
   loadGuard.start();

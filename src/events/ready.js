@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
 const { announceDeployReport, cleanupGuildCommands, syncGuildCommands } = require('../handlers/deployCommands');
 const config = require('../config');
+const { isWorker } = require('../utils/instanceRole');
 const disabledCommandsDb = require('../db/disabledCommands');
 const { startOmniplexStatsJob } = require('../jobs/omniplexStatsJob');
 const { startServerTagCheckJob } = require('../jobs/serverTagCheckJob');
@@ -61,7 +62,7 @@ module.exports = {
       .catch((err) => logger.warn(`The old server-only slash commands could not be cleaned: ${err?.message ?? err}`))
       .then(() => syncGuildCommands(client))
       .catch((err) => logger.warn(`The server commands could not be registered: ${err?.message ?? err}`));
-    startDiscordStatusJob(client);
+    if (!isWorker()) startDiscordStatusJob(client);
     // Once, in the background: disabled-command rules saved with an alias (`sug`) take the real name (`suggest`), the only one checked.
     disabledCommandsDb.canonicalizeStored((name) => {
       const word = String(name ?? '').trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
@@ -83,14 +84,16 @@ module.exports = {
     }, 20_000).unref?.();
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
     // The changes of this version are posted in the channel of the `currently_log` variable, once each (a little after the start, so the start is not slowed down).
-    setTimeout(() => {
+    if (!isWorker()) setTimeout(() => { // once for the whole bot: the primary posts it
       require('../utils/currentlyLog').startCurrentlyLog(client)
         .catch((err) => logger.warn(`Currently log: ${err?.message ?? err}`));
     }, 45_000).unref?.();
     // A sticky saved in the dashboard is posted at once (the dashboard says so on `petto:sticky`) instead of when somebody next writes in the channel.
     require('../utils/stickyPayload').startStickyNowListener(client);
-    startOmniplexStatsJob(client);
-    startServerTagCheckJob(client);
+    if (!isWorker()) {
+      startOmniplexStatsJob(client);
+      startServerTagCheckJob(client);
+    }
     // Role triggers only see a role given to a member Petto has in memory: the members of the servers that have rules are loaded, one server at a
     // time, a little after the start (utils/roleTriggerWarm.js; skipped for big servers and under load).
     setTimeout(() => {

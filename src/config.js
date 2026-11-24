@@ -47,6 +47,13 @@ const primaryDatabaseUrl = process.env.DISCLOUD_DATABASE_URL?.trim()
   || process.env.PETTO_PRIMARY_DATABASE_URL?.trim()
   || null;
 
+// A second instance (a VPS, a Docker container) that cannot reach the database by itself sends its SQL to the first one (src/db/sqlBridge.ts).
+const dbBridgeUrl = process.env.PETTO_DB_BRIDGE_URL?.trim() || null;
+const dbBridgeSecret = process.env.PETTO_BRIDGE_SECRET?.trim() || null;
+// `primary` (default) is the instance that has the database: it runs everything. `worker` is the second one: it holds its own shards, does not serve the web API,
+// does not deploy the commands or change the schema, and skips the jobs that must run once for the whole bot (src/utils/instanceRole.ts).
+const instanceRole = String(process.env.PETTO_ROLE || 'primary').trim().toLowerCase() === 'worker' ? 'worker' : 'primary';
+
 function resolveShards() {
   const raw = process.env.DISCORD_SHARDS?.trim().toLowerCase();
   if (!raw) return undefined;
@@ -64,8 +71,11 @@ for (const key of required) {
   }
 }
 
-if (!primaryDatabaseUrl) {
-  throw new Error('DISCLOUD_DATABASE_URL is required. Petto uses Discloud PostgreSQL as its runtime database.'); // i18n-ignore: startup error for the operator
+if (!primaryDatabaseUrl && !(dbBridgeUrl && dbBridgeSecret)) {
+  throw new Error('DISCLOUD_DATABASE_URL is required (or PETTO_DB_BRIDGE_URL and PETTO_BRIDGE_SECRET for a second instance). Petto uses Discloud PostgreSQL as its runtime database.'); // i18n-ignore: startup error for the operator
+}
+if (instanceRole === 'worker' && !primaryDatabaseUrl && !dbBridgeUrl) {
+  throw new Error('A worker instance needs a way to the database: DISCLOUD_DATABASE_URL or PETTO_DB_BRIDGE_URL with PETTO_BRIDGE_SECRET.'); // i18n-ignore: startup error for the operator
 }
 
 module.exports = {
@@ -245,6 +255,12 @@ module.exports = {
   databaseMode: 'discloud-postgres',
   // Discloud PostgreSQL is Petto's runtime database.
   primaryDatabaseUrl,
+  dbBridgeUrl,
+  // Optional read-only copy of the database for the heavy reads (statistics): only what is a plain read goes there. Petto does not copy the data; without it everything reads the main database.
+  readDatabaseUrl: process.env.PETTO_READ_DATABASE_URL?.trim() || null,
+  readDatabaseSsl: envBool('PETTO_READ_DATABASE_SSL', false),
+  dbBridgeSecret,
+  instanceRole,
   primaryDatabaseSsl: envBool('DISCLOUD_DATABASE_SSL', false),
   databasePoolMax: envInt('PETTO_DATABASE_POOL_MAX', 10, 1, 50),
   databaseConnectTimeoutMs: envInt('PETTO_DATABASE_CONNECT_TIMEOUT_MS', 10_000, 1_000, 60_000),
