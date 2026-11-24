@@ -5530,6 +5530,19 @@ create table if not exists upload_blocks (
 );
 alter table upload_blocks enable row level security;
 
+-- Own badges (Bronze 1, Silver 2, Gold 4): the badge a person made (a name and a picture) waits here for the team. When it is approved it becomes a badge of the editor
+-- (`custom_badges`, id `own-<person>-<slot>`, off sale, so only its maker has it) and this row goes away; a new one for the same slot waits here until it is approved.
+create table if not exists user_own_badges (
+  user_id      text not null,
+  slot         smallint not null check (slot between 1 and 4),
+  name         text not null check (char_length(name) between 2 and 24),
+  image        bytea not null check (octet_length(image) <= 262144),
+  screened     boolean not null default false,
+  submitted_at timestamptz not null default now(),
+  primary key (user_id, slot)
+);
+alter table user_own_badges enable row level security;
+
 -- Streaks: each server decides what counts as an active day (messages and minutes in voice that day). The streak itself is worked out from activity_members, so nothing is stored for it.
 create table if not exists streak_config (
   guild_id           text primary key references guilds(guild_id) on delete cascade,

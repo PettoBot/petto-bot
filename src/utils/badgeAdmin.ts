@@ -19,7 +19,7 @@ export function saleStatus(row: Pick<import('../db/customBadges').CustomRow, 'ac
 
 export async function list(now: Date = new Date()) {
   const [rows, owners] = await Promise.all([customDb.listCustomBadges(), customDb.ownerCounts()]);
-  return { badges: rows.map((row) => ({ ...row, status: saleStatus(row, now), owners: owners[row.id] ?? 0 })) };
+  return { badges: rows.filter((row) => !row.id.startsWith('own-')).map((row) => ({ ...row, status: saleStatus(row, now), owners: owners[row.id] ?? 0 })) };
 }
 
 export async function save(userId: string, body: Record<string, unknown>) {

@@ -131,7 +131,25 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
             res.status(404).json({ ok: false, error: 'not_found' });
             return;
         }
-        res.set('Content-Type', 'image/webp').set('Cache-Control', 'private, no-store').send(bytes);
+        res.set('Content-Type', require('../utils/animatedPicture').isAnimated(bytes) ? 'image/png' : 'image/webp').set('Cache-Control', 'private, no-store').send(bytes);
+    });
+    // Own badges (a plan makes 1, 2 or 4): the state, sending one (the body is the picture; `slot` and `name` go in the address), removing one, and what the owner does in the queue.
+    app.get('/api/dashboard/ceramos/own-badge-state', limiter, guard(false, async (userId) => api.ownBadges.state(userId)));
+    app.post('/api/dashboard/ceramos/own-badge-submit', limiter, raw, guard(true, async (userId, _body, req) => api.ownBadges.submit(userId, { slot: req.query.slot, name: req.query.name }, req.body)));
+    app.post('/api/dashboard/ceramos/own-badge-remove', limiter, guard(true, async (userId, body) => api.ownBadges.remove(userId, body)));
+    app.get('/api/dashboard/ceramos/admin/own-badges', limiter, owner(false, async () => api.ownBadges.queue()));
+    app.post('/api/dashboard/ceramos/admin/own-badge-review', limiter, owner(true, async (userId, body) => api.ownBadges.review(userId, body)));
+    app.get('/api/dashboard/ceramos/admin/own-badge-file', limiter, async (req, res) => {
+        if (!isAuthorized(req) || String(req.query.user_id ?? '') !== String(config.ownerId)) {
+            res.status(401).json({ ok: false, error: 'unauthorized' });
+            return;
+        }
+        const bytes = await api.ownBadges.pendingFile(String(req.query.person ?? ''), req.query.slot).catch(() => null);
+        if (!bytes) {
+            res.status(404).json({ ok: false, error: 'not_found' });
+            return;
+        }
+        res.set('Content-Type', 'image/png').set('Cache-Control', 'private, no-store').send(bytes);
     });
     // The streaks of a person in the servers where they have been active.
     app.get('/api/dashboard/ceramos/streaks', limiter, guard(false, async (userId) => api.streaksMine(userId)));

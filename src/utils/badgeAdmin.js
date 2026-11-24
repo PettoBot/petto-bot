@@ -26,7 +26,7 @@ function saleStatus(row, now = new Date()) {
 }
 async function list(now = new Date()) {
     const [rows, owners] = await Promise.all([customDb.listCustomBadges(), customDb.ownerCounts()]);
-    return { badges: rows.map((row) => ({ ...row, status: saleStatus(row, now), owners: owners[row.id] ?? 0 })) };
+    return { badges: rows.filter((row) => !row.id.startsWith('own-')).map((row) => ({ ...row, status: saleStatus(row, now), owners: owners[row.id] ?? 0 })) };
 }
 async function save(userId, body) {
     const checked = check.checkBadgeInput(body);

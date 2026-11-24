@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.approvedImage = exports.MAX_UPLOAD_BYTES = exports.POLICY_VERSION = void 0;
+exports.approvedImage = exports.REASONS = exports.MAX_UPLOAD_BYTES = exports.POLICY_VERSION = void 0;
+exports.planTier = planTier;
 exports.state = state;
 exports.acceptPolicy = acceptPolicy;
 exports.submit = submit;
@@ -23,8 +24,12 @@ const gifs = require('../imgutils/gif');
 exports.POLICY_VERSION = 1;
 exports.MAX_UPLOAD_BYTES = 1_048_576;
 const ID = /^\d{15,25}$/;
-const REASONS = ['sexual', 'minor', 'violence', 'hate', 'illegal', 'private', 'copyright', 'quality', 'other'];
+exports.REASONS = ['sexual', 'minor', 'violence', 'hate', 'illegal', 'private', 'copyright', 'quality', 'other'];
 /** What the plan of a person allows for an own picture: none, a still one or an animated one (an animated one is a GIF, kept as an APNG). */
+async function planTier(userId) {
+    const row = await plansDb.getPlan(userId).catch(() => null);
+    return row && row.active ? row.plan : 'free';
+}
 async function perkOf(userId) {
     const row = await plansDb.getPlan(userId).catch(() => null);
     const tier = row && row.active ? row.plan : 'free';
@@ -92,7 +97,7 @@ async function review(adminId, body) {
     if (!person)
         return { ok: false, error: 'bad_person' };
     const action = body.action;
-    const reason = REASONS.includes(body.reason) ? body.reason : 'other';
+    const reason = exports.REASONS.includes(body.reason) ? body.reason : 'other';
     if (action === 'approve')
         return (await uploadsDb.approve(person)) ? { ok: true } : { ok: false, error: 'nothing_pending' };
     if (action === 'unblock')

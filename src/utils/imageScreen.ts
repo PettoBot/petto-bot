@@ -21,15 +21,15 @@ export function readAnswer(answer: unknown): Verdict {
   return { checked: true, minor: Boolean(categories['sexual/minors']), reasons };
 }
 
-/** Looks at a picture (webp bytes). Never throws: a failure is `{ checked: false }`. */
-export async function screen(bytes: Buffer, fetcher: typeof fetch = fetch): Promise<Verdict> {
+/** Looks at a picture (webp bytes, or another type when `mime` says so). Never throws: a failure is `{ checked: false }`. */
+export async function screen(bytes: Buffer, fetcher: typeof fetch = fetch, mime = 'image/webp'): Promise<Verdict> {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key || process.env.PETTO_IMAGE_SCREEN === 'false') return { checked: false };
   try {
     const response = await fetcher(ENDPOINT, {
       method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'omni-moderation-latest', input: [{ type: 'image_url', image_url: { url: `data:image/webp;base64,${bytes.toString('base64')}` } }] }),
+      body: JSON.stringify({ model: 'omni-moderation-latest', input: [{ type: 'image_url', image_url: { url: `data:${mime};base64,${bytes.toString('base64')}` } }] }),
     });
     if (!response.ok) return { checked: false };
     return readAnswer(await response.json().catch(() => null));

@@ -158,3 +158,4 @@ export const streaksMine = streakActions.mine;
 export const summaryOf = streakActions.summary;
 
 export const uploads = require('./uploadActions') as typeof import('./uploadActions');
+export const ownBadges = require('./ownBadgeActions') as typeof import('./ownBadgeActions');

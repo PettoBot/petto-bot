@@ -14,10 +14,14 @@ const gifs = require('../imgutils/gif') as typeof import('../imgutils/gif');
 export const POLICY_VERSION = 1;
 export const MAX_UPLOAD_BYTES = 1_048_576;
 const ID = /^\d{15,25}$/;
-const REASONS = ['sexual', 'minor', 'violence', 'hate', 'illegal', 'private', 'copyright', 'quality', 'other'] as const;
+export const REASONS = ['sexual', 'minor', 'violence', 'hate', 'illegal', 'private', 'copyright', 'quality', 'other'] as const;
 export type Reason = (typeof REASONS)[number];
 
 /** What the plan of a person allows for an own picture: none, a still one or an animated one (an animated one is a GIF, kept as an APNG). */
+export async function planTier(userId: string): Promise<'free' | 'bronze' | 'silver' | 'gold'> {
+  const row = await plansDb.getPlan(userId).catch(() => null);
+  return row && row.active ? (row.plan as 'bronze' | 'silver' | 'gold') : 'free';
+}
 async function perkOf(userId: string): Promise<'none' | 'still' | 'animated'> {
   const row = await plansDb.getPlan(userId).catch(() => null);
   const tier = row && row.active ? row.plan : 'free';
