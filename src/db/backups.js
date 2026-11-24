@@ -1,83 +1,63 @@
-const database = require('./database');
+// The backups of a server live ONLY in the Petto Vault: its own database (PETTO_VAULT_DATABASE_URL), never in the main one. Without the Vault there are no backups
+// (`vault.isConfigured()` is false and the commands and the dashboard say so). Premium is checked before a backup is made (utils/backupAccess.js), not here.
 const vault = require('./vault');
 
+const needVault = () => {
+  if (!vault.isConfigured()) throw new Error('The Petto Vault database is not configured (PETTO_VAULT_DATABASE_URL).');
+};
+
 async function createBackup(guildId, createdBy, label, snapshot, source = 'manual') {
-  if (vault.isConfigured()) return vault.createBackup(guildId, createdBy, label, snapshot, source);
-  const { data, error } = await database.rpc('create_guild_backup', {
-    p_guild_id: guildId,
-    p_created_by: createdBy,
-    p_label: label || '',
-    p_source: source,
-    p_snapshot: snapshot,
-  });
-  if (error) throw error;
-  return Array.isArray(data) ? data[0] ?? null : data;
+  needVault();
+  return vault.createBackup(guildId, createdBy, label, snapshot, source);
 }
 
 async function listBackups(guildId, limit = 10) {
-  if (vault.isConfigured()) return vault.listBackups(guildId, limit);
-  const { data, error } = await database
-    .from('guild_backups')
-    .select('backup_number, id, label, source, created_by, created_at')
-    .eq('guild_id', guildId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+  needVault();
+  return vault.listBackups(guildId, limit);
 }
 
 async function getBackup(guildId, backupNumber = null) {
-  if (vault.isConfigured()) return vault.getBackup(guildId, backupNumber);
-  let query = database.from('guild_backups').select('*').eq('guild_id', guildId).order('created_at', { ascending: false }).limit(1);
-  if (backupNumber) query = database.from('guild_backups').select('*').eq('guild_id', guildId).eq('backup_number', backupNumber).limit(1);
-  const { data, error } = await query.maybeSingle();
-  if (error) throw error;
-  return data;
+  needVault();
+  return vault.getBackup(guildId, backupNumber);
 }
 
 /** Deletes one backup of a server. True when there was one. */
 async function deleteBackup(guildId, backupNumber) {
-  if (vault.isConfigured()) return vault.deleteBackup(guildId, backupNumber);
-  const { data, error } = await database.from('guild_backups').delete().eq('guild_id', guildId).eq('backup_number', backupNumber).select('backup_number');
-  if (error) throw error;
-  return (data ?? []).length > 0;
+  needVault();
+  return vault.deleteBackup(guildId, backupNumber);
 }
 
 /** Deletes every backup of a server and turns its automatic backups off. Returns how many backups there were. */
 async function deleteAllBackups(guildId) {
-  if (vault.isConfigured()) return vault.deleteAllBackups(guildId);
-  const { data, error } = await database.from('guild_backups').delete().eq('guild_id', guildId).select('backup_number');
-  if (error) throw error;
-  return (data ?? []).length;
+  needVault();
+  return vault.deleteAllBackups(guildId);
 }
 
 async function recordAudit(guildId, actorId, action, backupNumber = null, metadata = {}) {
-  if (vault.isConfigured()) {
-    await vault.recordAudit(guildId, actorId, action, backupNumber, metadata);
-    return true;
-  }
-
-  const { error } = await database.from('guild_backup_audit').insert({
-    guild_id: guildId,
-    actor_id: actorId,
-    action,
-    backup_number: backupNumber,
-    metadata,
-  });
-  if (error) throw error;
+  needVault();
+  await vault.recordAudit(guildId, actorId, action, backupNumber, metadata);
   return true;
 }
 
 async function listAudit(guildId, limit = 10) {
-  if (vault.isConfigured()) return vault.listAudit(guildId, limit);
-  const { data, error } = await database
-    .from('guild_backup_audit')
-    .select('id, actor_id, action, backup_number, metadata, created_at')
-    .eq('guild_id', guildId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+  needVault();
+  return vault.listAudit(guildId, limit);
 }
 
 module.exports = { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, listAudit, vault };
+
+/**
+ * The backups that were kept in the main database before the Vault were deleted for good (the maintainer asked for it: the main database holds no backups). It runs once after the Vault is
+ * connected (never before, so a server is never left with no place for its backups), and it does nothing when there is nothing left. Returns how many backups it deleted.
+ */
+async function purgeLegacyBackups() {
+  if (!vault.isConfigured()) return 0;
+  const { getPrimaryPool } = require('./postgres');
+  const pool = getPrimaryPool();
+  const table = await pool.query("select to_regclass('public.guild_backups') as backups, to_regclass('public.guild_backup_audit') as audit");
+  let removed = 0;
+  if (table.rows[0]?.backups) removed = (await pool.query('delete from guild_backups')).rowCount ?? 0;
+  if (table.rows[0]?.audit) await pool.query('delete from guild_backup_audit');
+  return removed;
+}
+module.exports.purgeLegacyBackups = purgeLegacyBackups;

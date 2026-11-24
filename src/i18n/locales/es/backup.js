@@ -1,5 +1,6 @@
 // Copias de seguridad de un servidor (Petto Vault): !backup, su menú y formularios, y las copias programadas.
 module.exports = {
+  'backup.premium.required': '{emoji} Los backups son una función Premium. Activa Premium en este servidor para crear y programar backups: {url}\nLos backups que ya tienes se pueden seguir listando, exportando, restaurando y borrando.',
   'backup.loading.panel': 'Cargando tu centro de copias de seguridad...',
   'backup.loading.create': 'Creando una copia de seguridad completa de la configuración del servidor...',
   'backup.loading.list': 'Cargando las copias guardadas...',

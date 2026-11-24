@@ -5,6 +5,8 @@ const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 const { t, guildLanguage } = require('../i18n');
 const { backupsPaused } = require('../utils/maintenance');
+const { backupsAllowed } = require('../utils/backupAccess');
+const { purgeLegacyBackups } = require('../db/backups');
 
 const POLL_INTERVAL_MS = 60_000;
 // The backups of a server Petto is no longer in are not kept for ever: they are deleted this long after the last one was taken.
@@ -38,6 +40,11 @@ async function processDueBackups(client) {
         await vault.advanceSchedule(schedule.guild_id, schedule.interval_hours);
         return;
       }
+      // Scheduled backups are a Premium feature: without Premium the schedule is kept but not run (it runs again with Premium).
+      if (!(await backupsAllowed(guild.id))) {
+        await vault.advanceSchedule(guild.id, schedule.interval_hours);
+        return;
+      }
       const snapshot = await buildFullSnapshot(guild);
       // The label is shown in the backup lists of the server, so it is written in its language.
       const label = t(await guildLanguage(guild.id), 'backup.scheduledLabel');
@@ -64,6 +71,10 @@ function startBackupVaultJob(client) {
     logger.info('Petto Vault is disabled; scheduled backups are not running.');
     return;
   }
+  // The backups that were kept in the main database are deleted once the Vault is connected (the main database holds no backups).
+  setTimeout(() => {
+    purgeLegacyBackups().then((count) => { if (count) logger.info(`Deleted ${count} old backups from the main database (backups live in the Vault now).`); }).catch((err) => logger.warn(`Old backups could not be deleted from the main database: ${err.message}`));
+  }, 60_000).unref?.();
   const run = exclusiveTask(() => processDueBackups(client));
   // The job polls every minute. A database connection that times out for a moment is normal and comes back by itself, so it is
   // only reported when it lasts (three ticks in a row); anything else is reported at the first failure. Either way only the first

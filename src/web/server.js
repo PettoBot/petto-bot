@@ -26,6 +26,7 @@ const verificationSignals = require('../db/verificationSignals');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { applyVerificationRoles } = require('../utils/verifyApply');
 const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, vault } = require('../db/backups');
+const { backupsAllowed } = require('../utils/backupAccess');
 const { planRestore, restoreParts, backupContents } = require('../utils/backupRestore');
 const backupJobs = require('../utils/backupJobs');
 const { buildFullSnapshot } = require('../commands/config/backup');
@@ -302,7 +303,8 @@ function startServer(client) {
       vault.getSchedule(guildId),
       vault.listAudit(guildId, 20),
     ]);
-    return { backups, schedule, audit, restoreJob: backupJobs.describeJob(backupJobs.getJob(guildId)) };
+    // `premium`: making and scheduling backups needs Premium on the server (the page shows the notice when it is false).
+    return { backups, schedule, audit, restoreJob: backupJobs.describeJob(backupJobs.getJob(guildId)), premium: await backupsAllowed(guildId) };
   }
 
   if (dashboardEnabled) {
@@ -1050,6 +1052,11 @@ function startServer(client) {
       const { guild, userId } = authorized;
       const action = String(req.body?.action || '');
       try {
+        if ((action === 'create' || action === 'schedule') && !(await backupsAllowed(guild.id))) {
+          // Making and scheduling backups is Premium; the page shows the notice.
+          res.status(402).json({ ok: false, error: 'premium_required' });
+          return;
+        }
         if (action === 'create') {
           await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
           const snapshot = await buildFullSnapshot(guild);
