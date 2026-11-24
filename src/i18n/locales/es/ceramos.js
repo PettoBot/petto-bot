@@ -70,4 +70,5 @@ module.exports = {
   'ceramos.top.empty': 'Nadie tiene ceramos todavía.',
   'ceramos.top.unknown': 'Alguien que se fue',
   'ceramos.reason.purchase': 'Paquete de ceramos comprado',
+  'ceramos.reason.mission': 'Misión',
 };

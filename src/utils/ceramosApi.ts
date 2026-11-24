@@ -147,3 +147,7 @@ export const grantCeramos = grantActions.grant;
 
 const publicApi = require('./publicApiActions') as typeof import('./publicApiActions');
 export const apiKeys = publicApi;
+
+const missionActions = require('./missionActions') as typeof import('./missionActions');
+export const missionsList = missionActions.list;
+export const missionsClaim = missionActions.claim;

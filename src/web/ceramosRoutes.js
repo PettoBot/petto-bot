@@ -114,6 +114,9 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const id = badgeOf({ badge: body.id });
         return id && typeof body.active === 'boolean' ? admin.setActive(id, body.active) : bad;
     }));
+    // The missions: the list with the progress, and claiming one (`id`) or every finished one.
+    app.get('/api/dashboard/ceramos/missions', limiter, guard(false, async (userId) => api.missionsList(userId)));
+    app.post('/api/dashboard/ceramos/missions-claim', limiter, guard(true, async (userId, body) => api.missionsClaim(userId, body.id)));
     // The keys of the read-only API (a person makes, sees and removes their own) and what a key reads. The reads need no person: the key says who.
     app.get('/api/dashboard/ceramos/api-keys', limiter, guard(false, async (userId) => api.apiKeys.list(userId)));
     app.post('/api/dashboard/ceramos/api-key-create', limiter, guard(true, async (userId, body) => api.apiKeys.create(userId, body)));

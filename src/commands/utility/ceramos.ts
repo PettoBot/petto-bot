@@ -43,7 +43,7 @@ async function picture(url: string | null | undefined): Promise<Image | null> {
   try { return await loadImageFromLink(url); } catch { return null; }
 }
 
-const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund', 'banner', 'font', 'pack', 'purchase'];
+const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund', 'banner', 'font', 'pack', 'purchase', 'mission'];
 
 async function wallet(interaction: ChatInputCommandInteraction, lang: string): Promise<void> {
   await interaction.deferReply();

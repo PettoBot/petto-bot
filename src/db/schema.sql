@@ -5490,3 +5490,13 @@ create table if not exists api_keys (
 );
 create index if not exists api_keys_user_idx on api_keys (user_id);
 alter table api_keys enable row level security;
+
+-- Missions already claimed: one row for each person, mission and period (the day or the week), so a mission pays once for each period.
+create table if not exists mission_claims (
+  user_id    text not null,
+  mission_id text not null,
+  period_key text not null,
+  claimed_at timestamptz not null default now(),
+  primary key (user_id, mission_id, period_key)
+);
+alter table mission_claims enable row level security;

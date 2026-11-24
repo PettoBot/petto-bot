@@ -87,7 +87,23 @@ async function hasPremium(userId, now = Date.now()) {
 async function whoIs(userId, now = Date.now()) {
   if (isTeam(userId)) return { unlimited: true, team: true, premium: false };
   const premium = await hasPremium(userId, now);
-  return { unlimited: premium, team: false, premium };
+  if (premium) return { unlimited: true, team: false, premium };
+  const limit = await planLimit(userId);
+  return limit === null ? { unlimited: false, team: false, premium } : { unlimited: false, team: false, premium, limit };
+}
+
+/**
+ * The questions a day of a member with a plan of a person (Bronze, Silver or Gold): what the plan gives, never less than what a free member has. Null (the free limit applies) with no
+ * plan or when the plan cannot be read: the plan only ever adds.
+ */
+async function planLimit(userId) {
+  try {
+    const plans = require('./userPlans');
+    const row = await require('../db/userPlans').getPlan(String(userId));
+    if (!row || !row.active) return null;
+    const perks = plans.PLAN_PERKS?.[row.plan];
+    return perks ? Math.max(limits().freeDaily, perks.aiPerDay) : null;
+  } catch { return null; }
 }
 
 // ---------------------------------------------------------------- time
@@ -247,13 +263,13 @@ async function ask({ userId, guildId, question, history = [], lang = 'en' }, dep
   if (!who.unlimited) {
     let taken;
     try {
-      taken = await store.consume(String(userId), day, setting.freeDaily);
+      taken = await store.consume(String(userId), day, who.limit ?? setting.freeDaily);
     } catch (error) {
       logger.warn(`[${TAG}] the daily count failed (${error?.code ?? 'error'}): the question was refused`);
       releaseSlots(); restoreCooldown();
       return { status: 'db' };
     }
-    if (!taken.ok) { releaseSlots(); restoreCooldown(); return { status: 'limit', limit: setting.freeDaily, resetAt: nextReset(now) }; }
+    if (!taken.ok) { releaseSlots(); restoreCooldown(); return { status: 'limit', limit: who.limit ?? setting.freeDaily, resetAt: nextReset(now) }; }
     used = taken.used;
   }
 
@@ -275,7 +291,7 @@ async function ask({ userId, guildId, question, history = [], lang = 'en' }, dep
   }
   const text = sanitizeAnswer(result.content, { fallback: '' });
   if (!text) { await refund(); return { status: 'failed', code: 'empty' }; }
-  return { status: 'ok', text, remaining: who.unlimited ? null : Math.max(0, setting.freeDaily - used), refund };
+  return { status: 'ok', text, remaining: who.unlimited ? null : Math.max(0, (who.limit ?? setting.freeDaily) - used), refund };
 }
 
 /** How many questions a member has left today: `{ unlimited: true }` or `{ left, limit, resetAt }`. Throws when the database cannot be read. */
@@ -283,7 +299,7 @@ async function remainingToday(userId, deps = {}) {
   const now = (deps.now ?? Date.now)();
   const who = await (deps.who ?? whoIs)(userId, now);
   if (who.unlimited) return { unlimited: true, team: who.team };
-  const limit = limits().freeDaily;
+  const limit = who.limit ?? limits().freeDaily;
   const used = await (deps.store ?? usage).usedOn(String(userId), dayOf(now));
   return { unlimited: false, left: Math.max(0, limit - used), limit, resetAt: nextReset(now) };
 }
@@ -388,7 +404,7 @@ function resetState() {
 
 module.exports = {
   TAG, MARK, MAX_QUESTION, MAX_ANSWER, MAX_BACK, SYSTEM_PROMPT,
-  limits, isEnabled, isConfigured, whoIs, hasPremium, dayOf, nextReset,
+  limits, isEnabled, isConfigured, whoIs, planLimit, hasPremium, dayOf, nextReset,
   buildMessages, cleanQuestion, plainMentions, clipText, sanitizeAnswer, composeAnswer,
   ask, remainingToday,
   isAnswer, stripAnswer, stripCommand, rememberAnswer, historyFor, isFollowUp,

@@ -91,6 +91,8 @@
  "lmsr": "levels manage sync",
  "lvrm": "levels voice role-mode",
  "mcda": "modtools case remove-all",
+ "mclai": "missions claim",
+ "mlist": "missions list",
  "mtls": "mutelist",
  "pfxa": "prefix add",
  "pfxr": "prefix remove",

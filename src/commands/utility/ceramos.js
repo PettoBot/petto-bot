@@ -49,7 +49,7 @@ async function picture(url) {
         return null;
     }
 }
-const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund', 'banner', 'font', 'pack', 'purchase'];
+const REASONS = ['daily', 'badge', 'frame', 'grant', 'take', 'refund', 'banner', 'font', 'pack', 'purchase', 'mission'];
 async function wallet(interaction, lang) {
     await interaction.deferReply();
     const user = interaction.user;
