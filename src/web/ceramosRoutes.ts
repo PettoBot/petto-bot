@@ -16,9 +16,9 @@ const config = require('../config') as { ownerId: string; ownerIds?: string[] };
 const isOwner = (userId: unknown): boolean => (config.ownerIds ?? [config.ownerId]).map(String).includes(String(userId ?? ''));
 const logger = require('../utils/logger') as { error: (...args: unknown[]) => void };
 
-// The routes that check who the owner is carry a limiter built here, in the same file, so it is plain that each one is limited (besides the general `limiter`).
+// The routes that check who the owner is, and the one that chooses a frame, carry a limiter built here, in the same file, so it is plain that each one is limited (besides the general `limiter`).
 const { rateLimit } = require('express-rate-limit') as typeof import('express-rate-limit');
-const ownerRouteLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); } });
+const routeLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); } });
 
 const ID = /^\d{15,25}$/;
 const BADGE = /^[a-z0-9-]{1,40}$/;
@@ -58,7 +58,7 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   app.post('/api/dashboard/ceramos/daily', limiter, guard(true, async (userId) => ({ result: await api.claim(userId) })));
   app.post('/api/dashboard/ceramos/buy', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id ? await api.buy(userId, id) : bad }; }));
   app.post('/api/dashboard/ceramos/upgrade', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id ? await api.upgrade(userId, id) : bad }; }));
-  app.post('/api/dashboard/ceramos/frame', limiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id && typeof body.frame === 'string' ? await api.chooseFrame(userId, id, body.frame) : bad }; }));
+  app.post('/api/dashboard/ceramos/frame', limiter, routeLimiter, guard(true, async (userId, body) => { const id = badgeOf(body); return { result: id && typeof body.frame === 'string' ? await api.chooseFrame(userId, id, body.frame) : bad }; }));
   app.post('/api/dashboard/ceramos/identity', limiter, guard(true, async (userId, body) => {
     const id = badgeOf(body);
     return { result: id && typeof body.enabled === 'boolean' ? await api.setIdentity(userId, id, body.enabled) : bad };
@@ -118,7 +118,7 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   app.post('/api/dashboard/ceramos/upload-submit', limiter, raw, guard(true, async (userId, _body, req) => api.uploads.submit(userId, (req as unknown as { body?: unknown }).body)));
   app.get('/api/dashboard/ceramos/admin/uploads', limiter, owner(false, async () => api.uploads.queue()));
   app.post('/api/dashboard/ceramos/admin/upload-review', limiter, owner(true, async (userId, body) => api.uploads.review(userId, body)));
-  app.get('/api/dashboard/ceramos/admin/upload-file', limiter, ownerRouteLimiter, ownerFile(async (req: Request, res: Response) => {
+  app.get('/api/dashboard/ceramos/admin/upload-file', limiter, routeLimiter, ownerFile(async (req: Request, res: Response) => {
     const bytes = await api.uploads.pendingFile(String(req.query.person ?? '')).catch(() => null);
     if (!bytes) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
     res.set('Content-Type', (require('../utils/animatedPicture') as typeof import('../utils/animatedPicture')).isAnimated(bytes) ? 'image/png' : 'image/webp').set('Cache-Control', 'private, no-store').send(bytes);
@@ -129,7 +129,7 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   app.post('/api/dashboard/ceramos/own-badge-remove', limiter, guard(true, async (userId, body) => api.ownBadges.remove(userId, body)));
   app.get('/api/dashboard/ceramos/admin/own-badges', limiter, owner(false, async () => api.ownBadges.queue()));
   app.post('/api/dashboard/ceramos/admin/own-badge-review', limiter, owner(true, async (userId, body) => api.ownBadges.review(userId, body)));
-  app.get('/api/dashboard/ceramos/admin/own-badge-file', limiter, ownerRouteLimiter, ownerFile(async (req: Request, res: Response) => {
+  app.get('/api/dashboard/ceramos/admin/own-badge-file', limiter, routeLimiter, ownerFile(async (req: Request, res: Response) => {
     const bytes = await api.ownBadges.pendingFile(String(req.query.person ?? ''), req.query.slot).catch(() => null);
     if (!bytes) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
     res.set('Content-Type', 'image/png').set('Cache-Control', 'private, no-store').send(bytes);
@@ -152,8 +152,8 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
   app.post('/api/dashboard/ceramos/public/movements', limiter, publicRead('movements'));
   app.get('/api/dashboard/ceramos/public/info', limiter, (req: Request, res: Response) => { if (!isAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; } res.json(api.apiKeys.publicInfo()); });
   // Giving ceramos from the dashboard: the owner and the people the owner lists (the bot checks who is asking), with limits the owner sets.
-  app.get('/api/dashboard/ceramos/admin/grant', limiter, ownerRouteLimiter, guard(false, async (userId) => api.grantState(userId, grantOwnerFor(userId))));
-  app.post('/api/dashboard/ceramos/admin/grant', limiter, ownerRouteLimiter, guard(true, async (userId, body) => api.grantCeramos(userId, grantOwnerFor(userId), body)));
+  app.get('/api/dashboard/ceramos/admin/grant', limiter, routeLimiter, guard(false, async (userId) => api.grantState(userId, grantOwnerFor(userId))));
+  app.post('/api/dashboard/ceramos/admin/grant', limiter, routeLimiter, guard(true, async (userId, body) => api.grantCeramos(userId, grantOwnerFor(userId), body)));
   app.post('/api/dashboard/ceramos/admin/grant-settings', limiter, owner(true, async (_userId, body) => api.grantSaveSettings(body)));
   // The plans of the people: who has one, give one, end one.
   app.get('/api/dashboard/ceramos/admin/plans', limiter, owner(false, async () => planAdmin.list()));
