@@ -17,12 +17,12 @@ assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode
 assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode: 'any' }), days(1, 2, 3));
 assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode: 'both' }), days(3));
 // The grace period: for some minutes after midnight the day that just ended is still "today".
-assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T00:20:00Z'), 30)), '2026-11-06');
-assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T00:40:00Z'), 30)), '2026-11-07');
-assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T00:20:00Z'), 0)), '2026-11-07');
+assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T05:20:00Z'), 30)), '2026-11-06');
+assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T05:40:00Z'), 30)), '2026-11-07');
+assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T05:20:00Z'), 0)), '2026-11-07');
 assert.equal(s.compute(days(5, 6), day(8), 0).current, 0, 'a whole day without activity: the streak is gone');
-assert.equal(s.compute(days(5, 6), s.dayOf(s.graceNow(new Date('2026-11-08T00:20:00Z'), 30)), 0).current, 2, 'inside the grace period it is still alive');
-assert.equal(s.compute(days(5, 6), s.dayOf(s.graceNow(new Date('2026-11-08T00:40:00Z'), 30)), 0).current, 0, 'after it, it is gone');
+assert.equal(s.compute(days(5, 6), s.dayOf(s.graceNow(new Date('2026-11-08T05:20:00Z'), 30)), 0).current, 2, 'inside the grace period it is still alive');
+assert.equal(s.compute(days(5, 6), s.dayOf(s.graceNow(new Date('2026-11-08T05:40:00Z'), 30)), 0).current, 0, 'after it, it is gone');
 // No activity.
 assert.deepEqual(s.compute([], day(10), 0), { current: 0, best: 0, freezesUsed: 0, activeToday: false });
 // Days in a row, today included.
@@ -63,7 +63,9 @@ const now = new Date('2026-11-07T10:00:00Z');
   assert.equal(notices.lostDue(7, 0), true);
   assert.equal(notices.lostDue(7, 3), false);
   assert.equal(notices.lostDue(2, 0), false);
-  assert.equal(notices.hoursLeft(new Date('2026-11-07T21:00:00Z')), 3);
+  assert.equal(notices.hoursLeft(new Date('2026-11-08T02:00:00Z')), 3, 'hours left of the day of Colombia (21:00 there)');
+  assert.equal(s.dayOf(new Date('2026-11-07T04:30:00Z')), '2026-11-06', 'a moment at 11:30 pm in Colombia is still of that day');
+  assert.equal(s.dayOf(new Date('2026-11-07T05:00:00Z')), '2026-11-07', 'and at 5 am UTC the next day begins');
   assert.equal(notices.nicknameFor('Liam', 7, '🔥'), 'Liam | 7 🔥');
   assert.equal(notices.nicknameFor('Liam | 7 🔥', 8, '🔥'), 'Liam | 8 🔥', 'the old suffix is replaced');
   assert.equal(notices.nicknameFor('Liam | 7 🔥', 1, '🔥'), 'Liam', 'a short streak takes it away');
@@ -100,5 +102,17 @@ const now = new Date('2026-11-07T10:00:00Z');
   assert.equal(current.entries[0].current, 3, 'days 4, 5 and 7: the 6th is covered by a freeze');
   const longest = await actions.board('100000000000000002', 'longest', new Date('2026-11-07T10:00:00Z'));
   assert.deepEqual(longest.entries.map((e) => e.userId), ['22', '11'], 'the longest board also lists streaks that ended');
+  // The rules the server turned on for what counts as a message are told by /streak (only when it has a day to start from).
+  config = { ...config, enabled: true, countingSince: '2026-11-01', counting: { minLength: 20, cooldownSeconds: 30, channelMode: 'except', channelIds: ['810000000000000001'], roleMode: 'only', roleIds: ['710000000000000001'], reactions: true } };
+  assert.equal((await actions.inGuild('1', '100000000000000001', now)).rules.counting.minLength, 20);
+  const command = require('../src/commands/utility/streak');
+  const said = [];
+  const interaction = { user: { id: '1' }, guildId: '100000000000000001', locale: 'en-US', guildLocale: 'en-US', options: { getBoolean: () => null }, reply: async (message) => { said.push(message.content); }, deferred: false, replied: false };
+  await command.execute(interaction);
+  assert.match(said[0], /Only messages of 20 characters or more count\./); assert.match(said[0], /One message counts every 30 seconds\./);
+  assert.match(said[0], /Messages in some channels do not count\./); assert.match(said[0], /Only members with some roles count\./); assert.match(said[0], /A reaction counts as a message\./);
+  config = { ...config, countingSince: null };
+  said.length = 0; await command.execute(interaction);
+  assert.ok(!/characters or more|reaction counts/.test(said[0]), 'without a day to start from the rules are not told');
   console.log('streaks: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

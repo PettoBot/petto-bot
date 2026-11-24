@@ -19,7 +19,7 @@ exports.claimNotice = claimNotice;
 exports.pruneNotices = pruneNotices;
 const { getPrimaryPool } = require('./postgres');
 exports.DEFAULT_MILESTONES = [3, 7, 14, 30, 60, 100, 365];
-exports.DEFAULT_CONFIG = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: exports.DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥', countingSince: null };
+exports.DEFAULT_CONFIG = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: exports.DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥', countingSince: null, counting: { minLength: 0, cooldownSeconds: 0, channelMode: 'all', channelIds: [], roleMode: 'all', roleIds: [], reactions: false } };
 const MODES = ['messages', 'voice', 'any', 'both'];
 function toConfig(row) {
     return {
@@ -29,9 +29,10 @@ function toConfig(row) {
         guildFreezes: Number(row.guild_freezes ?? 0), resetAt: row.reset_at ? String(row.reset_at).slice(0, 10) : null,
         graceMinutes: Number(row.grace_minutes ?? 0), dmReminder: Boolean(row.dm_reminder), dmLost: Boolean(row.dm_lost), nicknameEnabled: Boolean(row.nickname_enabled), nicknameEmoji: String(row.nickname_emoji || '🔥'),
         countingSince: row.counting_since ? String(row.counting_since).slice(0, 10) : null,
+        counting: require('./streakCounts').filtersOf(row),
     };
 }
-const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji, to_char(counting_since, 'YYYY-MM-DD') as counting_since`;
+const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji, to_char(counting_since, 'YYYY-MM-DD') as counting_since, min_length, cooldown_seconds, channel_mode, channel_ids, role_mode, role_ids, reactions_count`;
 async function getConfig(guildId) {
     const { rows } = await getPrimaryPool().query(`select ${COLUMNS} from streak_config where guild_id = $1`, [guildId]);
     return rows[0] ? toConfig(rows[0]) : { ...exports.DEFAULT_CONFIG, milestones: [...exports.DEFAULT_MILESTONES] };

@@ -25,10 +25,10 @@ async function oneGuild(guildId, userId, planFreezes, now) {
     const config = await db.getConfig(guildId);
     if (!config.enabled)
         return { guildId, enabled: false };
-    const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
+    const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode, counting: config.countingSince ? config.counting : null };
     const days = streaks.activeDays(await db.daysOf(guildId, userId, config.resetAt), rules);
     const freezes = (0, exports.freezesFor)(planFreezes, config.guildFreezes);
-    // The grace period: for some minutes after midnight (UTC) the day that just ended is still the one that counts, so a streak is not lost the moment the day changes.
+    // The grace period: for some minutes after midnight (Colombia time) the day that just ended is still the one that counts, so a streak is not lost the moment the day changes.
     return { guildId, enabled: true, ...streaks.compute(days, streaks.dayOf(streaks.graceNow(now, config.graceMinutes)), freezes), freezes, rules, graceMinutes: config.graceMinutes };
 }
 const BOARD_PLACES = 25;

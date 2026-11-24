@@ -52,7 +52,10 @@ async function normalizeAnimated(bytes) {
             const fit = Math.max(1024 / picture.width, 320 / picture.height);
             const still = createCanvas(1024, 320);
             still.getContext('2d').drawImage(picture.frames[0].canvas, (1024 - picture.width * fit) / 2, (320 - picture.height * fit) / 2, picture.width * fit, picture.height * fit);
-            return { ok: true, bytes: out, still: still.toBuffer('image/webp', 90), frames: frames.length };
+            // The detector looks at up to five frames spread over the whole animation (the first, the last and the ones between), not only at the first one.
+            const count = Math.min(5, frames.length);
+            const samples = Array.from({ length: count }, (_, index) => png(frames[Math.round((index * (frames.length - 1)) / Math.max(1, count - 1))]));
+            return { ok: true, bytes: out, still: still.toBuffer('image/webp', 90), samples, frames: frames.length };
         }
         if (frames.length < 6)
             return { ok: false, error: 'too_big' };

@@ -61,18 +61,18 @@ async function submit(userId, bytes) {
     let done;
     const failed = animated && !animated.ok ? animated.error : null;
     if (animated && animated.ok)
-        done = { ok: true, bytes: animated.bytes, look: animated.still };
+        done = { ok: true, bytes: animated.bytes, look: animated.samples, mime: 'image/png' };
     else if (failed && failed !== 'not_animated')
         done = { ok: false, error: failed };
     else {
         const still = await images.normalizeBanner(bytes);
-        done = still.ok ? { ok: true, bytes: still.bytes, look: still.bytes } : { ok: false, error: still.error };
+        done = still.ok ? { ok: true, bytes: still.bytes, look: [still.bytes], mime: 'image/webp' } : { ok: false, error: still.error };
     }
     if (!done.ok)
         return { ok: false, error: done.error };
     // The detector looks first. A picture with a minor is never kept and the person is blocked (the team can undo it); one it flags is not accepted; the rest goes to the team,
     // marked as checked when the detector looked at it.
-    const verdict = await detector.screen(done.look);
+    const verdict = await detector.screen(done.look, fetch, done.mime);
     if (verdict.checked && verdict.minor) {
         await uploadsDb.block(userId, 'minor', 'detector');
         return { ok: false, error: 'blocked' };

@@ -18,8 +18,11 @@ const GAP_MS = Number(process.env.PETTO_STREAK_GAP_MS ?? 600);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // " | 7 🔥" at the end of a name (the emoji is any short run of non-space characters).
 const SUFFIX = /\s\|\s\d+\s\S{1,8}$/u;
-/** Hours left of the UTC day. */
-const hoursLeft = (now) => (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime()) / 3_600_000;
+/** Hours left of the day of Colombia (GMT-5), the day the streaks are counted in. */
+const hoursLeft = (now) => {
+    const local = require('./botTime').shifted(now);
+    return (Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + 1) - local.getTime()) / 3_600_000;
+};
 exports.hoursLeft = hoursLeft;
 /** A reminder is due when the streak is worth it, the day is not done and little of it is left. */
 const reminderDue = (current, activeToday, left) => current >= exports.MIN_STREAK && !activeToday && left <= exports.REMINDER_HOURS;

@@ -198,15 +198,16 @@ async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.la
     let raw = null;
     if (cardName) raw = (await imageCards.getCard(guildId, cardName))?.data ?? null;
     const premium = (await getGuildPremium(guildId)).active;
-    // A server that designed its own rank card keeps its design (it can show the banner of each member with the picture `petto:user-banner`); the default card shows it by itself.
     const personId = (ctx.member ?? ctx.user ?? ctx.message?.author)?.id;
-    // The card the person designed is only for the default card: a server that made its own keeps it.
-    const custom = raw ? null : await userRankCardFor(personId);
+    // The card a person designed is theirs, and it shows in every server (that is what a person makes it for): it goes over the card a server chose. A server that designed its own card
+    // keeps it for the people who designed nothing (it can show the banner of each member with the picture `petto:user-banner`).
+    const custom = await userRankCardFor(personId);
     const userBanner = await userBannerFor(personId, custom?.background.kind === 'shop' ? custom.background.id : (custom?.background.kind === 'upload' ? 'upload:own' : null));
-    // The card a person designed is theirs, not the server's: its fonts are the ones of the page (some are Premium ones for a server's own card), so it is not held back by the server's Premium.
-    // The own picture of a Gold plan moves on the default card (a server's own card keeps its design still).
-    const bannerFrames = !raw && userBanner && custom?.background.kind === 'upload' ? await ownFramesFor(personId) : null;
-    const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner), custom), ctx, { guildId, premium: custom ? true : premium, lang, userBanner, bannerFrames });
+    // The fonts of a card a person designed are the ones of the page (some are Premium ones for a server's own card), so it is not held back by the server's Premium.
+    // The own picture of a Gold plan moves on it.
+    const bannerFrames = custom && userBanner && custom.background.kind === 'upload' ? await ownFramesFor(personId) : null;
+    const card = custom ? defaultRankCard(source, lang, Boolean(userBanner), custom) : (raw ?? defaultRankCard(source, lang, Boolean(userBanner), null));
+    const buffer = await drawCard(card, ctx, { guildId, premium: custom ? true : premium, lang, userBanner, bannerFrames });
     return { buffer, name: CARD_FILE_NAME };
   } catch (error) {
     logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);

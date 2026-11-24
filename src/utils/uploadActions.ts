@@ -49,19 +49,19 @@ export async function submit(userId: string, bytes: unknown) {
   const moving = gifs.isGif(bytes) && (await perkOf(userId)) === 'animated';
   const animated = moving ? await animatedPictures.normalizeAnimated(bytes) : null;
   // A GIF that is only one picture is a still one.
-  type Kept = { ok: true; bytes: Buffer; look: Buffer } | { ok: false; error: 'bad_file' | 'file_too_small' | 'too_big' };
+  type Kept = { ok: true; bytes: Buffer; look: Buffer[]; mime: string } | { ok: false; error: 'bad_file' | 'file_too_small' | 'too_big' };
   let done: Kept;
   const failed = animated && !animated.ok ? (animated as { error: 'bad_file' | 'file_too_small' | 'too_big' | 'not_animated' }).error : null;
-  if (animated && animated.ok) done = { ok: true, bytes: (animated as { bytes: Buffer }).bytes, look: (animated as { still: Buffer }).still };
+  if (animated && animated.ok) done = { ok: true, bytes: (animated as { bytes: Buffer }).bytes, look: (animated as { samples: Buffer[] }).samples, mime: 'image/png' };
   else if (failed && failed !== 'not_animated') done = { ok: false, error: failed };
   else {
     const still = await images.normalizeBanner(bytes);
-    done = still.ok ? { ok: true, bytes: still.bytes, look: still.bytes } : { ok: false, error: (still as { error: 'bad_file' | 'file_too_small' }).error };
+    done = still.ok ? { ok: true, bytes: still.bytes, look: [still.bytes], mime: 'image/webp' } : { ok: false, error: (still as { error: 'bad_file' | 'file_too_small' }).error };
   }
   if (!done.ok) return { ok: false as const, error: (done as { error: 'bad_file' | 'file_too_small' | 'too_big' }).error };
   // The detector looks first. A picture with a minor is never kept and the person is blocked (the team can undo it); one it flags is not accepted; the rest goes to the team,
   // marked as checked when the detector looked at it.
-  const verdict = await detector.screen((done as { look: Buffer }).look);
+  const verdict = await detector.screen((done as { look: Buffer[] }).look, fetch, (done as { mime: string }).mime);
   if (verdict.checked && verdict.minor) { await uploadsDb.block(userId, 'minor', 'detector'); return { ok: false as const, error: 'blocked' as const }; }
   if (verdict.checked && verdict.reasons.length) return { ok: false as const, error: 'detector' as const, reasons: verdict.reasons };
   await uploadsDb.setPending(userId, (done as { bytes: Buffer }).bytes, verdict.checked);

@@ -6,7 +6,9 @@ exports.compute = compute;
 exports.DEFAULT_RULES = { minMessages: 1, minVoiceMinutes: 0, mode: 'any' };
 const DAY_MS = 86_400_000;
 const dayNumber = (day) => Math.floor(Date.parse(`${day}T00:00:00Z`) / DAY_MS);
-const dayOf = (when) => when.toISOString().slice(0, 10);
+// The day is the one of Colombia (GMT-5), the same Petto uses for everything it counts (`activity_members`, `streak_days`): a message at 11 pm there is of that day, not of the next one.
+const botTime = require('./botTime');
+const dayOf = (when) => botTime.botDay(when);
 exports.dayOf = dayOf;
 /** The moment that decides which day is "today" for a streak: `graceMinutes` before now, so the day that just ended still counts for that long. */
 const graceNow = (now, graceMinutes) => new Date(now.getTime() - Math.max(0, Number(graceMinutes) || 0) * 60_000);

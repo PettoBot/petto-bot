@@ -108,6 +108,11 @@ const designs = require('../src/utils/cardDesigns');
   assert.deepEqual([...file.buffer.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
   const own = await renderRankCard(ctx, 'own', 'messages');
   assert.ok(own && own.buffer.length > 1000, 'a server card is drawn');
-  assert.notDeepEqual(file.buffer, own.buffer, 'and it is not the card of the person');
+  assert.deepEqual(file.buffer, own.buffer, 'the card a person designed goes over the card of the server: it shows in every server');
+  // Whoever designed nothing gets the card of the server.
+  const kept = saved; saved = null;
+  const serverCard = await renderRankCard(ctx, 'own', 'messages');
+  assert.ok(serverCard && serverCard.buffer.length > 1000); assert.notDeepEqual(serverCard.buffer, file.buffer, 'a person with no design of their own gets the card of the server');
+  saved = kept;
   console.log('User rank card checks passed (rules, prices, the API, the card of the bot).');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -100,7 +100,7 @@ plan[SILVER] = { plan: 'silver', active: true }; plan[GOLD] = { plan: 'gold', ac
   assert.deepEqual(await imageScreen.screen(Buffer.from('x')), { checked: false }, 'no key: not checked');
   process.env.OPENAI_API_KEY = 'test-key';
   const calls = [];
-  const answer = (categories, ok = true) => async (url, init) => { calls.push({ url, body: JSON.parse(init.body), auth: init.headers.Authorization }); return { ok, json: async () => ({ results: [{ categories }] }) }; };
+  const answer = (categories, ok = true) => async (url, init) => { const body = JSON.parse(init.body); calls.push({ url, body, auth: init.headers.Authorization }); return { ok, json: async () => ({ results: body.input.map((_, index) => ({ categories: typeof categories === 'function' ? categories(index) : categories })) }) }; };
   const realFetch = global.fetch;
   try {
     const DET = '555555555555555555', DET2 = '666666666666666666', DET3 = '777777777777777777', DET4 = '888888888888888888';
@@ -116,6 +116,22 @@ plan[SILVER] = { plan: 'silver', active: true }; plan[GOLD] = { plan: 'gold', ac
     global.fetch = answer({ 'sexual/minors': true });
     assert.equal((await actions.submit(DET3, png(1200, 400))).error, 'blocked');
     assert.deepEqual(S.blocked.get(DET3), { reason: 'minor', by: 'detector' }); assert.equal(S.up[DET3]?.pending ?? null, null, 'never kept');
+    // An animation: the detector looks at several frames, and a flagged one in the middle is enough to refuse it.
+    const GOLDDET = '999999999999999993';
+    plan[GOLDDET] = { plan: 'gold', active: true }; await actions.acceptPolicy(GOLDDET);
+    const moving2 = gif(800, 200, [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [0, 255, 255]]);
+    calls.length = 0;
+    global.fetch = answer({ sexual: false });
+    assert.deepEqual(await actions.submit(GOLDDET, moving2), { ok: true });
+    assert.equal(calls.at(-1).body.input.length, 5, 'five frames spread over the animation are sent');
+    assert.ok(calls.at(-1).body.input.every((item) => /^data:image\/png;base64,/.test(item.image_url.url)), 'as PNG pictures');
+    assert.equal(S.up[GOLDDET].screened, true);
+    global.fetch = answer((index) => ({ sexual: index === 3 }));
+    const badFrame = await actions.submit(GOLDDET, moving2);
+    assert.deepEqual([badFrame.ok, badFrame.error, badFrame.reasons], [false, 'detector', ['sexual']], 'a bad frame in the middle is refused');
+    global.fetch = async () => ({ ok: true, json: async () => ({ results: [{ categories: {} }] }) });
+    assert.equal((await actions.submit(GOLDDET, moving2)).ok, true); assert.equal(S.up[GOLDDET].screened, false, 'an answer with fewer results than pictures is not a check');
+    assert.deepEqual(imageScreen.readAnswer({ results: [{ categories: {} }, { categories: { hate: true } }, { categories: { sexual: true, 'sexual/minors': true } }] }, 3), { checked: true, minor: true, reasons: ['sexual', 'hate'] });
     global.fetch = async () => { throw new Error('network'); };
     assert.deepEqual(await actions.submit(DET4, png(1200, 400)), { ok: true });
     assert.equal(S.up[DET4].screened, false, 'a failure of the service: it goes to the team as not checked');

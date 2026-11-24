@@ -5,9 +5,9 @@ interface Pool { query(sql: string, params?: unknown[]): Promise<{ rows: Record<
 const { getPrimaryPool } = require('./postgres') as { getPrimaryPool: () => Pool };
 
 export type Mode = 'messages' | 'voice' | 'any' | 'both';
-export interface Config { enabled: boolean; mode: Mode; minMessages: number; minVoiceMinutes: number; announceChannelId: string | null; milestones: number[]; guildFreezes: number; resetAt: string | null; graceMinutes: number; dmReminder: boolean; dmLost: boolean; nicknameEnabled: boolean; nicknameEmoji: string; countingSince: string | null }
+export interface Config { enabled: boolean; mode: Mode; minMessages: number; minVoiceMinutes: number; announceChannelId: string | null; milestones: number[]; guildFreezes: number; resetAt: string | null; graceMinutes: number; dmReminder: boolean; dmLost: boolean; nicknameEnabled: boolean; nicknameEmoji: string; countingSince: string | null; counting: import('./streakCounts').Filters }
 export const DEFAULT_MILESTONES = [3, 7, 14, 30, 60, 100, 365];
-export const DEFAULT_CONFIG: Config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥', countingSince: null };
+export const DEFAULT_CONFIG: Config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥', countingSince: null, counting: { minLength: 0, cooldownSeconds: 0, channelMode: 'all', channelIds: [], roleMode: 'all', roleIds: [], reactions: false } };
 export interface DayRow { day: string; messages: number; voiceSeconds: number }
 
 const MODES: Mode[] = ['messages', 'voice', 'any', 'both'];
@@ -19,9 +19,10 @@ function toConfig(row: Record<string, unknown>): Config {
     guildFreezes: Number(row.guild_freezes ?? 0), resetAt: row.reset_at ? String(row.reset_at).slice(0, 10) : null,
     graceMinutes: Number(row.grace_minutes ?? 0), dmReminder: Boolean(row.dm_reminder), dmLost: Boolean(row.dm_lost), nicknameEnabled: Boolean(row.nickname_enabled), nicknameEmoji: String(row.nickname_emoji || '🔥'),
     countingSince: row.counting_since ? String(row.counting_since).slice(0, 10) : null,
+    counting: (require('./streakCounts') as typeof import('./streakCounts')).filtersOf(row),
   };
 }
-const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji, to_char(counting_since, 'YYYY-MM-DD') as counting_since`;
+const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji, to_char(counting_since, 'YYYY-MM-DD') as counting_since, min_length, cooldown_seconds, channel_mode, channel_ids, role_mode, role_ids, reactions_count`;
 
 export async function getConfig(guildId: string): Promise<Config> {
   const { rows } = await getPrimaryPool().query(`select ${COLUMNS} from streak_config where guild_id = $1`, [guildId]);

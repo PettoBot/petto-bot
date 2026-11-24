@@ -6,6 +6,7 @@ const { peekGuildLanguage, languageFromLocale, runWithLanguage } = require('../i
 const guildBlacklist = require('../utils/guildBlacklist');
 const perf = require('../utils/perf');
 const loadGuard = require('../utils/loadGuard');
+const quarantine = require('../utils/eventQuarantine');
 
 // The interactions of a blacklisted server that were already answered "not available": every listener of interactionCreate asks, only the first one answers.
 const blockedAnswered = new WeakSet();
@@ -63,6 +64,9 @@ function makeInvoker(event, file, client, { countsEvent = true } = {}) {
     if (countsEvent) perf.countEvent(event.name);
     // Under pressure (utils/loadGuard.js) the listeners that are not essential do not run: degraded drops the logs of low value, critical everything but the essential.
     if (!loadGuard.allowsEvent(name)) return;
+    // A listener that keeps failing rests for a while (utils/quarantine.ts) so it cannot flood the logs or slow the others; one trial run decides if it comes back.
+    const quarantineKey = `event:${name}`;
+    if (quarantine.blocked(quarantineKey)) return;
     // A blacklisted server: no listener runs for it (nothing is written, sent or read), except the ones marked `blacklistExempt` (the one that leaves, and
     // guildDelete). It is read from memory, so this costs nothing and never waits for the database.
     if (guildBlacklist.blocksEvent(event, args)) {
@@ -76,7 +80,7 @@ function makeInvoker(event, file, client, { countsEvent = true } = {}) {
     const perfContext = perf.newContext({ kind: 'event', name: `${event.name}/${name}`, interactive });
     logger.runWithContext(context, () => perf.runWith(perfContext, () => Promise.resolve()
       .then(() => perf.measureListener(entry, () => runWithLanguage(lang, () => event.execute(...args, client))))
-      .then((value) => { perf.finishContext(perfContext); return value; }, (error) => { perf.finishContext(perfContext, error); throw error; })
+      .then((value) => { perf.finishContext(perfContext); quarantine.succeed(quarantineKey); return value; }, (error) => { perf.finishContext(perfContext, error); quarantine.fail(quarantineKey, error); throw error; })
       .catch((err) => (isPermissionError(err)
         ? (logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`),
           notePermissionProblem(client, err, { guild: context.guildId ? client.guilds.cache.get(context.guildId) : null, feature: `event:${event.name}` }))

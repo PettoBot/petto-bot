@@ -6,6 +6,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const discord_js_1 = require("discord.js");
 const { t, languageOf, formatNumber } = require('../../i18n');
 const actions = require('../../utils/streakActions');
+/** What else decides what counts as a message in this server (only what the server turned on). */
+function countingLines(lang, rules) {
+    if (!rules)
+        return [];
+    const out = [];
+    if (rules.minLength > 0)
+        out.push(t(lang, 'streaks.rule.length', { n: rules.minLength }));
+    if (rules.cooldownSeconds > 0)
+        out.push(t(lang, 'streaks.rule.cooldown', { n: rules.cooldownSeconds }));
+    if (rules.channelMode !== 'all')
+        out.push(t(lang, `streaks.rule.channels.${rules.channelMode}`));
+    if (rules.roleMode !== 'all')
+        out.push(t(lang, `streaks.rule.roles.${rules.roleMode}`));
+    if (rules.reactions)
+        out.push(t(lang, 'streaks.rule.reactions'));
+    return out;
+}
 module.exports = {
     registerSlash: true,
     guildScoped: true,
@@ -34,6 +51,7 @@ module.exports = {
                 t(lang, streak.activeToday ? 'streaks.today.yes' : 'streaks.today.no'),
                 t(lang, 'streaks.freezes', { used: streak.freezesUsed, total: streak.freezes }),
                 t(lang, `streaks.rule.${streak.rules.mode}`, { messages: streak.rules.minMessages, minutes: streak.rules.minVoiceMinutes }),
+                ...countingLines(lang, streak.rules.counting),
             ];
             await interaction.reply({ content: lines.join('\n'), flags: discord_js_1.MessageFlags.Ephemeral });
         }

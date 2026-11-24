@@ -21,8 +21,11 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 // " | 7 🔥" at the end of a name (the emoji is any short run of non-space characters).
 const SUFFIX = /\s\|\s\d+\s\S{1,8}$/u;
 
-/** Hours left of the UTC day. */
-export const hoursLeft = (now: Date): number => (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime()) / 3_600_000;
+/** Hours left of the day of Colombia (GMT-5), the day the streaks are counted in. */
+export const hoursLeft = (now: Date): number => {
+  const local = (require('./botTime') as { shifted: (date?: Date) => Date }).shifted(now);
+  return (Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + 1) - local.getTime()) / 3_600_000;
+};
 
 /** A reminder is due when the streak is worth it, the day is not done and little of it is left. */
 export const reminderDue = (current: number, activeToday: boolean, left: number): boolean => current >= MIN_STREAK && !activeToday && left <= REMINDER_HOURS;
