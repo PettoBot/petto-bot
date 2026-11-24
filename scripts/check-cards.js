@@ -369,6 +369,21 @@ const near = (actual, expected, tolerance = 6) => actual.every((value, index) =>
     assert.ok(animated.length < 40 * 1024 + still.length, 'only the decoration is stored again for each frame');
     const oneFrame = await renderCard(moving, { ...movingDeps, loadFrames: async () => null });
     assert.ok(!readChunksOf(oneFrame).includes('acTL'), 'a decoration that does not move leaves a plain PNG');
+    // A background that moves (the own picture of a Gold plan): one whole card for each frame, as an APNG; the frames are halved if the card would be too big.
+    {
+      const bg = normalizeCard({ mode: 'advanced', width: 600, height: 200, background: { color: '#000000', image: { src: 'petto:user-banner', fit: 'cover', blur: 0 } }, layers: [] }, { premium: true }).card;
+      const flat = (colour) => { const c = createCanvas(300, 100); const x = c.getContext('2d'); x.fillStyle = colour; x.fillRect(0, 0, 300, 100); return c; };
+      const bgFrames = ['#ff0000', '#00ff00', '#0000ff'].map((colour) => ({ canvas: flat(colour), delayMs: 100 }));
+      const bgDeps = { createCanvas, resolveText: async (t) => t, loadSource: async () => bgFrames[0].canvas, avatar: async () => null };
+      const stillBg = await renderCard(bg, bgDeps);
+      assert.ok(!readChunksOf(stillBg).includes('acTL'), 'without frames the background card is a plain PNG');
+      const movingBg = await renderCard(bg, { ...bgDeps, backgroundFrames: bgFrames });
+      assert.ok(readChunksOf(movingBg).includes('acTL'), 'with frames the background card is an APNG');
+      const decoded = await require('../src/imgutils/apng').decodeApng(movingBg, { maxSide: 1100 });
+      assert.equal(decoded.length, 3);
+      assert.deepEqual([...decoded[1].canvas.getContext('2d').getImageData(300, 100, 1, 1).data].slice(0, 3), [0, 255, 0], 'the second card has the second frame as background');
+      assert.ok(!readChunksOf(await renderCard(bg, { ...bgDeps, backgroundFrames: [bgFrames[0]] })).includes('acTL'), 'one frame is not an animation');
+    }
     function readChunksOf(buffer) { return require('../src/imgutils/apng').readChunks(buffer).map((c) => c.type); }
   }
   console.log('Checked the image cards: schema, presets, drawing, safe downloads, Premium rules and messages.');

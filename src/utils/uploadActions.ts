@@ -6,6 +6,9 @@ const uploadsDb = require('../db/userUploads') as typeof import('../db/userUploa
 const plansDb = require('../db/userPlans') as typeof import('../db/userPlans');
 const plans = require('./userPlans') as typeof import('./userPlans');
 const images = require('./shopImages') as typeof import('./shopImages');
+const detector = require('./imageScreen') as typeof import('./imageScreen');
+const animatedPictures = require('./animatedPicture') as typeof import('./animatedPicture');
+const gifs = require('../imgutils/gif') as typeof import('../imgutils/gif');
 
 /** The version of the policy of the user. A new one is asked again to everybody who accepted an older one. */
 export const POLICY_VERSION = 1;
@@ -14,7 +17,7 @@ const ID = /^\d{15,25}$/;
 const REASONS = ['sexual', 'minor', 'violence', 'hate', 'illegal', 'private', 'copyright', 'quality', 'other'] as const;
 export type Reason = (typeof REASONS)[number];
 
-/** What the plan of a person allows for an own picture: none, a still one or an animated one (animated pictures are not supported yet, so they are still too). */
+/** What the plan of a person allows for an own picture: none, a still one or an animated one (an animated one is a GIF, kept as an APNG). */
 async function perkOf(userId: string): Promise<'none' | 'still' | 'animated'> {
   const row = await plansDb.getPlan(userId).catch(() => null);
   const tier = row && row.active ? row.plan : 'free';
@@ -38,9 +41,26 @@ export async function submit(userId: string, bytes: unknown) {
   if ((await uploadsDb.policyVersionOf(userId)) < POLICY_VERSION) return { ok: false as const, error: 'policy_required' as const };
   if (!Buffer.isBuffer(bytes) || bytes.length === 0) return { ok: false as const, error: 'bad_file' as const };
   if (bytes.length > MAX_UPLOAD_BYTES) return { ok: false as const, error: 'too_big' as const };
-  const done = await images.normalizeBanner(bytes);
-  if (!done.ok) return { ok: false as const, error: (done as { error: 'bad_file' | 'file_too_small' }).error };
-  await uploadsDb.setPending(userId, done.bytes);
+  // A GIF only moves with the Gold plan; for the others its first picture is the picture.
+  const moving = gifs.isGif(bytes) && (await perkOf(userId)) === 'animated';
+  const animated = moving ? await animatedPictures.normalizeAnimated(bytes) : null;
+  // A GIF that is only one picture is a still one.
+  type Kept = { ok: true; bytes: Buffer; look: Buffer } | { ok: false; error: 'bad_file' | 'file_too_small' | 'too_big' };
+  let done: Kept;
+  const failed = animated && !animated.ok ? (animated as { error: 'bad_file' | 'file_too_small' | 'too_big' | 'not_animated' }).error : null;
+  if (animated && animated.ok) done = { ok: true, bytes: (animated as { bytes: Buffer }).bytes, look: (animated as { still: Buffer }).still };
+  else if (failed && failed !== 'not_animated') done = { ok: false, error: failed };
+  else {
+    const still = await images.normalizeBanner(bytes);
+    done = still.ok ? { ok: true, bytes: still.bytes, look: still.bytes } : { ok: false, error: (still as { error: 'bad_file' | 'file_too_small' }).error };
+  }
+  if (!done.ok) return { ok: false as const, error: (done as { error: 'bad_file' | 'file_too_small' | 'too_big' }).error };
+  // The detector looks first. A picture with a minor is never kept and the person is blocked (the team can undo it); one it flags is not accepted; the rest goes to the team,
+  // marked as checked when the detector looked at it.
+  const verdict = await detector.screen((done as { look: Buffer }).look);
+  if (verdict.checked && verdict.minor) { await uploadsDb.block(userId, 'minor', 'detector'); return { ok: false as const, error: 'blocked' as const }; }
+  if (verdict.checked && verdict.reasons.length) return { ok: false as const, error: 'detector' as const, reasons: verdict.reasons };
+  await uploadsDb.setPending(userId, (done as { bytes: Buffer }).bytes, verdict.checked);
   return { ok: true as const };
 }
 
@@ -73,3 +93,6 @@ export async function review(adminId: string, body: Record<string, unknown>) {
   }
   return { ok: false as const, error: 'bad_request' as const };
 }
+
+/** True when the plan of a person lets their own picture move. */
+export async function mayAnimate(userId: string): Promise<boolean> { return (await perkOf(userId)) === 'animated'; }

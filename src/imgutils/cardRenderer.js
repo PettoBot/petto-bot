@@ -13,6 +13,7 @@ const MAX_ANIMATED_BYTES = 7 * 1024 * 1024;
  * deps:
  *  - resolveText(text): the text with its variables filled in, such as {user.display_name}
  *  - loadSource(src):   an image for an https link, an `asset:` id or a variable, or null when it cannot be loaded
+ *  - backgroundFrames:  the frames `[{ canvas, delayMs }]` of a background picture that moves (the card goes out as an APNG)
  *  - loadFrames(src):   only when a picture may move: the frames of an animated picture as `[{ canvas, delayMs }]`, or null for a still one
  *  - avatar(kind):      the image of the member (`user`) or of the server (`server`), or null
  *  - loadFallback():    the picture to draw when the background picture cannot be loaded and there is no gradient, or null
@@ -25,7 +26,9 @@ async function renderCard(card, deps = {}) {
   let loadSource = deps.loadSource ?? (async () => null);
   let avatar = deps.avatar ?? (async () => null);
 
-  const motion = deps.loadFrames ? await findMotion(card, resolveText, deps.loadFrames) : null;
+  // The background itself may move (the own picture of a Gold plan): the card is drawn once for each of its frames.
+  const movingBackground = deps.backgroundFrames && deps.backgroundFrames.length >= 2 && card.background.image ? { background: true, layerId: null, frames: deps.backgroundFrames } : null;
+  const motion = movingBackground ?? (deps.loadFrames ? await findMotion(card, resolveText, deps.loadFrames) : null);
   if (motion) {
     // The card is drawn once for every frame, so what it loads is loaded once.
     const pictures = new Map();
@@ -38,10 +41,10 @@ async function renderCard(card, deps = {}) {
   const paint = async (frame = null) => {
     const canvas = createCanvas(card.width, card.height);
     const ctx = canvas.getContext('2d');
-    await drawBackground(ctx, card, resolveText, loadSource, deps.loadFallback);
+    await drawBackground(ctx, card, resolveText, loadSource, deps.loadFallback, motion?.background ? frame : null);
     // The right edge of every layer that was drawn, by id, for the layers that follow one.
     const edges = new Map();
-    let box = null;
+    let box = motion?.background && frame ? { x: 0, y: 0, w: card.width, h: card.height } : null;
     for (const layer of card.layers) {
       if (layer.showIf && !String(await resolveText(layer.showIf)).trim()) continue;
       let x = layer.x;
@@ -55,7 +58,7 @@ async function renderCard(card, deps = {}) {
         let right = null;
         if (layer.type === 'shape') { drawShape(ctx, layer); right = x + layer.w / 2; }
         else if (layer.type === 'image') {
-          const moving = frame && layer.id === motion.layerId;
+          const moving = frame && !motion.background && layer.id === motion.layerId;
           if (await drawImage(ctx, layer, resolveText, moving ? async () => frame : loadSource)) {
             right = x + layer.w / 2;
             if (moving) box = { x: x - layer.w / 2, y: layer.y - layer.h / 2, w: layer.w, h: layer.h };
@@ -75,26 +78,35 @@ async function renderCard(card, deps = {}) {
   if (!motion) return (await paint()).canvas.toBuffer('image/png');
 
   // A picture that moves: the first frame is the whole card, and each next one is only the square around that picture.
-  const still = await paint(motion.frames[0].canvas);
-  if (!still.box) return (await paint()).canvas.toBuffer('image/png');
-  const pad = 2;
-  const left = Math.max(0, Math.floor(still.box.x) - pad);
-  const top = Math.max(0, Math.floor(still.box.y) - pad);
-  const region = {
-    x: left, y: top,
-    w: Math.min(card.width, Math.ceil(still.box.x + still.box.w) + pad) - left,
-    h: Math.min(card.height, Math.ceil(still.box.y + still.box.h) + pad) - top,
+  const assemble = async (frames) => {
+    const still = await paint(frames[0].canvas);
+    if (!still.box) return null;
+    const pad = 2;
+    const left = Math.max(0, Math.floor(still.box.x) - pad);
+    const top = Math.max(0, Math.floor(still.box.y) - pad);
+    const region = {
+      x: left, y: top,
+      w: Math.min(card.width, Math.ceil(still.box.x + still.box.w) + pad) - left,
+      h: Math.min(card.height, Math.ceil(still.box.y + still.box.h) + pad) - top,
+    };
+    const parts = [];
+    for (const frame of frames.slice(1)) {
+      const next = await paint(frame.canvas);
+      const piece = createCanvas(region.w, region.h);
+      piece.getContext('2d').drawImage(next.canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+      parts.push({ png: piece.toBuffer('image/png'), x: region.x, y: region.y, delayMs: frame.delayMs });
+    }
+    return encodeApng({ png: still.canvas.toBuffer('image/png'), delayMs: frames[0].delayMs }, parts);
   };
-  const parts = [];
-  for (const frame of motion.frames.slice(1)) {
-    const next = await paint(frame.canvas);
-    const piece = createCanvas(region.w, region.h);
-    piece.getContext('2d').drawImage(next.canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
-    parts.push({ png: piece.toBuffer('image/png'), x: region.x, y: region.y, delayMs: frame.delayMs });
+  let frames = motion.frames;
+  let animated = await assemble(frames);
+  // A whole card for every frame can be too big for a message: the frames are halved (each one lasting twice as long) until it fits, and below six it goes out still.
+  while (animated && motion.background && animated.length > MAX_ANIMATED_BYTES && frames.length >= 12) {
+    frames = frames.filter((_, index) => index % 2 === 0).map((frame, index) => ({ canvas: frame.canvas, delayMs: Math.min(2000, frame.delayMs + (motion.frames[Math.min(motion.frames.length - 1, index * 2 + 1)]?.delayMs ?? 0)) }));
+    animated = await assemble(frames);
   }
-  const animated = encodeApng({ png: still.canvas.toBuffer('image/png'), delayMs: motion.frames[0].delayMs }, parts);
   // A card too big for a message goes out still.
-  return animated.length <= MAX_ANIMATED_BYTES ? animated : (await paint()).canvas.toBuffer('image/png');
+  return animated && animated.length <= MAX_ANIMATED_BYTES ? animated : (await paint()).canvas.toBuffer('image/png');
 }
 
 /**
@@ -172,7 +184,7 @@ function fitRect(iw, ih, bx, by, bw, bh, fit) {
   return { x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h };
 }
 
-async function drawBackground(ctx, card, resolveText, loadSource, loadFallback) {
+async function drawBackground(ctx, card, resolveText, loadSource, loadFallback, frame = null) {
   const { background, width, height } = card;
   ctx.fillStyle = background.color;
   ctx.fillRect(0, 0, width, height);
@@ -188,7 +200,8 @@ async function drawBackground(ctx, card, resolveText, loadSource, loadFallback) 
   }
   if (background.image) {
     let image = null;
-    try { image = await loadSource(await resolveText(background.image.src)); } catch { image = null; }
+    if (frame) image = frame;
+    else try { image = await loadSource(await resolveText(background.image.src)); } catch { image = null; }
     // A picture that does not load leaves the gradient when there is one, or the default design, never a flat empty card.
     if (!image && !background.gradient && loadFallback) { try { image = await loadFallback(); } catch { image = null; } }
     if (image) {

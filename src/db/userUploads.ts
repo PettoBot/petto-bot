@@ -22,10 +22,10 @@ export async function getState(userId: string): Promise<UploadState> {
   return { hasApproved: Boolean(row?.has_approved), hasPending: Boolean(row?.has_pending), pendingAt: iso(row?.pending_at), approvedAt: iso(row?.approved_at), lastRejectReason: (row?.last_reject_reason as string | null) ?? null, lastRejectAt: iso(row?.last_reject_at), removedReason: (row?.removed_reason as string | null) ?? null };
 }
 
-export async function setPending(userId: string, bytes: Buffer): Promise<void> {
+export async function setPending(userId: string, bytes: Buffer, screened = false): Promise<void> {
   await getPrimaryPool().query(
-    `insert into user_uploads (user_id, pending, pending_at) values ($1, $2, now())
-     on conflict (user_id) do update set pending = $2, pending_at = now(), last_reject_reason = null, last_reject_at = null, removed_reason = null`, [userId, bytes]);
+    `insert into user_uploads (user_id, pending, pending_at, screened) values ($1, $2, now(), $3)
+     on conflict (user_id) do update set pending = $2, pending_at = now(), screened = $3, last_reject_reason = null, last_reject_at = null, removed_reason = null`, [userId, bytes, screened]);
 }
 export async function approvedBytes(userId: string): Promise<Buffer | null> {
   const { rows } = await getPrimaryPool().query(`select approved from user_uploads where user_id = $1`, [userId]);
@@ -49,9 +49,9 @@ export async function takedown(userId: string, reason: string): Promise<boolean>
   const { rows } = await getPrimaryPool().query(`update user_uploads set approved = null, approved_at = null, pending = null, pending_at = null, removed_reason = $2 where user_id = $1 returning user_id`, [userId, reason]);
   return rows.length > 0;
 }
-export async function listPending(limit = 30): Promise<{ userId: string; pendingAt: string }[]> {
-  const { rows } = await getPrimaryPool().query(`select user_id, pending_at from user_uploads where pending is not null order by pending_at limit $1`, [Math.max(1, Math.min(100, limit))]);
-  return rows.map((row) => ({ userId: String(row.user_id), pendingAt: iso(row.pending_at) as string }));
+export async function listPending(limit = 30): Promise<{ userId: string; pendingAt: string; screened: boolean }[]> {
+  const { rows } = await getPrimaryPool().query(`select user_id, pending_at, screened from user_uploads where pending is not null order by pending_at limit $1`, [Math.max(1, Math.min(100, limit))]);
+  return rows.map((row) => ({ userId: String(row.user_id), pendingAt: iso(row.pending_at) as string, screened: Boolean(row.screened) }));
 }
 
 export async function isBlocked(userId: string): Promise<boolean> {

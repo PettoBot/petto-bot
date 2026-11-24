@@ -5520,6 +5520,7 @@ create table if not exists user_uploads (
   last_reject_at     timestamptz,
   removed_reason     text
 );
+alter table user_uploads add column if not exists screened boolean not null default false;
 alter table user_uploads enable row level security;
 create table if not exists upload_blocks (
   user_id    text primary key,
@@ -5554,6 +5555,14 @@ create table if not exists streak_optout (
   created_at timestamptz not null default now()
 );
 alter table streak_optout enable row level security;
+-- The contact email a person chose to give (optional): the Terms say Petto may write to it about the policies and about what was asked to delete. It is saved only by the person,
+-- from the Preferences page of the dashboard, and it is deleted with the rest of their data.
+create table if not exists user_contact (
+  user_id    text primary key,
+  email      text not null check (char_length(email) between 5 and 254),
+  updated_at timestamptz not null default now()
+);
+alter table user_contact enable row level security;
 -- What was already sent (a reminder or a lost-streak message at most once a day for each member and server).
 create table if not exists streak_notices (
   guild_id text not null references guilds(guild_id) on delete cascade,

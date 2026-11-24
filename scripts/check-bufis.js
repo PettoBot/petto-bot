@@ -8,7 +8,8 @@ for (const id of ids) {
   assert.ok(def, `${id} exists`); assert.equal(def.unlock, 'shop'); assert.equal(rules.categoryOf(def), 'special');
   assert.ok(rules.priceOf(def) > 0, `${id} has a price`);
   for (const lang of ['en', 'es', 'pt-BR']) assert.ok(rules.badgeName(lang, def, (key) => require('../src/i18n').t(lang, key)) && !rules.badgeName(lang, def, (key) => require('../src/i18n').t(lang, key)).startsWith('profiles.badge'), `${id} is named in ${lang}`);
-  assert.ok(def.art === null && def.color, `${id} is a plain hexagon until it has a picture`);
+  assert.ok(def.art === `${id}.png` && def.color, `${id} has its own picture`);
+  assert.ok(require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'src', 'assets', 'badges', def.art)), `the picture of ${id} exists`);
 }
 assert.ok(rules.shopBadges().some((def) => def.id === 'bufi-silver'), 'the shop lists the Bufis');
 const friday = rules.badgeById('bufi-black-friday');

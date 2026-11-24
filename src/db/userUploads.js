@@ -28,9 +28,9 @@ async function getState(userId) {
     const row = rows[0];
     return { hasApproved: Boolean(row?.has_approved), hasPending: Boolean(row?.has_pending), pendingAt: iso(row?.pending_at), approvedAt: iso(row?.approved_at), lastRejectReason: row?.last_reject_reason ?? null, lastRejectAt: iso(row?.last_reject_at), removedReason: row?.removed_reason ?? null };
 }
-async function setPending(userId, bytes) {
-    await getPrimaryPool().query(`insert into user_uploads (user_id, pending, pending_at) values ($1, $2, now())
-     on conflict (user_id) do update set pending = $2, pending_at = now(), last_reject_reason = null, last_reject_at = null, removed_reason = null`, [userId, bytes]);
+async function setPending(userId, bytes, screened = false) {
+    await getPrimaryPool().query(`insert into user_uploads (user_id, pending, pending_at, screened) values ($1, $2, now(), $3)
+     on conflict (user_id) do update set pending = $2, pending_at = now(), screened = $3, last_reject_reason = null, last_reject_at = null, removed_reason = null`, [userId, bytes, screened]);
 }
 async function approvedBytes(userId) {
     const { rows } = await getPrimaryPool().query(`select approved from user_uploads where user_id = $1`, [userId]);
@@ -55,8 +55,8 @@ async function takedown(userId, reason) {
     return rows.length > 0;
 }
 async function listPending(limit = 30) {
-    const { rows } = await getPrimaryPool().query(`select user_id, pending_at from user_uploads where pending is not null order by pending_at limit $1`, [Math.max(1, Math.min(100, limit))]);
-    return rows.map((row) => ({ userId: String(row.user_id), pendingAt: iso(row.pending_at) }));
+    const { rows } = await getPrimaryPool().query(`select user_id, pending_at, screened from user_uploads where pending is not null order by pending_at limit $1`, [Math.max(1, Math.min(100, limit))]);
+    return rows.map((row) => ({ userId: String(row.user_id), pendingAt: iso(row.pending_at), screened: Boolean(row.screened) }));
 }
 async function isBlocked(userId) {
     const { rows } = await getPrimaryPool().query(`select 1 from upload_blocks where user_id = $1`, [userId]);

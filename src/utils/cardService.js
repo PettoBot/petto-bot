@@ -89,7 +89,7 @@ function localizedBasic(basic, kind, lang) {
  * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends. Petto's
  * default texts (the ones a server did not change) are drawn in `lang`.
  */
-async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage(), userBanner = null }) {
+async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage(), userBanner = null, bannerFrames = null }) {
   const kind = rawCard?.kind === 'rank' ? 'rank' : 'welcome';
   const input = rawCard && typeof rawCard === 'object' && !Array.isArray(rawCard) ? { ...rawCard, basic: localizedBasic(rawCard.basic, kind, lang) } : rawCard;
   let { card, usesAdvanced } = normalizeCard(input, { premium, lang });
@@ -97,7 +97,18 @@ async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? cu
     const basic = localizedBasic(rawCard?.basic, 'welcome', lang);
     ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
-  return renderCard(card, depsFor(ctx, guildId, { premium, kind: card.kind, userBanner }));
+  return renderCard(card, { ...depsFor(ctx, guildId, { premium, kind: card.kind, userBanner }), backgroundFrames: bannerFrames ?? undefined });
+}
+
+/** The frames of the own picture of a person when it moves and their plan lets it (Gold), or null. Never throws. */
+async function ownFramesFor(userId) {
+  try {
+    const actions = require('./uploadActions');
+    if (!(await actions.mayAnimate(userId))) return null;
+    const bytes = await require('../db/userUploads').approvedBytes(userId);
+    const animated = require('./animatedPicture');
+    return bytes && animated.isAnimated(bytes) ? await animated.framesOf(bytes) : null;
+  } catch { return null; }
 }
 
 /** The banner a person put on from the shop of the profile (`/profile banner`), as a picture, or null when they have none on or do not have the one they chose. Never throws. */
@@ -193,7 +204,9 @@ async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.la
     const custom = raw ? null : await userRankCardFor(personId);
     const userBanner = await userBannerFor(personId, custom?.background.kind === 'shop' ? custom.background.id : (custom?.background.kind === 'upload' ? 'upload:own' : null));
     // The card a person designed is theirs, not the server's: its fonts are the ones of the page (some are Premium ones for a server's own card), so it is not held back by the server's Premium.
-    const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner), custom), ctx, { guildId, premium: custom ? true : premium, lang, userBanner });
+    // The own picture of a Gold plan moves on the default card (a server's own card keeps its design still).
+    const bannerFrames = !raw && userBanner && custom?.background.kind === 'upload' ? await ownFramesFor(personId) : null;
+    const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner), custom), ctx, { guildId, premium: custom ? true : premium, lang, userBanner, bannerFrames });
     return { buffer, name: CARD_FILE_NAME };
   } catch (error) {
     logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);
