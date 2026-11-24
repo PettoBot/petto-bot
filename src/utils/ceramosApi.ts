@@ -139,3 +139,8 @@ export const rankCardSave = rankActions.save;
 export const rankCardReset = (userId: string) => rankDb.resetRankCard(userId);
 
 export const creditPack = coinActions.credit;
+
+const grantActions = require('./ceramosGrantActions') as typeof import('./ceramosGrantActions');
+export const grantState = grantActions.state;
+export const grantSaveSettings = grantActions.saveSettings;
+export const grantCeramos = grantActions.grant;

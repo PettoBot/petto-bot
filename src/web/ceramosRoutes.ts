@@ -96,6 +96,10 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
     const id = badgeOf({ badge: body.id });
     return id && typeof body.active === 'boolean' ? admin.setActive(id, body.active) : bad;
   }));
+  // Giving ceramos from the dashboard: the owner and the people the owner lists (the bot checks who is asking), with limits the owner sets.
+  app.get('/api/dashboard/ceramos/admin/grant', limiter, guard(false, async (userId) => api.grantState(userId, String(config.ownerId))));
+  app.post('/api/dashboard/ceramos/admin/grant', limiter, guard(true, async (userId, body) => api.grantCeramos(userId, String(config.ownerId), body)));
+  app.post('/api/dashboard/ceramos/admin/grant-settings', limiter, owner(true, async (_userId, body) => api.grantSaveSettings(body)));
   // The plans of the people: who has one, give one, end one.
   app.get('/api/dashboard/ceramos/admin/plans', limiter, owner(false, async () => planAdmin.list()));
   app.post('/api/dashboard/ceramos/admin/plan-grant', limiter, owner(true, async (userId, body) => planAdmin.grant(userId, body)));

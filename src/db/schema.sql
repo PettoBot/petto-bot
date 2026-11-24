@@ -5467,3 +5467,14 @@ create table if not exists ceramos_orders (
   created_at  timestamptz not null default now()
 );
 alter table ceramos_orders enable row level security;
+
+-- Who of the team may give ceramos from the dashboard, and how much (one row). The owner can always give and has no daily limit.
+create table if not exists ceramos_grant_settings (
+  id            int primary key default 1 check (id = 1),
+  enabled       boolean not null default true,
+  max_per_grant int not null default 5000,
+  max_per_day   int not null default 20000,
+  people        text[] not null default '{}',
+  updated_at    timestamptz not null default now()
+);
+alter table ceramos_grant_settings enable row level security;

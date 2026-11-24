@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.creditPack = exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
+exports.grantCeramos = exports.grantSaveSettings = exports.grantState = exports.creditPack = exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
 exports.catalog = catalog;
 exports.state = state;
 exports.ledger = ledger;
@@ -108,3 +108,7 @@ exports.rankCardSave = rankActions.save;
 const rankCardReset = (userId) => rankDb.resetRankCard(userId);
 exports.rankCardReset = rankCardReset;
 exports.creditPack = coinActions.credit;
+const grantActions = require('./ceramosGrantActions');
+exports.grantState = grantActions.state;
+exports.grantSaveSettings = grantActions.saveSettings;
+exports.grantCeramos = grantActions.grant;
