@@ -4,14 +4,16 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const stub = (relative, exports) => { const resolved = require.resolve(path.join(__dirname, '..', relative)); require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports }; };
 const orders = new Set();
+const refunded = new Set();
 const wallets = new Map();
 stub('src/db/ceramos.js', {
   getWallet: async (id) => ({ balance: wallets.get(id) ?? 0, lastDaily: null }),
+  refundOnce: async (order) => { if (!orders.has(order) || refunded.has(order)) return null; refunded.add(order); const who = '1'; const coins = order === 'order_abc123' ? 850 : 2000; const took = Math.min(wallets.get(who) ?? 0, coins); wallets.set(who, (wallets.get(who) ?? 0) - took); return { userId: who, coins, took, balance: wallets.get(who) }; },
   giveOnce: async (id, amount, pack, order) => { if (orders.has(order)) return { balance: wallets.get(id) ?? 0, applied: false }; orders.add(order); wallets.set(id, (wallets.get(id) ?? 0) + amount); return { balance: wallets.get(id), applied: true }; },
 });
 const packs = require('../src/utils/coinPacks');
 const apiSource = require('node:fs').readFileSync(path.join(__dirname, '../src/utils/ceramosApi.js'), 'utf8');
-const { credit: creditPack } = require('../src/utils/coinPackActions');
+const { credit: creditPack, refund: refundPack } = require('../src/utils/coinPackActions');
 
 (async () => {
   assert.equal(packs.COIN_PACKS.length, 4, 'four packs');
@@ -37,5 +39,16 @@ const { credit: creditPack } = require('../src/utils/coinPackActions');
   assert.equal((await creditPack('1', 'nope', 'order_zzz999')).ok, false, 'a pack that does not exist');
   assert.equal((await creditPack('1', 'pile', 'x')).ok, false, 'an order id that is too short');
   assert.equal((await creditPack('1', 'pile', 'bad id with spaces')).ok, false);
+  // A refund takes the ceramos back once; what was spent is not taken; an unknown order or a bad id does nothing.
+  let back = await refundPack('order_abc123');
+  assert.deepEqual([back.ok, back.applied, back.took, back.balance], [true, true, 850, 2000]);
+  back = await refundPack('order_abc123');
+  assert.deepEqual([back.ok, back.applied], [true, false], 'the same refund again takes nothing');
+  wallets.set('1', 300);
+  back = await refundPack('order_def456');
+  assert.deepEqual([back.applied, back.took, back.balance], [true, 300, 0], 'only what is left is taken: the rest was spent');
+  assert.deepEqual(await refundPack('order_unknown'), { ok: true, applied: false }, 'an order that was never paid');
+  assert.equal((await refundPack('x')).ok, false);
+  assert.match(require('node:fs').readFileSync(path.join(__dirname, '../src/web/ceramosRoutes.js'), 'utf8'), /credit-refund/, 'the route exists');
   console.log('Coin pack checks passed (the list, the catalog, one credit for each order).');
 })().catch((error) => { console.error(error); process.exit(1); });

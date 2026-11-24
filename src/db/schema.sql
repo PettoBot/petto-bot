@@ -5466,6 +5466,7 @@ create table if not exists ceramos_orders (
   coins       integer not null check (coins > 0),
   created_at  timestamptz not null default now()
 );
+alter table ceramos_orders add column if not exists refunded_at timestamptz;
 alter table ceramos_orders enable row level security;
 
 -- Who of the team may give ceramos from the dashboard, and how much (one row). The owner can always give and has no daily limit.

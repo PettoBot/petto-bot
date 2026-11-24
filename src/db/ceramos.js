@@ -4,6 +4,7 @@ exports.getWallet = getWallet;
 exports.claimDaily = claimDaily;
 exports.give = give;
 exports.giveOnce = giveOnce;
+exports.refundOnce = refundOnce;
 exports.spend = spend;
 exports.lastMovements = lastMovements;
 exports.topBalances = topBalances;
@@ -57,6 +58,25 @@ async function giveOnce(userId, amount, pack, orderId) {
         return { balance: Number(row.balance), applied: true };
     const wallet = await getWallet(userId);
     return { balance: wallet.balance, applied: false };
+}
+/**
+ * A pack that was refunded by the payment service: the ceramos of that order are taken back, once (the order is marked in the same statement, so the event arriving twice takes them once).
+ * What the person already spent cannot be taken: it takes what they still have, up to the ceramos of the order, and the ledger says the amount really taken. The person comes from the
+ * order that was saved, never from the event. Returns null when the order is unknown or was already refunded.
+ */
+async function refundOnce(orderId) {
+    const { rows } = await getPrimaryPool().query(`with o as (
+       update ceramos_orders set refunded_at = now() where order_id = $1 and refunded_at is null returning user_id, coins
+     ), w as (
+       select o.user_id, o.coins, least(coalesce(cw.balance, 0), o.coins) as take from o left join ceramos_wallets cw on cw.user_id = o.user_id
+     ), up as (
+       update ceramos_wallets set balance = balance - w.take, updated_at = now() from w where ceramos_wallets.user_id = w.user_id returning ceramos_wallets.balance as balance
+     ), led as (
+       insert into ceramos_ledger (user_id, delta, reason, ref) select user_id, -take, 'refund', $1 from w where take > 0 returning id
+     )
+     select w.user_id, w.coins, w.take, coalesce((select balance from up), 0) as balance from w`, [orderId]);
+    const row = rows[0];
+    return row ? { userId: String(row.user_id), coins: Number(row.coins), took: Number(row.take), balance: Number(row.balance) } : null;
 }
 /** Takes ceramos only if the person has them. Returns the new balance, or null when they do not have enough. */
 async function spend(userId, amount, reason, ref = null, byUser = null) {
