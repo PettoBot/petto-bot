@@ -82,7 +82,17 @@ const SHOP: BadgeDef[] = [
   ...LANGUAGE_CODES.map((code): BadgeDef => ({ id: `lang-${code}`, unlock: 'shop', art: null, color: colorOf(code), language: code, rarity: 'common' })),
 ];
 
-export const BADGES: readonly BadgeDef[] = [...BASE_BADGES, ...SHOP];
+// The Bufis: six collectible badges of the shop (their pictures are not made yet: each is drawn as a plain hexagon of its color until the team gives it a picture in the editor of
+// badges). Black Friday is only on sale for a few days; whoever buys it keeps it for good.
+const BUFIS: BadgeDef[] = [
+  { id: 'bufi-normal', unlock: 'shop', art: null, color: '#8a8f98', rarity: 'common', category: 'special' },
+  { id: 'bufi-silver', unlock: 'shop', art: null, color: '#b8bcc4', rarity: 'rare', category: 'special' },
+  { id: 'bufi-girl', unlock: 'shop', art: null, color: '#ff3d8f', rarity: 'rare', category: 'special' },
+  { id: 'bufi-boy', unlock: 'shop', art: null, color: '#1e90ff', rarity: 'rare', category: 'special' },
+  { id: 'bufi-bu', unlock: 'shop', art: null, color: '#f4cf3a', rarity: 'epic', category: 'special' },
+  { id: 'bufi-black-friday', unlock: 'shop', art: null, color: '#2b2b30', rarity: 'epic', category: 'special', saleFrom: '2026-11-20T00:00:00Z', saleUntil: '2026-12-02T00:00:00Z' },
+];
+export const BADGES: readonly BadgeDef[] = [...BASE_BADGES, ...SHOP, ...BUFIS];
 export const SHOP_BADGES: readonly BadgeDef[] = SHOP;
 
 // What the team changes while the bot runs: the badges of the editor, the changes to the badges of the code, and the packs. Everything below reads the merged list.

@@ -1,0 +1,41 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+// i18n-ignore-file: the texts are in the catalog (streaks.*); the builder holds the English description that scripts/i18n-commands.js copies.
+// /streak (and `!streak`): the days in a row you were active in this server, your best streak and the freezes your plan gives. Each server decides what an active day is.
+// Worked out from the activity Petto counts (db/streaks.ts); nothing is stored for the streak. Written in TypeScript: compiled over streak.js.
+const discord_js_1 = require("discord.js");
+const { t, languageOf, formatNumber } = require('../../i18n');
+const actions = require('../../utils/streakActions');
+module.exports = {
+    registerSlash: true,
+    guildScoped: true,
+    aliases: ['streaks', 'racha'],
+    data: new discord_js_1.SlashCommandBuilder().setName('streak').setDescription('Your streak in this server: days in a row with activity.').setDMPermission(false),
+    async execute(interaction) {
+        const lang = await languageOf(interaction);
+        try {
+            const streak = await actions.inGuild(interaction.user.id, interaction.guildId);
+            if (!streak.enabled) {
+                await interaction.reply({ content: t(lang, 'streaks.off'), flags: discord_js_1.MessageFlags.Ephemeral });
+                return;
+            }
+            const lines = [
+                `**${t(lang, 'streaks.title')}**`,
+                t(lang, 'streaks.current', { days: streak.current, n: formatNumber(lang, streak.current) }),
+                t(lang, 'streaks.best', { days: streak.best, n: formatNumber(lang, streak.best) }),
+                t(lang, streak.activeToday ? 'streaks.today.yes' : 'streaks.today.no'),
+                t(lang, 'streaks.freezes', { used: streak.freezesUsed, total: streak.freezes }),
+                t(lang, 'streaks.rule', { messages: streak.rules.minMessages, minutes: streak.rules.minVoiceMinutes }),
+            ];
+            await interaction.reply({ content: lines.join('\n'), flags: discord_js_1.MessageFlags.Ephemeral });
+        }
+        catch (error) {
+            console.error('streak failed', error); // i18n-ignore: log line
+            const content = t(lang, 'streaks.failed');
+            if (interaction.deferred || interaction.replied)
+                await interaction.editReply({ content }).catch(() => null);
+            else
+                await interaction.reply({ content, flags: discord_js_1.MessageFlags.Ephemeral }).catch(() => null);
+        }
+    },
+};

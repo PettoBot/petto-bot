@@ -152,4 +152,7 @@ const missionActions = require('./missionActions') as typeof import('./missionAc
 export const missionsList = missionActions.list;
 export const missionsClaim = missionActions.claim;
 
+const streakActions = require('./streakActions') as typeof import('./streakActions');
+export const streaksMine = streakActions.mine;
+
 export const uploads = require('./uploadActions') as typeof import('./uploadActions');

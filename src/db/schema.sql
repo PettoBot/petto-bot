@@ -5527,3 +5527,13 @@ create table if not exists upload_blocks (
   created_at timestamptz not null default now()
 );
 alter table upload_blocks enable row level security;
+
+-- Streaks: each server decides what counts as an active day (messages and minutes in voice that day). The streak itself is worked out from activity_members, so nothing is stored for it.
+create table if not exists streak_config (
+  guild_id           text primary key references guilds(guild_id) on delete cascade,
+  enabled            boolean not null default true,
+  min_messages       int not null default 1 check (min_messages between 0 and 1000),
+  min_voice_minutes  int not null default 0 check (min_voice_minutes between 0 and 1440),
+  updated_at         timestamptz not null default now()
+);
+alter table streak_config enable row level security;

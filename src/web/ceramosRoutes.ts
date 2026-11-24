@@ -108,6 +108,8 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
     if (!bytes) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
     res.set('Content-Type', 'image/webp').set('Cache-Control', 'private, no-store').send(bytes);
   });
+  // The streaks of a person in the servers where they have been active.
+  app.get('/api/dashboard/ceramos/streaks', limiter, guard(false, async (userId) => api.streaksMine(userId)));
   // The missions: the list with the progress, and claiming one (`id`) or every finished one.
   app.get('/api/dashboard/ceramos/missions', limiter, guard(false, async (userId) => api.missionsList(userId)));
   app.post('/api/dashboard/ceramos/missions-claim', limiter, guard(true, async (userId, body) => api.missionsClaim(userId, body.id)));
