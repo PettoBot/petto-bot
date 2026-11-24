@@ -81,11 +81,12 @@ async function submit(userId, input, bytes) {
     const name = typeof input.name === 'string' ? input.name.normalize('NFC').replace(/\s+/g, ' ').trim() : '';
     if (!NAME.test(name))
         return { ok: false, error: 'bad_name' };
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0)
+    const file = require('./customBadgeRules').asBytes(bytes);
+    if (!file || file.length === 0)
         return { ok: false, error: 'bad_file' };
-    if (bytes.length > exports.MAX_BADGE_UPLOAD)
+    if (file.length > exports.MAX_BADGE_UPLOAD)
         return { ok: false, error: 'too_big' };
-    const done = await squareOf(bytes);
+    const done = await squareOf(file);
     if (!done.ok)
         return { ok: false, error: done.error };
     const png = done.png;

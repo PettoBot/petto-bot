@@ -20,8 +20,13 @@ export interface BadgeInput {
 }
 export type Checked = { ok: true; value: BadgeInput } | { ok: false; error: string };
 
+/** The bytes as a Buffer, or null for anything else (a request can send an array or a text where a file is expected). */
+export const asBytes = (value: unknown): Buffer | null => (typeof value === 'object' && value !== null && !Array.isArray(value) && Buffer.isBuffer(value) ? value : null);
+
 /** The kind of picture from its first bytes (never from what the name or the sender says). */
-export function imageTypeOf(bytes: Buffer): string | null {
+export function imageTypeOf(input: Buffer): string | null {
+  const bytes = asBytes(input);
+  if (!bytes) return null;
   if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
   if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   if (bytes.length > 6 && bytes.subarray(0, 4).toString('latin1') === 'GIF8') return 'image/gif';
@@ -68,8 +73,9 @@ export function checkBadgeInput(body: Record<string, unknown>): Checked {
 }
 
 /** Checks the picture of a badge: not empty, at most 256 KB, and really a PNG, JPEG, GIF or WebP by its first bytes. */
-export function checkImage(bytes: Buffer): { ok: true; type: string } | { ok: false; error: string } {
-  if (!bytes.length) return { ok: false, error: 'image_required' };
+export function checkImage(input: Buffer): { ok: true; type: string } | { ok: false; error: string } {
+  const bytes = asBytes(input);
+  if (!bytes || !bytes.length) return { ok: false, error: 'image_required' };
   if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'image_too_big' };
   const type = imageTypeOf(bytes);
   return type ? { ok: true, type } : { ok: false, error: 'bad_image' };

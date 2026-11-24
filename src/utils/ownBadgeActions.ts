@@ -63,9 +63,10 @@ export async function submit(userId: string, input: { slot?: unknown; name?: unk
   if ((await uploadsDb.policyVersionOf(userId)) < uploads.POLICY_VERSION) return { ok: false as const, error: 'policy_required' as const };
   const name = typeof input.name === 'string' ? input.name.normalize('NFC').replace(/\s+/g, ' ').trim() : '';
   if (!NAME.test(name)) return { ok: false as const, error: 'bad_name' as const };
-  if (!Buffer.isBuffer(bytes) || bytes.length === 0) return { ok: false as const, error: 'bad_file' as const };
-  if (bytes.length > MAX_BADGE_UPLOAD) return { ok: false as const, error: 'too_big' as const };
-  const done = await squareOf(bytes);
+  const file = (require('./customBadgeRules') as typeof import('./customBadgeRules')).asBytes(bytes);
+  if (!file || file.length === 0) return { ok: false as const, error: 'bad_file' as const };
+  if (file.length > MAX_BADGE_UPLOAD) return { ok: false as const, error: 'too_big' as const };
+  const done = await squareOf(file);
   if (!done.ok) return { ok: false as const, error: (done as { error: 'bad_file' | 'file_too_small' | 'too_big' }).error };
   const png = (done as { png: Buffer }).png;
   const verdict = await detector.screen(png, fetch, 'image/png');

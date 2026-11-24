@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.IMAGE_TYPES = exports.GRANT_RULES = exports.RARITIES = exports.CATEGORIES = exports.MAX_IMAGE_BYTES = void 0;
+exports.asBytes = exports.IMAGE_TYPES = exports.GRANT_RULES = exports.RARITIES = exports.CATEGORIES = exports.MAX_IMAGE_BYTES = void 0;
 exports.imageTypeOf = imageTypeOf;
 exports.checkBadgeInput = checkBadgeInput;
 exports.checkImage = checkImage;
@@ -13,8 +13,14 @@ const LANGS = ['en', 'es', 'pt-BR'];
 /** The ids of the badges of the code: a badge of the editor cannot take one of them or start like a country or a language. */
 const RESERVED = /^(country-|lang-|plan-)/;
 const BUILT_IN = new Set(['furro', 'boykisser', 'hetero', 'femboy']);
+/** The bytes as a Buffer, or null for anything else (a request can send an array or a text where a file is expected). */
+const asBytes = (value) => (typeof value === 'object' && value !== null && !Array.isArray(value) && Buffer.isBuffer(value) ? value : null);
+exports.asBytes = asBytes;
 /** The kind of picture from its first bytes (never from what the name or the sender says). */
-function imageTypeOf(bytes) {
+function imageTypeOf(input) {
+    const bytes = (0, exports.asBytes)(input);
+    if (!bytes)
+        return null;
     if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
         return 'image/png';
     if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
@@ -74,8 +80,9 @@ function checkBadgeInput(body) {
     return { ok: true, value: { id, names, category, rarity, price, color, saleFrom, saleUntil, planMin, grantRule, packId } };
 }
 /** Checks the picture of a badge: not empty, at most 256 KB, and really a PNG, JPEG, GIF or WebP by its first bytes. */
-function checkImage(bytes) {
-    if (!bytes.length)
+function checkImage(input) {
+    const bytes = (0, exports.asBytes)(input);
+    if (!bytes || !bytes.length)
         return { ok: false, error: 'image_required' };
     if (bytes.length > exports.MAX_IMAGE_BYTES)
         return { ok: false, error: 'image_too_big' };

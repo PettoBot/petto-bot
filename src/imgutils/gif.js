@@ -1,14 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isGif = exports.GIF_LIMITS = void 0;
+exports.isGif = exports.asBytes = exports.GIF_LIMITS = void 0;
 exports.decodeGif = decodeGif;
 // i18n-ignore-file: these errors are only logged or turned into a code, never shown to anyone
 // An animated GIF, read by hand: the own picture of a Gold plan may move, and the card needs its frames as whole pictures. Only what the card needs is read: the size, the
 // frames (put together following their disposal rules, with the transparent colour) and how long each one lasts. Written in TypeScript: `npm run build:ts` compiles it over gif.js.
 const { createCanvas } = require('@napi-rs/canvas');
 exports.GIF_LIMITS = { frames: 120, side: 2048, pixels: 160_000_000, minDelayMs: 30, maxDelayMs: 2000 };
+/** The bytes as a Buffer, or null for anything else (a request can send an array or a text where a file is expected). */
+const asBytes = (value) => (typeof value === 'object' && value !== null && !Array.isArray(value) && Buffer.isBuffer(value) ? value : null);
+exports.asBytes = asBytes;
 /** True when the bytes start like a GIF. */
-const isGif = (bytes) => bytes.length > 13 && (bytes.toString('latin1', 0, 6) === 'GIF87a' || bytes.toString('latin1', 0, 6) === 'GIF89a');
+const isGif = (input) => {
+    const bytes = (0, exports.asBytes)(input);
+    return bytes !== null && bytes.length > 13 && (bytes.toString('latin1', 0, 6) === 'GIF87a' || bytes.toString('latin1', 0, 6) === 'GIF89a');
+};
 exports.isGif = isGif;
 /** The indexes of a compressed block of an image (LZW), `size` of them. It throws on a broken stream. */
 function lzw(data, minCode, size) {
@@ -76,9 +82,10 @@ function lzw(data, minCode, size) {
     return out;
 }
 /** The frames of a GIF as whole pictures, or null when it is a single picture. It throws on a file that is not a GIF, is broken or is too big. */
-function decodeGif(bytes, limits = {}) {
+function decodeGif(input, limits = {}) {
     const max = { ...exports.GIF_LIMITS, ...limits };
-    if (!(0, exports.isGif)(bytes))
+    const bytes = (0, exports.asBytes)(input);
+    if (!bytes || !(0, exports.isGif)(bytes))
         throw new Error('Not a GIF.');
     const width = bytes.readUInt16LE(6), height = bytes.readUInt16LE(8);
     if (!width || !height || width > max.side || height > max.side)

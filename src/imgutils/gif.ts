@@ -7,8 +7,14 @@ export const GIF_LIMITS = { frames: 120, side: 2048, pixels: 160_000_000, minDel
 export interface GifFrame { canvas: import('@napi-rs/canvas').Canvas; delayMs: number }
 export interface GifPicture { width: number; height: number; frames: GifFrame[] }
 
+/** The bytes as a Buffer, or null for anything else (a request can send an array or a text where a file is expected). */
+export const asBytes = (value: unknown): Buffer | null => (typeof value === 'object' && value !== null && !Array.isArray(value) && Buffer.isBuffer(value) ? value : null);
+
 /** True when the bytes start like a GIF. */
-export const isGif = (bytes: Buffer): boolean => bytes.length > 13 && (bytes.toString('latin1', 0, 6) === 'GIF87a' || bytes.toString('latin1', 0, 6) === 'GIF89a');
+export const isGif = (input: Buffer): boolean => {
+  const bytes = asBytes(input);
+  return bytes !== null && bytes.length > 13 && (bytes.toString('latin1', 0, 6) === 'GIF87a' || bytes.toString('latin1', 0, 6) === 'GIF89a');
+};
 
 /** The indexes of a compressed block of an image (LZW), `size` of them. It throws on a broken stream. */
 function lzw(data: Buffer, minCode: number, size: number): Uint8Array {
@@ -39,9 +45,10 @@ function lzw(data: Buffer, minCode: number, size: number): Uint8Array {
 }
 
 /** The frames of a GIF as whole pictures, or null when it is a single picture. It throws on a file that is not a GIF, is broken or is too big. */
-export function decodeGif(bytes: Buffer, limits: Partial<typeof GIF_LIMITS> = {}): GifPicture | null {
+export function decodeGif(input: Buffer, limits: Partial<typeof GIF_LIMITS> = {}): GifPicture | null {
   const max = { ...GIF_LIMITS, ...limits };
-  if (!isGif(bytes)) throw new Error('Not a GIF.');
+  const bytes = asBytes(input);
+  if (!bytes || !isGif(bytes)) throw new Error('Not a GIF.');
   const width = bytes.readUInt16LE(6), height = bytes.readUInt16LE(8);
   if (!width || !height || width > max.side || height > max.side) throw new Error('That GIF is too large.');
   const flags = bytes[10], background = bytes[11];
