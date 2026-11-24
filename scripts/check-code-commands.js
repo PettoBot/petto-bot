@@ -530,7 +530,7 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
     const inThread = makeMessage(); inThread.message.channel = { ...inThread.message.channel, id: '200000000000000099', parentId: '200000000000000001' };
     await codeCommands.runCodeCommand(inThread.message, withOptions('ran', { channels: { mode: 'only', ids: ['200000000000000001'] } }), '', '!');
     assert.equal(inThread.replies.length, 1, 'a thread of the channel it is for');
-    assert.deepEqual(codeCommands.optionsOf({ options: { roles: { mode: 'x', ids: ['1', 'nope', R1] }, errorChannel: 'bad' } }), { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [R1] }, channels: { mode: 'only', ids: [] } }, 'what is saved is cleaned');
+    assert.deepEqual(codeCommands.optionsOf({ options: { roles: { mode: 'x', ids: ['1', 'nope', R1] }, errorChannel: 'bad' } }), { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [R1] }, channels: { mode: 'only', ids: [] }, allowChannels: [], blockChannels: [], allowRoles: [], blockRoles: [], nsfw: false, restricted: false, restrictedChannel: null }, 'what is saved is cleaned');
     // A button of a command that is not for the member says so, and does not run.
     const clicks = [];
     const click = async (options) => {

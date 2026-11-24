@@ -9,6 +9,7 @@ const commandAliasesDb = require('../db/commandAliases');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const permissionsDb = require('../db/permissions');
 const customCommandsDb = require('../db/customCommands');
+const commandScope = require('../utils/commandScope');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
@@ -191,6 +192,13 @@ async function runCustomCommand(message, commandName, argText = '', prefix = '!'
 /** Runs a custom command that was already found: its code, its saved embed or its text. */
 async function runCustomCommandRow(message, row, commandName, argText = '', prefix = '!', serverPrefix = prefix) {
   if (row.code) return runCodeCommand(message, row, argText, prefix, serverPrefix);
+  // A command that is not for this member or this channel (the channels and roles it is allowed in or blocked from, NSFW) stays quiet, like any word that is not a command.
+  if (!commandScope.allows(row.options, message.member, message.channel)) return true;
+  // A restricted command answers a member who is not a moderator in the channel the server chose, not where it was used.
+  const redirect = commandScope.redirectChannel(row.options, message.member, message.guild);
+  const answer = (payload) => (redirect
+    ? redirect.send({ ...payload, content: `<@${message.author.id}>${payload.content ? ` ${payload.content}` : ''}`, allowedMentions: { parse: [], users: [message.author.id], repliedUser: false } })
+    : message.reply(payload));
   message.channel.sendTyping().catch(() => {});
 
   const argTokens = tokenize(argText);
@@ -220,13 +228,13 @@ async function runCustomCommandRow(message, row, commandName, argText = '', pref
       const templateReactReplies = [];
       const templateData = extractReactRepliesFromTemplate(doc.data, templateReactReplies);
       const payload = await build(templateData, ctx);
-      const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions }).catch(() => null);
+      const sent = await answer({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions }).catch(() => null);
       if (sent && (reactReplies.length || templateReactReplies.length)) await applyReactReplies(sent, [...reactReplies, ...templateReactReplies]);
       return true;
     }
     if (cleanedResponse) {
       const plain = await plainMessage(cleanedResponse, ctx);
-      const sent = await message.reply({ ...plain, allowedMentions }).catch(() => null);
+      const sent = await answer({ ...plain, allowedMentions }).catch(() => null);
       if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
     } else if (reactReplies.length) {
       await applyReactReplies(message, reactReplies);

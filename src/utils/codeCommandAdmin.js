@@ -5,6 +5,7 @@ const { isHiddenWordFor } = require('./hiddenCommands');
 const ccDb = require('../db/customCommands');
 const { check, parse, closestName, functionNames, MAX_SOURCE_LENGTH } = require('../scripting');
 const { dataFields } = require('./codeCommands');
+const commandScope = require('./commandScope');
 const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../db/premium');
 const { validateTrigger, invalidateTriggers, triggersFor, MAX_TRIGGERS_PER_GUILD } = require('./codeTriggers');
 const { t, tn, currentLanguage } = require('../i18n');
@@ -352,6 +353,8 @@ async function setCommandOptions({ guild, name, options, lang = currentLanguage(
     errorChannel = channel.id;
   }
   const clean = {
+    // What the commands page wrote about where the command works is kept (the editor of code only sends its own part).
+    ...commandScope.compactScope(row.options),
     errorsAsResponse: raw.errorsAsResponse !== false,
     errorChannel,
     roles: { mode: raw.roles?.mode === 'ignore' ? 'ignore' : 'require', ids: roleIds },
