@@ -75,3 +75,25 @@ export async function upgradeFrame(userId: string, badgeId: string): Promise<Upg
   }
   return { ok: true, balance, frame: next.id, cost: next.cost };
 }
+
+export type ChooseFrameResult =
+  | { ok: true; frame: string }
+  | { ok: false; reason: 'notOwned' | 'noFrame' | 'notYet' | 'bad_request' };
+
+/**
+ * Chooses which frame an owned badge shows, among the ones the person has (the best one it has, and the ones below it): a frame they do not have yet is refused. The
+ * best frame stays what it is, so the next purchase still builds on it; buying a new frame shows it. The badge of a plan has no frames.
+ */
+export async function chooseFrame(userId: string, badgeId: string, frame: string): Promise<ChooseFrameResult> {
+  await registry.ensure();
+  if (!rules.FRAMES.some((each) => each.id === frame)) return { ok: false, reason: 'bad_request' };
+  const def = badges.badgeById(badgeId);
+  if (def?.unlock === 'plan') return { ok: false, reason: 'noFrame' };
+  if (def?.grantRule) await view.profileState(userId); // a badge given by itself is saved the first time it is looked at
+  const row = (await profileDb.getBadgeRows(userId)).find((each) => each.id === badgeId);
+  if (!def || !row) return { ok: false, reason: 'notOwned' };
+  if (rules.frameById(frame).level > rules.frameById(row.frame).level) return { ok: false, reason: 'notYet' };
+  // Choosing the best frame is the same as choosing nothing: it follows the best one the badge gets.
+  const changed = await profileDb.setShownFrame(userId, badgeId, row.frame, frame === row.frame ? null : frame);
+  return changed ? { ok: true, frame } : { ok: false, reason: 'notOwned' };
+}

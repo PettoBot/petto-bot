@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ownBadges = exports.uploads = exports.summaryOf = exports.streaksMine = exports.missionsClaim = exports.missionsList = exports.apiKeys = exports.grantCeramos = exports.grantSaveSettings = exports.grantState = exports.refundPack = exports.creditPack = exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
+exports.ownBadges = exports.uploads = exports.summaryOf = exports.streaksMine = exports.missionsClaim = exports.missionsList = exports.apiKeys = exports.grantCeramos = exports.grantSaveSettings = exports.grantState = exports.refundPack = exports.creditPack = exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.chooseFrame = exports.upgrade = exports.buy = exports.claim = void 0;
 exports.catalog = catalog;
 exports.state = state;
 exports.ledger = ledger;
@@ -61,7 +61,8 @@ async function state(userId, now = new Date()) {
         plan: profile.plan,
         daily: { canClaim: status.canClaim, nextAt: status.nextAt.toISOString(), amount: rules.dailyAmount(profile.plan) },
         slots: profile.slots,
-        owned: profile.owned.map((id) => ({ id, frame: profile.frames[id] ?? 'normal' })),
+        // `frame` is the one that shows, `unlocked` the best one the badge has (what can be chosen, and what the next purchase builds on).
+        owned: profile.owned.map((id) => ({ id, frame: profile.frames[id] ?? 'normal', unlocked: profile.unlocked[id] ?? profile.frames[id] ?? 'normal' })),
         showcase: profile.showcase,
         items: profile.items,
         active: profile.active,
@@ -80,6 +81,8 @@ const buy = (userId, badgeId) => shop.buyBadge(userId, badgeId);
 exports.buy = buy;
 const upgrade = (userId, badgeId) => shop.upgradeFrame(userId, badgeId);
 exports.upgrade = upgrade;
+const chooseFrame = (userId, badgeId, frame) => shop.chooseFrame(userId, badgeId, frame);
+exports.chooseFrame = chooseFrame;
 const buyItem = (userId, kind, id) => shopBuy.buyItem(userId, kind, id);
 exports.buyItem = buyItem;
 const buyPack = (userId, id) => shopBuy.buyPack(userId, id);

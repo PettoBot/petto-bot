@@ -98,7 +98,8 @@ export async function state(userId: string, now: Date = new Date()) {
     plan: profile.plan,
     daily: { canClaim: status.canClaim, nextAt: status.nextAt.toISOString(), amount: rules.dailyAmount(profile.plan) },
     slots: profile.slots,
-    owned: profile.owned.map((id) => ({ id, frame: profile.frames[id] ?? 'normal' })),
+    // `frame` is the one that shows, `unlocked` the best one the badge has (what can be chosen, and what the next purchase builds on).
+    owned: profile.owned.map((id) => ({ id, frame: profile.frames[id] ?? 'normal', unlocked: profile.unlocked[id] ?? profile.frames[id] ?? 'normal' })),
     showcase: profile.showcase,
     items: profile.items,
     active: profile.active,
@@ -116,6 +117,7 @@ export async function ledger(userId: string, limit = 50) {
 export const claim = (userId: string) => view.planOfUser(userId).then((plan) => shop.claimToday(userId, plan));
 export const buy = (userId: string, badgeId: string) => shop.buyBadge(userId, badgeId);
 export const upgrade = (userId: string, badgeId: string) => shop.upgradeFrame(userId, badgeId);
+export const chooseFrame = (userId: string, badgeId: string, frame: string) => shop.chooseFrame(userId, badgeId, frame);
 export const buyItem = (userId: string, kind: 'banner' | 'font', id: string) => shopBuy.buyItem(userId, kind, id);
 export const buyPack = (userId: string, id: string) => shopBuy.buyPack(userId, id);
 export const wear = (userId: string, kind: 'banner' | 'font', id: string | null) => shopBuy.wear(userId, kind, id);
