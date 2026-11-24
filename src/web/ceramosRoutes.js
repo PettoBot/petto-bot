@@ -114,6 +114,30 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const id = badgeOf({ badge: body.id });
         return id && typeof body.active === 'boolean' ? admin.setActive(id, body.active) : bad;
     }));
+    // The keys of the read-only API (a person makes, sees and removes their own) and what a key reads. The reads need no person: the key says who.
+    app.get('/api/dashboard/ceramos/api-keys', limiter, guard(false, async (userId) => api.apiKeys.list(userId)));
+    app.post('/api/dashboard/ceramos/api-key-create', limiter, guard(true, async (userId, body) => api.apiKeys.create(userId, body)));
+    app.post('/api/dashboard/ceramos/api-key-remove', limiter, guard(true, async (userId, body) => api.apiKeys.remove(userId, body)));
+    const publicRead = (what) => async (req, res) => {
+        if (!isAuthorized(req)) {
+            res.status(401).json({ ok: false, error: 'unauthorized' });
+            return;
+        }
+        try {
+            res.json(await api.apiKeys.read(req.body?.key, what));
+        }
+        catch (error) {
+            logger.error('The read-only API failed:', error.message);
+            if (!res.headersSent)
+                res.status(500).json({ ok: false, error: 'failed' });
+        }
+    };
+    app.post('/api/dashboard/ceramos/public/me', limiter, publicRead('me'));
+    app.post('/api/dashboard/ceramos/public/movements', limiter, publicRead('movements'));
+    app.get('/api/dashboard/ceramos/public/info', limiter, (req, res) => { if (!isAuthorized(req)) {
+        res.status(401).json({ ok: false, error: 'unauthorized' });
+        return;
+    } res.json(api.apiKeys.publicInfo()); });
     // Giving ceramos from the dashboard: the owner and the people the owner lists (the bot checks who is asking), with limits the owner sets.
     app.get('/api/dashboard/ceramos/admin/grant', limiter, guard(false, async (userId) => api.grantState(userId, String(config.ownerId))));
     app.post('/api/dashboard/ceramos/admin/grant', limiter, guard(true, async (userId, body) => api.grantCeramos(userId, String(config.ownerId), body)));

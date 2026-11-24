@@ -144,3 +144,6 @@ const grantActions = require('./ceramosGrantActions') as typeof import('./ceramo
 export const grantState = grantActions.state;
 export const grantSaveSettings = grantActions.saveSettings;
 export const grantCeramos = grantActions.grant;
+
+const publicApi = require('./publicApiActions') as typeof import('./publicApiActions');
+export const apiKeys = publicApi;

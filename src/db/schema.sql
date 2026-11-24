@@ -5478,3 +5478,15 @@ create table if not exists ceramos_grant_settings (
   updated_at    timestamptz not null default now()
 );
 alter table ceramos_grant_settings enable row level security;
+
+-- Keys of the read-only API: each person can make up to 3. Only the hash of a key is kept (the key itself is shown once, when it is made).
+create table if not exists api_keys (
+  id         bigserial primary key,
+  user_id    text not null,
+  key_hash   text not null unique,
+  label      text not null default '',
+  created_at timestamptz not null default now(),
+  last_used  timestamptz
+);
+create index if not exists api_keys_user_idx on api_keys (user_id);
+alter table api_keys enable row level security;
