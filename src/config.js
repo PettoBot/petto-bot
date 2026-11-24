@@ -250,13 +250,13 @@ module.exports = {
     5: process.env.PETTO_PREMIUM_ROLE_5_ID || '1535057199574032384',
   },
   // The other roles of the support server that payments give by themselves (all optional; a role that is not set is simply not given):
-  // the role of each plan of a person, the "Code" role of the plans, and "Priority Support" for the plans and for the Premium of a server.
+  // the role of each plan of a person, the "Supporter" role of the plans, and "Priority Support" for the plans and for the Premium of a server.
   planRoleIds: {
     bronze: roleIdFromEnv('PETTO_PLAN_ROLE_BRONZE_ID'),
     silver: roleIdFromEnv('PETTO_PLAN_ROLE_SILVER_ID'),
     gold: roleIdFromEnv('PETTO_PLAN_ROLE_GOLD_ID'),
   },
-  codeRoleId: roleIdFromEnv('PETTO_CODE_ROLE_ID'),
+  supporterRoleId: roleIdFromEnv('PETTO_SUPPORTER_ROLE_ID'),
   prioritySupportRoleId: roleIdFromEnv('PETTO_PRIORITY_SUPPORT_ROLE_ID'),
   // Who may have a prefix of their own (`!myprefix`): a booster of the support server, a Premium user, a team member
   // (owner, developers and the site team), someone with a partner role, or someone with one of these roles in the support server.

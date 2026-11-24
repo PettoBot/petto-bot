@@ -1,12 +1,12 @@
 // i18n-ignore-file: only role ids and plan names; nothing here is shown to anyone.
 // Which roles of the support server a person has to have because of what they pay: the role of their Premium (1, 3 or 5 servers), the role of their plan
-// (Bronze, Silver or Gold), the "Code" role and the "Priority Support" role. Pure, so the job that gives them and scripts/check-managed-roles.js read the same rules.
+// (Bronze, Silver or Gold), the "Supporter" role and the "Priority Support" role. Pure, so the job that gives them and scripts/check-managed-roles.js read the same rules.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/managedRoles.js.
 
 export interface ManagedRoleIds {
   premium: Record<number, string | null | undefined>;
   plan: Record<string, string | null | undefined>;
-  code: string | null | undefined;
+  supporter: string | null | undefined;
   priority: string | null | undefined;
 }
 
@@ -20,7 +20,7 @@ export function premiumRoleFor(ids: ManagedRoleIds, slots: number): string | nul
 }
 
 /**
- * The roles a person has to have now: with Premium, the role of its slots and "Priority Support"; with a plan, the role of the plan, "Code" and "Priority Support".
+ * The roles a person has to have now: with Premium, the role of its slots and "Priority Support"; with a plan, the role of the plan, "Supporter" and "Priority Support".
  * Both together give each role once. A role that is not set is left out.
  */
 export function desiredRoles(ids: ManagedRoleIds, slots: number, plan: string | null): string[] {
@@ -30,14 +30,14 @@ export function desiredRoles(ids: ManagedRoleIds, slots: number, plan: string | 
   const planRole = plan ? ids.plan[plan] : null;
   if (planRole) wanted.add(planRole);
   const paying = Boolean(premium) || Boolean(plan);
-  if (plan && ids.code) wanted.add(ids.code);
+  if (plan && ids.supporter) wanted.add(ids.supporter);
   if (paying && ids.priority) wanted.add(ids.priority);
   return [...wanted];
 }
 
 /** Every role that payments manage: the ones the job takes away from whoever does not have to have them. */
 export function managedRoles(ids: ManagedRoleIds): string[] {
-  const all = [...Object.values(ids.premium), ...Object.values(ids.plan), ids.code, ids.priority];
+  const all = [...Object.values(ids.premium), ...Object.values(ids.plan), ids.supporter, ids.priority];
   return [...new Set(all.filter((id): id is string => typeof id === 'string' && id.length > 0))];
 }
 

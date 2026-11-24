@@ -15,7 +15,7 @@ function configuredRoleIds() {
 }
 
 function managedIds() {
-  return { premium: config.premiumRoleIds, plan: config.planRoleIds, code: config.codeRoleId, priority: config.prioritySupportRoleId };
+  return { premium: config.premiumRoleIds, plan: config.planRoleIds, supporter: config.supporterRoleId, priority: config.prioritySupportRoleId };
 }
 
 function roleIdForSlots(slots) {
