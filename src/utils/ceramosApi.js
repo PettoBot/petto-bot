@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
+exports.creditPack = exports.rankCardReset = exports.rankCardSave = exports.setIdentity = exports.saveShowcase = exports.wear = exports.buyPack = exports.buyItem = exports.upgrade = exports.buy = exports.claim = void 0;
 exports.catalog = catalog;
 exports.state = state;
 exports.ledger = ledger;
@@ -19,6 +19,8 @@ const plansDb = require('../db/userPlans');
 const rankRules = require('./userRankCard');
 const rankDb = require('../db/userRankCard');
 const rankActions = require('./rankCardActions');
+const coinPacks = require('./coinPacks');
+const coinActions = require('./coinPackActions');
 const designs = require('./cardDesigns');
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
 async function catalog() {
@@ -47,6 +49,8 @@ async function catalog() {
         daily: { ...rules.DAILY },
         slots: { ...badges.SHOWCASE_SLOTS },
         plans: { ...userPlans.PLAN_PERKS },
+        // The packs of ceramos that are sold.
+        coinPacks: coinPacks.COIN_PACKS.map((pack) => ({ ...pack })),
     };
 }
 async function state(userId, now = new Date()) {
@@ -103,3 +107,4 @@ async function rankCardState(userId) {
 exports.rankCardSave = rankActions.save;
 const rankCardReset = (userId) => rankDb.resetRankCard(userId);
 exports.rankCardReset = rankCardReset;
+exports.creditPack = coinActions.credit;

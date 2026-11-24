@@ -41,6 +41,27 @@ export async function give(userId: string, amount: number, reason: string, ref: 
   return Number(rows[0]?.balance ?? 0);
 }
 
+/**
+ * Gives the ceramos of a pack that was paid, once for each order: the order is saved and the wallet and the ledger change in the same statement, so a payment that arrives twice
+ * (or two at once) gives them once. Returns the balance and whether this call was the one that gave them.
+ */
+export async function giveOnce(userId: string, amount: number, pack: string, orderId: string): Promise<{ balance: number; applied: boolean }> {
+  const { rows } = await getPrimaryPool().query(
+    `with o as (
+       insert into ceramos_orders (order_id, user_id, pack, coins) values ($4, $1, $3, $2) on conflict (order_id) do nothing returning order_id
+     ), up as (
+       insert into ceramos_wallets (user_id, balance) select $1, $2 from o
+       on conflict (user_id) do update set balance = ceramos_wallets.balance + $2, updated_at = now() returning balance
+     ), led as (
+       insert into ceramos_ledger (user_id, delta, reason, ref) select $1, $2, 'purchase', $3 from up returning id
+     )
+     select (select balance from up) as balance, exists (select 1 from o) as applied`, [userId, amount, pack, orderId]);
+  const row = rows[0];
+  if (row?.applied) return { balance: Number(row.balance), applied: true };
+  const wallet = await getWallet(userId);
+  return { balance: wallet.balance, applied: false };
+}
+
 /** Takes ceramos only if the person has them. Returns the new balance, or null when they do not have enough. */
 export async function spend(userId: string, amount: number, reason: string, ref: string | null = null, byUser: string | null = null): Promise<number | null> {
   const { rows } = await getPrimaryPool().query(

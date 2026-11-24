@@ -5456,3 +5456,14 @@ create table if not exists user_rank_card (
   updated_at     timestamptz not null default now()
 );
 alter table user_rank_card enable row level security;
+
+-- The packs of ceramos that were paid (one row for each payment of the payment service): the order id is the key, so the same payment arriving twice (the service sends events again)
+-- gives the ceramos only once.
+create table if not exists ceramos_orders (
+  order_id    text primary key,
+  user_id     text not null,
+  pack        text not null,
+  coins       integer not null check (coins > 0),
+  created_at  timestamptz not null default now()
+);
+alter table ceramos_orders enable row level security;

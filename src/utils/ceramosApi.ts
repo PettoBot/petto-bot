@@ -17,6 +17,8 @@ const plansDb = require('../db/userPlans') as typeof import('../db/userPlans');
 const rankRules = require('./userRankCard') as typeof import('./userRankCard');
 const rankDb = require('../db/userRankCard') as typeof import('../db/userRankCard');
 const rankActions = require('./rankCardActions') as typeof import('./rankCardActions');
+const coinPacks = require('./coinPacks') as typeof import('./coinPacks');
+const coinActions = require('./coinPackActions') as typeof import('./coinPackActions');
 const designs = require('./cardDesigns') as { getDesign: (id: string) => unknown; designCatalog: () => unknown };
 
 export interface CatalogBadge {
@@ -55,7 +57,7 @@ export interface CatalogPack {
 }
 
 /** Everything that is for sale or can be shown: the page draws it with its own words (names from the language, flags from the same open package). */
-export async function catalog(): Promise<{ badges: CatalogBadge[]; items: CatalogItem[]; packs: CatalogPack[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number>; plans: Record<string, import('./userPlans').PlanPerks> }> {
+export async function catalog(): Promise<{ badges: CatalogBadge[]; items: CatalogItem[]; packs: CatalogPack[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number>; plans: Record<string, import('./userPlans').PlanPerks>; coinPacks: { id: string; coins: number; price: number }[] }> {
   await registry.ensure();
   const now = new Date();
   return {
@@ -81,6 +83,8 @@ export async function catalog(): Promise<{ badges: CatalogBadge[]; items: Catalo
     daily: { ...rules.DAILY },
     slots: { ...badges.SHOWCASE_SLOTS },
     plans: { ...userPlans.PLAN_PERKS },
+    // The packs of ceramos that are sold.
+    coinPacks: coinPacks.COIN_PACKS.map((pack) => ({ ...pack })),
   };
 }
 
@@ -133,3 +137,5 @@ export async function rankCardState(userId: string) {
 
 export const rankCardSave = rankActions.save;
 export const rankCardReset = (userId: string) => rankDb.resetRankCard(userId);
+
+export const creditPack = coinActions.credit;

@@ -78,6 +78,8 @@ export function registerCeramosRoutes(app: { get: (...a: unknown[]) => void; pos
     if (!file) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
     res.set('Content-Type', file.type).set('Cache-Control', 'public, max-age=3600').send(file.bytes);
   });
+  // A pack of ceramos that was paid: the website sends the order of the payment service; the same order gives the ceramos only once.
+  app.post('/api/dashboard/ceramos/credit-pack', limiter, guard(true, async (userId, body) => ({ result: await api.creditPack(userId, String(body.pack ?? ''), String(body.order ?? '')) })));
   app.post('/api/dashboard/ceramos/showcase', limiter, guard(true, async (userId, body) => {
     const list = Array.isArray(body.badges) ? body.badges.filter((id): id is string => typeof id === 'string' && BADGE.test(id)).slice(0, 6) : null;
     return { result: list ? { ok: true, ...(await api.saveShowcase(userId, list)) } : bad };
