@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.artOf = artOf;
+exports.frameOf = frameOf;
 exports.artOfBadge = artOfBadge;
 exports.formatVoice = formatVoice;
 exports.planOfUser = planOfUser;
@@ -34,6 +35,23 @@ async function artOf(file) {
         return null;
     }
 }
+const FRAMES_DIR = path.join(__dirname, '..', 'assets', 'frames');
+const frameCache = new Map();
+/** The picture of a frame of the badges (`normal` iron, `bright` gold, `divine` mithril), or null when the file is not there: a plain ring is drawn then. */
+async function frameOf(id) {
+    const name = id === 'bright' || id === 'divine' ? id : 'normal';
+    if (frameCache.has(name))
+        return frameCache.get(name) ?? null;
+    try {
+        const image = await loadImage(path.join(FRAMES_DIR, `${name}.png`));
+        frameCache.set(name, image);
+        return image;
+    }
+    catch {
+        frameCache.set(name, null);
+        return null;
+    }
+}
 const flagCache = new Map();
 const FLAGS_DIR = (() => { try {
     return path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '1x1');
@@ -64,6 +82,8 @@ async function flagOf(region) {
 async function artOfBadge(def) {
     if (def.region)
         return flagOf(def.region);
+    if (def.flag)
+        return flagOf(def.flag);
     if (def.custom)
         return registry.customArt(def);
     return artOf(def.art);
@@ -139,8 +159,10 @@ async function buildProfileImage(opts) {
     const showcase = [];
     for (const id of state.showcase) {
         const def = badgesRules.badgeById(id);
-        if (def)
-            showcase.push({ id, art: await artOfBadge(def), color: def.color, label: badgesRules.badgeLabel(def) || undefined, frame: state.frames[id] ?? 'normal' });
+        if (def) {
+            const frame = state.frames[id] ?? 'normal';
+            showcase.push({ id, art: await artOfBadge(def), color: def.color, label: badgesRules.badgeLabel(def) || undefined, frame, frameArt: await frameOf(frame) });
+        }
     }
     return renderProfileImage({
         name: member?.displayName ?? user.username,

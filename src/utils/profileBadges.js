@@ -4,7 +4,7 @@
 // Pure rules with no database and no Discord, so scripts/check-profile-card.js tests the same code the command runs.
 // Written in TypeScript: `npm run build:ts` compiles it over utils/profileBadges.js.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.badgeLabel = exports.priceOf = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.shopBadges = exports.allBadges = exports.packById = exports.allPacks = exports.SHOP_BADGES = exports.BADGES = exports.PLAN_KEYS = exports.RARITY_PRICE = void 0;
+exports.badgeLabel = exports.priceOf = exports.planBadgeId = exports.slotsFor = exports.MAX_SLOTS = exports.SHOWCASE_SLOTS = exports.isSelfBadge = exports.badgeById = exports.shopBadges = exports.allBadges = exports.packById = exports.allPacks = exports.SHOP_BADGES = exports.BADGES = exports.LANGUAGE_FLAGS = exports.PLAN_KEYS = exports.RARITY_PRICE = void 0;
 exports.setCustomBadges = setCustomBadges;
 exports.setBadgeChanges = setBadgeChanges;
 exports.setPacks = setPacks;
@@ -29,14 +29,18 @@ const BASE_BADGES = [
     { id: 'hetero', unlock: 'self', art: 'hetero.png', color: '#6fb4ff', pack: 'fablo' },
     { id: 'femboy', unlock: 'self', art: 'femboy.png', color: '#ff8fc2', pack: 'fablo' },
 ];
-// The shop: countries (with the flag of each one) and languages, each bought once with ceramos. A language has no art: it is drawn with its code.
+// The shop: countries (with the flag of each one) and languages (with the flag of the country that stands for each), each bought once with ceramos.
 const COUNTRY_CODES = ["ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az", "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs", "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn", "co", "cp", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dg", "dj", "dk", "dm", "do", "dz", "ec", "ee", "eg", "eh", "er", "es", "et", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm", "hn", "hr", "ht", "hu", "ic", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "ye", "yt", "za", "zm", "zw"];
+// The flag drawn on the badge of each language (a country code). A language has no flag of its own, so one country stands for it; changing a pick is a line here.
+exports.LANGUAGE_FLAGS = {
+    es: 'ES', en: 'GB', pt: 'BR', fr: 'FR', de: 'DE', it: 'IT', ja: 'JP', ko: 'KR', zh: 'CN', ru: 'RU', ar: 'SA', hi: 'IN', tr: 'TR', nl: 'NL', pl: 'PL', sv: 'SE', uk: 'UA', id: 'ID', vi: 'VN', th: 'TH',
+};
 const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh', 'ru', 'ar', 'hi', 'tr', 'nl', 'pl', 'sv', 'uk', 'id', 'vi', 'th'];
 const PALETTE = ['#e8794a', '#5a8be0', '#3ea37a', '#c26bd6', '#d9a83a', '#d9483b', '#4fb3c8', '#7a6bd6'];
 const colorOf = (code) => PALETTE[(code.charCodeAt(0) * 31 + code.charCodeAt(1)) % PALETTE.length];
 const SHOP = [
     ...COUNTRY_CODES.map((code) => ({ id: `country-${code}`, unlock: 'shop', art: null, color: colorOf(code), region: code.toUpperCase(), rarity: 'common' })),
-    ...LANGUAGE_CODES.map((code) => ({ id: `lang-${code}`, unlock: 'shop', art: null, color: colorOf(code), language: code, rarity: 'common' })),
+    ...LANGUAGE_CODES.map((code) => ({ id: `lang-${code}`, unlock: 'shop', art: null, color: colorOf(code), language: code, flag: exports.LANGUAGE_FLAGS[code], rarity: 'common' })),
 ];
 // The Bufis: six collectible badges of the shop (their pictures are not made yet: each is drawn as a plain hexagon of its color until the team gives it a picture in the editor of
 // badges). Black Friday is only on sale for a few days; whoever buys it keeps it for good.

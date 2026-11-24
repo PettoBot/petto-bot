@@ -26,6 +26,8 @@ export interface BadgeDef {
   /** A country (a region code) or a language (a language code): its name comes from the language of whoever reads it, and its code is drawn on the badge. */
   region?: string;
   language?: string;
+  /** The country whose flag is drawn on a language badge (a language is not a country, so the team picks one for each: see LANGUAGE_FLAGS). */
+  flag?: string;
   /** How rare it is (only the badges of the shop have a price). */
   rarity?: Rarity;
   /** A badge made in the editor of the team (the rest are in this file). Its picture is in the database, and its words come with it. */
@@ -72,14 +74,18 @@ const BASE_BADGES: readonly BadgeDef[] = [
 ];
 
 
-// The shop: countries (with the flag of each one) and languages, each bought once with ceramos. A language has no art: it is drawn with its code.
+// The shop: countries (with the flag of each one) and languages (with the flag of the country that stands for each), each bought once with ceramos.
 const COUNTRY_CODES = ["ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az", "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs", "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn", "co", "cp", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dg", "dj", "dk", "dm", "do", "dz", "ec", "ee", "eg", "eh", "er", "es", "et", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm", "hn", "hr", "ht", "hu", "ic", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "ye", "yt", "za", "zm", "zw"];
+// The flag drawn on the badge of each language (a country code). A language has no flag of its own, so one country stands for it; changing a pick is a line here.
+export const LANGUAGE_FLAGS: Readonly<Record<string, string>> = {
+  es: 'ES', en: 'GB', pt: 'BR', fr: 'FR', de: 'DE', it: 'IT', ja: 'JP', ko: 'KR', zh: 'CN', ru: 'RU', ar: 'SA', hi: 'IN', tr: 'TR', nl: 'NL', pl: 'PL', sv: 'SE', uk: 'UA', id: 'ID', vi: 'VN', th: 'TH',
+};
 const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh', 'ru', 'ar', 'hi', 'tr', 'nl', 'pl', 'sv', 'uk', 'id', 'vi', 'th'];
 const PALETTE = ['#e8794a', '#5a8be0', '#3ea37a', '#c26bd6', '#d9a83a', '#d9483b', '#4fb3c8', '#7a6bd6'];
 const colorOf = (code: string): string => PALETTE[(code.charCodeAt(0) * 31 + code.charCodeAt(1)) % PALETTE.length];
 const SHOP: BadgeDef[] = [
   ...COUNTRY_CODES.map((code): BadgeDef => ({ id: `country-${code}`, unlock: 'shop', art: null, color: colorOf(code), region: code.toUpperCase(), rarity: 'common' })),
-  ...LANGUAGE_CODES.map((code): BadgeDef => ({ id: `lang-${code}`, unlock: 'shop', art: null, color: colorOf(code), language: code, rarity: 'common' })),
+  ...LANGUAGE_CODES.map((code): BadgeDef => ({ id: `lang-${code}`, unlock: 'shop', art: null, color: colorOf(code), language: code, flag: LANGUAGE_FLAGS[code], rarity: 'common' })),
 ];
 
 // The Bufis: six collectible badges of the shop (their pictures are not made yet: each is drawn as a plain hexagon of its color until the team gives it a picture in the editor of

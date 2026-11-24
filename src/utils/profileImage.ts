@@ -8,7 +8,7 @@ const { registerCardFonts, canvasFont, printable } = require('../imgutils/cardFo
   registerCardFonts: () => void; canvasFont: (family: string, weight: number, size: number) => string; printable: (text: string) => string;
 };
 
-export interface ShowcaseBadge { id: string; art: Image | null; color: string; /** Drawn on a badge with no art. */ label?: string; /** `normal`, `bright` or `divine` (see FRAMES of utils/ceramos.ts). */ frame?: string }
+export interface ShowcaseBadge { id: string; art: Image | null; color: string; /** Drawn on a badge with no art. */ label?: string; /** `normal`, `bright` or `divine` (see FRAMES of utils/ceramos.ts). */ frame?: string; /** The picture of that frame (iron, gold or mithril ring); with none, the ring is a plain line. */ frameArt?: Image | null }
 export interface ProfileImageData {
   name: string;
   avatar: Image | null;
@@ -42,29 +42,35 @@ export function hexPath(ctx: import('@napi-rs/canvas').SKRSContext2D, cx: number
 }
 
 
-/** One badge in a hexagon: its art, or its colour with its text; and the frame it was upgraded to (a gold ring, or a double rainbow ring that glows). */
+/**
+ * One badge in a hexagon: its art, or its colour with its text, and over it the frame it was upgraded to (a ring of iron, gold or mithril, a picture). The star of a plan has
+ * no hexagon and no frame: it is drawn alone. Without the picture of a frame, a plain ring is drawn instead.
+ */
 export function drawBadge(ctx: import('@napi-rs/canvas').SKRSContext2D, badge: ShowcaseBadge, cx: number, cy: number, r: number): void {
+  if (badge.id.startsWith('plan-') && badge.art) {
+    ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2);
+    return;
+  }
+  const ring = badge.frameArt ? r * 0.965 : r;
   hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fill();
   if (badge.art) {
-    ctx.save(); hexPath(ctx, cx, cy, r); ctx.clip();
-    ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2); ctx.restore();
+    ctx.save(); hexPath(ctx, cx, cy, ring); ctx.clip();
+    ctx.drawImage(badge.art, cx - ring, cy - ring, ring * 2, ring * 2); ctx.restore();
   } else {
-    hexPath(ctx, cx, cy, r); ctx.fillStyle = badge.color; ctx.fill();
-    hexPath(ctx, cx, cy, r - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+    hexPath(ctx, cx, cy, ring); ctx.fillStyle = badge.color; ctx.fill();
+    hexPath(ctx, cx, cy, ring - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
     if (badge.label) {
       ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, Math.round(r * 0.62)); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(printable(badge.label), cx, cy + 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
   }
-  if (badge.frame === 'bright') {
-    ctx.save(); ctx.shadowColor = 'rgba(255,214,102,0.9)'; ctx.shadowBlur = 14;
-    hexPath(ctx, cx, cy, r + 3); ctx.lineWidth = 5; ctx.strokeStyle = '#ffd666'; ctx.stroke(); ctx.restore();
+  if (badge.frameArt) {
+    // The picture of the ring is as tall as the hexagon (2 r) and as wide as it (r times the square root of 3).
+    ctx.drawImage(badge.frameArt, cx - (r * Math.sqrt(3)) / 2, cy - r, r * Math.sqrt(3), r * 2);
+  } else if (badge.frame === 'bright') {
+    ctx.save(); hexPath(ctx, cx, cy, r + 3); ctx.lineWidth = 5; ctx.strokeStyle = '#ffd666'; ctx.stroke(); ctx.restore();
   } else if (badge.frame === 'divine') {
-    ctx.save(); ctx.shadowColor = 'rgba(255,255,255,0.95)'; ctx.shadowBlur = 20;
-    const rainbow = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-    ['#ff7aa8', '#ffd666', '#8affc1', '#7ad0ff', '#c79bff'].forEach((color, i, all) => rainbow.addColorStop(i / (all.length - 1), color));
-    hexPath(ctx, cx, cy, r + 6); ctx.lineWidth = 5; ctx.strokeStyle = rainbow; ctx.stroke();
-    hexPath(ctx, cx, cy, r + 1); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke(); ctx.restore();
+    ctx.save(); hexPath(ctx, cx, cy, r + 3); ctx.lineWidth = 5; ctx.strokeStyle = '#8fd6ff'; ctx.stroke(); ctx.restore();
   }
 }
 

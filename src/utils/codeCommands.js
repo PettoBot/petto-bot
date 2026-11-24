@@ -15,6 +15,7 @@ const { t, currentLanguage, languageOf } = require('../i18n');
 const { sendDm } = require('./dmOrigin');
 const { applyAction, isActionEffect, extraLookups } = require('./codeActions');
 const { httpRequest } = require('./codeHttp');
+const commandScope = require('./commandScope');
 
 const COOLDOWN_MS = 2000;
 const MAX_MESSAGE = 2000;
@@ -350,20 +351,13 @@ function optionsOf(row) {
     errorChannel: /^\d{15,25}$/.test(String(raw.errorChannel ?? '')) ? String(raw.errorChannel) : null,
     roles: { mode: raw.roles?.mode === 'ignore' ? 'ignore' : 'require', ids: ids(raw.roles?.ids) },
     channels: { mode: raw.channels?.mode === 'ignore' ? 'ignore' : 'only', ids: ids(raw.channels?.ids) },
+    // The lists of channels and roles allowed and blocked, NSFW and restricted (utils/commandScope.js), for every custom command.
+    ...commandScope.scopeFields(raw),
   };
 }
-/** Whether this member may use the command in this channel (a thread counts as its channel): the roles it is for or not for, the channels it is for or not for. */
+/** Whether this member may use the command in this channel (a thread counts as its channel): the channels and roles it is allowed in or blocked from, and NSFW. */
 function allowedHere(row, member, channel) {
-  const { roles, channels } = optionsOf(row);
-  if (roles.ids.length) {
-    const has = roles.ids.some((id) => member?.roles?.cache?.has?.(id));
-    if (roles.mode === 'require' ? !has : has) return false;
-  }
-  if (channels.ids.length) {
-    const here = [channel?.id, channel?.parentId].filter(Boolean).some((id) => channels.ids.includes(String(id)));
-    if (channels.mode === 'only' ? !here : here) return false;
-  }
-  return true;
+  return commandScope.allows(row?.options, member, channel);
 }
 /** Sends a mistake of a command to the channel the server chose for them (never pinging anybody). */
 async function sendProblemToChannel(guild, row, userId, text, lang = currentLanguage()) {
