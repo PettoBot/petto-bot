@@ -3,7 +3,7 @@
 const vault = require('./vault');
 
 const needVault = () => {
-  if (!vault.isConfigured()) throw new Error('The Petto Vault database is not configured (PETTO_VAULT_DATABASE_URL).');
+  if (!vault.isConfigured()) throw new Error('The Petto Vault database is not configured (PETTO_VAULT_DATABASE_URL).'); // i18n-ignore: an error for the operator, never shown to a member
 };
 
 async function createBackup(guildId, createdBy, label, snapshot, source = 'manual') {
