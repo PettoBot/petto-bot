@@ -12,7 +12,7 @@ const stub = (relative, exports) => {
 // An in-memory wallet and badge table that behave like the statements of the database (the balance never goes below zero, a day is claimed once).
 const wallets = new Map(); // user -> { balance, lastDaily }
 const ledger = [];
-const badgeRows = new Map(); // user -> [{ id, frame, source }]
+const badgeRows = new Map(); // user -> [{ id, frame, shown, source }]
 const showcases = new Map();
 let raceOnAdd = false; // when true, addBadge answers "already there" as if another purchase had won
 const wallet = (u) => wallets.get(u) ?? { balance: 0, lastDaily: null };
@@ -44,7 +44,8 @@ stub('src/db/userProfile.js', {
   getShowcase: async (u) => [...(showcases.get(u) ?? [])],
   setShowcase: async (u, list) => { showcases.set(u, [...list]); return list; },
   removeBadge: async (u, id) => { const rows = badgeRows.get(u) ?? []; const had = rows.some((row) => row.id === id); badgeRows.set(u, rows.filter((row) => row.id !== id)); showcases.set(u, (showcases.get(u) ?? []).filter((each) => each !== id)); return had; },
-  setFrame: async (u, id, from, to) => { const row = (badgeRows.get(u) ?? []).find((each) => each.id === id && each.frame === from); if (!row) return false; row.frame = to; return true; },
+  setFrame: async (u, id, from, to) => { const row = (badgeRows.get(u) ?? []).find((each) => each.id === id && each.frame === from); if (!row) return false; row.frame = to; row.shown = null; return true; },
+  setShownFrame: async (u, id, best, shown) => { const row = (badgeRows.get(u) ?? []).find((each) => each.id === id && each.frame === best); if (!row) return false; row.shown = shown; return true; },
 });
 const OWNER = '111111111111111111';
 stub('src/config.js', { ownerId: OWNER, developerIds: [] });
@@ -130,6 +131,30 @@ const { loadImage } = require('@napi-rs/canvas');
   await require('../src/db/userProfile').addBadge('bob', 'country-mx', 'shop');
   up = await shop.upgradeFrame('bob', 'country-mx');
   assert.equal(up.reason, 'poor'); assert.equal(badgeRows.get('bob')[0].frame, 'normal', 'a frame that is not paid is not given');
+  // Choosing the frame a badge shows: only among the ones the person has (the best one and the ones below), not on a badge they do not have or the badge of a plan; the
+  // best frame stays what it is (the next purchase builds on it) and a new purchase shows the new frame.
+  assert.equal((await shop.chooseFrame('ana', 'lang-es', 'normal')).reason, 'notOwned');
+  assert.equal((await shop.chooseFrame('ana', 'plan-gold', 'normal')).reason, 'noFrame');
+  assert.equal((await shop.chooseFrame('ana', 'country-co', 'platinum')).reason, 'bad_request');
+  assert.equal((await shop.chooseFrame('bob', 'country-mx', 'bright')).reason, 'notYet', 'a frame the badge does not have yet');
+  assert.deepEqual(await shop.chooseFrame('ana', 'country-co', 'bright'), { ok: true, frame: 'bright' });
+  assert.equal(badgeRows.get('ana').find((row) => row.id === 'country-co').frame, 'divine', 'the best frame is kept');
+  assert.equal(badgeRows.get('ana').find((row) => row.id === 'country-co').shown, 'bright');
+  const viewNow = require('../src/utils/profileView'); const apiNow = require('../src/utils/ceramosApi');
+  const seen = await viewNow.profileState('ana');
+  assert.equal(seen.frames['country-co'], 'bright', 'the badge shows the one chosen'); assert.equal(seen.unlocked['country-co'], 'divine', 'and the best is still known');
+  assert.deepEqual(await shop.chooseFrame('ana', 'country-co', 'divine'), { ok: true, frame: 'divine' });
+  assert.equal(badgeRows.get('ana').find((row) => row.id === 'country-co').shown, null, 'the best frame is the same as no choice');
+  assert.equal((await apiNow.state('ana')).owned.find((row) => row.id === 'country-co').frame, 'divine');
+  await shop.chooseFrame('ana', 'country-co', 'normal');
+  assert.equal((await apiNow.state('ana')).owned.find((row) => row.id === 'country-co').unlocked, 'divine', 'the page is told what is unlocked');
+  // A new frame bought later is shown, not hidden by the old choice.
+  wallets.set('dave', { balance: 500, lastDaily: null });
+  await require('../src/db/userProfile').addBadge('dave', 'country-es', 'shop');
+  await shop.upgradeFrame('dave', 'country-es'); await shop.chooseFrame('dave', 'country-es', 'normal');
+  assert.equal(badgeRows.get('dave')[0].shown, 'normal');
+  assert.equal((await shop.upgradeFrame('dave', 'country-es')).frame, 'divine');
+  assert.equal(badgeRows.get('dave')[0].shown, null, 'a frame that is bought shows itself');
   // The Fablo badges can have a frame too once the person has them.
   await require('../src/db/userProfile').addBadge('ana', 'femboy', 'self');
   assert.equal((await shop.upgradeFrame('ana', 'femboy')).ok, true);

@@ -10,6 +10,8 @@ exports.WIDTH = 1024;
 exports.HEIGHT = 420;
 const BANNER_H = 250;
 const FONT = 'Poppins';
+/** How much bigger than the badge the picture of its frame is drawn (1.16: 8% more on each side). The same number as the website (inset -8%). */
+const FRAME_SCALE = 1.16;
 function hexPath(ctx, cx, cy, r) {
     ctx.beginPath();
     for (let i = 0; i < 6; i += 1) {
@@ -31,22 +33,21 @@ function drawBadge(ctx, badge, cx, cy, r) {
         ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2);
         return;
     }
-    const ring = badge.frameArt ? r * 0.965 : r;
     hexPath(ctx, cx, cy, r);
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
     ctx.fill();
     if (badge.art) {
         ctx.save();
-        hexPath(ctx, cx, cy, ring);
+        hexPath(ctx, cx, cy, r);
         ctx.clip();
-        ctx.drawImage(badge.art, cx - ring, cy - ring, ring * 2, ring * 2);
+        ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2);
         ctx.restore();
     }
     else {
-        hexPath(ctx, cx, cy, ring);
+        hexPath(ctx, cx, cy, r);
         ctx.fillStyle = badge.color;
         ctx.fill();
-        hexPath(ctx, cx, cy, ring - 8);
+        hexPath(ctx, cx, cy, r - 8);
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         ctx.fill();
         if (badge.label) {
@@ -60,8 +61,9 @@ function drawBadge(ctx, badge, cx, cy, r) {
         }
     }
     if (badge.frameArt) {
-        // The picture of the ring is as tall as the hexagon (2 r) and as wide as it (r times the square root of 3).
-        ctx.drawImage(badge.frameArt, cx - (r * Math.sqrt(3)) / 2, cy - r, r * Math.sqrt(3), r * 2);
+        // The picture of the ring is a little bigger than the badge (FRAME_SCALE), so the art keeps its whole size and only its edge goes under the ring.
+        const w = r * Math.sqrt(3) * FRAME_SCALE, h = r * 2 * FRAME_SCALE;
+        ctx.drawImage(badge.frameArt, cx - w / 2, cy - h / 2, w, h);
     }
     else if (badge.frame === 'bright') {
         ctx.save();

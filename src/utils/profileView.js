@@ -122,13 +122,15 @@ async function profileState(userId) {
         if (rows.some((row) => row.id === id))
             continue;
         await profileDb.addBadge(userId, id, 'status').catch(() => false);
-        rows.push({ id, frame: 'normal', source: 'status' });
+        rows.push({ id, frame: 'normal', shown: null, source: 'status' });
     }
     const effective = rows.filter((row) => !(ruled.has(row.id) && !granted.includes(row.id)));
     const owned = badgesRules.ownedBadges(effective.map((row) => row.id), plan);
-    const frames = Object.fromEntries(effective.map((row) => [row.id, row.frame]));
+    // The frame each badge shows (the one the person chose, or the best it has) and the best it has (what the next purchase builds on).
+    const frames = Object.fromEntries(effective.map((row) => [row.id, row.shown ?? row.frame]));
+    const unlocked = Object.fromEntries(effective.map((row) => [row.id, row.frame]));
     const slots = badgesRules.slotsFor(plan);
-    return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames, items, active };
+    return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames, unlocked, items, active };
 }
 async function picture(url) {
     if (!url)

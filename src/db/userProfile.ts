@@ -11,17 +11,24 @@ export async function getSavedBadges(userId: string): Promise<string[]> {
   return rows.map((row) => String(row.badge_id));
 }
 
-export interface BadgeRow { id: string; frame: string; source: string }
+/** `frame` is the best frame the badge has; `shown` is the one the person chose to show (null: the best one). */
+export interface BadgeRow { id: string; frame: string; shown: string | null; source: string }
 
 /** The badges a person has saved with the frame each one has (the badge of a plan is not saved: it follows the plan). */
 export async function getBadgeRows(userId: string): Promise<BadgeRow[]> {
-  const { rows } = await getPrimaryPool().query('select badge_id, frame, source from user_badges where user_id = $1 order by granted_at', [userId]);
-  return rows.map((row) => ({ id: String(row.badge_id), frame: String(row.frame), source: String(row.source) }));
+  const { rows } = await getPrimaryPool().query('select badge_id, frame, shown_frame, source from user_badges where user_id = $1 order by granted_at', [userId]);
+  return rows.map((row) => ({ id: String(row.badge_id), frame: String(row.frame), shown: row.shown_frame ? String(row.shown_frame) : null, source: String(row.source) }));
 }
 
 /** Gives a badge a better frame, only if it is the one that follows the current frame (a frame is bought one step at a time). Returns whether it changed. */
 export async function setFrame(userId: string, badgeId: string, from: string, to: string): Promise<boolean> {
-  const { rows } = await getPrimaryPool().query('update user_badges set frame = $4 where user_id = $1 and badge_id = $2 and frame = $3 returning badge_id', [userId, badgeId, from, to]);
+  const { rows } = await getPrimaryPool().query('update user_badges set frame = $4, shown_frame = null where user_id = $1 and badge_id = $2 and frame = $3 returning badge_id', [userId, badgeId, from, to]);
+  return rows.length > 0;
+}
+
+/** Chooses the frame a badge shows (one the person has: the caller checks), only while its best frame is still `best`. `null` goes back to showing the best one. Returns whether it changed. */
+export async function setShownFrame(userId: string, badgeId: string, best: string, shown: string | null): Promise<boolean> {
+  const { rows } = await getPrimaryPool().query('update user_badges set shown_frame = $4 where user_id = $1 and badge_id = $2 and frame = $3 returning badge_id', [userId, badgeId, best, shown]);
   return rows.length > 0;
 }
 

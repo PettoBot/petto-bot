@@ -89,7 +89,7 @@ export async function planOfUser(userId: string): Promise<PlanKey | null> {
 }
 
 /** What a person has: their badges (saved plus the one of their plan), the places their plan gives and the list they put in the showcase. */
-export async function profileState(userId: string): Promise<{ plan: PlanKey | null; owned: string[]; slots: number; showcase: string[]; frames: Record<string, string>; items: { kind: 'banner' | 'font'; id: string }[]; active: { banner: string | null; font: string | null } }> {
+export async function profileState(userId: string): Promise<{ plan: PlanKey | null; owned: string[]; slots: number; showcase: string[]; frames: Record<string, string>; unlocked: Record<string, string>; items: { kind: 'banner' | 'font'; id: string }[]; active: { banner: string | null; font: string | null } }> {
   await registry.ensure();
   const [plan, saved, chosen, granted, items, active] = await Promise.all([planOfUser(userId), profileDb.getBadgeRows(userId), profileDb.getShowcase(userId), registry.grantedFor(userId), shopDb.getUserItems(userId), shopDb.getActive(userId)]);
   // A badge that is given by itself is had while the person is what it says: it is saved when they first are (so it can have a frame) and left out when they stop.
@@ -98,13 +98,15 @@ export async function profileState(userId: string): Promise<{ plan: PlanKey | nu
   for (const id of granted) {
     if (rows.some((row) => row.id === id)) continue;
     await profileDb.addBadge(userId, id, 'status').catch(() => false);
-    rows.push({ id, frame: 'normal', source: 'status' });
+    rows.push({ id, frame: 'normal', shown: null, source: 'status' });
   }
   const effective = rows.filter((row) => !(ruled.has(row.id) && !granted.includes(row.id)));
   const owned = badgesRules.ownedBadges(effective.map((row) => row.id), plan);
-  const frames = Object.fromEntries(effective.map((row) => [row.id, row.frame]));
+  // The frame each badge shows (the one the person chose, or the best it has) and the best it has (what the next purchase builds on).
+  const frames = Object.fromEntries(effective.map((row) => [row.id, row.shown ?? row.frame]));
+  const unlocked = Object.fromEntries(effective.map((row) => [row.id, row.frame]));
   const slots = badgesRules.slotsFor(plan);
-  return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames, items, active };
+  return { plan, owned, slots, showcase: badgesRules.normalizeShowcase(chosen, owned, slots), frames, unlocked, items, active };
 }
 
 async function picture(url: string | null | undefined): Promise<Image | null> {

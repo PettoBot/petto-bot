@@ -31,6 +31,9 @@ export const HEIGHT = 420;
 const BANNER_H = 250;
 const FONT = 'Poppins';
 
+/** How much bigger than the badge the picture of its frame is drawn (1.16: 8% more on each side). The same number as the website (inset -8%). */
+const FRAME_SCALE = 1.16;
+
 export function hexPath(ctx: import('@napi-rs/canvas').SKRSContext2D, cx: number, cy: number, r: number): void {
   ctx.beginPath();
   for (let i = 0; i < 6; i += 1) {
@@ -51,22 +54,22 @@ export function drawBadge(ctx: import('@napi-rs/canvas').SKRSContext2D, badge: S
     ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2);
     return;
   }
-  const ring = badge.frameArt ? r * 0.965 : r;
   hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fill();
   if (badge.art) {
-    ctx.save(); hexPath(ctx, cx, cy, ring); ctx.clip();
-    ctx.drawImage(badge.art, cx - ring, cy - ring, ring * 2, ring * 2); ctx.restore();
+    ctx.save(); hexPath(ctx, cx, cy, r); ctx.clip();
+    ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2); ctx.restore();
   } else {
-    hexPath(ctx, cx, cy, ring); ctx.fillStyle = badge.color; ctx.fill();
-    hexPath(ctx, cx, cy, ring - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+    hexPath(ctx, cx, cy, r); ctx.fillStyle = badge.color; ctx.fill();
+    hexPath(ctx, cx, cy, r - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
     if (badge.label) {
       ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, Math.round(r * 0.62)); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(printable(badge.label), cx, cy + 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
   }
   if (badge.frameArt) {
-    // The picture of the ring is as tall as the hexagon (2 r) and as wide as it (r times the square root of 3).
-    ctx.drawImage(badge.frameArt, cx - (r * Math.sqrt(3)) / 2, cy - r, r * Math.sqrt(3), r * 2);
+    // The picture of the ring is a little bigger than the badge (FRAME_SCALE), so the art keeps its whole size and only its edge goes under the ring.
+    const w = r * Math.sqrt(3) * FRAME_SCALE, h = r * 2 * FRAME_SCALE;
+    ctx.drawImage(badge.frameArt, cx - w / 2, cy - h / 2, w, h);
   } else if (badge.frame === 'bright') {
     ctx.save(); hexPath(ctx, cx, cy, r + 3); ctx.lineWidth = 5; ctx.strokeStyle = '#ffd666'; ctx.stroke(); ctx.restore();
   } else if (badge.frame === 'divine') {
