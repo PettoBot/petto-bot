@@ -11,6 +11,9 @@ const DAY_MS = 86_400_000;
 const dayNumber = (day: string): number => Math.floor(Date.parse(`${day}T00:00:00Z`) / DAY_MS);
 export const dayOf = (when: Date): string => when.toISOString().slice(0, 10);
 
+/** The moment that decides which day is "today" for a streak: `graceMinutes` before now, so the day that just ended still counts for that long. */
+export const graceNow = (now: Date, graceMinutes: number): Date => new Date(now.getTime() - Math.max(0, Number(graceMinutes) || 0) * 60_000);
+
 /** The active days (sorted, with no repeats). With a minimum of 0 for both, a day is active when there was any message or any voice. */
 export function activeDays(rows: DayRow[], rules: StreakRules): string[] {
   const out = new Set<string>();

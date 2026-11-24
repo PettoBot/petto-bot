@@ -6,6 +6,7 @@ module.exports = {
   'cmd.utility.missions.desc': 'Missões por ceramos: mensagens e minutos em voz, todo dia e toda semana.',
   'cmd.utility.missions.list.desc': 'Veja suas missões e quanto falta.',
   'cmd.utility.missions.claim.desc': 'Resgate os ceramos das missões que você terminou.',
+  'cmd.utility.streak.opt.notifications.desc': 'Receba as mensagens e o apelido das suas sequências (falso desliga).',
   'cmd.utility.streak.desc': 'Sua sequência neste servidor: dias seguidos com atividade.',
   'cmd.utility.ceramos.shop.desc': 'Veja as insígnias que você pode comprar com céramos.',
   'cmd.utility.ceramos.shop.opt.category.desc': 'Países ou idiomas',

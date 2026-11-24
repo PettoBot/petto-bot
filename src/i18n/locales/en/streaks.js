@@ -2,6 +2,10 @@
 // Reference catalog: es and pt-BR must have the same keys and placeholders.
 module.exports = {
   'streaks.milestone': '🔥 {user} reached a **{days}-day** streak! Keep it going!',
+  'streaks.dm.reminder': '🔥 Your **{days}-day** streak in **{server}** ends in about {hours} h. Send a message or join a voice channel to keep it.\n-# Turn these messages off with `/streak notifications:false`.',
+  'streaks.dm.lost': '💔 Your **{days}-day** streak in **{server}** ended. Start a new one today!\n-# Turn these messages off with `/streak notifications:false`.',
+  'streaks.notifications.on': 'Messages and nickname of your streaks: ON.',
+  'streaks.notifications.off': 'Messages and nickname of your streaks: OFF. Petto will not send you DMs about them or change your nickname.',
   'streaks.title': 'Your streak',
   'streaks.off': 'This server does not count streaks.',
   'streaks.failed': 'I could not do that. Try again in a moment.',

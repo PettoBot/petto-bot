@@ -468,6 +468,7 @@ module.exports = {
   'cmd.utility.steal.desc': 'Add an emoji or sticker from elsewhere to this server.',
   'cmd.utility.steal.opt.emoji.desc': 'A custom emoji to steal (or reply to a message with emojis, reactions or a sticker instead)',
   'cmd.utility.streak.desc': 'Your streak in this server: days in a row with activity.',
+  'cmd.utility.streak.opt.notifications.desc': 'Get the messages and the nickname of your streaks (false turns them off).',
   'cmd.utility.suggest.desc': 'Make a suggestion for this server and manage them. The server votes on it.',
   'cmd.utility.suggest.send.desc': 'Make a suggestion for this server. The server votes on it.',
   'cmd.utility.suggest.send.opt.text.desc': 'Your suggestion (a link to a picture can go inside it)',

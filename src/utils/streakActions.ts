@@ -21,7 +21,8 @@ async function oneGuild(guildId: string, userId: string, planFreezes: number, no
   const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
   const days = streaks.activeDays(await db.daysOf(guildId, userId, config.resetAt), rules);
   const freezes = freezesFor(planFreezes, config.guildFreezes);
-  return { guildId, enabled: true as const, ...streaks.compute(days, streaks.dayOf(now), freezes), freezes, rules };
+  // The grace period: for some minutes after midnight (UTC) the day that just ended is still the one that counts, so a streak is not lost the moment the day changes.
+  return { guildId, enabled: true as const, ...streaks.compute(days, streaks.dayOf(streaks.graceNow(now, config.graceMinutes)), freezes), freezes, rules, graceMinutes: config.graceMinutes };
 }
 
 const BOARD_PLACES = 25;
@@ -37,7 +38,7 @@ export async function board(guildId: string, kind: 'current' | 'longest', now: D
   const ids = await db.busiestMembers(guildId, config.resetAt);
   const [days, plans] = await Promise.all([db.daysOfMany(guildId, ids, config.resetAt), db.plansOf(ids)]);
   const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
-  const today = streaks.dayOf(now);
+  const today = streaks.dayOf(streaks.graceNow(now, config.graceMinutes));
   const all = ids.map((userId) => {
     const planFreezes = planFreezesOf(plans.get(userId));
     const result = streaks.compute(streaks.activeDays(days.get(userId) ?? [], rules), today, freezesFor(planFreezes, config.guildFreezes));

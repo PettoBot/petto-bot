@@ -16,6 +16,13 @@ assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode
 assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode: 'voice' }), days(2, 3));
 assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode: 'any' }), days(1, 2, 3));
 assert.deepEqual(s.activeDays(mixed, { minMessages: 3, minVoiceMinutes: 20, mode: 'both' }), days(3));
+// The grace period: for some minutes after midnight the day that just ended is still "today".
+assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T00:20:00Z'), 30)), '2026-11-06');
+assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T00:40:00Z'), 30)), '2026-11-07');
+assert.equal(s.dayOf(s.graceNow(new Date('2026-11-07T00:20:00Z'), 0)), '2026-11-07');
+assert.equal(s.compute(days(5, 6), day(8), 0).current, 0, 'a whole day without activity: the streak is gone');
+assert.equal(s.compute(days(5, 6), s.dayOf(s.graceNow(new Date('2026-11-08T00:20:00Z'), 30)), 0).current, 2, 'inside the grace period it is still alive');
+assert.equal(s.compute(days(5, 6), s.dayOf(s.graceNow(new Date('2026-11-08T00:40:00Z'), 30)), 0).current, 0, 'after it, it is gone');
 // No activity.
 assert.deepEqual(s.compute([], day(10), 0), { current: 0, best: 0, freezesUsed: 0, activeToday: false });
 // Days in a row, today included.
@@ -44,9 +51,24 @@ const stub = (file, exports) => { const full = require.resolve(path.join('..', '
 let config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: [3, 7], guildFreezes: 0, resetAt: null }; let plan = null;
 stub('streaks', { busiestMembers: async () => ['11', '22', '33'], plansOf: async () => new Map([['22', 'gold']]), daysOfMany: async () => new Map([['11', rows], ['22', [{ day: day(4), messages: 1, voiceSeconds: 0 }, { day: day(5), messages: 1, voiceSeconds: 0 }, { day: day(7), messages: 1, voiceSeconds: 0 }]], ['33', []]]), totalsOf: async () => ({ messages: 120, voiceSeconds: 7200 }), getConfig: async () => config, daysOf: async () => rows.concat([{ day: day(5), messages: 3, voiceSeconds: 0 }, { day: day(7), messages: 3, voiceSeconds: 0 }]), guildsOf: async () => ['100000000000000001', '100000000000000002'] });
 stub('userPlans', { getPlan: async () => plan });
+stub('premium', { getGuildPremium: async () => ({ active: false }) });
 const actions = require('../src/utils/streakActions');
 const now = new Date('2026-11-07T10:00:00Z');
 (async () => {
+  const notices = require('../src/utils/streakNotices');
+  assert.equal(notices.reminderDue(5, false, 2), true);
+  assert.equal(notices.reminderDue(5, false, 6), false, 'too early in the day');
+  assert.equal(notices.reminderDue(5, true, 2), false, 'the day is done');
+  assert.equal(notices.reminderDue(2, false, 2), false, 'a short streak is not worth it');
+  assert.equal(notices.lostDue(7, 0), true);
+  assert.equal(notices.lostDue(7, 3), false);
+  assert.equal(notices.lostDue(2, 0), false);
+  assert.equal(notices.hoursLeft(new Date('2026-11-07T21:00:00Z')), 3);
+  assert.equal(notices.nicknameFor('Liam', 7, '🔥'), 'Liam | 7 🔥');
+  assert.equal(notices.nicknameFor('Liam | 7 🔥', 8, '🔥'), 'Liam | 8 🔥', 'the old suffix is replaced');
+  assert.equal(notices.nicknameFor('Liam | 7 🔥', 1, '🔥'), 'Liam', 'a short streak takes it away');
+  assert.equal(notices.nicknameFor('A'.repeat(40), 100, '🔥').length <= 32, true, 'never over 32 characters');
+  assert.match(notices.nicknameFor('A'.repeat(40), 100, '🔥'), / \| 100 🔥$/);
   // What a streak earns: only what is new, the announcement is the highest milestone and only while it is fresh, a role is given even when old.
   const rewards = require('../src/utils/streakRewards');
   assert.deepEqual(rewards.dueFor(7, [3, 7, 14], [], new Set()), { announce: 7, roles: [], record: [3, 7] });

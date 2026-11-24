@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.dayOf = exports.DEFAULT_RULES = void 0;
+exports.graceNow = exports.dayOf = exports.DEFAULT_RULES = void 0;
 exports.activeDays = activeDays;
 exports.compute = compute;
 exports.DEFAULT_RULES = { minMessages: 1, minVoiceMinutes: 0, mode: 'any' };
@@ -8,6 +8,9 @@ const DAY_MS = 86_400_000;
 const dayNumber = (day) => Math.floor(Date.parse(`${day}T00:00:00Z`) / DAY_MS);
 const dayOf = (when) => when.toISOString().slice(0, 10);
 exports.dayOf = dayOf;
+/** The moment that decides which day is "today" for a streak: `graceMinutes` before now, so the day that just ended still counts for that long. */
+const graceNow = (now, graceMinutes) => new Date(now.getTime() - Math.max(0, Number(graceMinutes) || 0) * 60_000);
+exports.graceNow = graceNow;
 /** The active days (sorted, with no repeats). With a minimum of 0 for both, a day is active when there was any message or any voice. */
 function activeDays(rows, rules) {
     const out = new Set();

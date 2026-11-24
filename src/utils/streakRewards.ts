@@ -3,6 +3,7 @@
 // reached the days of a reward role get it. Only the members who did something today or yesterday are looked at (nobody else's streak can have moved), and nothing is given or said twice
 // (streak_awards). A streak that was already long when the server turned this on is not announced (only given the roles it has earned). Written in TypeScript: compiled over streakRewards.js.
 import type { Client, Guild } from 'discord.js';
+import { runNotices } from './streakNotices';
 const db = require('../db/streaks') as typeof import('../db/streaks');
 const streaks = require('./streaks') as typeof import('./streaks');
 const actions = require('./streakActions') as typeof import('./streakActions');
@@ -36,7 +37,7 @@ export async function runGuild(guild: Guild, now: Date = new Date()): Promise<nu
   if (!ids.length) return 0;
   const [days, plans, awards] = await Promise.all([db.daysOfMany(guild.id, ids, config.resetAt), db.plansOf(ids), db.awardsOf(guild.id, ids)]);
   const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
-  const today = streaks.dayOf(now);
+  const today = streaks.dayOf(streaks.graceNow(now, config.graceMinutes));
   const lang = await guildLanguage(guild.id).catch(() => 'en');
   let did = 0;
   for (const userId of ids) {
@@ -71,5 +72,7 @@ export async function runStreakRewards(client: Client): Promise<void> {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) continue;
     try { await runGuild(guild); } catch (error) { logger.error(`Streak rewards error in guild ${guildId}:`, error); }
+    try { await runNotices(guild); } catch (error) { logger.error(`Streak notices error in guild ${guildId}:`, error); }
   }
+  await db.pruneNotices().catch(() => null);
 }

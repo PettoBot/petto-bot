@@ -5542,7 +5542,27 @@ alter table streak_config add column if not exists announce_channel_id text;
 alter table streak_config add column if not exists milestones int[] not null default '{3,7,14,30,60,100,365}';
 alter table streak_config add column if not exists guild_freezes int not null default 0 check (guild_freezes between 0 and 10);
 alter table streak_config add column if not exists reset_at date;
+alter table streak_config add column if not exists grace_minutes int not null default 0 check (grace_minutes between 0 and 180);
+alter table streak_config add column if not exists dm_reminder boolean not null default false;
+alter table streak_config add column if not exists dm_lost boolean not null default false;
+alter table streak_config add column if not exists nickname_enabled boolean not null default false;
+alter table streak_config add column if not exists nickname_emoji text not null default '🔥' check (char_length(nickname_emoji) <= 8);
 alter table streak_config enable row level security;
+-- Members who asked not to get the messages of the streaks (the reminder and the lost streak by DM) nor the streak in their nickname.
+create table if not exists streak_optout (
+  user_id text primary key,
+  created_at timestamptz not null default now()
+);
+alter table streak_optout enable row level security;
+-- What was already sent (a reminder or a lost-streak message at most once a day for each member and server).
+create table if not exists streak_notices (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  kind     text not null check (kind in ('reminder', 'lost')),
+  day      date not null,
+  primary key (guild_id, user_id, kind, day)
+);
+alter table streak_notices enable row level security;
 -- Roles given when a streak reaches a number of days, and what was already given or announced (so nothing is repeated).
 create table if not exists streak_roles (
   guild_id text not null references guilds(guild_id) on delete cascade,

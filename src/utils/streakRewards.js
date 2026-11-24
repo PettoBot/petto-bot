@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.dueFor = dueFor;
 exports.runGuild = runGuild;
 exports.runStreakRewards = runStreakRewards;
+const streakNotices_1 = require("./streakNotices");
 const db = require('../db/streaks');
 const streaks = require('./streaks');
 const actions = require('./streakActions');
@@ -34,7 +35,7 @@ async function runGuild(guild, now = new Date()) {
         return 0;
     const [days, plans, awards] = await Promise.all([db.daysOfMany(guild.id, ids, config.resetAt), db.plansOf(ids), db.awardsOf(guild.id, ids)]);
     const rules = { minMessages: config.minMessages, minVoiceMinutes: config.minVoiceMinutes, mode: config.mode };
-    const today = streaks.dayOf(now);
+    const today = streaks.dayOf(streaks.graceNow(now, config.graceMinutes));
     const lang = await guildLanguage(guild.id).catch(() => 'en');
     let did = 0;
     for (const userId of ids) {
@@ -99,5 +100,12 @@ async function runStreakRewards(client) {
         catch (error) {
             logger.error(`Streak rewards error in guild ${guildId}:`, error);
         }
+        try {
+            await (0, streakNotices_1.runNotices)(guild);
+        }
+        catch (error) {
+            logger.error(`Streak notices error in guild ${guildId}:`, error);
+        }
     }
+    await db.pruneNotices().catch(() => null);
 }

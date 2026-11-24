@@ -2,6 +2,10 @@
 // Reference catalog: es and pt-BR must have the same keys and placeholders.
 module.exports = {
   'streaks.milestone': '🔥 ¡{user} llegó a una racha de **{days} días**! ¡Sigue así!',
+  'streaks.dm.reminder': '🔥 Tu racha de **{days} días** en **{server}** termina en unas {hours} h. Escribe un mensaje o entra a un canal de voz para mantenerla.\n-# Apaga estos mensajes con `/streak notifications:false`.',
+  'streaks.dm.lost': '💔 Tu racha de **{days} días** en **{server}** terminó. ¡Empieza una nueva hoy!\n-# Apaga estos mensajes con `/streak notifications:false`.',
+  'streaks.notifications.on': 'Mensajes y apodo de tus rachas: ACTIVADOS.',
+  'streaks.notifications.off': 'Mensajes y apodo de tus rachas: DESACTIVADOS. Petto no te enviará MDs sobre ellas ni cambiará tu apodo.',
   'streaks.title': 'Tu racha',
   'streaks.off': 'Este servidor no cuenta rachas.',
   'streaks.failed': 'No pude hacerlo. Prueba otra vez en un momento.',

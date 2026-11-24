@@ -262,6 +262,7 @@ for (const command of all) {
 
 // What a plain member may write: their own data, nothing else. `command leaf`: why.
 const OWN_DATA = {
+  'streak': 'their own choice to get the DMs and the nickname of the streaks',
   'lastfm unlink': 'forgets their own Last.fm name', 'afk set': 'their own AFK status', 'birthday set': 'their own birthday', 'birthday remove': 'their own birthday',
   'globalranking on': 'their own visibility in the public ranking', 'globalranking off': 'their own visibility in the public ranking',
   'me birthday': 'their own birthday', 'me birthday-remove': 'their own birthday', 'me prefix-reset': 'their own prefix', 'me history-clear': 'their own saved names',

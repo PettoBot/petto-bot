@@ -10,10 +10,18 @@ module.exports = {
     registerSlash: true,
     guildScoped: true,
     aliases: ['streaks', 'racha'],
-    data: new discord_js_1.SlashCommandBuilder().setName('streak').setDescription('Your streak in this server: days in a row with activity.').setDMPermission(false),
+    data: new discord_js_1.SlashCommandBuilder().setName('streak').setDescription('Your streak in this server: days in a row with activity.').setDMPermission(false)
+        .addBooleanOption((option) => option.setName('notifications').setDescription('Get the messages and the nickname of your streaks (false turns them off).')),
     async execute(interaction) {
         const lang = await languageOf(interaction);
         try {
+            // `notifications`: the member turns the DMs and the nickname of the streaks off (false) or on again (true).
+            const wanted = interaction.options.getBoolean('notifications');
+            if (wanted !== null) {
+                await require('../../db/streaks').setOptOut(interaction.user.id, !wanted);
+                await interaction.reply({ content: t(lang, wanted ? 'streaks.notifications.on' : 'streaks.notifications.off'), flags: discord_js_1.MessageFlags.Ephemeral });
+                return;
+            }
             const streak = await actions.inGuild(interaction.user.id, interaction.guildId);
             if (!streak.enabled) {
                 await interaction.reply({ content: t(lang, 'streaks.off'), flags: discord_js_1.MessageFlags.Ephemeral });

@@ -10,11 +10,19 @@ module.exports = {
   registerSlash: true,
   guildScoped: true,
   aliases: ['streaks', 'racha'],
-  data: new SlashCommandBuilder().setName('streak').setDescription('Your streak in this server: days in a row with activity.').setDMPermission(false),
+  data: new SlashCommandBuilder().setName('streak').setDescription('Your streak in this server: days in a row with activity.').setDMPermission(false)
+    .addBooleanOption((option) => option.setName('notifications').setDescription('Get the messages and the nickname of your streaks (false turns them off).')),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const lang = await languageOf(interaction);
     try {
+      // `notifications`: the member turns the DMs and the nickname of the streaks off (false) or on again (true).
+      const wanted = interaction.options.getBoolean('notifications');
+      if (wanted !== null) {
+        await require('../../db/streaks').setOptOut(interaction.user.id, !wanted);
+        await interaction.reply({ content: t(lang, wanted ? 'streaks.notifications.on' : 'streaks.notifications.off'), flags: MessageFlags.Ephemeral });
+        return;
+      }
       const streak = await actions.inGuild(interaction.user.id, interaction.guildId as string);
       if (!streak.enabled) { await interaction.reply({ content: t(lang, 'streaks.off'), flags: MessageFlags.Ephemeral }); return; }
       const lines = [

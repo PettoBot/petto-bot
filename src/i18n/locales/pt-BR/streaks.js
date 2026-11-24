@@ -2,6 +2,10 @@
 // Reference catalog: es and pt-BR must have the same keys and placeholders.
 module.exports = {
   'streaks.milestone': '🔥 {user} chegou a uma sequência de **{days} dias**! Continue assim!',
+  'streaks.dm.reminder': '🔥 Sua sequência de **{days} dias** em **{server}** termina em cerca de {hours} h. Envie uma mensagem ou entre em um canal de voz para mantê-la.\n-# Desligue estas mensagens com `/streak notifications:false`.',
+  'streaks.dm.lost': '💔 Sua sequência de **{days} dias** em **{server}** terminou. Comece uma nova hoje!\n-# Desligue estas mensagens com `/streak notifications:false`.',
+  'streaks.notifications.on': 'Mensagens e apelido das suas sequências: LIGADOS.',
+  'streaks.notifications.off': 'Mensagens e apelido das suas sequências: DESLIGADOS. O Petto não vai te enviar DMs sobre elas nem mudar seu apelido.',
   'streaks.title': 'Sua sequência',
   'streaks.off': 'Este servidor não conta sequências.',
   'streaks.failed': 'Não consegui fazer isso. Tente de novo em instantes.',

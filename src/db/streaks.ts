@@ -5,9 +5,9 @@ interface Pool { query(sql: string, params?: unknown[]): Promise<{ rows: Record<
 const { getPrimaryPool } = require('./postgres') as { getPrimaryPool: () => Pool };
 
 export type Mode = 'messages' | 'voice' | 'any' | 'both';
-export interface Config { enabled: boolean; mode: Mode; minMessages: number; minVoiceMinutes: number; announceChannelId: string | null; milestones: number[]; guildFreezes: number; resetAt: string | null }
+export interface Config { enabled: boolean; mode: Mode; minMessages: number; minVoiceMinutes: number; announceChannelId: string | null; milestones: number[]; guildFreezes: number; resetAt: string | null; graceMinutes: number; dmReminder: boolean; dmLost: boolean; nicknameEnabled: boolean; nicknameEmoji: string }
 export const DEFAULT_MILESTONES = [3, 7, 14, 30, 60, 100, 365];
-export const DEFAULT_CONFIG: Config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null };
+export const DEFAULT_CONFIG: Config = { enabled: true, mode: 'any', minMessages: 1, minVoiceMinutes: 0, announceChannelId: null, milestones: DEFAULT_MILESTONES, guildFreezes: 0, resetAt: null, graceMinutes: 0, dmReminder: false, dmLost: false, nicknameEnabled: false, nicknameEmoji: '🔥' };
 export interface DayRow { day: string; messages: number; voiceSeconds: number }
 
 const MODES: Mode[] = ['messages', 'voice', 'any', 'both'];
@@ -17,19 +17,20 @@ function toConfig(row: Record<string, unknown>): Config {
     announceChannelId: row.announce_channel_id ? String(row.announce_channel_id) : null,
     milestones: Array.isArray(row.milestones) ? (row.milestones as unknown[]).map(Number).filter((n) => n >= 1 && n <= 3650).sort((a, b) => a - b) : DEFAULT_MILESTONES,
     guildFreezes: Number(row.guild_freezes ?? 0), resetAt: row.reset_at ? String(row.reset_at).slice(0, 10) : null,
+    graceMinutes: Number(row.grace_minutes ?? 0), dmReminder: Boolean(row.dm_reminder), dmLost: Boolean(row.dm_lost), nicknameEnabled: Boolean(row.nickname_enabled), nicknameEmoji: String(row.nickname_emoji || '🔥'),
   };
 }
-const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at`;
+const COLUMNS = `enabled, mode, min_messages, min_voice_minutes, announce_channel_id, milestones, guild_freezes, to_char(reset_at, 'YYYY-MM-DD') as reset_at, grace_minutes, dm_reminder, dm_lost, nickname_enabled, nickname_emoji`;
 
 export async function getConfig(guildId: string): Promise<Config> {
   const { rows } = await getPrimaryPool().query(`select ${COLUMNS} from streak_config where guild_id = $1`, [guildId]);
   return rows[0] ? toConfig(rows[0]) : { ...DEFAULT_CONFIG, milestones: [...DEFAULT_MILESTONES] };
 }
 
-/** The servers that have something to do on their own: an announcement channel or reward roles (and the streaks are on). */
+/** The servers that have something to do on their own: an announcement channel, reward roles, the reminders by DM or the streak in the nickname (and the streaks are on). */
 export async function guildsWithRewards(): Promise<string[]> {
   const { rows } = await getPrimaryPool().query(
-    `select c.guild_id from streak_config c where c.enabled and (c.announce_channel_id is not null or exists (select 1 from streak_roles r where r.guild_id = c.guild_id))`);
+    `select c.guild_id from streak_config c where c.enabled and (c.announce_channel_id is not null or c.dm_reminder or c.dm_lost or c.nickname_enabled or exists (select 1 from streak_roles r where r.guild_id = c.guild_id))`);
   return rows.map((row) => String(row.guild_id));
 }
 
@@ -64,8 +65,8 @@ export async function busiestMembers(guildId: string, resetAt: string | null, li
 }
 
 /** The members who did something today or yesterday (UTC): the only ones whose streak can have moved. */
-export async function recentMembers(guildId: string, limit = 5000): Promise<string[]> {
-  const { rows } = await getPrimaryPool().query(`select distinct user_id from activity_members where guild_id = $1 and day >= current_date - 1 limit $2`, [guildId, limit]);
+export async function recentMembers(guildId: string, limit = 5000, sinceDays = 1): Promise<string[]> {
+  const { rows } = await getPrimaryPool().query(`select distinct user_id from activity_members where guild_id = $1 and day >= current_date - $3::int limit $2`, [guildId, limit, sinceDays]);
   return rows.map((row) => String(row.user_id));
 }
 
@@ -113,4 +114,28 @@ export async function awardsOf(guildId: string, userIds: string[]): Promise<Map<
 export async function recordAward(guildId: string, userId: string, days: number): Promise<boolean> {
   const { rowCount } = await getPrimaryPool().query(`insert into streak_awards (guild_id, user_id, days) values ($1, $2, $3) on conflict do nothing`, [guildId, userId, days]);
   return (rowCount ?? 0) > 0;
+}
+
+/** Who of these people asked not to get the messages of the streaks and the streak in the nickname. */
+export async function optedOut(userIds: string[]): Promise<Set<string>> {
+  if (!userIds.length) return new Set();
+  const { rows } = await getPrimaryPool().query(`select user_id from streak_optout where user_id = any($1::text[])`, [userIds]);
+  return new Set(rows.map((row) => String(row.user_id)));
+}
+
+/** A person turns the messages and the nickname of the streaks off (`out` true) or on again. */
+export async function setOptOut(userId: string, out: boolean): Promise<void> {
+  if (out) await getPrimaryPool().query(`insert into streak_optout (user_id) values ($1) on conflict do nothing`, [userId]);
+  else await getPrimaryPool().query(`delete from streak_optout where user_id = $1`, [userId]);
+}
+
+/** Claims a message of a day for a member (a reminder or a lost streak): true the first time, so it is sent once a day. */
+export async function claimNotice(guildId: string, userId: string, kind: 'reminder' | 'lost', day: string): Promise<boolean> {
+  const { rowCount } = await getPrimaryPool().query(`insert into streak_notices (guild_id, user_id, kind, day) values ($1, $2, $3, $4::date) on conflict do nothing`, [guildId, userId, kind, day]);
+  return (rowCount ?? 0) > 0;
+}
+
+/** The notices older than a week are deleted (nobody looks at them again). */
+export async function pruneNotices(): Promise<void> {
+  await getPrimaryPool().query(`delete from streak_notices where day < current_date - 7`);
 }
