@@ -1,130 +1,79 @@
-// Checks the upload module: which messages count, the welcome and role of a first upload, the numbers and the commands.
+// Own pictures: the plan that allows them, the policy first, a block, what waits for review, and what the team does (approve, reject, take down, block, a minor).
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { Collection } = require('discord.js');
-
-function stub(relative, exports) {
-  const resolved = require.resolve(path.join(__dirname, '..', relative));
-  require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
-}
-stub('src/db/database.js', { from() { throw new Error('the database is not used in this check'); } });
-stub('src/config.js', { ownerId: 'owner', developerIds: [] });
-stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
-stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO' } });
-stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
-stub('src/db/guilds.js', { ensureGuild: async () => {} });
-const templates = new Map();
-stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(`${guildId}:${name}`) ?? null });
-stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (templates.has(`${guildId}:${name}`) ? { content: undefined, embeds: [{ title: name }], components: [], files: [] } : null) });
-let premiumActive = false;
-stub('src/db/premium.js', { PREMIUM_LIMITS: { uploadChannels: 100 }, getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ uploadChannels: premium?.active ? 100 : 20 }) });
-let config = null;
-let log = [];
-let nextId = 1;
-const DEFAULTS = { enabled: false, channel_ids: [], uploader_role_id: null, welcome: {} };
-stub('src/db/uploads.js', {
-  DEFAULTS,
-  getConfig: async () => config,
-  getConfigCached: async () => config,
-  upsertConfig: async (guildId, changes) => { config = { ...(config ?? DEFAULTS), ...changes }; return config; },
-  hasUploaded: async (guildId, userId) => log.some((row) => row.user_id === userId),
-  addLog: async (row) => { const saved = { id: nextId++, guild_id: row.guildId, user_id: row.userId, channel_id: row.channelId, files: row.files, created_at: new Date().toISOString() }; log.push(saved); return saved; },
-  countFor: async (guildId, userId) => log.filter((row) => row.user_id === userId).length,
-  listLog: async (guildId, { since = null, userId = null } = {}) => log.filter((row) => (!since || new Date(row.created_at) >= since) && (!userId || row.user_id === userId)).slice().reverse(),
+const stub = (file, exports) => { const full = require.resolve(path.join('..', 'src', 'db', file)); require.cache[full] = { id: full, filename: full, loaded: true, exports }; };
+const S = { policy: {}, blocked: new Map(), up: {} };
+const get = (u) => (S.up[u] ??= { approved: null, pending: null, reject: null, removed: null });
+stub('userUploads', {
+  policyVersionOf: async (u) => S.policy[u] ?? 0, acceptPolicy: async (u, v) => { S.policy[u] = v; },
+  isBlocked: async (u) => S.blocked.has(u), block: async (u, reason, by) => { S.blocked.set(u, { reason, by }); }, unblock: async (u) => S.blocked.delete(u),
+  getState: async (u) => ({ hasApproved: Boolean(get(u).approved), hasPending: Boolean(get(u).pending), pendingAt: null, approvedAt: null, lastRejectReason: get(u).reject, lastRejectAt: null, removedReason: get(u).removed }),
+  setPending: async (u, bytes) => { get(u).pending = bytes; get(u).reject = null; },
+  approve: async (u) => { const r = get(u); if (!r.pending) return false; r.approved = r.pending; r.pending = null; return true; },
+  reject: async (u, reason) => { const r = get(u); if (!r.pending) return false; r.pending = null; r.reject = reason; return true; },
+  takedown: async (u, reason) => { const r = S.up[u]; if (!r) return false; r.approved = null; r.pending = null; r.removed = reason; return true; },
+  approvedBytes: async (u) => get(u).approved, pendingBytes: async (u) => get(u).pending,
+  listPending: async () => Object.entries(S.up).filter(([, r]) => r.pending).map(([userId]) => ({ userId, pendingAt: 'x' })), listBlocked: async () => [...S.blocked.keys()].map((userId) => ({ userId, reason: '', createdAt: 'x' })),
 });
-
-let milestoneRewards = [];
-const claimed = new Set();
-stub('src/db/milestones.js', {
-  MAX_REWARDS: 25,
-  list: async () => milestoneRewards,
-  claim: async (guildId, kind, userId, count) => { const key = `${kind}:${userId}:${count}`; if (claimed.has(key)) return false; claimed.add(key); return true; },
-  release: async (guildId, kind, userId, count) => { claimed.delete(`${kind}:${userId}:${count}`); },
-  remove: async () => true,
-});
-const event = require('../src/events/messageCreateUploads');
-const uploads = require('../src/commands/automation/uploads');
-const uploadConfig = require('../src/commands/automation/uploadconfig');
-
-const fakeUser = (id, username, bot = false) => ({ id, username, bot, tag: username, globalName: username, displayName: username, createdTimestamp: 1_700_000_000_000, displayAvatarURL: () => 'https://cdn.example/a.png', bannerURL: () => null, toString: () => `<@${id}>` });
-const fakeGuild = (over = {}) => ({ id: 'g1', name: 'Mine', ownerId: 'owner', memberCount: 100, premiumTier: 0, premiumSubscriptionCount: 0, createdTimestamp: 1_600_000_000_000, iconURL: () => 'https://cdn.example/g.png', bannerURL: () => null, splashURL: () => null, members: { cache: new Collection(), me: { roles: { highest: { position: 10 } }, permissions: { has: () => true } } }, channels: { cache: new Collection() }, roles: { cache: new Collection([['up', { id: 'up', position: 3, managed: false }], ['high', { id: 'high', position: 30, managed: false }]]) }, emojis: { cache: new Collection() }, stickers: { cache: new Collection() }, ...over });
-
+const plan = {}; stub('userPlans', { getPlan: async (u) => plan[u] ?? null });
+const { createCanvas } = require('@napi-rs/canvas');
+const png = (w, h) => createCanvas(w, h).toBuffer('image/png');
+const actions = require('../src/utils/uploadActions');
+const OWNER = '111111111111111111', FREE = '222222222222222222', SILVER = '333333333333333333', GOLD = '444444444444444444';
+plan[SILVER] = { plan: 'silver', active: true }; plan[GOLD] = { plan: 'gold', active: true };
 (async () => {
-  const sent = [];
-  const given = [];
-  const post = (over = {}) => {
-    const member = { id: 'u1', user: fakeUser('u1', 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1, roles: { cache: new Collection(), add: async (role) => { given.push(role?.id ?? role); } } };
-    return { id: `m${nextId}`, author: fakeUser('u1', 'Mia'), member, guild: fakeGuild(), channel: { id: 'up-chan', send: async (payload) => { sent.push(payload); } }, attachments: new Collection([['a', {}]]), ...over };
-  };
-  const run = async (message) => { sent.length = 0; given.length = 0; await event.execute(message); };
-
-  await run(post()); assert.equal(log.length, 0, 'nothing is counted while the module is off');
-  config = { enabled: true, channel_ids: ['up-chan'], uploader_role_id: 'up', welcome: {} };
-  await run(post({ channel: { id: 'other', send: async () => {} } })); assert.equal(log.length, 0, 'only upload channels count');
-  await run(post({ attachments: new Collection() })); assert.equal(log.length, 0, 'a message without files does not count');
-  await run(post({ author: fakeUser('b', 'Bot', true) })); assert.equal(log.length, 0, 'bots do not count');
-
-  await run(post({ attachments: new Collection([['a', {}], ['b', {}]]) }));
-  assert.equal(log.length, 1); assert.equal(log[0].files, 2, 'a message counts once, with its files'); assert.deepEqual(given, ['up'], 'the first upload gives the role');
-  assert.match(sent[0].content, /Thanks for your first upload, <@u1>/); assert.deepEqual(sent[0].allowedMentions, { users: ['u1'] });
-  await run(post()); assert.equal(log.length, 2); assert.deepEqual(given, [], 'the second does not give it again'); assert.equal(sent.length, 0, 'or welcome again');
-
-  log = []; config.welcome = { text: 'Hi {user.mention}, welcome to {guild.name}' };
-  await run(post()); assert.equal(sent[0].content, 'Hi <@u1>, welcome to Mine');
-  log = []; templates.set('g1:card', { data: {} }); config.welcome = { template: 'card' };
-  await run(post()); assert.deepEqual(sent[0].embeds, [{ title: 'card' }]);
-  log = []; config.uploader_role_id = 'high';
-  await run(post()); assert.deepEqual(given, [], 'a role above the bot is never given'); assert.equal(sent.length, 1, 'the welcome still goes');
-  log = []; config.welcome = {};
-
-  // A post inside a thread or a forum counts when its channel is an upload channel.
-  await run(post({ channel: { id: 'thread1', parentId: 'up-chan', send: async () => {} } })); assert.equal(log.length, 1, 'a thread of an upload channel counts');
-  await run(post({ channel: { id: 'thread2', parentId: 'elsewhere', send: async () => {} } })); assert.equal(log.length, 1, 'a thread of another channel does not');
-  // Two files posted at the same moment: only one is the first, one welcome, and a milestone is given once.
-  log = []; given.length = 0; sent.length = 0; milestoneRewards = [{ count: 2, role_id: 'gold', message: 'Reached {milestone.count}, {user.mention}!' }];
-  const goldGuild = () => fakeGuild({ roles: { cache: new Collection([['gold', { id: 'gold', name: 'Gold', position: 1, managed: false }]]) } });
-  const together = [post({ guild: goldGuild() }), post({ guild: goldGuild() }), post({ guild: goldGuild() })];
-  await Promise.all(together.map((message) => event.execute(message)));
-  assert.equal(log.length, 3);
-  assert.equal(sent.filter((payload) => /first upload/.test(payload.content ?? '')).length, 1, 'only one of three simultaneous uploads is the first');
-  assert.equal(sent.filter((payload) => /Reached 2/.test(payload.content ?? '')).length, 1, 'the milestone message is posted once');
-  assert.equal(given.filter((id) => id === 'gold').length, 1, 'the milestone role is given once');
-  milestoneRewards = []; log = []; given.length = 0; sent.length = 0;
-
-  // The numbers.
-  const now = new Date();
-  log = [
-    { id: 1, user_id: 'a', channel_id: 'c1', files: 3, created_at: now.toISOString() },
-    { id: 2, user_id: 'a', channel_id: 'c1', files: 1, created_at: now.toISOString() },
-    { id: 3, user_id: 'b', channel_id: 'c1', files: 1, created_at: new Date(Date.now() - 60 * 86400000).toISOString() },
-  ];
-  const talk = async (command, sub, values = {}) => {
-    const out = [];
-    const pick = (name) => (name in values ? values[name] : null);
-    const interaction = { guild: fakeGuild(), user: fakeUser('a', 'Ann'), options: { getSubcommand: () => sub, getString: pick, getBoolean: pick, getRole: pick, getChannel: pick, getUser: pick }, deferReply: async () => {}, editReply: async (payload) => { out.push(payload.components[0].text); } };
-    await command.execute(interaction);
-    return out.join('\n');
-  };
-  assert.match(await talk(uploads, 'stats'), /Total: \*\*2\*\* \(4 files\)/);
-  const board = await talk(uploads, 'leaderboard', { period: 'all' });
-  assert.match(board, /1\. <@a>  \*\*2\*\*[\s\S]*2\. <@b>  \*\*1\*\*/);
-  assert.doesNotMatch(await talk(uploads, 'leaderboard', { period: 'week' }), /<@b>/); assert.match(await talk(uploads, 'leaderboard', { period: 'today' }), /Today/); assert.match(await talk(uploads, 'leaderboard', { period: 'x' }), /Choose/);
-  config.enabled = false; assert.match(await talk(uploads, 'stats'), /not turned on/); config.enabled = true;
-
-  // The settings.
-  config = null;
-  assert.match(await talk(uploadConfig, 'enable', { enabled: true }), /Add a channel/);
-  for (let index = 1; index <= 20; index += 1) await talk(uploadConfig, 'addchannel', { channel: { id: `c${index}`, toString: () => `#c${index}` } });
-  assert.equal(config.channel_ids.length, 20);
-  assert.match(await talk(uploadConfig, 'addchannel', { channel: { id: 'c21', toString: () => '#c21' } }), /already has 20 upload channels\. Premium raises it to 100/);
-  premiumActive = true; assert.match(await talk(uploadConfig, 'addchannel', { channel: { id: 'c21', toString: () => '#c21' } }), /is now an upload channel/); premiumActive = false;
-  assert.match(await talk(uploadConfig, 'removechannel', { channel: { id: 'c21', toString: () => '#c21' } }), /not an upload channel anymore/);
-  assert.match(await talk(uploadConfig, 'role', { role: { id: 'up', toString: () => '@Uploader' } }), /@Uploader is given/); assert.equal(config.uploader_role_id, 'up');
-  assert.match(await talk(uploadConfig, 'welcome', { text: 'Yay {user.mention}' }), /Welcome saved/); assert.equal(config.welcome.text, 'Yay {user.mention}');
-  assert.match(await talk(uploadConfig, 'welcome', { template: 'nope' }), /no saved embed/);
-  templates.set('g1:card', { data: {} }); await talk(uploadConfig, 'welcome', { template: 'card' }); assert.equal(config.welcome.template, 'card');
-  await talk(uploadConfig, 'welcome', { text: 'reset', template: 'none' }); assert.deepEqual(config.welcome, {}, 'reset and none go back to the default');
-  assert.match(await talk(uploadConfig, 'view'), /Uploads[\s\S]*Uploader role: <@&up>/);
-  assert.equal(uploads.prefixOnly, true); assert.equal(uploadConfig.prefixOnly, true);
-  console.log('Checked the uploads: what counts, the first upload, the numbers and the commands.');
+  // The plan: free cannot, Silver and Gold can.
+  assert.equal((await actions.state(FREE)).allowed, false);
+  assert.equal((await actions.state(SILVER)).allowed, true);
+  assert.equal((await actions.state(GOLD)).perk, 'animated');
+  assert.equal((await actions.submit(FREE, png(1024, 320))).error, 'premium_required');
+  // The policy comes first.
+  assert.equal((await actions.state(SILVER)).policyAccepted, false);
+  assert.equal((await actions.submit(SILVER, png(1024, 320))).error, 'policy_required');
+  await actions.acceptPolicy(SILVER);
+  assert.equal((await actions.state(SILVER)).policyAccepted, true);
+  // The file: not a picture, too big, too small.
+  assert.equal((await actions.submit(SILVER, Buffer.from('not a picture'))).error, 'bad_file');
+  assert.equal((await actions.submit(SILVER, 'nope')).error, 'bad_file');
+  assert.equal((await actions.submit(SILVER, Buffer.alloc(actions.MAX_UPLOAD_BYTES + 1))).error, 'too_big');
+  assert.equal((await actions.submit(SILVER, png(100, 50))).error, 'file_too_small');
+  // A good picture waits for review; nothing is drawn until it is approved.
+  assert.deepEqual(await actions.submit(SILVER, png(1200, 400)), { ok: true });
+  assert.equal(await actions.approvedImage(SILVER), null, 'not approved yet: nothing to draw');
+  assert.equal((await actions.queue()).pending.length, 1);
+  assert.ok(Buffer.isBuffer(await actions.pendingFile(SILVER)));
+  assert.equal(await actions.pendingFile('abc'), null);
+  // Review.
+  assert.equal((await actions.review(OWNER, { person: 'x', action: 'approve' })).error, 'bad_person');
+  assert.equal((await actions.review(OWNER, { person: SILVER, action: 'nope' })).error, 'bad_request');
+  assert.deepEqual(await actions.review(OWNER, { person: SILVER, action: 'approve' }), { ok: true });
+  assert.ok(Buffer.isBuffer(await actions.approvedImage(SILVER)), 'approved: it is drawn');
+  assert.equal((await actions.review(OWNER, { person: SILVER, action: 'approve' })).error, 'nothing_pending');
+  // A new picture waits while the approved one stays; a rejection keeps the approved one and says why.
+  await actions.submit(SILVER, png(1200, 400));
+  assert.ok(Buffer.isBuffer(await actions.approvedImage(SILVER)));
+  assert.deepEqual(await actions.review(OWNER, { person: SILVER, action: 'reject', reason: 'quality' }), { ok: true, blocked: false });
+  assert.equal((await actions.state(SILVER)).upload.lastRejectReason, 'quality');
+  assert.ok(Buffer.isBuffer(await actions.approvedImage(SILVER)));
+  // A copyright claim: takedown removes it, and the person can block too.
+  assert.deepEqual(await actions.review(OWNER, { person: SILVER, action: 'takedown', reason: 'copyright' }), { ok: true, blocked: false });
+  assert.equal(await actions.approvedImage(SILVER), null);
+  assert.equal((await actions.state(SILVER)).upload.removedReason, 'copyright');
+  // A minor: removed, blocked at once, and it cannot be sent again.
+  await actions.acceptPolicy(GOLD); await actions.submit(GOLD, png(1200, 400));
+  assert.deepEqual(await actions.review(OWNER, { person: GOLD, action: 'reject', reason: 'minor' }), { ok: true, blocked: true });
+  assert.equal(await actions.approvedImage(GOLD), null); assert.equal((await actions.pendingFile(GOLD)), null);
+  assert.equal((await actions.state(GOLD)).blocked, true);
+  assert.equal((await actions.submit(GOLD, png(1200, 400))).error, 'blocked');
+  assert.equal((await actions.queue()).blocked.length, 1);
+  // Unblock.
+  assert.deepEqual(await actions.review(OWNER, { person: GOLD, action: 'unblock' }), { ok: true });
+  assert.equal((await actions.review(OWNER, { person: GOLD, action: 'unblock' })).error, 'not_blocked');
+  assert.deepEqual(await actions.submit(GOLD, png(1200, 400)), { ok: true });
+  // The rank card rules know the own picture as a background.
+  const rank = require('../src/utils/userRankCard');
+  assert.equal(rank.normalize({ background: 'upload:own' }).background, 'upload:own');
+  assert.deepEqual(rank.backgroundOf(rank.normalize({ background: 'upload:own' })), { kind: 'upload' });
+  assert.equal(rank.normalize({ background: 'upload:other' }).background, 'default');
+  console.log('uploads: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

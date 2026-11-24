@@ -109,6 +109,11 @@ async function userBannerFor(userId, chosenId = null) {
     const shopDb = require('../db/shop');
     await registry.ensure();
     const [active, items] = await Promise.all([shopDb.getActive(userId), shopDb.getUserItems(userId)]);
+    // An own picture the team approved (only that one is ever drawn).
+    if (chosenId === 'upload:own') {
+      const own = await require('../db/userUploads').approvedBytes(userId);
+      if (own) { const { loadImage } = require('@napi-rs/canvas'); return await loadImage(own); }
+    }
     // The one the person chose for the card on the page "Rank card" (when they have it), otherwise the one they have on in the profile.
     const owns = (id) => id && items.some((row) => row.kind === 'banner' && row.id === id);
     const id = owns(chosenId) ? chosenId : (owns(active.banner) ? active.banner : null);
@@ -144,7 +149,7 @@ function defaultRankCard(source, lang = currentLanguage(), withBanner = false, c
   // What the person designed on the page "Rank card" (`utils/userRankCard`): its colors, font and layout go over the basic settings, and its background over the picture.
   const own = custom?.basic ?? {};
   const background = custom?.background ?? { kind: 'default' };
-  const useBanner = (background.kind === 'banner' || background.kind === 'shop' || background.kind === 'default') && withBanner;
+  const useBanner = (background.kind === 'banner' || background.kind === 'shop' || background.kind === 'upload' || background.kind === 'default') && withBanner;
   const picture = background.kind === 'design' ? `petto:${background.id}` : (voice ? 'petto:rank-voice' : 'petto:rank-default');
   return {
     kind: 'rank',
@@ -186,7 +191,7 @@ async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.la
     const personId = (ctx.member ?? ctx.user ?? ctx.message?.author)?.id;
     // The card the person designed is only for the default card: a server that made its own keeps it.
     const custom = raw ? null : await userRankCardFor(personId);
-    const userBanner = await userBannerFor(personId, custom?.background.kind === 'shop' ? custom.background.id : null);
+    const userBanner = await userBannerFor(personId, custom?.background.kind === 'shop' ? custom.background.id : (custom?.background.kind === 'upload' ? 'upload:own' : null));
     // The card a person designed is theirs, not the server's: its fonts are the ones of the page (some are Premium ones for a server's own card), so it is not held back by the server's Premium.
     const buffer = await drawCard(raw ?? defaultRankCard(source, lang, Boolean(userBanner), custom), ctx, { guildId, premium: custom ? true : premium, lang, userBanner });
     return { buffer, name: CARD_FILE_NAME };

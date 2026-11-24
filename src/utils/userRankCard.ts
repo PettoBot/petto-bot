@@ -29,13 +29,14 @@ export const DEFAULTS: RankCardSettings = {
 const HEX = /^#[0-9a-f]{6}$/i;
 const DESIGN = /^design:[a-z0-9-]{3,30}$/;
 const SHOP = /^shop:[a-z0-9][a-z0-9-]{2,39}$/;
+const UPLOAD = /^upload:own$/;
 const hex = (value: unknown): string | null => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : null);
 
 /** The settings of a person, checked: anything missing or wrong becomes the default. `designExists` says whether a design of Petto exists (the page only offers real ones). */
 export function normalize(raw: unknown, designExists: (id: string) => boolean = () => true): RankCardSettings {
   const input = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const font = typeof input.font === 'string' && (FONTS as readonly string[]).includes(input.font) ? input.font : DEFAULTS.font;
-  const background = typeof input.background === 'string' && (input.background === 'default' || input.background === 'banner' || SHOP.test(input.background) || (DESIGN.test(input.background) && designExists(input.background.slice(7))))
+  const background = typeof input.background === 'string' && (input.background === 'default' || input.background === 'banner' || UPLOAD.test(input.background) || SHOP.test(input.background) || (DESIGN.test(input.background) && designExists(input.background.slice(7))))
     ? input.background : DEFAULTS.background;
   return {
     barColor: hex(input.barColor) ?? DEFAULTS.barColor,
@@ -72,8 +73,9 @@ export function toBasic(settings: RankCardSettings): Record<string, unknown> {
 }
 
 /** The picture behind the card: `{ id }` for `petto:<id>`, `banner` for the one of the profile, or null for the default one of the kind. */
-export function backgroundOf(settings: RankCardSettings): { kind: 'default' } | { kind: 'banner' } | { kind: 'shop'; id: string } | { kind: 'design'; id: string } {
+export function backgroundOf(settings: RankCardSettings): { kind: 'default' } | { kind: 'banner' } | { kind: 'upload' } | { kind: 'shop'; id: string } | { kind: 'design'; id: string } {
   if (settings.background === 'banner') return { kind: 'banner' };
+  if (settings.background === 'upload:own') return { kind: 'upload' };
   if (settings.background.startsWith('shop:')) return { kind: 'shop', id: settings.background.slice(5) };
   if (settings.background.startsWith('design:')) return { kind: 'design', id: settings.background.slice(7) };
   return { kind: 'default' };

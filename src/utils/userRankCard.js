@@ -17,12 +17,13 @@ exports.DEFAULTS = {
 const HEX = /^#[0-9a-f]{6}$/i;
 const DESIGN = /^design:[a-z0-9-]{3,30}$/;
 const SHOP = /^shop:[a-z0-9][a-z0-9-]{2,39}$/;
+const UPLOAD = /^upload:own$/;
 const hex = (value) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : null);
 /** The settings of a person, checked: anything missing or wrong becomes the default. `designExists` says whether a design of Petto exists (the page only offers real ones). */
 function normalize(raw, designExists = () => true) {
     const input = (raw && typeof raw === 'object' ? raw : {});
     const font = typeof input.font === 'string' && exports.FONTS.includes(input.font) ? input.font : exports.DEFAULTS.font;
-    const background = typeof input.background === 'string' && (input.background === 'default' || input.background === 'banner' || SHOP.test(input.background) || (DESIGN.test(input.background) && designExists(input.background.slice(7))))
+    const background = typeof input.background === 'string' && (input.background === 'default' || input.background === 'banner' || UPLOAD.test(input.background) || SHOP.test(input.background) || (DESIGN.test(input.background) && designExists(input.background.slice(7))))
         ? input.background : exports.DEFAULTS.background;
     return {
         barColor: hex(input.barColor) ?? exports.DEFAULTS.barColor,
@@ -59,6 +60,8 @@ function toBasic(settings) {
 function backgroundOf(settings) {
     if (settings.background === 'banner')
         return { kind: 'banner' };
+    if (settings.background === 'upload:own')
+        return { kind: 'upload' };
     if (settings.background.startsWith('shop:'))
         return { kind: 'shop', id: settings.background.slice(5) };
     if (settings.background.startsWith('design:'))

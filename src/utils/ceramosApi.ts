@@ -151,3 +151,5 @@ export const apiKeys = publicApi;
 const missionActions = require('./missionActions') as typeof import('./missionActions');
 export const missionsList = missionActions.list;
 export const missionsClaim = missionActions.claim;
+
+export const uploads = require('./uploadActions') as typeof import('./uploadActions');

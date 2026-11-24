@@ -114,6 +114,24 @@ function registerCeramosRoutes(app, { isAuthorized, limiter, raw }) {
         const id = badgeOf({ badge: body.id });
         return id && typeof body.active === 'boolean' ? admin.setActive(id, body.active) : bad;
     }));
+    // Own pictures: what the person can do, the policy, sending a picture (it waits for review), and what the owner does in the queue.
+    app.get('/api/dashboard/ceramos/upload-state', limiter, guard(false, async (userId) => api.uploads.state(userId)));
+    app.post('/api/dashboard/ceramos/upload-policy', limiter, guard(true, async (userId) => api.uploads.acceptPolicy(userId)));
+    app.post('/api/dashboard/ceramos/upload-submit', limiter, raw, guard(true, async (userId, _body, req) => api.uploads.submit(userId, req.body)));
+    app.get('/api/dashboard/ceramos/admin/uploads', limiter, owner(false, async () => api.uploads.queue()));
+    app.post('/api/dashboard/ceramos/admin/upload-review', limiter, owner(true, async (userId, body) => api.uploads.review(userId, body)));
+    app.get('/api/dashboard/ceramos/admin/upload-file', limiter, async (req, res) => {
+        if (!isAuthorized(req) || String(req.query.user_id ?? '') !== String(config.ownerId)) {
+            res.status(401).json({ ok: false, error: 'unauthorized' });
+            return;
+        }
+        const bytes = await api.uploads.pendingFile(String(req.query.person ?? '')).catch(() => null);
+        if (!bytes) {
+            res.status(404).json({ ok: false, error: 'not_found' });
+            return;
+        }
+        res.set('Content-Type', 'image/webp').set('Cache-Control', 'private, no-store').send(bytes);
+    });
     // The missions: the list with the progress, and claiming one (`id`) or every finished one.
     app.get('/api/dashboard/ceramos/missions', limiter, guard(false, async (userId) => api.missionsList(userId)));
     app.post('/api/dashboard/ceramos/missions-claim', limiter, guard(true, async (userId, body) => api.missionsClaim(userId, body.id)));

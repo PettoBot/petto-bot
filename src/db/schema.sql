@@ -5500,3 +5500,30 @@ create table if not exists mission_claims (
   primary key (user_id, mission_id, period_key)
 );
 alter table mission_claims enable row level security;
+
+-- Own pictures (a background of the rank card made by the person): the policy they accepted, the picture waiting for review and the one that was approved (one of each at most),
+-- and the people who cannot upload any more. Only a picture the team approved is ever drawn.
+create table if not exists user_policy (
+  user_id     text primary key,
+  version     int not null,
+  accepted_at timestamptz not null default now()
+);
+alter table user_policy enable row level security;
+create table if not exists user_uploads (
+  user_id            text primary key,
+  approved           bytea check (approved is null or octet_length(approved) <= 1048576),
+  approved_at        timestamptz,
+  pending            bytea check (pending is null or octet_length(pending) <= 1048576),
+  pending_at         timestamptz,
+  last_reject_reason text,
+  last_reject_at     timestamptz,
+  removed_reason     text
+);
+alter table user_uploads enable row level security;
+create table if not exists upload_blocks (
+  user_id    text primary key,
+  reason     text not null default '',
+  by_user    text,
+  created_at timestamptz not null default now()
+);
+alter table upload_blocks enable row level security;
