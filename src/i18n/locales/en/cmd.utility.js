@@ -257,6 +257,7 @@ module.exports = {
   'cmd.utility.perf.desc': 'Private tool: how the bot is doing (latency, rate limits, load level).',
   'cmd.utility.perf.opt.section.desc': 'rest, slow, jobs, listeners, limits, quarantine, probe, cpu or level',
   'cmd.utility.perf.opt.value.desc': 'For level: normal, degraded, critical or auto. For cpu: seconds (3 to 30)',
+  'cmd.utility.purchase.desc': 'Where to buy Premium, a plan or ceramos.',
   'cmd.utility.profilehistory.desc': 'The names and nicknames a member has had.',
   'cmd.utility.profilehistory.names.desc': 'The names (display names) saved of a member.',
   'cmd.utility.profilehistory.names.opt.user.desc': 'Whose history (default: you)',

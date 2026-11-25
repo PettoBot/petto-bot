@@ -186,6 +186,7 @@ module.exports = {
   'cmd.utility.myprefix.set.desc': 'Escolha seu prefixo.',
   'cmd.utility.myprefix.set.opt.prefix.desc': 'Até 5 caracteres, com um símbolo, por exemplo p! ou ,',
   'cmd.utility.myprefix.reset.desc': 'Remova seu prefixo.',
+  'cmd.utility.purchase.desc': 'Onde comprar Premium, um plano ou cerâmos.',
   'cmd.utility.profilehistory.desc': 'Os nomes e apelidos que um membro já teve.',
   'cmd.utility.profilehistory.names.desc': 'Os nomes (nomes de exibição) salvos de um membro.',
   'cmd.utility.profilehistory.names.opt.user.desc': 'De quem é o histórico (padrão: você)',
