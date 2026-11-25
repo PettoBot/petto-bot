@@ -43,7 +43,7 @@ module.exports = {
       buttons: [
         { label: t(lang, 'info.button.dashboard.button'), url: 'https://petto.sbs/dash' },
         { label: t(lang, 'info.button.changelog.button'), url: 'https://petto.sbs/changelog/' },
-        { label: t(lang, 'info.button.repository.button'), url: 'https://github.com/PettoBot/petto-bot' },
+        { label: t(lang, 'core.join.support.button'), url: 'https://petto.sbs/support' },
       ],
     }));
   },
