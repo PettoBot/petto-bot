@@ -674,29 +674,5 @@
         ]
       }
     ]
-  },
-  {
-    "version": "v0.3.0-1",
-    "name": "Cookie",
-    "label": "v0.3.0-1 · Vanity system",
-    "date": "2026-08-13",
-    "accent": 6065663,
-    "status": "<:pe_aproved:1542048556352016475> Published",
-    "summary": "Introduced Petto's Vanity system and documented the first public version of that release.",
-    "sections": [
-      {
-        "title": "<:pe_rnew:1558964312192589874> Vanity",
-        "items": [
-          "Added the Vanity system for managing and presenting a server's vanity identity through Petto.",
-          "The original release entry and its full notes are available in the public changelog."
-        ]
-      },
-      {
-        "title": "<:pe_rinstallation:1558964308493209623> More details",
-        "items": [
-          "See the August 13, 2026 entry in the Petto changelog for the complete release context."
-        ]
-      }
-    ]
   }
 ]

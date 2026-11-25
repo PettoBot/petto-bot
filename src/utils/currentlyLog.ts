@@ -216,7 +216,7 @@ export interface LoadedLog {
   problems: string[];
   /** A higher number than the one that was posted deletes the log of the channel and posts all of it again. */
   revision: number;
-  /** The version written at the bottom of every card (`-# Petto 0.7.12`): the one the maintainer says the log is at, not the one of `package.json`. */
+  /** The version written at the bottom of every card (`-# Petto 0.7.13`): the one the maintainer says the log is at, not the one of `package.json`. */
   version: string;
 }
 

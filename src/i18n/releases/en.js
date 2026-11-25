@@ -1,5 +1,45 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.12': {
+    label: 'v0.7.12 · Cheesecake: ceramos and badge frames, streaks, rank cards and moderation rules',
+    summary: 'Cheesecake: ceramos, a shop of badges with real frames, your own rank card, streaks per server, strong moderation rules made in the dashboard, Petto installed on a person, and custom commands you can limit to some channels and roles.',
+    sections: [
+      {
+        title: 'Ceramos, badges and profile',
+        items: [
+          'Ceramos are a currency you earn with `/daily`, missions (messages and voice time, every day and every week) and the plan you have, and you can also buy packs of 500, 850, 1,200 and 2,000. `/ceramos` shows your wallet and `/ceramos top` the ten richest people.',
+          'The shop sells badges (253 country flags, 20 languages, rarities, the six Bufis and your own badges with a plan), packs of banners and packs of name fonts. The frames are real pictures of iron, gold and mithril, drawn bigger than the badge, and each badge can show any frame it has.',
+          '`/profile` is a picture now: avatar, banner, name with the star of your plan, level, rank, messages and voice time. Your plan (Bronze, Silver or Gold) sets your daily ceramos, the places of your showcase, your streak freezes and the questions a day of `/ask`.',
+          'You can design your own rank card (bar, text, font, layout, avatar shape, theme and background): the shop has 21 backgrounds, or you can use your own picture, checked by a detector. `/rank` has a button to customize it.',
+        ],
+      },
+      {
+        title: 'Streaks, roles and levels',
+        items: [
+          'Streaks count the days in a row with activity in a server (Colombia time): modes, milestones, reward roles, freezes, a grace period, reminders and the streak in the nickname. Each server chooses what counts as a message, and `/streak` shows the rules and a board.',
+          '`/messagerole` gives a role when a member reaches a number of messages, `/role aged add` gives a role after some days in the server, and `/levels manage block` stops a member from earning XP.',
+          'The welcome, goodbye and boost messages can have up to 25 versions each and Petto picks one at random. An activity leaderboard is one message with a card for each period.',
+        ],
+      },
+      {
+        title: 'Moderation, commands and servers',
+        items: [
+          'Moderation rules made in the dashboard: rulesets with triggers, conditions and effects, strikes and heat, a join gate with a raid detector, and tools to try a rule. Quick Setup applies the main modules in seven steps.',
+          'A custom command can work only in some channels or roles, be blocked from others, be NSFW only, or answer a member who is not a moderator in another channel (Restricted). A command that is not allowed stays silent.',
+          'Petto can be installed on a person: `/action`, `/avatar`, `/banner`, `/userinfo` and `/birthday` work in any server, in direct messages and in group chats. `/247` keeps Petto in a voice channel, and `/counting`, `/counter`, `/imageonly` and `/linkonly` are commands of their own.',
+          'Petto tells the staff exactly which permission is missing, `/purge` can clean every channel, backups are a Premium feature kept in a database of their own, and the AI assistant of the tickets is gone for good.',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          'Streaks used UTC and now use Colombia time, a name font is drawn at its real size, and `/embed create` with a very long name no longer fails.',
+          '`/247` from the dashboard joins within 20 seconds, a Premium given from the dashboard is the person\'s and gets its role at once, and the log of a sanction that ends by itself shows who it was.',
+          'Confessions with pictures post when the staff approves them, and a channel Petto cannot see is no longer shown as deleted.',
+        ],
+      },
+    ],
+  },
   'v0.7.11': {
     label: 'v0.7.11 · Brownie: activity leaderboards, role quotas, stronger verification & a private bot',
     summary: 'Brownie: leaderboards of the most active members, a quota of messages for a role, a verification with Tor, alt account and email checks, direct slash commands for moderation, and a bot whose code is private now.',
@@ -931,25 +971,6 @@ module.exports = {
         title: 'Release notes',
         items: [
           'Bumped the bot version from `0.1.0` to `0.3.0-2` and documented the validation status.',
-        ],
-      },
-    ],
-  },
-  'v0.3.0-1': {
-    label: 'v0.3.0-1 · Vanity system',
-    summary: 'Introduced Petto\'s Vanity system and documented the first public version of that release.',
-    sections: [
-      {
-        title: 'Vanity',
-        items: [
-          'Added the Vanity system for managing and presenting a server\'s vanity identity through Petto.',
-          'The original release entry and its full notes are available in the public changelog.',
-        ],
-      },
-      {
-        title: 'More details',
-        items: [
-          'See the August 13, 2026 entry in the Petto changelog for the complete release context.',
         ],
       },
     ],

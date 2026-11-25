@@ -1,5 +1,45 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
+  'v0.7.12': {
+    label: 'v0.7.12 · Cheesecake: céramos, marcos de insignias, rachas, tarjetas de rango y reglas',
+    summary: 'Cheesecake: céramos, una tienda de insignias con marcos reales, tu propia tarjeta de rango, rachas por servidor, reglas de moderación potentes hechas en el dashboard, Petto instalado en una persona y comandos personalizados que puedes limitar a ciertos canales y roles.',
+    sections: [
+      {
+        title: 'Céramos, insignias y perfil',
+        items: [
+          'Los céramos son una moneda que ganas con `/daily`, misiones (mensajes y tiempo en voz, cada día y cada semana) y el plan que tengas, y también puedes comprar paquetes de 500, 850, 1,200 y 2,000. `/ceramos` muestra tu billetera y `/ceramos top` las diez personas con más.',
+          'La tienda vende insignias (253 banderas de países, 20 idiomas, rarezas, los seis Bufis y tus propias insignias con un plan), paquetes de banners y paquetes de fuentes de nombre. Los marcos son imágenes reales de hierro, oro y mithril, dibujados más grandes que la insignia, y cada insignia puede mostrar cualquier marco que tenga.',
+          '`/profile` ahora es una imagen: avatar, banner, nombre con la estrella de tu plan, nivel, rango, mensajes y tiempo en voz. Tu plan (Bronce, Plata u Oro) define tus céramos diarios, los lugares de tu vitrina, tus congelaciones de racha y las preguntas al día de `/ask`.',
+          'Puedes diseñar tu propia tarjeta de rango (barra, texto, fuente, diseño, forma del avatar, tema y fondo): la tienda tiene 21 fondos, o puedes usar tu propia imagen, revisada por un detector. `/rank` tiene un botón para personalizarla.',
+        ],
+      },
+      {
+        title: 'Rachas, roles y niveles',
+        items: [
+          'Las rachas cuentan los días seguidos con actividad en un servidor (hora de Colombia): modos, hitos, roles de recompensa, congelaciones, un periodo de gracia, recordatorios y la racha en el apodo. Cada servidor elige qué cuenta como mensaje, y `/streak` muestra las reglas y un tablero.',
+          '`/messagerole` da un rol cuando un miembro llega a una cantidad de mensajes, `/role aged add` da un rol tras algunos días en el servidor, y `/levels manage block` evita que un miembro gane XP.',
+          'Los mensajes de bienvenida, despedida y boost pueden tener hasta 25 versiones cada uno y Petto elige una al azar. Un ranking de actividad es un solo mensaje con una tarjeta por periodo.',
+        ],
+      },
+      {
+        title: 'Moderación, comandos y servidores',
+        items: [
+          'Reglas de moderación hechas en el dashboard: conjuntos de reglas con disparadores, condiciones y efectos, strikes y heat, una puerta de entrada con detector de raids, y herramientas para probar una regla. Quick Setup aplica los módulos principales en siete pasos.',
+          'Un comando personalizado puede funcionar solo en ciertos canales o roles, estar bloqueado en otros, ser solo NSFW, o responder a un miembro que no es moderador en otro canal (Restringido). Un comando que no está permitido se queda en silencio.',
+          'Petto se puede instalar en una persona: `/action`, `/avatar`, `/banner`, `/userinfo` y `/birthday` funcionan en cualquier servidor, en mensajes directos y en chats de grupo. `/247` mantiene a Petto en un canal de voz, y `/counting`, `/counter`, `/imageonly` y `/linkonly` son comandos propios.',
+          'Petto le dice al staff exactamente qué permiso falta, `/purge` puede limpiar todos los canales, los backups son una función Premium guardada en una base de datos propia, y el asistente de IA de los tickets se eliminó para siempre.',
+        ],
+      },
+      {
+        title: 'Arreglos',
+        items: [
+          'Las rachas usaban UTC y ahora usan la hora de Colombia, una fuente de nombre se dibuja a su tamaño real, y `/embed create` con un nombre muy largo ya no falla.',
+          '`/247` desde el dashboard entra en 20 segundos, un Premium dado desde el dashboard es de la persona y recibe su rol al instante, y el registro de una sanción que termina sola muestra a quién era.',
+          'Las confesiones con imágenes se publican cuando el staff las aprueba, y un canal que Petto no puede ver ya no se muestra como borrado.',
+        ],
+      },
+    ],
+  },
   'v0.7.11': {
     label: 'v0.7.11 · Brownie: rankings de actividad, cuotas de rol, verificación más fuerte y un bot privado',
     summary: 'Brownie: rankings de los miembros más activos, una cuota de mensajes para un rol, una verificación con revisión de Tor, cuentas alternativas y correo, comandos de barra directos para moderación, y un bot cuyo código ahora es privado.',
@@ -931,25 +971,6 @@ module.exports = {
         title: 'Notas de la versión',
         items: [
           'Se subió la versión del bot de `0.1.0` a `0.3.0-2` y se documentó el estado de validación.',
-        ],
-      },
-    ],
-  },
-  'v0.3.0-1': {
-    label: 'v0.3.0-1 · Sistema Vanity',
-    summary: 'Se presentó el sistema Vanity de Petto y se documentó la primera versión pública de esa entrega.',
-    sections: [
-      {
-        title: 'Vanity',
-        items: [
-          'Se agregó el sistema Vanity para gestionar y presentar la identidad vanity de un servidor a través de Petto.',
-          'La entrada original de la versión y sus notas completas están disponibles en el registro de cambios público.',
-        ],
-      },
-      {
-        title: 'Más detalles',
-        items: [
-          'Consulta la entrada del 13 de agosto de 2026 en el registro de cambios de Petto para ver el contexto completo de la versión.',
         ],
       },
     ],

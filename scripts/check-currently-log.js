@@ -46,8 +46,8 @@ assert.deepEqual(log.validateEntries('nope').entries, [], 'a file that is not a 
 assert.ok(log.validateEntries('nope').problems.length === 1);
 
 // The log is read from the web: its version and revision, the entries that are well made, and what is wrong with the rest.
-const parsed = log.parseLog({ revision: 4, version: '0.7.12', entries: [entry('ok-one'), entry('Bad Id')] });
-assert.deepEqual([parsed.revision, parsed.version, parsed.entries.map((each) => each.id), parsed.problems.length], [4, '0.7.12', ['ok-one'], 1]);
+const parsed = log.parseLog({ revision: 4, version: '0.7.13', entries: [entry('ok-one'), entry('Bad Id')] });
+assert.deepEqual([parsed.revision, parsed.version, parsed.entries.map((each) => each.id), parsed.problems.length], [4, '0.7.13', ['ok-one'], 1]);
 assert.deepEqual([log.parseLog({ entries: [] }).revision, log.parseLog({ entries: [] }).version], [1, ''], 'no revision is 1, and a version that is not a version is nothing');
 assert.equal(log.parseLog({ version: 'next', entries: [] }).version, '');
 
@@ -113,7 +113,7 @@ const loaded = async () => true;
 const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
 (async () => {
   const answer = (status, body) => async () => ({ ok: status < 400, status, json: async () => { if (body === undefined) throw new Error('not JSON'); return body; } });
-  assert.equal((await log.fetchLog('https://web.example/log', answer(200, { revision: 2, version: '0.7.12', entries: [entry('w1')] }))).entries[0].id, 'w1', 'a good answer is read');
+  assert.equal((await log.fetchLog('https://web.example/log', answer(200, { revision: 2, version: '0.7.13', entries: [entry('w1')] }))).entries[0].id, 'w1', 'a good answer is read');
   assert.equal(await log.fetchLog('https://web.example/log', answer(500, {})), null, 'the site is down or being deployed: nothing is posted, it is tried again');
   assert.equal(await log.fetchLog('https://web.example/log', answer(200, undefined)), null, 'an answer that is not JSON');
   assert.equal(await log.fetchLog('https://web.example/log', answer(200, { hello: 1 })), null, 'JSON that is not a log');
@@ -196,7 +196,7 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
   const retryingStore = memory();
   const bot = { channels: retried.client.channels, user: { id: BOT } };
   let published = [withPicture[0]];
-  const looking = await log.startCurrentlyLog(bot, { channelId: CHANNEL, pauseMs: 0, store: retryingStore, reachable, pollMs: 5, load: async () => log.parseLog({ revision: 1, version: '0.7.12', entries: published }) });
+  const looking = await log.startCurrentlyLog(bot, { channelId: CHANNEL, pauseMs: 0, store: retryingStore, reachable, pollMs: 5, load: async () => log.parseLog({ revision: 1, version: '0.7.13', entries: published }) });
   assert.equal(looking.result.waiting, 1);
   up = true;
   published = withPicture;
@@ -209,15 +209,15 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
   const broken = { read: async () => { throw new Error('db down'); }, write: async () => {} };
   assert.equal((await log.announceNewEntries(fake().client, { ...base, entries, store: broken })).skipped, 'store-failed');
 
-  // The version at the bottom of the cards is the one of the log of the web (0.7.12 from the start the maintainer marked), not the one of package.json.
-  const web = (over = {}) => ({ revision: 1, version: '0.7.12', entries: [entry('v1')], ...over });
+  // The version at the bottom of the cards is the one of the log of the web (0.7.13 from the start the maintainer marked), not the one of package.json.
+  const web = (over = {}) => ({ revision: 1, version: '0.7.13', entries: [entry('v1')], ...over });
   const loadWeb = (current) => async () => log.parseLog(current());
   let current = web();
   const versioned = fake();
   const versionedStore = memory();
   await log.announceNewEntries(versioned.client, { channelId: CHANNEL, pauseMs: 0, reachable: loaded, store: versionedStore, load: loadWeb(() => current) });
-  assert.match(JSON.stringify(versioned.sent[0].components[0].toJSON()), /-# Petto 0\.7\.12/, 'the footer says the version of the log');
-  assert.notEqual('0.7.12', require('../package.json').version, 'it does not follow package.json');
+  assert.match(JSON.stringify(versioned.sent[0].components[0].toJSON()), /-# Petto 0\.7\.13/, 'the footer says the version of the log');
+  assert.notEqual('0.7.13', require('../package.json').version, 'it does not follow package.json');
   // The web is not there: nothing is posted and nothing is forgotten.
   const down = fake();
   assert.equal((await log.announceNewEntries(down.client, { channelId: CHANNEL, pauseMs: 0, store: memory(), load: async () => null })).skipped, 'log-unavailable');
@@ -231,7 +231,7 @@ const base = { channelId: CHANNEL, pauseMs: 0, reachable: loaded, revision: 1 };
     logger.warn = (text) => { warnings.push(String(text)); };
     try {
       let answers = 0;
-      const deploying = async () => { answers += 1; return answers <= 2 ? { ok: false, status: 404 } : { ok: true, status: 200, json: async () => ({ revision: 1, version: '0.7.12', entries: [entry('late')] }) }; };
+      const deploying = async () => { answers += 1; return answers <= 2 ? { ok: false, status: 404 } : { ok: true, status: 200, json: async () => ({ revision: 1, version: '0.7.13', entries: [entry('late')] }) }; };
       const early = fake();
       const earlyStore = memory();
       const looking = await log.startCurrentlyLog({ channels: early.client.channels, user: { id: BOT } }, { channelId: CHANNEL, pauseMs: 0, store: earlyStore, reachable: loaded, pollMs: 60_000, retryMs: [5, 5, 5], load: () => log.fetchLog('https://web.example/log', deploying) });
