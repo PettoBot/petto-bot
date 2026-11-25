@@ -10,12 +10,21 @@ const { t, currentLanguage, normalizeLanguage } = require('../i18n');
 
 const RELEASES = [
   {
+    version: 'v0.7.12',
+    display: 'v0.7.12',
+    name: 'Cheesecake', // i18n-ignore: codename, never translated
+    date: '2026-11-25',
+    accent: 0xf5e3a1,
+    status: 'latest',
+    sectionEmojis: [EMOJI.RELEASE_ROCKET, EMOJI.RELEASE_MAGIC, EMOJI.RELEASE_SETTINGS, EMOJI.RELEASE_BUG],
+  },
+  {
     version: 'v0.7.11',
     display: 'v0.7.11',
     name: 'Brownie', // i18n-ignore: codename, never translated
     date: '2026-11-12',
     accent: 0xb98b64,
-    status: 'latest',
+    status: 'published',
     sectionEmojis: [EMOJI.RELEASE_ROCKET, EMOJI.RELEASE_MAGIC, EMOJI.RELEASE_SETTINGS, EMOJI.RELEASE_BUG],
   },
   {
@@ -215,14 +224,6 @@ const RELEASES = [
     accent: 0x4b4f59,
     status: 'published',
     sectionEmojis: [EMOJI.RELEASE_METAL, EMOJI.RELEASE_NOTE],
-  },
-  {
-    version: 'v0.3.0-1',
-    name: 'Cookie', // i18n-ignore: codename, never translated
-    date: '2026-08-13',
-    accent: 0x5c8dff,
-    status: 'published',
-    sectionEmojis: [EMOJI.RELEASE_MAGIC, EMOJI.RELEASE_LINK],
   },
 ];
 

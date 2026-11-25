@@ -1,5 +1,45 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
+  'v0.7.12': {
+    label: 'v0.7.12 · Cheesecake: cerâmos, molduras, sequências, cartões de rank e regras de moderação',
+    summary: 'Cheesecake: cerâmos, uma loja de insígnias com molduras reais, seu próprio cartão de rank, sequências por servidor, regras de moderação poderosas feitas no dashboard, Petto instalado em uma pessoa e comandos personalizados que você pode limitar a certos canais e cargos.',
+    sections: [
+      {
+        title: 'Cerâmos, insígnias e perfil',
+        items: [
+          'Os cerâmos são uma moeda que você ganha com `/daily`, missões (mensagens e tempo em voz, todo dia e toda semana) e o plano que tiver, e você também pode comprar pacotes de 500, 850, 1,200 e 2,000. `/ceramos` mostra sua carteira e `/ceramos top` as dez pessoas com mais.',
+          'A loja vende insígnias (253 bandeiras de países, 20 idiomas, raridades, os seis Bufis e suas próprias insígnias com um plano), pacotes de banners e pacotes de fontes de nome. As molduras são imagens reais de ferro, ouro e mithril, desenhadas maiores que a insígnia, e cada insígnia pode mostrar qualquer moldura que tenha.',
+          '`/profile` agora é uma imagem: avatar, banner, nome com a estrela do seu plano, nível, rank, mensagens e tempo em voz. Seu plano (Bronze, Prata ou Ouro) define seus cerâmos diários, os lugares da sua vitrine, seus congelamentos de sequência e as perguntas por dia do `/ask`.',
+          'Você pode desenhar seu próprio cartão de rank (barra, texto, fonte, layout, forma do avatar, tema e fundo): a loja tem 21 fundos, ou você pode usar sua própria imagem, verificada por um detector. `/rank` tem um botão para personalizá-lo.',
+        ],
+      },
+      {
+        title: 'Sequências, cargos e níveis',
+        items: [
+          'As sequências contam os dias seguidos com atividade em um servidor (horário da Colômbia): modos, marcos, cargos de recompensa, congelamentos, um período de tolerância, lembretes e a sequência no apelido. Cada servidor escolhe o que conta como mensagem, e `/streak` mostra as regras e um quadro.',
+          '`/messagerole` dá um cargo quando um membro chega a uma quantidade de mensagens, `/role aged add` dá um cargo após alguns dias no servidor, e `/levels manage block` impede que um membro ganhe XP.',
+          'As mensagens de boas-vindas, despedida e boost podem ter até 25 versões cada uma e o Petto escolhe uma ao acaso. Um ranking de atividade é uma única mensagem com um cartão por período.',
+        ],
+      },
+      {
+        title: 'Moderação, comandos e servidores',
+        items: [
+          'Regras de moderação feitas no dashboard: conjuntos de regras com gatilhos, condições e efeitos, strikes e heat, uma porta de entrada com detector de raids, e ferramentas para testar uma regra. O Quick Setup aplica os módulos principais em sete passos.',
+          'Um comando personalizado pode funcionar só em certos canais ou cargos, ficar bloqueado em outros, ser só NSFW, ou responder a um membro que não é moderador em outro canal (Restrito). Um comando que não é permitido fica em silêncio.',
+          'O Petto pode ser instalado em uma pessoa: `/action`, `/avatar`, `/banner`, `/userinfo` e `/birthday` funcionam em qualquer servidor, em mensagens diretas e em chats de grupo. `/247` mantém o Petto em um canal de voz, e `/counting`, `/counter`, `/imageonly` e `/linkonly` são comandos próprios.',
+          'O Petto diz à equipe exatamente qual permissão falta, `/purge` pode limpar todos os canais, os backups são um recurso Premium guardado em um banco de dados próprio, e o assistente de IA dos tickets foi removido para sempre.',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          'As sequências usavam UTC e agora usam o horário da Colômbia, uma fonte de nome é desenhada no tamanho real, e `/embed create` com um nome muito longo não falha mais.',
+          '`/247` pelo dashboard entra em 20 segundos, um Premium dado pelo dashboard é da pessoa e recebe o cargo na hora, e o registro de uma sanção que termina sozinha mostra quem era.',
+          'Confissões com imagens são publicadas quando a equipe as aprova, e um canal que o Petto não pode ver não aparece mais como apagado.',
+        ],
+      },
+    ],
+  },
   'v0.7.11': {
     label: 'v0.7.11 · Brownie: rankings de atividade, cotas de cargo, verificação mais forte e um bot privado',
     summary: 'Brownie: rankings dos membros mais ativos, uma cota de mensagens para um cargo, uma verificação com checagem de Tor, contas alternativas e e-mail, comandos de barra diretos para moderação, e um bot cujo código agora é privado.',
@@ -931,25 +971,6 @@ module.exports = {
         title: 'Notas de versão',
         items: [
           'Atualizamos a versão do bot de `0.1.0` para `0.3.0-2` e documentamos o status da validação.',
-        ],
-      },
-    ],
-  },
-  'v0.3.0-1': {
-    label: 'v0.3.0-1 · Sistema Vanity',
-    summary: 'Apresentou o sistema Vanity do Petto e documentou a primeira versão pública desse lançamento.',
-    sections: [
-      {
-        title: 'Vanity',
-        items: [
-          'Adicionamos o sistema Vanity para gerenciar e apresentar a identidade vanity de um servidor pelo Petto.',
-          'A entrada original da versão e as notas completas estão disponíveis no changelog público.',
-        ],
-      },
-      {
-        title: 'Mais detalhes',
-        items: [
-          'Veja a entrada de 13 de agosto de 2026 no changelog do Petto para o contexto completo da versão.',
         ],
       },
     ],
