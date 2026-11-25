@@ -20,8 +20,10 @@ Discord ── shard 0    ──> primary                                    the
   the worker answers it with its own copy of the same routes (listening only on `127.0.0.1`), and the primary gives the answer back. If nobody holds the shard it answers `503 shard_unavailable` (or `shard_timeout` when the worker is too slow).
 - **Redis.** The worker does not need Redis. What the dashboard says on `petto:*` ("this setting changed, forget the cache") reaches it through the link, and what the worker says goes to the primary and to the other workers.
 - **Background jobs.** The two instances run the jobs for **their own servers**. A job of a split instance only sees the rows of its own servers (the query builder adds the condition on the shard, a raw SELECT drops the rows of other shards, and the claim of the
-  scheduled code commands names the shards), so neither does the same work twice or gives up on a server it does not hold. The jobs that work on the whole bot (status, global numbers, the purge of departed servers, Premium, alerts and cleanups of the database:
+  scheduled code commands names the shards), so neither does the same work twice or gives up on a server it does not hold. The jobs that work on the whole bot (the probe of the services, global numbers, the purge of departed servers, Premium, alerts and cleanups of the database:
   `ONE_PER_BOT` in `src/utils/instanceRole.ts`) run only on the primary. A worker also does not register the slash commands for the whole bot, change the schema, post the Currently log or serve the public web.
+- **Status.** Every instance reports the shards it holds (state, ping, servers, members) to `bot_status` every 10 seconds, so the status page shows all of them; the row of the process (`bot_host`: uptime, memory) is written by the primary only.
+  Set `PETTO_CLUSTER_NAME` (for example `Miami`) and, if you want, `PETTO_CLUSTER_LOCATION` (`Florida, US`) on each instance: the status page shows them when someone points at a shard. Both are optional (40 characters at most).
 - **Latency.** Every query of a worker is a trip to the primary, so two things lower it: queries made in the same moment (`PETTO_BRIDGE_BATCH_MS`, 2 ms) share one trip, and plain SELECTs are remembered for a few seconds (`PETTO_BRIDGE_CACHE_MS`, 3000 ms;
   `0` turns it off). Any write of the worker, and any dashboard message on `petto:*`, makes it forget what it remembered. The price is data up to a few seconds old on the worker. `!perf` shows the trips, the time they take, the shared trips and the answers from memory.
 
@@ -33,6 +35,7 @@ Discord ── shard 0    ──> primary                                    the
 | --- | --- |
 | `PETTO_BRIDGE_SECRET` | The shared secret, at least 32 random characters (`openssl rand -hex 32`). Without it the bridge and the link do not exist. |
 | `DISCORD_SHARDS` / `DISCORD_SHARD_COUNT` | The shards it holds and how many there are in all, for example `0` and `2`. |
+| `PETTO_CLUSTER_NAME` / `PETTO_CLUSTER_LOCATION` | Optional: the name and place of this instance, shown on the status page. |
 
 **Worker** (`.env.worker`, never in git):
 
@@ -44,6 +47,7 @@ Discord ── shard 0    ──> primary                                    the
 | `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` | The same bot. |
 | `DISCORD_SHARDS` / `DISCORD_SHARD_COUNT` | The other shards, for example `1` and `2`. Every shard must be held by exactly one instance, and the count must be the same everywhere. |
 | `PETTO_DASHBOARD_API_SECRET` | The same as the primary: the worker's copy of the routes checks it for the requests that come through the link. |
+| `PETTO_CLUSTER_NAME` / `PETTO_CLUSTER_LOCATION` | Optional: the name and place of this worker, shown on the status page (for example `Miami` and `Florida, US`). |
 | `PETTO_WORKER_ID` | Optional name of the worker (the host name by default). |
 | `PETTO_WORKER_JOBS` | `guild` (default: the jobs of its own servers), `essential` (only the four jobs that hold the memory of the instance) or `all`. |
 | `PETTO_BRIDGE_CACHE_MS`, `PETTO_BRIDGE_BATCH_MS` | See Latency. |

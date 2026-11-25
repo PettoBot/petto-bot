@@ -708,11 +708,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 93, '93 commands registered globally with Discord (90 slash commands and the 3 menus: scripts/check-slash-structure.js)');
-  assert.equal(chat.length, 90, '90 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 94, '94 commands registered globally with Discord (91 slash commands and the 3 menus: scripts/check-slash-structure.js)');
+  assert.equal(chat.length, 91, '91 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [90, 100, 10], '10 slots are free (the four special-channel commands are registered in each server, not globally)');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [91, 100, 9], '9 slots are free (the four special-channel commands are registered in each server, not globally)');
   assert.ok(usage.chat.free >= 9);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'welcomeconfig', 'prefixconfig', 'timerconfig']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);

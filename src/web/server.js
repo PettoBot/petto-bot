@@ -1267,8 +1267,9 @@ function startServer(client) {
     app.post('/webhooks/omniplex', omniplexRateLimiter, express.raw({ type: () => true, limit: '100kb' }), createOmniplexHandler(client));
   }
 
-  app.get('/', (req, res) => {
-    res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size, lang: requestLanguage(req) })); // i18n-ignore: HTTP header
+  app.get('/', async (req, res) => {
+    const { servers } = await require('../utils/botTotals').readTotals(client); // the servers of the whole bot, not only the ones of the shards of this instance
+    res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: servers, lang: requestLanguage(req) })); // i18n-ignore: HTTP header
   });
 
   // Whether a server's members are asked for the email code: it is on, and Petto can send it (without the key of Resend nobody could verify, so it is not asked).
@@ -1294,14 +1295,17 @@ function startServer(client) {
     // The page shows the check the server chose and its name, and speaks the language of the visitor.
     const payload = verifyToken(req.params.token);
     const settings = payload ? await getConfig(payload.guildId).catch(() => null) : null;
-    const guild = payload ? client.guilds.cache.get(payload.guildId) : null;
+    // The server: from this process, or from the copy its instance saved when its shard is held by another one.
+    const botTotals = require('../utils/botTotals');
+    const guild = payload ? client.guilds.cache.get(payload.guildId) ?? null : null;
+    const other = payload && !guild ? await botTotals.readKnownGuilds([payload.guildId]).then((known) => known.get(String(payload.guildId)) ?? null).catch(() => null) : null;
     // i18n-ignore: HTTP header
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderVerifyPage({
       token: req.params.token,
       siteKey: config.turnstileSiteKey,
       method: methodOf(settings),
-      guildName: guild?.name ?? null,
-      guildIcon: guild?.iconURL?.({ size: 64, extension: 'png' }) ?? null,
+      guildName: guild?.name ?? other?.name ?? null,
+      guildIcon: guild?.iconURL?.({ size: 64, extension: 'png' }) ?? (other ? botTotals.iconUrl(other.id, other.icon, 64) : null),
       lang: requestLanguage(req, payload?.guildId),
       emailRequired: emailAsked(settings),
       emailDomains: normalizeChecks(settings?.checks).email.allowed_domains,
@@ -1346,8 +1350,8 @@ function startServer(client) {
     const to = parseEmail(address).email;
     const issued = emailCode.issue(payload.jti, to);
     if (!issued.ok) return { ok: false, status: 429, code: issued.reason, waitMs: issued.waitMs };
-    const guild = client.guilds.cache.get(payload.guildId);
-    const sent = await resend.sendCodeEmail({ to, code: issued.code, lang, guildName: guild?.name });
+    const guildName = client.guilds.cache.get(payload.guildId)?.name ?? await require('../utils/botTotals').readKnownGuilds([payload.guildId]).then((known) => known.get(String(payload.guildId))?.name).catch(() => undefined);
+    const sent = await resend.sendCodeEmail({ to, code: issued.code, lang, guildName });
     if (!sent.ok) {
       logger.warn(`The verification email could not be sent (${sent.reason}${sent.status ? ` ${sent.status}` : ''}${sent.detail ? `: ${sent.detail}` : ''}).`);
       return { ok: false, status: 502, code: 'unavailable' };

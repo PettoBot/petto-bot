@@ -107,5 +107,12 @@ async function run(file, label, g, options) {
   await run('permissions', '', g);
   await run('invites', 'user', g, { sub: 'user' });
   await run('invites', 'top', g, { sub: 'top' });
+  // /about: the card of the bot, the server, the hosting and the links (the database is not there, so it is the local numbers), in the three languages and in a server with a long name.
+  const about = require(`${root}/src/commands/utility/about.js`);
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    const { interaction } = fake(g);
+    interaction.client.options = { shardCount: 6 };
+    check(`about ${lang}`, await about.buildAboutCard({ lang, client: interaction.client, guild: { ...g, name: 'N'.repeat(100), ownerId: '293504726505357312', channels: g.channels, roles: g.roles } }));
+  }
   console.log(`Checked ${checked} info card layouts against Discord's component limits.`);
 })().catch((e) => { console.error(e); process.exit(1); });

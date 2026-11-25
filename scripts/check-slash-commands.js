@@ -44,8 +44,10 @@ const ESSENTIAL = [
   // The quota of messages of a role (`/rolequota set`, `status`, `excuse`...): any member looks at their own count, the rest is for administrators.
   'rolequota',
   'activityboard', 'rank', 'leaderboard',
-  // Where to find the options of any command (`/variables quote`, `/variables duration`), asked by the maintainer: it takes the 91st slot, the last one before the 9 that are kept free.
+  // Where to find the options of any command (`/variables quote`, `/variables duration`), asked by the maintainer: it took the 91st slot.
   'variables',
+  // Who Petto is (the bot, the server, where it is hosted, the links), asked by the maintainer: global (a server command, not for direct messages); it takes the 92nd slot, 8 are kept free.
+  'about',
   // The commands that can also be installed on a person ("User Install", utils/userInstall.ts): global, because only global commands can be. They work in any server, in direct messages and in group chats.
   'avatar', 'banner', 'birthday', 'userinfo',
   // `/ban`, `/mute`, `/kick`, `/warn` and `/jail` take the options of their action directly (no `/ban user`); what else they held is a command of its own: `/unban`, `/unmute`, `/unjail`.

@@ -4,6 +4,7 @@ const perf = require('../../utils/perf');
 const { textCard } = require('../../utils/caseCard');
 const { SUPPORT_URL } = require('../../utils/links');
 const { t, formatNumber, languageOf } = require('../../i18n');
+const { shardForPing } = require('../../utils/shardReport');
 
 const STATUS_URL = 'https://petto.sbs/status';
 const GREEN = 0xa5ea7a;
@@ -48,10 +49,10 @@ module.exports = {
     // `GET /gateway` needs no token and no database: how long Discord takes to answer from here.
     const probeStarted = performance.now();
     const probeMs = await Promise.resolve().then(() => perf.runWith(perf.newContext({ kind: 'probe', name: 'ping-probe', interactive: true }), () => client.rest.get(Routes.gateway()))).then(() => performance.now() - probeStarted, () => null);
-    const shardCount = client.shard?.count ?? 1;
-    const shard = (client.shard?.ids?.[0] ?? 0) + 1;
+    // The shard of the server where it was used, out of all the shards of the bot (the shards are held by this process, `client.ws`, there is no sharding manager), and the servers of that shard.
+    const { shard, shardCount, guilds } = shardForPing(client, interaction.guild);
     await interaction.editReply({
-      components: [buildPingCard({ guildMs, apiMs: client.ws.ping, probeMs, shard, shardCount, guilds: client.guilds.cache.size, lang })],
+      components: [buildPingCard({ guildMs, apiMs: client.ws.ping, probeMs, shard, shardCount, guilds, lang })],
       flags: MessageFlags.IsComponentsV2,
     });
   },

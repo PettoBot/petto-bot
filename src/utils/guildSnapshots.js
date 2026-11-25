@@ -265,11 +265,20 @@ async function syncAllGuildSnapshots(client) {
     }
   }, SYNC_CONCURRENCY);
 
-  // With only some shards in this process the others' servers are not in memory, so nothing may be forgotten here.
+  // With only some shards in this process the servers of the others are not in memory: what is forgotten here is only the copy of a server of the shards this process holds
+  // (and only when all of them are ready, so a shard that is still loading does not look like a bot that left its servers).
   let removed = 0;
-  if (!config.shards && guilds.length) {
+  const ownShards = Array.isArray(config.shards) ? new Set(config.shards) : null;
+  const shardCount = Number(config.shardCount) || 0;
+  const shardsReady = !ownShards || [...(client.ws?.shards?.values?.() ?? [])].every((shard) => shard.status === 0);
+  const mine = (id) => {
+    if (!ownShards) return true;
+    if (!shardCount) return false; // without the total of shards it is not known whose server it is: nothing is forgotten
+    try { return ownShards.has(Number((BigInt(id) >> 22n) % BigInt(shardCount))); } catch { return false; }
+  };
+  if (guilds.length && shardsReady) {
     const present = new Set(guilds.map((guild) => String(guild.id)));
-    const gone = (await snapshotsDb.listSnapshotIds()).filter((id) => !present.has(id));
+    const gone = (await snapshotsDb.listSnapshotIds()).filter((id) => !present.has(id) && mine(id));
     if (gone.length) {
       await snapshotsDb.deleteSnapshots(gone);
       for (const id of gone) { lastSaved.delete(id); await redis.del(snapshotKey(id)); }

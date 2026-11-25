@@ -105,7 +105,7 @@ const target = (word) => {
 };
 const WORDS = {
   act: 'action', action: 'action', auto: 'automation', automation: 'automation', contrib: 'contributions', contributions: 'contributions', special: 'specialchannels', specialchannels: 'specialchannels',
-  level: 'level', levels: 'levels', xp: 'level', rank: 'rank', nivel: 'rank', lvl: 'rank', top: 'leaderboard', leaderboard: 'leaderboard', lb: 'leaderboard', ranking: 'leaderboard', botinfo: 'botinfo', about: 'botinfo', bi: 'botinfo',
+  level: 'level', levels: 'levels', xp: 'level', rank: 'rank', nivel: 'rank', lvl: 'rank', top: 'leaderboard', leaderboard: 'leaderboard', lb: 'leaderboard', ranking: 'leaderboard', botinfo: 'botinfo', about: 'about', bi: 'botinfo',
   ping: 'ping', p: 'ping', poll: 'poll', pl: 'poll', suggest: 'suggest', sug: 'suggest', suggestion: 'suggestion', prefix: 'prefix', pfx: 'prefix', setup: 'setup',
   hug: 'action', pat: 'action', slap: 'action', hf: 'action',
   restrictcommand: 'restrictcommand', disablecommand: 'disablecommand', moderation: 'moderation', statsconfig: 'statsconfig', poj: 'poj', imgonly: 'imageonly', urlonly: 'linkonly',

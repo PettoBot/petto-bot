@@ -18,9 +18,10 @@ exports.shouldRun = shouldRun;
 exports.describe = describe;
 /** The jobs that keep memory of the instance itself (what it buffers, the voice channels it is in): a worker runs them, or what its members do would be lost. */
 exports.ESSENTIAL_JOBS = new Set(['startActivityStatsJob', 'startVoiceXpJob', 'startCommandDataJob', 'startStayVoiceJob']);
-/** The jobs that must run once for the whole bot (its status, global numbers, the purge of departed servers, Premium, alerts and cleanups of the database): never on a worker, in any mode but `all`. */
+/** The jobs that must run once for the whole bot (its probe of the services, global numbers, the purge of departed servers, Premium, alerts and cleanups of the database): never on a worker, in any mode but `all`.
+ *  The heartbeat of the shards is not here: every instance reports the shards it holds (the process row of the host is written by the primary only, see jobs/statusHeartbeatJob.ts). */
 exports.ONE_PER_BOT = new Set([
-    'startStatusHeartbeatJob', 'startStatusProbeJob', 'startGlobalStatsJob', 'startGuildPurgeJob', 'startQuestAlertsJob', 'startRolloutAlertsJob',
+    'startStatusProbeJob', 'startStatsCategoryJob', 'startGlobalStatsJob', 'startGuildPurgeJob', 'startQuestAlertsJob', 'startRolloutAlertsJob',
     'startPremiumRoleJob', 'startPremiumCleanupJob', 'startPremiumLogJob', 'startPremiumWatchJob', 'startFormCleanupJob', 'startAppealCleanupJob', 'startVerifyChecksJob',
 ]);
 /** The names the perf measurement gives to those jobs (`startGuildPurgeJob` -> `guildPurgeJob`, with a possible `@60s` suffix for a second interval of the same job). */

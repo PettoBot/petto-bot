@@ -187,6 +187,7 @@ module.exports = {
   'cmd.utility.myprefix.set.opt.prefix.desc': 'Hasta 5 caracteres, con un símbolo, por ejemplo p! o ,',
   'cmd.utility.myprefix.reset.desc': 'Quita tu prefijo.',
   'cmd.utility.purchase.desc': 'Dónde comprar Premium, un plan o céramos.',
+  'cmd.utility.about.desc': 'Sobre Petto: el bot, este servidor, dónde corre y enlaces útiles.',
   'cmd.utility.profilehistory.desc': 'Los nombres y apodos que ha tenido un miembro.',
   'cmd.utility.profilehistory.names.desc': 'Los nombres (nombres visibles) guardados de un miembro.',
   'cmd.utility.profilehistory.names.opt.user.desc': 'De quién es el historial (predeterminado: tú)',
