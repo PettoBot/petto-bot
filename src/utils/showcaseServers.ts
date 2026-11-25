@@ -66,39 +66,59 @@ export async function readHiddenGuildIds(): Promise<Set<string>> {
   return new Set(rows.map((row) => String(row.guild_id)));
 }
 
-const onlineCache = new Map<string, { value: number | null; at: number }>();
+/** What Discord says about a server now, kept for five minutes: its online members and its badge (the badge of a server of another shard is only known this way). */
+const liveCache = new Map<string, { online: number | null; badge: Badge | null; at: number }>();
 
-/** Members online now of a server (Discord's approximate count), kept for five minutes; the last known number stays when Discord does not answer. */
-async function onlineOf(client: Client, guild: Guild, now: number): Promise<number | null> {
-  const known = onlineCache.get(guild.id);
-  if (known && now - known.at < ONLINE_EVERY_MS) return known.value;
-  const fetched = await client.guilds.fetch({ guild: guild.id, withCounts: true, force: true }).catch(() => null);
-  const value = typeof fetched?.approximatePresenceCount === 'number' ? fetched.approximatePresenceCount : (known?.value ?? null);
-  onlineCache.set(guild.id, { value, at: now });
+/** Members online now of a server (Discord's approximate count) and its badge, kept for five minutes; the last known ones stay when Discord does not answer. */
+async function liveOf(client: Client, id: string, now: number): Promise<{ online: number | null; badge: Badge | null }> {
+  const known = liveCache.get(id);
+  if (known && now - known.at < ONLINE_EVERY_MS) return known;
+  const fetched = await client.guilds.fetch({ guild: id, withCounts: true, force: true }).catch(() => null);
+  const value = {
+    online: typeof fetched?.approximatePresenceCount === 'number' ? fetched.approximatePresenceCount : (known?.online ?? null),
+    badge: fetched ? badgeOf(fetched.features, fetched.premiumSubscriptionCount ?? 0, Number(fetched.premiumTier) || 0) : (known?.badge ?? null),
+    at: now,
+  };
+  liveCache.set(id, value);
   return value;
 }
 
-/** The carousel as the website reads it. Servers that left the bot are forgotten, so the cache does not grow. */
-export async function buildShowcase(client: Client, hidden?: ReadonlySet<string>, now = Date.now()): Promise<ShowcaseServer[]> {
+/** A server of another shard (the copy that the instance holding it saved): enough to pick it and to draw it, its online members and badge are asked to Discord. */
+export interface OtherGuild { id: string; name: string; icon: string | null; members: number | null }
+
+/** The picture of a server from its icon hash, for a server this process does not have in memory. */
+const otherIcon = (id: string, hash: string | null): string | null => (hash ? `https://cdn.discordapp.com/icons/${id}/${hash}.${hash.startsWith('a_') ? 'gif' : 'webp'}?size=128` : null);
+
+/**
+ * The carousel as the website reads it. Servers that left the bot are forgotten, so the cache does not grow. `others` are the servers of the shards that another instance holds
+ * (the bot split between a primary and workers): without them the carousel would only have the servers of this process.
+ */
+export async function buildShowcase(client: Client, hidden?: ReadonlySet<string>, now = Date.now(), others: readonly OtherGuild[] = []): Promise<ShowcaseServer[]> {
   const left = hidden ?? await readHiddenGuildIds();
   const guilds = [...client.guilds.cache.values()];
-  const picked = pickShowcase(guilds.map((guild) => ({ id: guild.id, members: Number(guild.memberCount) || 0, guild })), left);
+  const mine = new Set(guilds.map((guild) => guild.id));
+  const candidates = [
+    ...guilds.map((guild) => ({ id: guild.id, members: Number(guild.memberCount) || 0, guild: guild as Guild | null, other: null as OtherGuild | null })),
+    ...others.filter((other) => !mine.has(other.id)).map((other) => ({ id: other.id, members: Number(other.members) || 0, guild: null as Guild | null, other })),
+  ];
+  const picked = pickShowcase(candidates, left);
   const showing = new Set(picked.map((entry) => entry.id));
-  for (const id of [...onlineCache.keys()]) if (!showing.has(id)) onlineCache.delete(id);
+  for (const id of [...liveCache.keys()]) if (!showing.has(id)) liveCache.delete(id);
   const servers: ShowcaseServer[] = [];
-  for (const { guild, members } of picked) {
+  for (const { id, guild, other, members } of picked) {
+    const live = await liveOf(client, id, now);
     servers.push({
-      id: guild.id,
-      name: guild.name,
-      icon: guild.icon ? guild.iconURL({ size: 128, forceStatic: false }) : null,
-      animated: Boolean(guild.icon?.startsWith('a_')),
+      id,
+      name: guild?.name ?? other?.name ?? '',
+      icon: guild ? (guild.icon ? guild.iconURL({ size: 128, forceStatic: false }) : null) : otherIcon(id, other?.icon ?? null),
+      animated: Boolean((guild ? guild.icon : other?.icon)?.startsWith('a_')),
       members,
-      online: await onlineOf(client, guild, now),
-      badge: badgeOf(guild.features, guild.premiumSubscriptionCount ?? 0, Number(guild.premiumTier) || 0),
+      online: live.online,
+      badge: guild ? badgeOf(guild.features, guild.premiumSubscriptionCount ?? 0, Number(guild.premiumTier) || 0) : live.badge,
     });
   }
   return servers;
 }
 
-/** Forgets the online numbers (used by the checks). */
-export function resetShowcase(): void { onlineCache.clear(); }
+/** Forgets what Discord said about the servers (used by the checks). */
+export function resetShowcase(): void { liveCache.clear(); }

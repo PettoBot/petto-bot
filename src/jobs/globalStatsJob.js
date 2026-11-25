@@ -4,6 +4,7 @@ const globalStatsDb = require('../db/globalStats');
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
 const showcaseServers = require('../utils/showcaseServers');
+const botTotals = require('../utils/botTotals');
 
 const INTERVAL_MS = 60_000;
 const USERS_EVERY_MS = 10 * 60_000; // adding up every member is heavier than the rest, so it is not done every minute
@@ -19,9 +20,14 @@ async function refreshGlobalStats(client, now = new Date()) {
   const totals = { ...counted, all: globalStatsDb.withBaseline(counted.all) };
   if (Date.now() - usersAt >= USERS_EVERY_MS) { usersCache = await globalStatsDb.readRankedUsers(); usersAt = Date.now(); }
   const rankedUsers = usersCache;
+  // With the shards split between instances this process only has its own servers in memory: the ones of the other shards are named from the copy their instance saved.
+  const split = botTotals.isSplit();
+  const elsewhere = split ? await botTotals.readKnownGuilds(ranked.map((server) => server.id).filter((id) => !client.guilds.cache.has(id))).catch(() => new Map()) : new Map();
   const describe = (id) => {
     const guild = client.guilds.cache.get(id);
-    return guild ? { name: guild.name, icon: guild.iconURL({ extension: 'png', size: 64 }), members: guild.memberCount ?? null } : null;
+    if (guild) return { name: guild.name, icon: guild.iconURL({ extension: 'png', size: 64 }), members: guild.memberCount ?? null };
+    const other = elsewhere.get(String(id));
+    return other ? { name: other.name, icon: botTotals.iconUrl(other.id, other.icon, 64), members: other.members } : null;
   };
   // Only the people who would show are looked up, and the ones the bot has seen come from its cache.
   const top = new Set(['messages', 'voiceSeconds'].flatMap((metric) => [...rankedUsers].sort((a, b) => b[metric] - a[metric]).slice(0, globalStatsDb.USER_RANK_SIZE + 5).map((user) => user.id)));
@@ -30,11 +36,10 @@ async function refreshGlobalStats(client, now = new Date()) {
     const user = client.users.cache.get(id) ?? await client.users.fetch(id).catch(() => null);
     if (user) people.set(id, { name: user.globalName || user.username, avatar: user.displayAvatarURL({ extension: 'png', size: 64 }) });
   }
-  const servers = client.guilds.cache.size;
-  // The members of every server the bot is in, for the link preview of the website ("servers and members"). Counted from the cache, so it costs nothing.
-  const members = [...client.guilds.cache.values()].reduce((total, guild) => total + (Number(guild.memberCount) || 0), 0);
-  // The servers of the carousel of the home page (500 members or more, at most 15). A failure here never leaves the rest of the numbers unsaved.
-  const built = await showcaseServers.buildShowcase(client).catch((error) => { logger.warn(`The carousel of servers could not be built: ${error.message}`); return null; });
+  // The servers and members of the whole bot (with the shards split between instances, from the copies every instance saves; otherwise from the cache, which costs nothing).
+  const { servers, members } = await botTotals.readTotals(client);
+  const otherBig = split ? await botTotals.readBigGuilds(showcaseServers.MIN_MEMBERS).catch(() => []) : [];
+  const built = await showcaseServers.buildShowcase(client, undefined, Date.now(), otherBig).catch((error) => { logger.warn(`The carousel of servers could not be built: ${error.message}`); return null; });
   if (built) showcaseCache = built;
   await globalStatsDb.saveSnapshot({
     totals,

@@ -2376,7 +2376,7 @@ end;
 $$ language plpgsql;
 
 -- ---------------------------------------------------------------------------
--- bot_status: one row per gateway shard, overwritten on every heartbeat.
+-- bot_status: one row per gateway shard, overwritten on every heartbeat by the instance (primary or worker) that holds the shard.
 -- Read by the marketing site's /status page at build time.
 -- ---------------------------------------------------------------------------
 create table if not exists bot_status (
@@ -2388,6 +2388,11 @@ create table if not exists bot_status (
 );
 
 alter table bot_status enable row level security;
+
+-- What the status page shows for each shard besides its state: the members of its servers, and the name and place of the instance that holds it (PETTO_CLUSTER_NAME, PETTO_CLUSTER_LOCATION).
+alter table bot_status add column if not exists member_count integer not null default 0;
+alter table bot_status add column if not exists cluster_name text;
+alter table bot_status add column if not exists cluster_location text;
 
 -- Small settings of the bot itself, changed from Discord by the team (for example the status dot), so they survive a restart.
 create table if not exists bot_settings (
