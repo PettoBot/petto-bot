@@ -77,18 +77,22 @@ export function iconUrl(id: string, hash: string | null, size = 64, format: 'png
 }
 
 /** What each shard last said about itself (table `bot_status`): its state, and the name and place of the instance that holds it. */
-export interface ShardLine { shardId: number; status: string; fresh: boolean; clusterName: string | null; clusterLocation: string | null }
+export interface ShardLine { shardId: number; status: string; fresh: boolean; guildCount: number; memberCount: number; pingMs: number | null; ageMs: number; clusterName: string | null; clusterLocation: string | null }
 
 const FRESH_MS = 5 * 60 * 1000;
 
 /** The shards the whole bot reports, for `/about`: with the database down (or before the columns of the instance exist) it is an empty list, never an error. */
 export async function readShardLines(now: number = Date.now()): Promise<ShardLine[]> {
   try {
-    const { rows } = await pool().query('select shard_id, status, updated_at, cluster_name, cluster_location from bot_status order by shard_id');
+    const { rows } = await pool().query('select shard_id, status, guild_count, member_count, ping_ms, updated_at, cluster_name, cluster_location from bot_status order by shard_id');
     return rows.map((row) => ({
       shardId: Number(row.shard_id),
       status: String(row.status ?? ''),
       fresh: now - new Date(String(row.updated_at)).getTime() < FRESH_MS,
+      ageMs: Math.max(0, now - new Date(String(row.updated_at)).getTime()) || 0,
+      guildCount: Number(row.guild_count) || 0,
+      memberCount: Number(row.member_count) || 0,
+      pingMs: row.ping_ms === null || row.ping_ms === undefined ? null : Number(row.ping_ms),
       clusterName: row.cluster_name ? String(row.cluster_name) : null,
       clusterLocation: row.cluster_location ? String(row.cluster_location) : null,
     }));

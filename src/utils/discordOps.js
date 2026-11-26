@@ -3,6 +3,7 @@ const { ContainerBuilder, EmbedBuilder, Events, MessageFlags, SeparatorBuilder, 
 const config = require('../config');
 const logger = require('./logger');
 const { exclusiveTask } = require('./concurrency');
+const botTotals = require('./botTotals');
 
 const STATUS_MARKER = 'Petto operational status';
 const STATUS_INTERVAL_MS = 60_000; // two message edits each minute, a small share of the request limit
@@ -75,8 +76,22 @@ async function sendGuildLifecycleLog(client, options) {
   await Promise.all(ids.map((id) => sendToChannel(client, id, { embeds: [embed] })));
 }
 
+/**
+ * What the whole bot reports when its shards are held by more than one instance (the primary and the workers): every instance saves its own shards in `bot_status`, and the
+ * saved copies of the servers give the totals. Null when this process holds every shard (then the cache of the client is the whole bot, as it always was).
+ */
+let lastWhole = null;
+async function readWholeBot(client) {
+  if (!botTotals.isSplit()) { lastWhole = null; return null; }
+  const [totals, rows] = await Promise.all([botTotals.readTotals(client, true), botTotals.readShardLines()]);
+  const count = Number(require('../config').shardCount) || 0;
+  const shards = rows.filter((row) => !count || row.shardId < count);
+  lastWhole = shards.length ? { totals, shards } : null;
+  return lastWhole;
+}
+
 function guildCount(client) {
-  return client.guilds.cache.size;
+  return lastWhole ? lastWhole.totals.servers : client.guilds.cache.size;
 }
 
 // Discord sometimes gives no member count for a server for a moment (it is unavailable, or its data is still arriving), and the
@@ -97,12 +112,73 @@ function memberCount(client) {
   return total;
 }
 
-function aggregateGatewayState(client) {
+// ---- Shards held by other instances (the workers) ------------------------------------------------------------------------------------------------
+// This process only gets the gateway events of its own shards, so it cannot hear when a shard of a worker drops. What it can see is what each instance saves every 10 seconds
+// (`bot_status`): a shard that says it is not ready, or that has not said anything for 2 minutes (its whole instance may be off), is down. A single check could be a reconnect of a few
+// seconds, so it takes two checks in a row (one a minute) to call it down; it is announced once, and again when it is back.
+const REMOTE_STALE_MS = 2 * 60_000;
+const REMOTE_STRIKES = 2;
+const remoteMemory = new Map(); // shardId -> { strikes, down }
+
+function remoteLabel(row) {
+  const place = [row.clusterName, row.clusterLocation].filter(Boolean).join(' · ');
+  return `Shard **${row.shardId + 1}**${place ? ` (${place})` : ''}`;
+}
+
+/**
+ * One check of the shards of the other instances. Returns what to announce now and which of them are down. `rows` are the shards reported (utils/botTotals `readShardLines`),
+ * `localIds` the shards of this process (they have their own events).
+ */
+function evaluateRemoteShards(rows, localIds, memory = remoteMemory) {
+  const events = [];
+  const seen = new Set();
+  for (const row of [...rows].filter((each) => !localIds.has(each.shardId)).sort((a, b) => a.shardId - b.shardId)) {
+    seen.add(row.shardId);
+    const stale = row.ageMs > REMOTE_STALE_MS;
+    const bad = stale || row.status !== 'Ready';
+    const entry = memory.get(row.shardId) ?? { strikes: 0, down: false };
+    if (bad) {
+      entry.strikes += 1;
+      if (!entry.down && entry.strikes >= REMOTE_STRIKES) { entry.down = true; events.push({ kind: 'down', row, stale }); }
+    } else {
+      if (entry.down) events.push({ kind: 'up', row });
+      entry.strikes = 0;
+      entry.down = false;
+    }
+    memory.set(row.shardId, entry);
+  }
+  for (const id of [...memory.keys()]) if (!seen.has(id)) memory.delete(id);
+  const downIds = [...memory.entries()].filter(([, entry]) => entry.down).map(([id]) => id).sort((a, b) => a - b);
+  return { events, downIds };
+}
+
+/** The text of one announcement, with the shards that are still down after it. */
+function remoteMessage(event, downIds) {
+  const label = remoteLabel(event.row);
+  if (event.kind === 'up') {
+    const others = downIds.filter((id) => id !== event.row.shardId);
+    return `${label} is back. ${others.length ? `Still down: shard${others.length > 1 ? 's' : ''} ${others.map((id) => `**${id + 1}**`).join(', ')}.` : '**All services are restored.**'}`;
+  }
+  const servers = event.row.guildCount ? ` Its **${event.row.guildCount}** servers may not answer until it recovers.` : '';
+  if (event.stale) return `${label} has not reported for **${Math.max(2, Math.round(event.row.ageMs / 60_000))} minutes**: its instance may be off or restarting.${servers}`;
+  return `${label} is **${event.row.status || 'not ready'}**.${servers} The instance reconnects on its own.`;
+}
+
+const resetRemoteShards = () => remoteMemory.clear();
+
+/** The state of the gateway: this process's own shards, and the shards of the other instances that are confirmed down. */
+function aggregateGatewayState(client, whole = lastWhole) {
   const shards = [...client.ws.shards.values()];
-  if (!shards.length || shards.every((shard) => shard.status === Status.Ready)) return 'online';
-  if (shards.every((shard) => shard.status === Status.Disconnected)) return 'offline';
-  if (shards.some((shard) => [Status.Disconnected, Status.Reconnecting].includes(shard.status))) return 'outage';
-  return 'idle';
+  let local = 'idle';
+  if (!shards.length || shards.every((shard) => shard.status === Status.Ready)) local = 'online';
+  else if (shards.every((shard) => shard.status === Status.Disconnected)) local = 'offline';
+  else if (shards.some((shard) => [Status.Disconnected, Status.Reconnecting].includes(shard.status))) local = 'outage';
+  if (!whole) return local;
+  const localIds = new Set(shards.map((shard) => shard.id));
+  const remote = whole.shards.filter((row) => !localIds.has(row.shardId));
+  const down = remote.filter((row) => remoteMemory.get(row.shardId)?.down).length;
+  if (!down) return local;
+  return down === remote.length && local === 'offline' ? 'offline' : 'outage';
 }
 
 // A healthy service is green, a degraded one has the yellow of the warnings, and an outage or offline is red.
@@ -177,8 +253,22 @@ function pingText(client, shard) {
   return ' · measuring ping';
 }
 
-/** One line per shard, numbered from 1: how it is and how many servers it has. */
-function shardLines(client) {
+/** The state of a shard that an instance reported (`Ready`, `Disconnected`...), or that it has not reported for a while. */
+function remoteShardState(row) {
+  if (!row.fresh) return `No data for ${Math.max(1, Math.round(row.ageMs / 60_000))} min`;
+  return row.status === 'Ready' ? 'Online' : (row.status || 'Unknown');
+}
+
+/** One line per shard, numbered from 1: how it is, how many servers it has, its ping and the instance that holds it. */
+function shardLines(client, whole = lastWhole) {
+  if (whole) {
+    return whole.shards.map((row) => {
+      const up = row.fresh && row.status === 'Ready';
+      const place = [row.clusterName, row.clusterLocation].filter(Boolean).join(' · ');
+      const ping = up && row.pingMs !== null && row.pingMs >= 0 ? ` · ${Math.round(row.pingMs)} ms` : '';
+      return `${SHARD_EMOJI[up ? 'on' : 'off']} **Shard ${row.shardId + 1}** · ${remoteShardState(row)} · ${row.guildCount} servers${ping}${place ? ` · ${place}` : ''}`;
+    });
+  }
   const perShard = new Map();
   for (const guild of client.guilds.cache.values()) perShard.set(guild.shardId ?? 0, (perShard.get(guild.shardId ?? 0) ?? 0) + 1);
   return [...client.ws.shards.values()].map((shard) => `${SHARD_EMOJI[shard.status === Status.Ready ? 'on' : 'off']} **Shard ${shard.id + 1}** · ${SHARD_STATE[shard.status] ?? 'Unknown'} · ${perShard.get(shard.id) ?? 0} servers${pingText(client, shard)}`);
@@ -206,9 +296,11 @@ function internalStatusCard(client) {
     title: 'Petto internal status',
     lines: [
       'Operational snapshot for developers and owners.',
-      `**Process** Node ${process.version} · PID ${process.pid} · uptime ${Math.floor(process.uptime())}s`,
+      `**${lastWhole ? 'This process (primary)' : 'Process'}** Node ${process.version} · PID ${process.pid} · uptime ${Math.floor(process.uptime())}s`,
       `**Runtime** ${(memory.rss / 1024 / 1024).toFixed(1)} MB RSS · heap ${(memory.heapUsed / 1024 / 1024).toFixed(1)} MB`,
-      `**Discord** ${guildCount(client)} servers · ${memberCount(client)} cached members`,
+      lastWhole
+        ? `**Discord** ${guildCount(client)} servers · ${lastWhole.totals.members} members (the whole bot, ${lastWhole.shards.length} shards)`
+        : `**Discord** ${guildCount(client)} servers · ${memberCount(client)} cached members`,
       ...shardLines(client),
     ],
     footer: `${STATUS_MARKER} · updated <t:${Math.floor(Date.now() / 1000)}:R>`,
@@ -251,11 +343,21 @@ async function upsertStatusMessage(client, kind, card) {
 
 async function reportDiscordStatus(client) {
   if (!client.user) return;
-  const shards = [...client.ws.shards.values()]
+  await readWholeBot(client).catch(() => { lastWhole = null; });
+  if (lastWhole) {
+    const { events, downIds } = evaluateRemoteShards(lastWhole.shards, new Set(client.ws.shards.keys()));
+    for (const event of events) {
+      const state = event.kind === 'down' ? 'outage' : (downIds.length ? 'outage' : aggregateGatewayState(client));
+      await announceStatusHistory(client, state, remoteMessage(event, downIds), { force: true }).catch(() => {});
+    }
+  } else resetRemoteShards();
+  const shards = lastWhole
+    ? lastWhole.shards.map((row) => `${row.shardId + 1}:${row.fresh ? row.status : 'stale'}`).join(' ')
+    : [...client.ws.shards.values()]
     .map((shard) => `${shard.id + 1}:${Status[shard.status] || shard.status}`)
     .join(' ');
   logger.info(
-    `Discord health snapshot: state=${aggregateGatewayState(client)} guilds=${guildCount(client)} members=${memberCount(client)} ` +
+    `Discord health snapshot: state=${aggregateGatewayState(client)} guilds=${guildCount(client)} members=${lastWhole ? lastWhole.totals.members : memberCount(client)} ` +
     `uptime=${Math.floor(process.uptime())}s ` +
     `rss=${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB shards=[${shards || 'none'}]`,
   );
@@ -328,6 +430,14 @@ function attachDiscordLogger(client) {
 
 module.exports = {
   memberCount,
+  evaluateRemoteShards,
+  remoteMessage,
+  resetRemoteShards,
+  aggregateGatewayState,
+  readWholeBot,
+  publicStatusCard,
+  internalStatusCard,
+  shardLines,
   attachDiscordLogger,
   sendGuildLifecycleLog,
   startDiscordStatusJob,
