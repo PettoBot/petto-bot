@@ -22,8 +22,10 @@ const STATUS = [
   { shard_id: 5, status: 'Ready', updated_at: fresh(), cluster_name: 'Discloud', cluster_location: null },
 ];
 let failing = false;
-fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql) => {
+fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql, params) => {
   if (failing) throw new Error('database down');
+  // The totals: this process (1 server, 1,234 members) plus what the shards of the other instances report.
+  if (/from bot_status where shard_id/.test(sql)) return { rows: [1, 2, 3, 4].map((id) => ({ shard_id: id, guild_count: 70, member_count: id === 4 ? 15766 : 13000 })).filter((row) => !params[0].includes(row.shard_id)) };
   if (/count\(\*\)::int as servers/.test(sql)) return { rows: [{ servers: 281, members: '56000' }] };
   if (/from bot_status/.test(sql)) return { rows: STATUS };
   throw new Error(`unexpected query: ${sql}`);

@@ -20,15 +20,21 @@ const SNAPSHOTS = [
   { guild_id: '300', name: 'Small elsewhere', icon: null, member_count: 40 },
   { guild_id: '400', name: 'Unknown size', icon: null, member_count: null },
 ];
+// What the other shards say about themselves (table bot_status): shards 1 to 4 are in the other instances.
+let STATUS = [1, 2, 3, 4].map((id) => ({ shard_id: id, guild_count: id * 10, member_count: id * 100 }));
+const asId = ({ guild_id, ...rest }) => ({ id: guild_id, ...rest }); // the reads of the whole bot ask for `guild_id as id`
 const queries = [];
 let failing = false;
+let statusFails = false;
 fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql, params) => {
   queries.push({ sql, params });
   if (failing) throw new Error('database down');
+  if (/from bot_status/.test(sql)) { if (statusFails) throw new Error('no table'); return { rows: STATUS.filter((row) => !params[0].includes(row.shard_id) && row.shard_id < params[1]) }; }
+  if (/as without_members/.test(sql)) return { rows: [{ total: SNAPSHOTS.length, without_members: SNAPSHOTS.filter((row) => row.member_count === null).length }] };
   if (/count\(\*\)::int as servers/.test(sql)) return { rows: [{ servers: SNAPSHOTS.length, members: String(SNAPSHOTS.reduce((total, row) => total + (row.member_count ?? 0), 0)) }] };
-  if (/guild_id = any/.test(sql)) return { rows: SNAPSHOTS.filter((row) => params[0].includes(row.guild_id)) };
-  if (/member_count >= /.test(sql)) return { rows: SNAPSHOTS.filter((row) => row.member_count >= params[0]).sort((a, b) => b.member_count - a.member_count) };
-  if (/select guild_id from discord_guild_snapshots/.test(sql)) return { rows: SNAPSHOTS.map((row) => ({ guild_id: row.guild_id })) };
+  if (/guild_id = any/.test(sql)) return { rows: SNAPSHOTS.filter((row) => params[0].includes(row.guild_id)).map(asId) };
+  if (/member_count >= /.test(sql)) return { rows: SNAPSHOTS.filter((row) => row.member_count >= params[0]).sort((a, b) => b.member_count - a.member_count).map(asId) };
+  if (/select guild_id as id from discord_guild_snapshots/.test(sql)) return { rows: SNAPSHOTS.map((row) => ({ id: row.guild_id })) };
   throw new Error(`unexpected query: ${sql}`);
 } }) });
 
@@ -48,10 +54,18 @@ const clientOf = (guilds) => ({ guilds: { cache: new Map(guilds.map((entry) => [
   const client = clientOf([guild('100', 900), guild('500', 7)]);
   assert.deepEqual(totals.totalsFromCache(client), { servers: 2, members: 907, source: 'cache' });
   assert.deepEqual(await totals.readTotals(client, false), { servers: 2, members: 907, source: 'cache' }, 'not split: the cache, as it always was');
-  assert.deepEqual(await totals.readTotals(client, true), { servers: 4, members: 2140, source: 'snapshots' }, 'split: the copies of every instance');
+  // Split: this process (its cache) plus what the shards of the other instances say about themselves (10 + 20 + 30 + 40 servers, 1000 members).
+  assert.deepEqual(await totals.readTotals(client, true), { servers: 102, members: 1907, source: 'shards' }, 'split: this process and what every other shard reports');
+  assert.deepEqual(await totals.readTotals(client, true), await totals.readTotals(client, true), 'the same answer every time: the number does not jump');
   const bigger = clientOf(Array.from({ length: 9 }, (_, index) => guild(String(1000 + index), 100)));
-  assert.deepEqual(await totals.readTotals(bigger, true), { servers: 9, members: 2140 > 900 ? 2140 : 900, source: 'snapshots' }, 'never less than what this process sees by itself');
-  failing = true;
+  assert.deepEqual(await totals.readTotals(bigger, true), { servers: 109, members: 1900, source: 'shards' }, 'the other shards are added to whatever this process holds');
+  const saved = STATUS;
+  STATUS = STATUS.filter((row) => row.shard_id !== 3);
+  assert.deepEqual(await totals.readTotals(client, true), { servers: 4, members: 2140, source: 'snapshots' }, 'a shard that never reported: the copies of the servers instead');
+  assert.deepEqual(await totals.readTotals(bigger, true), { servers: 9, members: 2140, source: 'snapshots' }, 'never less than what this process sees by itself');
+  STATUS = saved; statusFails = true;
+  assert.deepEqual(await totals.readTotals(client, true), { servers: 4, members: 2140, source: 'snapshots' }, 'the reports unreadable: the copies of the servers');
+  statusFails = false; failing = true;
   assert.deepEqual(await totals.readTotals(client, true), { servers: 2, members: 907, source: 'cache' }, 'with the database down: this process alone');
   failing = false;
 
@@ -62,6 +76,7 @@ const clientOf = (guilds) => ({ guilds: { cache: new Map(guilds.map((entry) => [
   assert.equal((await totals.readKnownGuilds(['400'])).get('400').members, null, 'a server with no member count says null');
   assert.deepEqual((await totals.readBigGuilds(500)).map((entry) => entry.id), ['200', '100'], 'the big servers, the biggest first');
   assert.deepEqual([...(await totals.readAllGuildIds())].sort(), ['100', '200', '300', '400']);
+  assert.deepEqual(await totals.readSnapshotHealth(), { total: 4, withoutMembers: 1 }, 'how many copies do not know their members');
   assert.equal(totals.iconUrl('200', 'def'), 'https://cdn.discordapp.com/icons/200/def.png?size=64');
   assert.equal(totals.iconUrl('100', 'a_abc', 128, 'webp'), 'https://cdn.discordapp.com/icons/100/a_abc.gif?size=128', 'an animated icon is a GIF');
   assert.equal(totals.iconUrl('300', null), null);
@@ -103,6 +118,14 @@ const clientOf = (guilds) => ({ guilds: { cache: new Map(guilds.map((entry) => [
   reset();
   await purgeLeftGuilds(botClient([guild('100')], 280));
   assert.deepEqual(calls.sync, []); assert.deepEqual(calls.erased, [], 'a list clearly shorter than Discord says: skipped');
+  // That warning is said once, not every minute: the same skip again goes to the plain log, so the alert channels are not filled.
+  const logger = require('../src/utils/logger');
+  const said = { warn: 0, info: 0 }; const originalWarn = logger.warn; const originalInfo = logger.info;
+  logger.warn = () => { said.warn += 1; }; logger.info = () => { said.info += 1; };
+  require('../src/jobs/guildPurgeJob').resetSkipped();
+  for (let pass = 0; pass < 5; pass += 1) await purgeLeftGuilds(botClient([guild('100')], 280));
+  logger.warn = originalWarn; logger.info = originalInfo;
+  assert.deepEqual(said, { warn: 1, info: 4 }, 'five minutes of the same skip: one warning');
 
   // Discord does not answer how many servers there are: split between instances there is nothing to check the list against, so nothing is decided.
   reset();

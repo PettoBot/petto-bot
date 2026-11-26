@@ -17,7 +17,7 @@ export function isSplit(shards: number[] | 'auto' | undefined = settings().shard
   return new Set(shards).size < count;
 }
 
-export interface Totals { servers: number; members: number; source: 'cache' | 'snapshots' }
+export interface Totals { servers: number; members: number; source: 'cache' | 'shards' | 'snapshots' }
 
 /** The totals of this process alone, from its cache (it costs nothing). */
 export function totalsFromCache(client: Pick<Client, 'guilds'>): Totals {
@@ -26,12 +26,27 @@ export function totalsFromCache(client: Pick<Client, 'guilds'>): Totals {
 }
 
 /**
- * How many servers the whole bot is in, and how many members they have together. With every shard in this process it is the cache (as it always was); split between
- * instances it is read from the copies of the servers, and never less than what this process sees by itself. If the database does not answer, this process alone.
+ * How many servers the whole bot is in, and how many members they have together. With every shard in this process it is the cache (as it always was). Split between
+ * instances it is this process (its cache, always the freshest) plus what every other shard says about itself every 10 seconds (`bot_status`); only when one of those shards
+ * has never reported, the copies of the servers are used instead. Never less than this process sees by itself; if the database does not answer, this process alone.
+ * (The copies alone are not enough for members: a copy without its member count adds nothing, and the total used to fall by a third and jump back and forth.)
  */
 export async function readTotals(client: Pick<Client, 'guilds'>, split: boolean = isSplit()): Promise<Totals> {
   const local = totalsFromCache(client);
   if (!split) return local;
+  const { shards, shardCount } = settings();
+  const held = Array.isArray(shards) ? shards : [];
+  const count = Number(shardCount) || 0;
+  try {
+    const { rows } = await pool().query('select shard_id, guild_count, member_count from bot_status where shard_id <> all($1::int[]) and shard_id < $2', [held, count]);
+    const reported = new Set(rows.map((row) => Number(row.shard_id)));
+    let complete = count > 0;
+    for (let id = 0; id < count; id += 1) if (!held.includes(id) && !reported.has(id)) complete = false;
+    if (complete) {
+      const sum = (key: 'guild_count' | 'member_count') => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+      return { servers: local.servers + sum('guild_count'), members: local.members + sum('member_count'), source: 'shards' };
+    }
+  } catch { /* the copies below */ }
   try {
     const { rows } = await pool().query('select count(*)::int as servers, coalesce(sum(member_count), 0)::bigint as members from discord_guild_snapshots');
     return { servers: Math.max(Number(rows[0]?.servers) || 0, local.servers), members: Math.max(Number(rows[0]?.members) || 0, local.members), source: 'snapshots' };
@@ -44,30 +59,37 @@ export async function readTotals(client: Pick<Client, 'guilds'>, split: boolean 
 export interface KnownGuild { id: string; name: string; icon: string | null; members: number | null }
 
 const known = (row: Record<string, unknown>): KnownGuild => ({
-  id: String(row.guild_id),
+  id: String(row.id),
   name: String(row.name ?? ''),
   icon: row.icon ? String(row.icon) : null,
   members: row.member_count === null || row.member_count === undefined ? null : Number(row.member_count),
 });
 
+// The column is read as `id` on purpose: the pool drops the rows of other shards from a `guild_id` answer made by a job (src/db/postgres.js), and these reads are for the whole bot.
 /** The saved copy of some servers (name, icon hash, members), by id. */
 export async function readKnownGuilds(ids: readonly string[]): Promise<Map<string, KnownGuild>> {
   const wanted = [...new Set(ids.map(String))];
   if (!wanted.length) return new Map();
-  const { rows } = await pool().query('select guild_id, name, icon, member_count from discord_guild_snapshots where guild_id = any($1::text[])', [wanted]);
-  return new Map(rows.map((row) => [String(row.guild_id), known(row)]));
+  const { rows } = await pool().query('select guild_id as id, name, icon, member_count from discord_guild_snapshots where guild_id = any($1::text[])', [wanted]);
+  return new Map(rows.map((row) => [String(row.id), known(row)]));
 }
 
 /** The servers with at least `min` members, the biggest first (the candidates for the carousel of the home page, from every shard). */
 export async function readBigGuilds(min: number): Promise<KnownGuild[]> {
-  const { rows } = await pool().query('select guild_id, name, icon, member_count from discord_guild_snapshots where member_count >= $1 order by member_count desc, guild_id', [min]);
+  const { rows } = await pool().query('select guild_id as id, name, icon, member_count from discord_guild_snapshots where member_count >= $1 order by member_count desc, guild_id', [min]);
   return rows.map(known);
+}
+
+/** How many saved copies there are and how many of them do not know their member count (those never reach the carousel or the totals), for the log of the stats job. */
+export async function readSnapshotHealth(): Promise<{ total: number; withoutMembers: number }> {
+  const { rows } = await pool().query('select count(*)::int as total, (count(*) filter (where member_count is null))::int as without_members from discord_guild_snapshots');
+  return { total: Number(rows[0]?.total) || 0, withoutMembers: Number(rows[0]?.without_members) || 0 };
 }
 
 /** The ids of every server the bot is in, from the saved copies (only meaningful split between instances: each one removes the copy of a server it leaves). */
 export async function readAllGuildIds(): Promise<Set<string>> {
-  const { rows } = await pool().query('select guild_id from discord_guild_snapshots');
-  return new Set(rows.map((row) => String(row.guild_id)));
+  const { rows } = await pool().query('select guild_id as id from discord_guild_snapshots');
+  return new Set(rows.map((row) => String(row.id)));
 }
 
 /** The picture of a server from its icon hash (a GIF when it is animated), for a server this process does not have in memory. */

@@ -38,7 +38,12 @@ async function refreshGlobalStats(client, now = new Date()) {
   }
   // The servers and members of the whole bot (with the shards split between instances, from the copies every instance saves; otherwise from the cache, which costs nothing).
   const { servers, members } = await botTotals.readTotals(client);
-  const otherBig = split ? await botTotals.readBigGuilds(showcaseServers.MIN_MEMBERS).catch(() => []) : [];
+  let otherBig = [];
+  if (split) {
+    otherBig = await botTotals.readBigGuilds(showcaseServers.MIN_MEMBERS).catch((error) => { logger.warn(`The big servers of the other shards could not be read: ${error.message}`); return []; }); // i18n-ignore: text of the operator log
+    const health = await botTotals.readSnapshotHealth().catch(() => null);
+    if (health) logger.info(`Carousel: ${otherBig.length} servers with ${showcaseServers.MIN_MEMBERS} members or more read from the saved copies (${health.total} copies, ${health.withoutMembers} of them without a member count).`); // i18n-ignore: text of the operator log
+  }
   const built = await showcaseServers.buildShowcase(client, undefined, Date.now(), otherBig).catch((error) => { logger.warn(`The carousel of servers could not be built: ${error.message}`); return null; });
   if (built) showcaseCache = built;
   await globalStatsDb.saveSnapshot({
