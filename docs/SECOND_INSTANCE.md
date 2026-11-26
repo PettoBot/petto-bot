@@ -15,7 +15,7 @@ Discord ── shard 0    ──> primary                                    the
 ## What it does
 
 - **Databases.** Everything the bot asks a database goes through one pool, so the worker has a pool of the same shape that sends its SQL, signed, to the primary (`src/db/sqlBridge.ts`). The bridge knows every database the primary has:
-  the main one, the Vault (backups), the code database and the second one. The worker asks at start which ones exist (`src/db/bridgeTargets.js`), so it needs **no database URL**.
+  the main one, the Vault (backups), the code database and the second one. The worker asks at start which ones exist (`src/db/bridgeTargets.js`), so it needs **no database URL** (do not copy the database addresses of the primary into `.env.worker`: with one set, the worker connects directly instead of using the bridge). If the primary does not answer at that moment, it asks again every minute until it does.
 - **The dashboard and the API reach the servers of the worker.** Every route with a `:guildId` passes through the primary, which looks at the shard of the server (`(id >> 22) % shardCount`). If a connected worker holds it, the request goes through the link,
   the worker answers it with its own copy of the same routes (listening only on `127.0.0.1`), and the primary gives the answer back. If nobody holds the shard it answers `503 shard_unavailable` (or `shard_timeout` when the worker is too slow).
 - **Redis.** The worker does not need Redis. What the dashboard says on `petto:*` ("this setting changed, forget the cache") reaches it through the link, and what the worker says goes to the primary and to the other workers.
@@ -37,6 +37,7 @@ Discord ── shard 0    ──> primary                                    the
 | `PETTO_BRIDGE_SECRET` | The shared secret, at least 32 random characters (`openssl rand -hex 32`). Without it the bridge and the link do not exist. |
 | `DISCORD_SHARDS` / `DISCORD_SHARD_COUNT` | The shards it holds and how many there are in all, for example `0` and `2`. |
 | `GROQ_API_KEY` | The same key as the primary, if the AI features should work in the servers of this worker: `/ask` and the AI helper of the Migrate page run in the instance that holds the shard of the server, so without the key there they answer "not available" for those servers. |
+| `PETTO_JOIN_LOG_CHANNEL_ID`, `PETTO_LEAVE_LOG_CHANNEL_ID`, `PETTO_GENERAL_LOG_CHANNEL_ID`, `PETTO_ERROR_LOG_CHANNEL_ID`, `PETTO_PRIORITY_ERRORS_CHANNEL_ID`, `PETTO_DM_REPORTS_CHANNEL_ID`, `PETTO_MALICIOUS_LINK_ALERT_CHANNEL_ID` | The same ids as the primary, if what a worker sees (a server joining or leaving, its errors, link alerts) must reach the team's channels. Some have a built-in default that may not be the channel you use; the others have none. Twenty seconds after start the worker logs which of them it can reach. |
 | `PETTO_CLUSTER_NAME` / `PETTO_CLUSTER_LOCATION` | Optional: the name and place of this instance, shown on the status page. |
 
 **Worker** (`.env.worker`, never in git):

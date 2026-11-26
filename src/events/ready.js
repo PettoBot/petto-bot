@@ -44,6 +44,8 @@ module.exports = {
 
     logger.info(`Petto v${require("../../package.json").version} is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
     attachDiscordLogger(client);
+    // Every instance says once which channels of the team it can reach (a worker has only what its own environment says).
+    setTimeout(() => require('../utils/discordOps').verifyTeamChannels(client).catch((err) => logger.warn(`Could not check the channels of the team: ${err?.message ?? err}`)), 20_000).unref?.();
     // The badges that are given to a booster of the support server ask Discord through the bot.
     require('../utils/badgeRegistry').useDiscord(client, config.supportGuildId);
     // The name fonts the shop starts with are saved the first time (what the team edits afterwards is never overwritten).

@@ -132,5 +132,26 @@ const textOf = (card) => { const out = []; const walk = (n) => { if (!n || typeo
   await ops.sendGuildLifecycleLog(worker, { kind: 'leave', guild: { id: '5', name: 'New server', memberCount: 12, iconURL: () => null } });
   assert.ok(sentTo.length > sentBefore, 'and so does the leave log');
 
+  // An instance with another environment cannot reach the channels of the team: it is said (the join log, and a check after start), not skipped without a word.
+  const config = require('../src/config');
+  const logger = require('../src/utils/logger');
+  const said = []; const originalWarn = logger.warn; const originalInfo = logger.info;
+  logger.warn = (text) => said.push(['warn', String(text)]); logger.info = (text) => said.push(['info', String(text)]);
+  const blind = { channels: { fetch: async () => undefined } };
+  await ops.sendGuildLifecycleLog(blind, { kind: 'join', guild: { id: '7', name: 'Lost', memberCount: 3, iconURL: () => null }, ownerId: '1' });
+  assert.ok(said.some(([level, text]) => level === 'warn' && /join log of 7 could not be posted in channel \d+/.test(text)), 'a join log that cannot be posted is a warning with the channel');
+  said.length = 0;
+  const joinId = config.opsChannels.joinLog;
+  const partial = { channels: { fetch: async (id, options) => (id === joinId && options?.allowUnknownGuild ? { isTextBased: () => true, messages: {} } : undefined) } };
+  const verdict = await ops.verifyTeamChannels(partial, {});
+  assert.equal(verdict.reachable, 1, 'only the join channel is reachable');
+  assert.ok(verdict.unreachable.some((line) => /^leave log: \d+ \(built-in default, the variable is not set here\)$/.test(line)), 'the channel it cannot reach is named with where its id comes from');
+  assert.ok(said.some(([level, text]) => level === 'warn' && /Team channels this instance cannot reach/.test(text)));
+  said.length = 0;
+  const all = { channels: { fetch: async () => ({ isTextBased: () => true, messages: {} }) } };
+  assert.equal((await ops.verifyTeamChannels(all, {})).unreachable.length, 0);
+  assert.ok(said.some(([level, text]) => level === 'info' && /Team channels: \d+ reachable/.test(text)), 'all reachable: one line, no warning');
+  logger.warn = originalWarn; logger.info = originalInfo;
+
   console.log('status cards: ok');
 })().catch((error) => { console.error(error); process.exit(1); });
