@@ -68,7 +68,7 @@ async function lastPosted(channel, botId) {
 
 async function announceActivePremium(client) {
   if (!config.premiumLogChannelId) return false;
-  const channel = await client.channels.fetch(config.premiumLogChannelId).catch(() => null);
+  const channel = await client.channels.fetch(config.premiumLogChannelId, { allowUnknownGuild: true }).catch(() => null);
   if (!channel?.send) { logger.warn('Premium log: the channel could not be found.'); return false; }
   const cards = buildPremiumCards(await listActiveEntitlements());
   const before = await lastPosted(channel, client.user?.id);

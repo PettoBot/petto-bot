@@ -7,7 +7,7 @@ const { t, guildLanguage } = require('../i18n');
 async function roleGuild(client) {
   if (!config.voteRoleId) return null;
   if (config.voteChannelId) {
-    const channel = await client.channels.fetch(config.voteChannelId).catch(() => null);
+    const channel = await client.channels.fetch(config.voteChannelId, { allowUnknownGuild: true }).catch(() => null);
     if (channel?.guild) return channel.guild;
   }
   return client.guilds.cache.find((guild) => guild.roles.cache.has(config.voteRoleId)) ?? null;
