@@ -4,6 +4,7 @@
 // Written in TypeScript: `npm run build:ts` compiles it over statusHeartbeatJob.js.
 import { isWorker } from '../utils/instanceRole';
 import { clusterOf, collectShards, type ShardClient } from '../utils/shardReport';
+import { isSplit } from '../utils/botTotals';
 
 const botStatusDb = require('../db/botStatus') as { upsertShardStatus: (shardId: number, status: string, guildCount: number, pingMs: number | null, extra?: { memberCount?: number; clusterName?: string | null; clusterLocation?: string | null }) => Promise<void> };
 const botHostDb = require('../db/botHost') as { upsertHost: (uptimeSeconds: number, memoryMb: number, nodeVersion: string) => Promise<void> };
@@ -106,5 +107,5 @@ export function startStatusHeartbeatJob(client: ShardClient): void {
   };
 
   tick().catch((error: unknown) => logger.error('Status heartbeat job startup error:', error));
-  logger.info(`Status heartbeat job started (reporting the shards of this instance every 10s, with transient DB backoff${isWorker() ? '' : '; the primary also reports the host'}).`);
+  logger.info(`Status heartbeat job started (reporting the shards of this instance every 10s, with transient DB backoff${isWorker() ? '' : '; the primary also reports the host'}; the bot is ${isSplit() ? 'split between instances' : 'in this process alone'}).`);
 }

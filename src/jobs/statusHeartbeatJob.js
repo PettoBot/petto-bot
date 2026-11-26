@@ -7,6 +7,7 @@ exports.startStatusHeartbeatJob = startStatusHeartbeatJob;
 // Written in TypeScript: `npm run build:ts` compiles it over statusHeartbeatJob.js.
 const instanceRole_1 = require("../utils/instanceRole");
 const shardReport_1 = require("../utils/shardReport");
+const botTotals_1 = require("../utils/botTotals");
 const botStatusDb = require('../db/botStatus');
 const botHostDb = require('../db/botHost');
 const logger = require('../utils/logger');
@@ -98,5 +99,5 @@ function startStatusHeartbeatJob(client) {
         }
     };
     tick().catch((error) => logger.error('Status heartbeat job startup error:', error));
-    logger.info(`Status heartbeat job started (reporting the shards of this instance every 10s, with transient DB backoff${(0, instanceRole_1.isWorker)() ? '' : '; the primary also reports the host'}).`);
+    logger.info(`Status heartbeat job started (reporting the shards of this instance every 10s, with transient DB backoff${(0, instanceRole_1.isWorker)() ? '' : '; the primary also reports the host'}; the bot is ${(0, botTotals_1.isSplit)() ? 'split between instances' : 'in this process alone'}).`);
 }

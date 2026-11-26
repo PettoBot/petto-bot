@@ -24,8 +24,10 @@ async function purgeLeftGuilds(client) {
   // (an instance removes the copy of a server it leaves). A server counts as present when it is in this process or in that list; and with the list unreadable nothing is decided.
   const split = botTotals.isSplit();
   let elsewhere = new Set();
+  let savedCopies = null; // how many servers the saved copies name (only read when the bot is split), for the warning below
   if (split) {
     try { elsewhere = await botTotals.readAllGuildIds(); } catch (error) { logger.warn(`Servers cleanup skipped: the saved list of servers could not be read: ${error.message}`); return result; }
+    savedCopies = elsewhere.size;
     for (const guild of client.guilds.cache.values()) elsewhere.add(String(guild.id)); // a server that just joined may not have its copy yet
   }
   const isHere = (id) => client.guilds.cache.has(id) || elsewhere.has(String(id));
@@ -39,7 +41,7 @@ async function purgeLeftGuilds(client) {
     return result;
   }
   if (expected && loaded < expected * LOADED_SHARE) {
-    logger.warn(`Servers cleanup skipped: the bot has ${loaded} servers loaded and Discord says it is in about ${expected}.`);
+    logger.warn(`Servers cleanup skipped: the bot has ${loaded} servers loaded and Discord says it is in about ${expected}. (${split ? `split between instances; this process holds ${client.guilds.cache.size} and the saved copies name ${savedCopies}` : `not split; this process holds ${client.guilds.cache.size}`}.)`);
     return result;
   }
   const known = await departures.knownGuilds();
