@@ -144,7 +144,7 @@ function createDiscordErrorLogSink(client, channelId, { gapMs = SEND_GAP_MS, now
     const cached = client.channels.cache.get(channelId);
     if (cached?.isTextBased?.()) return cached;
     if (!channelPromise) {
-      channelPromise = client.channels.fetch(channelId).finally(() => { channelPromise = null; });
+      channelPromise = client.channels.fetch(channelId, { allowUnknownGuild: true }).finally(() => { channelPromise = null; });
     }
     const channel = await channelPromise.catch(() => null);
     return channel?.isTextBased?.() ? channel : null;

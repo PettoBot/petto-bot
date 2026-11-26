@@ -15,7 +15,7 @@ async function notifyMaliciousLink(client, { url, threatTypes, reporterId, guild
   const channelId = config.maliciousLinkAlertChannelId;
   if (!client || !channelId) return false;
 
-  const target = await client.channels.fetch(channelId).catch(() => null);
+  const target = await client.channels.fetch(channelId, { allowUnknownGuild: true }).catch(() => null); // the channel is in the team's server, which a worker does not hold
   if (!target?.isTextBased?.() || !target.messages) {
     logger.warn(`Malicious-link alert channel ${channelId} is unavailable.`);
     return false;

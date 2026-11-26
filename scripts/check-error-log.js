@@ -44,5 +44,13 @@ assert.notEqual(duplicateKey('warn', ['a']), duplicateKey('error', ['a']));
   const triaged = JSON.stringify(sent.at(-1).embeds[0].toJSON());
   assert.ok(triaged.includes('What it means') && !triaged.includes('user:pw'), 'it says what it means and the password of an address is removed');
   assert.deepEqual(sent.at(-1).allowedMentions, { parse: [] }, 'the general log never pings');
+  // The channels of the team are in the support server, which only one instance holds: a worker asks for them with `allowUnknownGuild`, or discord.js answers nothing for them.
+  const reached = [];
+  const workerChannel = { isTextBased: () => true, send: async (payload) => { reached.push(payload); return { edit: async () => {} }; } };
+  const worker = { channels: { cache: new Map(), fetch: async (id, options) => (options?.allowUnknownGuild ? workerChannel : undefined) } };
+  const workerSink = createDiscordErrorLogSink(worker, 'c', { gapMs: 5, now: () => 9_000_000 });
+  await workerSink('error', ['[Worker] something failed on a server this process holds'], new Date().toISOString());
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(reached.length >= 1, 'an error seen by a worker reaches the log channel of the support server');
   console.log('Checked the error channel: no rate limit notes, no repeats and a slow burst.');
 })();

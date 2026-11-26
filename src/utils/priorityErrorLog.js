@@ -201,7 +201,7 @@ function createPriorityErrorSink(client, options = {}) {
     if (!id || !client?.channels) return null;
     const cached = client.channels.cache?.get?.(id);
     if (cached?.isTextBased?.()) return cached;
-    const channel = await Promise.resolve(client.channels.fetch?.(id)).catch(() => null);
+    const channel = await Promise.resolve(client.channels.fetch?.(id, { allowUnknownGuild: true })).catch(() => null);
     return channel?.isTextBased?.() ? channel : null;
   }
 
