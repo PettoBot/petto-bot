@@ -122,5 +122,15 @@ const textOf = (card) => { const out = []; const walk = (n) => { if (!n || typeo
   assert.equal((alone.match(/\*\*Shard \d\*\*/g) ?? []).length, 2, 'and so do the shards');
   failing = false;
 
+  // The log of a server that joins or leaves is sent from whichever instance saw it, and the channels of the team are in the support server, which only one instance holds: asked for
+  // without `allowUnknownGuild`, discord.js answers nothing for a channel whose server is not in this process (that was why nothing reached the log channels from a worker).
+  const sentTo = [];
+  const worker = { channels: { fetch: async (id, options) => (options?.allowUnknownGuild ? { isTextBased: () => true, messages: {}, send: async () => { sentTo.push(id); return {}; } } : undefined) } };
+  await ops.sendGuildLifecycleLog(worker, { kind: 'join', guild: { id: '5', name: 'New server', memberCount: 12, iconURL: () => null }, ownerId: '1' });
+  assert.ok(sentTo.length >= 1, 'the join log reaches its channel even when the support server is held by another instance');
+  const sentBefore = sentTo.length;
+  await ops.sendGuildLifecycleLog(worker, { kind: 'leave', guild: { id: '5', name: 'New server', memberCount: 12, iconURL: () => null } });
+  assert.ok(sentTo.length > sentBefore, 'and so does the leave log');
+
   console.log('status cards: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

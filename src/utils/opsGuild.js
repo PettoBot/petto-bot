@@ -6,7 +6,7 @@ const config = require('../config');
 async function resolveOpsGuildId(client) {
   if (config.opsGuildId) return config.opsGuildId;
   if (config.supportGuildId) return config.supportGuildId;
-  const joinLog = await client.channels.fetch(config.opsChannels?.joinLog).catch(() => null);
+  const joinLog = await client.channels.fetch(config.opsChannels?.joinLog, { allowUnknownGuild: true }).catch(() => null);
   return joinLog?.guildId ?? null;
 }
 

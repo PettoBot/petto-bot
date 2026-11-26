@@ -23,7 +23,9 @@ function channelIdFor(kind) {
 
 async function getTextChannel(client, channelId) {
   if (!channelId) return null;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
+  // `allowUnknownGuild`: the channels of the team are in the support server, which only one instance holds (its shard). Without it discord.js answers nothing for a channel whose
+  // server is not in this process, so a join or a leave seen by a worker never reached the log channels (the direct message did, it does not need the channel).
+  const channel = await client.channels.fetch(channelId, { allowUnknownGuild: true }).catch(() => null);
   return channel?.isTextBased?.() && channel.messages ? channel : null;
 }
 

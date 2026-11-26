@@ -209,7 +209,7 @@ function teamActionRow(guildId, kind, severity) {
 async function getTeamChannel(client) {
   if (!DEFAULT_ALERT_CHANNEL_ID) return null;
   const channel = client.channels.cache.get(DEFAULT_ALERT_CHANNEL_ID)
-    ?? await client.channels.fetch(DEFAULT_ALERT_CHANNEL_ID).catch(() => null);
+    ?? await client.channels.fetch(DEFAULT_ALERT_CHANNEL_ID, { allowUnknownGuild: true }).catch(() => null); // the team's channel is in the support server: a worker does not have it in memory
   return channel?.isTextBased?.() && channel.messages ? channel : null;
 }
 

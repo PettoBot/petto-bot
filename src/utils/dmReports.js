@@ -96,7 +96,7 @@ async function deliverToTeam(client, row, { channelId = config.opsChannels?.dmRe
     return null;
   }
   try {
-    const channel = await client.channels.fetch(channelId);
+    const channel = await client.channels.fetch(channelId, { allowUnknownGuild: true });
     if (!channel?.isTextBased?.() || !channel.send) throw new Error('it is not a text channel');
     const sent = await channel.send(teamCard(row));
     return sent?.id ?? null;
@@ -190,7 +190,7 @@ async function refreshOpenCards(client, { limit = 25, channelId = config.opsChan
   if (!channelId) return 0;
   let changed = 0;
   try {
-    const channel = await client.channels.fetch(channelId);
+    const channel = await client.channels.fetch(channelId, { allowUnknownGuild: true });
     if (!channel?.messages?.fetch) return 0;
     for (const row of await db.openCards(limit)) {
       try {
