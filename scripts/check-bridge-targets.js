@@ -13,9 +13,10 @@ const root = path.join(__dirname, '..');
 const resolve = (file) => require.resolve(path.join(root, file));
 let answers = [new Error('primary is restarting'), new Error('still restarting'), ['main', 'vault', 'code']];
 let asked = 0;
+const vaultQueries = [];
 require.cache[resolve('src/db/postgres.js')] = { id: resolve('src/db/postgres.js'), filename: resolve('src/db/postgres.js'), loaded: true, exports: {
   getPrimaryPool: () => ({ info: async () => { asked += 1; const next = answers.shift(); if (next instanceof Error) throw next; return next; } }),
-  makeBridgePool: (target) => ({ target }),
+  makeBridgePool: (target) => ({ target, query: async (sql) => { vaultQueries.push(String(sql)); return { rows: [], rowCount: 0 }; } }),
 } };
 const lines = [];
 const logger = require('../src/utils/logger');
@@ -36,5 +37,13 @@ const wait = (ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms));
   assert.equal(asked, 3, 'it stops asking once it was answered');
   assert.equal(lines.filter(([level]) => level === 'warn').length, 1, 'the failure is one warning, not one every minute');
   assert.ok(lines.some(([, text]) => /answered after failing before/.test(text)));
+  // The backups of a worker go through that bridge: every function of the Vault uses the pool it gives, not a connection of its own (before, listing the due schedules failed with
+  // "Cannot read properties of undefined (reading 'query')" on a worker).
+  const vault = require('../src/db/vault');
+  assert.equal(vault.isConfigured(), true, 'with the Vault reached through the bridge, backups are configured');
+  assert.deepEqual(await vault.listDueSchedules(), [], 'the due schedules are read through the bridge');
+  assert.ok(vaultQueries.some((sql) => /petto_vault_schedules where next_run_at <= now\(\)/.test(sql)), 'and the query went through the bridge pool');
+  await vault.advanceSchedule('1', 24);
+  assert.ok(vaultQueries.some((sql) => /update petto_vault_schedules/.test(sql)));
   console.log('bridge targets: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

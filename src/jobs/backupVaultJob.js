@@ -7,6 +7,7 @@ const { t, guildLanguage } = require('../i18n');
 const { backupsPaused } = require('../utils/maintenance');
 const { backupsAllowed } = require('../utils/backupAccess');
 const { purgeLegacyBackups } = require('../db/backups');
+const botTotals = require('../utils/botTotals');
 
 const POLL_INTERVAL_MS = 60_000;
 // The backups of a server Petto is no longer in are not kept for ever: they are deleted this long after the last one was taken.
@@ -14,13 +15,23 @@ const ORPHAN_KEEP_DAYS = 30;
 const ORPHAN_CHECK_MS = 6 * 60 * 60_000;
 let lastOrphanCheck = 0;
 
-/** Deletes the backups of the servers Petto left more than ORPHAN_KEEP_DAYS ago. Does nothing while the list of servers looks unloaded. */
+/**
+ * Deletes the backups of the servers Petto left more than ORPHAN_KEEP_DAYS ago. Does nothing while the list of servers looks unloaded.
+ * With the shards split between instances this process only has its own servers in memory: the servers of the other shards are known from the copies their instances save, and with
+ * those unreadable nothing is deleted (before, the backups of a server on another shard looked like the backups of a server Petto had left).
+ */
 async function purgeOrphanedBackups(client) {
   if (!vault.isConfigured() || !client.guilds.cache.size) return 0;
+  let elsewhere = null;
+  if (botTotals.isSplit()) {
+    elsewhere = await botTotals.readAllGuildIds().catch(() => null);
+    if (!elsewhere?.size) return 0;
+  }
+  const isHere = (id) => client.guilds.cache.has(id) || Boolean(elsewhere?.has(String(id)));
   const cutoff = Date.now() - ORPHAN_KEEP_DAYS * 24 * 60 * 60_000;
   let removed = 0;
   for (const row of await vault.listBackupGuilds()) {
-    if (client.guilds.cache.has(row.guild_id) || new Date(row.last_at).getTime() > cutoff) continue;
+    if (isHere(row.guild_id) || new Date(row.last_at).getTime() > cutoff) continue;
     removed += await vault.deleteAllBackups(row.guild_id);
   }
   if (removed) logger.info(`Deleted ${removed} backups of servers Petto is no longer in.`);
@@ -37,6 +48,8 @@ async function processDueBackups(client) {
     try {
       const guild = client.guilds.cache.get(schedule.guild_id);
       if (!guild) {
+        // Split between instances, a server that is not in this process is looked after by the instance that holds its shard: its schedule is left alone (moving it on would skip that backup).
+        if (botTotals.isSplit()) return;
         await vault.advanceSchedule(schedule.guild_id, schedule.interval_hours);
         return;
       }

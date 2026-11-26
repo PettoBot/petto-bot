@@ -113,7 +113,7 @@ async function ensureSchema() {
 
 async function createBackup(guildId, createdBy, label, snapshot, source = 'manual') {
   await ensureSchema();
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query('begin');
     await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [guildId]);
@@ -135,38 +135,38 @@ async function createBackup(guildId, createdBy, label, snapshot, source = 'manua
 
 async function listBackups(guildId, limit = 10) {
   await ensureSchema();
-  const { rows } = await pool.query('select backup_number, id, label, source, created_by, created_at from petto_vault_backups where guild_id = $1 order by created_at desc limit $2', [guildId, limit]);
+  const { rows } = await getPool().query('select backup_number, id, label, source, created_by, created_at from petto_vault_backups where guild_id = $1 order by created_at desc limit $2', [guildId, limit]);
   return rows;
 }
 
 async function getBackup(guildId, backupNumber = null) {
   await ensureSchema();
   const { rows } = backupNumber
-    ? await pool.query('select * from petto_vault_backups where guild_id = $1 and backup_number = $2 limit 1', [guildId, backupNumber])
-    : await pool.query('select * from petto_vault_backups where guild_id = $1 order by created_at desc limit 1', [guildId]);
+    ? await getPool().query('select * from petto_vault_backups where guild_id = $1 and backup_number = $2 limit 1', [guildId, backupNumber])
+    : await getPool().query('select * from petto_vault_backups where guild_id = $1 order by created_at desc limit 1', [guildId]);
   return rows[0] ?? null;
 }
 
 async function recordAudit(guildId, actorId, action, backupNumber = null, metadata = {}) {
   await ensureSchema();
-  await pool.query('insert into petto_vault_audit (guild_id, actor_id, action, backup_number, metadata) values ($1, $2, $3, $4, $5::jsonb)', [guildId, actorId, action, backupNumber, JSON.stringify(metadata)]);
+  await getPool().query('insert into petto_vault_audit (guild_id, actor_id, action, backup_number, metadata) values ($1, $2, $3, $4, $5::jsonb)', [guildId, actorId, action, backupNumber, JSON.stringify(metadata)]);
 }
 
 async function listAudit(guildId, limit = 10) {
   await ensureSchema();
-  const { rows } = await pool.query('select id, actor_id, action, coalesce(backup_number, (select b.backup_number from petto_vault_backups b where b.guild_id = petto_vault_audit.guild_id and b.id = petto_vault_audit.backup_id)) as backup_number, metadata, created_at from petto_vault_audit where guild_id = $1 order by created_at desc limit $2', [guildId, limit]);
+  const { rows } = await getPool().query('select id, actor_id, action, coalesce(backup_number, (select b.backup_number from petto_vault_backups b where b.guild_id = petto_vault_audit.guild_id and b.id = petto_vault_audit.backup_id)) as backup_number, metadata, created_at from petto_vault_audit where guild_id = $1 order by created_at desc limit $2', [guildId, limit]);
   return rows;
 }
 
 async function getSchedule(guildId) {
   await ensureSchema();
-  const { rows } = await pool.query('select * from petto_vault_schedules where guild_id = $1 limit 1', [guildId]);
+  const { rows } = await getPool().query('select * from petto_vault_schedules where guild_id = $1 limit 1', [guildId]);
   return rows[0] ?? null;
 }
 
 async function upsertSchedule(guildId, intervalHours, retentionCount, updatedBy) {
   await ensureSchema();
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     `insert into petto_vault_schedules (guild_id, interval_hours, retention_count, next_run_at, updated_by)
      values ($1, $2, $3, now() + ($2::int * interval '1 hour'), $4)
      on conflict (guild_id) do update set interval_hours = excluded.interval_hours,
@@ -180,24 +180,24 @@ async function upsertSchedule(guildId, intervalHours, retentionCount, updatedBy)
 
 async function removeSchedule(guildId) {
   await ensureSchema();
-  const result = await pool.query('delete from petto_vault_schedules where guild_id = $1', [guildId]);
+  const result = await getPool().query('delete from petto_vault_schedules where guild_id = $1', [guildId]);
   return result.rowCount > 0;
 }
 
 async function listDueSchedules() {
   await ensureSchema();
-  const { rows } = await pool.query('select * from petto_vault_schedules where next_run_at <= now() order by next_run_at asc limit 50');
+  const { rows } = await getPool().query('select * from petto_vault_schedules where next_run_at <= now() order by next_run_at asc limit 50');
   return rows;
 }
 
 async function advanceSchedule(guildId, intervalHours) {
   await ensureSchema();
-  await pool.query("update petto_vault_schedules set next_run_at = now() + ($2::int * interval '1 hour'), updated_at = now() where guild_id = $1", [guildId, intervalHours]);
+  await getPool().query("update petto_vault_schedules set next_run_at = now() + ($2::int * interval '1 hour'), updated_at = now() where guild_id = $1", [guildId, intervalHours]);
 }
 
 async function pruneScheduledBackups(guildId, retentionCount) {
   await ensureSchema();
-  const result = await pool.query(`delete from petto_vault_backups where id in (
+  const result = await getPool().query(`delete from petto_vault_backups where id in (
     select id from petto_vault_backups where guild_id = $1 and source = 'scheduled' order by created_at desc offset $2
   )`, [guildId, retentionCount]);
   return result.rowCount;
@@ -206,22 +206,22 @@ async function pruneScheduledBackups(guildId, retentionCount) {
 /** Deletes one backup of a server. True when there was one. */
 async function deleteBackup(guildId, backupNumber) {
   await ensureSchema();
-  const result = await pool.query('delete from petto_vault_backups where guild_id = $1 and backup_number = $2', [guildId, backupNumber]);
+  const result = await getPool().query('delete from petto_vault_backups where guild_id = $1 and backup_number = $2', [guildId, backupNumber]);
   return result.rowCount > 0;
 }
 
 /** Deletes every backup of a server and its schedule. Returns how many backups there were. The activity history is kept: it holds no server data. */
 async function deleteAllBackups(guildId) {
   await ensureSchema();
-  const result = await pool.query('delete from petto_vault_backups where guild_id = $1', [guildId]);
-  await pool.query('delete from petto_vault_schedules where guild_id = $1', [guildId]);
+  const result = await getPool().query('delete from petto_vault_backups where guild_id = $1', [guildId]);
+  await getPool().query('delete from petto_vault_schedules where guild_id = $1', [guildId]);
   return result.rowCount;
 }
 
 /** The servers that have backups, with the date of the last one: to find the ones Petto is no longer in. */
 async function listBackupGuilds() {
   await ensureSchema();
-  const { rows } = await pool.query('select guild_id, max(created_at) as last_at from petto_vault_backups group by guild_id');
+  const { rows } = await getPool().query('select guild_id, max(created_at) as last_at from petto_vault_backups group by guild_id');
   return rows;
 }
 
