@@ -23,9 +23,12 @@ function isSplit(shards = settings().shards, count = settings().shardCount) {
         return false;
     return new Set(shards).size < count;
 }
-/** The totals of this process alone, from its cache (it costs nothing). */
-function totalsFromCache(client) {
-    const guilds = [...client.guilds.cache.values()];
+/**
+ * The totals of this process alone, from its cache (it costs nothing). `held`: the shards this process holds; a guild of another shard that ended up in the cache
+ * (an empty copy left by a fetch) is not one of its servers and is not counted. Without `held`, or for a guild that does not say its shard, every guild counts.
+ */
+function totalsFromCache(client, held = []) {
+    const guilds = [...client.guilds.cache.values()].filter((guild) => !held.length || typeof guild.shardId !== 'number' || held.includes(guild.shardId));
     return { servers: guilds.length, members: guilds.reduce((total, guild) => total + (Number(guild.memberCount) || 0), 0), source: 'cache' };
 }
 /**
@@ -35,11 +38,11 @@ function totalsFromCache(client) {
  * (The copies alone are not enough for members: a copy without its member count adds nothing, and the total used to fall by a third and jump back and forth.)
  */
 async function readTotals(client, split = isSplit()) {
-    const local = totalsFromCache(client);
     if (!split)
-        return local;
+        return totalsFromCache(client);
     const { shards, shardCount } = settings();
     const held = Array.isArray(shards) ? shards : [];
+    const local = totalsFromCache(client, held);
     const count = Number(shardCount) || 0;
     try {
         const { rows } = await pool().query('select shard_id, guild_count, member_count from bot_status where shard_id <> all($1::int[]) and shard_id < $2', [held, count]);

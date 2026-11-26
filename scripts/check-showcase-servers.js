@@ -51,8 +51,8 @@ const guilds = [guild('1', 800, { icon: 'abc', features: ['DISCOVERABLE'] }), gu
 const client = {
   guilds: {
     cache: new Map(guilds.map((g) => [g.id, g])),
-    fetch: async ({ guild: id, withCounts }) => { fetches += 1; assert.equal(withCounts, true); if (fail) throw new Error('down'); return { approximatePresenceCount: online + Number(id) }; },
   },
+  rest: { get: async (route, { query }) => { fetches += 1; assert.equal(query.get('with_counts'), 'true'); if (fail) throw new Error('down'); return { approximate_presence_count: online + Number(String(route).split('/').pop()) }; } },
 };
 (async () => {
   const list = await showcase.buildShowcase(client, new Set(['4']), 1_000);

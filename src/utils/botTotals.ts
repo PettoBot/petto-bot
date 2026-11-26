@@ -19,9 +19,12 @@ export function isSplit(shards: number[] | 'auto' | undefined = settings().shard
 
 export interface Totals { servers: number; members: number; source: 'cache' | 'shards' | 'snapshots' }
 
-/** The totals of this process alone, from its cache (it costs nothing). */
-export function totalsFromCache(client: Pick<Client, 'guilds'>): Totals {
-  const guilds = [...client.guilds.cache.values()];
+/**
+ * The totals of this process alone, from its cache (it costs nothing). `held`: the shards this process holds; a guild of another shard that ended up in the cache
+ * (an empty copy left by a fetch) is not one of its servers and is not counted. Without `held`, or for a guild that does not say its shard, every guild counts.
+ */
+export function totalsFromCache(client: Pick<Client, 'guilds'>, held: readonly number[] = []): Totals {
+  const guilds = [...client.guilds.cache.values()].filter((guild) => !held.length || typeof guild.shardId !== 'number' || held.includes(guild.shardId));
   return { servers: guilds.length, members: guilds.reduce((total, guild) => total + (Number(guild.memberCount) || 0), 0), source: 'cache' };
 }
 
@@ -32,10 +35,10 @@ export function totalsFromCache(client: Pick<Client, 'guilds'>): Totals {
  * (The copies alone are not enough for members: a copy without its member count adds nothing, and the total used to fall by a third and jump back and forth.)
  */
 export async function readTotals(client: Pick<Client, 'guilds'>, split: boolean = isSplit()): Promise<Totals> {
-  const local = totalsFromCache(client);
-  if (!split) return local;
+  if (!split) return totalsFromCache(client);
   const { shards, shardCount } = settings();
   const held = Array.isArray(shards) ? shards : [];
+  const local = totalsFromCache(client, held);
   const count = Number(shardCount) || 0;
   try {
     const { rows } = await pool().query('select shard_id, guild_count, member_count from bot_status where shard_id <> all($1::int[]) and shard_id < $2', [held, count]);

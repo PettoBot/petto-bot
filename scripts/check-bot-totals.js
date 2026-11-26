@@ -54,6 +54,9 @@ const clientOf = (guilds) => ({ guilds: { cache: new Map(guilds.map((entry) => [
   const client = clientOf([guild('100', 900), guild('500', 7)]);
   assert.deepEqual(totals.totalsFromCache(client), { servers: 2, members: 907, source: 'cache' });
   assert.deepEqual(await totals.readTotals(client, false), { servers: 2, members: 907, source: 'cache' }, 'not split: the cache, as it always was');
+  // A guild of a shard this process does not hold, left in its cache, is not one of its servers.
+  const stray = clientOf([{ id: '100', memberCount: 900, shardId: 0 }, { id: '500', memberCount: 7, shardId: 5 }, { id: '900', memberCount: 0, shardId: 2 }]);
+  assert.deepEqual(await totals.readTotals(stray, true), { servers: 102, members: 1907, source: 'shards' }, 'the empty copy of a server of another shard (shard 3 here) is not counted');
   // Split: this process (its cache) plus what the shards of the other instances say about themselves (10 + 20 + 30 + 40 servers, 1000 members).
   assert.deepEqual(await totals.readTotals(client, true), { servers: 102, members: 1907, source: 'shards' }, 'split: this process and what every other shard reports');
   assert.deepEqual(await totals.readTotals(client, true), await totals.readTotals(client, true), 'the same answer every time: the number does not jump');
@@ -85,13 +88,15 @@ const clientOf = (guilds) => ({ guilds: { cache: new Map(guilds.map((entry) => [
   const showcase = require('../src/utils/showcaseServers');
   showcase.resetShowcase();
   const fetched = [];
-  const showClient = { guilds: { cache: new Map([['100', { id: '100', name: 'Mine', memberCount: 900, icon: null, features: ['COMMUNITY'], premiumSubscriptionCount: 0, premiumTier: 0 }]]),
-    fetch: async ({ guild: id }) => { fetched.push(id); return { id, approximatePresenceCount: id === '200' ? 321 : 55, features: id === '200' ? ['PARTNERED'] : [], premiumSubscriptionCount: 0, premiumTier: 0 }; } } };
+  // Discord is asked over REST and what it answers is NOT kept in the cache of the process (a server of another shard left in it would count as one of ours, with no members).
+  const showClient = { guilds: { cache: new Map([['100', { id: '100', name: 'Mine', memberCount: 900, icon: null, features: ['COMMUNITY'], premiumSubscriptionCount: 0, premiumTier: 0 }]]) },
+    rest: { get: async (route, { query }) => { const id = String(route).split('/').pop(); assert.equal(query.get('with_counts'), 'true'); fetched.push(id); return { id, approximate_presence_count: id === '200' ? 321 : 55, features: id === '200' ? ['PARTNERED'] : [], premium_subscription_count: 0, premium_tier: 0 }; } } };
   const others = (await totals.readBigGuilds(500)).filter((entry) => entry.id !== '100');
   const built = await showcase.buildShowcase(showClient, new Set(), 1_000_000, others);
   assert.deepEqual(built.map((entry) => entry.id), ['200', '100'], 'the server of another shard is in, ordered by members with the ones of this process');
   assert.deepEqual(built[0], { id: '200', name: 'Elsewhere', icon: 'https://cdn.discordapp.com/icons/200/def.webp?size=128', animated: false, members: 1200, online: 321, badge: 'partnered' }, 'its badge and online members come from Discord');
   assert.equal(built[1].badge, 'community', 'a server of this process keeps its own data');
+  assert.equal(showClient.guilds.cache.size, 1, 'a server of another shard is not left in the cache of this process');
   const before = fetched.length;
   await showcase.buildShowcase(showClient, new Set(), 1_000_500, others);
   assert.equal(fetched.length, before, 'what Discord said is kept for five minutes');

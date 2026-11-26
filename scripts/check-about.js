@@ -24,7 +24,7 @@ const STATUS = [
 let failing = false;
 fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql, params) => {
   if (failing) throw new Error('database down');
-  // The totals: this process (1 server, 1,234 members) plus what the shards of the other instances report.
+  // The totals: the one server this process holds on its own shards (shard 1, 1,234 members) plus what the shards of the other instances report (1 to 4); the server of the card is on shard 4, which this process does not hold, so it is not counted here.
   if (/from bot_status where shard_id/.test(sql)) return { rows: [1, 2, 3, 4].map((id) => ({ shard_id: id, guild_count: 70, member_count: id === 4 ? 15766 : 13000 })).filter((row) => !params[0].includes(row.shard_id)) };
   if (/count\(\*\)::int as servers/.test(sql)) return { rows: [{ servers: 281, members: '56000' }] };
   if (/from bot_status/.test(sql)) return { rows: STATUS };
@@ -51,7 +51,7 @@ const CREATED = Date.UTC(2020, 5, 15);
 const guild = { id: '1414452131850879080', name: 'Petto Support', ownerId: '293504726505357312', memberCount: 1234, createdTimestamp: CREATED, shardId: 3,
   channels: { cache: new Map(Array.from({ length: 12 }, (_, index) => [index, {}])) }, roles: { cache: new Map(Array.from({ length: 7 }, (_, index) => [index, {}])) } };
 const client = { uptime: 3 * 3600 * 1000, options: { shardCount: 6 }, user: { id: '999', username: 'Petto', displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' },
-  guilds: { cache: new Map([[guild.id, guild]]) }, ws: { shards: new Map([[0, { status: 0, ping: 20 }], [5, { status: 0, ping: 30 }]]) } };
+  guilds: { cache: new Map([[guild.id, guild], ['777', { id: '777', shardId: 0, memberCount: 1234 }]]) }, ws: { shards: new Map([[0, { status: 0, ping: 20 }], [5, { status: 0, ping: 30 }]]) } };
 
 (async () => {
   // ---- The command ----------------------------------------------------------------------------------------------------------------
