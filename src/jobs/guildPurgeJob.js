@@ -14,6 +14,16 @@ const REST_MS = 1000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const LOADED_SHARE = 0.9; // the list of servers of the bot must have at least this share of the servers Discord says the bot is in, or it is not trusted (an outage, not people leaving)
 
+// "Skipped" is the safe answer, not a failure, and the job runs every minute: the same warning is said once and then every 6 hours (the rest go to the plain log), so it never fills the alert channels.
+const SKIP_WARN_MS = 6 * 60 * 60_000;
+const skipped = new Map();
+function skip(key, text, now = Date.now()) {
+  const last = skipped.get(key);
+  if (last !== undefined && now - last < SKIP_WARN_MS) { logger.info(text); return; }
+  skipped.set(key, now);
+  logger.warn(text);
+}
+
 /** One pass. Returns { noted, erased, would } (`would`: the servers a dry run would have deleted). */
 async function purgeLeftGuilds(client) {
   const result = { noted: 0, erased: 0, would: 0 };
@@ -26,7 +36,7 @@ async function purgeLeftGuilds(client) {
   let elsewhere = new Set();
   let savedCopies = null; // how many servers the saved copies name (only read when the bot is split), for the warning below
   if (split) {
-    try { elsewhere = await botTotals.readAllGuildIds(); } catch (error) { logger.warn(`Servers cleanup skipped: the saved list of servers could not be read: ${error.message}`); return result; }
+    try { elsewhere = await botTotals.readAllGuildIds(); } catch (error) { skip('unreadable', `Servers cleanup skipped: the saved list of servers could not be read: ${error.message}`); return result; } // i18n-ignore: text of the operator log, not shown to members
     savedCopies = elsewhere.size;
     for (const guild of client.guilds.cache.values()) elsewhere.add(String(guild.id)); // a server that just joined may not have its copy yet
   }
@@ -37,11 +47,11 @@ async function purgeLeftGuilds(client) {
   const expected = Number((await client.application?.fetch?.().catch(() => null))?.approximateGuildCount) || 0;
   // Split between instances the loaded list is the whole of the bot, so without Discord's number there is nothing to check it against: nothing is decided.
   if (split && !expected) {
-    logger.warn('Servers cleanup skipped: Discord did not say how many servers the bot is in, so the list of the whole bot cannot be checked.');
+    skip('no-number', 'Servers cleanup skipped: Discord did not say how many servers the bot is in, so the list of the whole bot cannot be checked.'); // i18n-ignore: text of the operator log, not shown to members
     return result;
   }
   if (expected && loaded < expected * LOADED_SHARE) {
-    logger.warn(`Servers cleanup skipped: the bot has ${loaded} servers loaded and Discord says it is in about ${expected}. (${split ? `split between instances; this process holds ${client.guilds.cache.size} and the saved copies name ${savedCopies}` : `not split; this process holds ${client.guilds.cache.size}`}.)`);
+    skip('short-list', `Servers cleanup skipped: the bot has ${loaded} servers loaded and Discord says it is in about ${expected}. (${split ? `split between instances; this process holds ${client.guilds.cache.size} and the saved copies name ${savedCopies}` : `not split; this process holds ${client.guilds.cache.size}`}.)`); // i18n-ignore: text of the operator log, not shown to members
     return result;
   }
   const known = await departures.knownGuilds();
@@ -78,4 +88,4 @@ function startGuildPurgeJob(client) {
   setInterval(tick, INTERVAL_MS).unref?.();
 }
 
-module.exports = { startGuildPurgeJob, purgeLeftGuilds };
+module.exports = { startGuildPurgeJob, purgeLeftGuilds, resetSkipped: () => skipped.clear() };
