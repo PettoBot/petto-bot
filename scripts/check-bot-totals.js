@@ -29,7 +29,7 @@ let statusFails = false;
 fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql, params) => {
   queries.push({ sql, params });
   if (failing) throw new Error('database down');
-  if (/from bot_status/.test(sql)) { if (statusFails) throw new Error('no table'); return { rows: STATUS.filter((row) => !params[0].includes(row.shard_id) && row.shard_id < params[1]) }; }
+  if (/select shard_id, guild_count, member_count from bot_status/.test(sql)) { if (statusFails) throw new Error('no table'); return { rows: [{ shard_id: 0, guild_count: 3, member_count: 30 }, { shard_id: 5, guild_count: 4, member_count: 40 }, { shard_id: 9, guild_count: 1, member_count: 1 }, ...STATUS] }; } // the rows of this process's own shards and of a shard that does not exist are left out by the code
   if (/as without_members/.test(sql)) return { rows: [{ total: SNAPSHOTS.length, without_members: SNAPSHOTS.filter((row) => row.member_count === null).length }] };
   if (/count\(\*\)::int as servers/.test(sql)) return { rows: [{ servers: SNAPSHOTS.length, members: String(SNAPSHOTS.reduce((total, row) => total + (row.member_count ?? 0), 0)) }] };
   if (/guild_id = any/.test(sql)) return { rows: SNAPSHOTS.filter((row) => params[0].includes(row.guild_id)).map(asId) };

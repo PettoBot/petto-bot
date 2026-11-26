@@ -41,7 +41,9 @@ export async function readTotals(client: Pick<Client, 'guilds'>, split: boolean 
   const local = totalsFromCache(client, held);
   const count = Number(shardCount) || 0;
   try {
-    const { rows } = await pool().query('select shard_id, guild_count, member_count from bot_status where shard_id <> all($1::int[]) and shard_id < $2', [held, count]);
+    // No parameters: the shards that are not this process's are picked here, so the same answer comes from the primary, from a worker through the SQL bridge, or from anywhere else.
+    const all = (await pool().query('select shard_id, guild_count, member_count from bot_status')).rows;
+    const rows = all.filter((row) => Number(row.shard_id) < count && !held.includes(Number(row.shard_id)));
     const reported = new Set(rows.map((row) => Number(row.shard_id)));
     let complete = count > 0;
     for (let id = 0; id < count; id += 1) if (!held.includes(id) && !reported.has(id)) complete = false;
