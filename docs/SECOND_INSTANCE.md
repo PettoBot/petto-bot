@@ -15,7 +15,7 @@ Discord ── shard 0    ──> primary                                    the
 ## What it does
 
 - **Databases.** Everything the bot asks a database goes through one pool, so the worker has a pool of the same shape that sends its SQL, signed, to the primary (`src/db/sqlBridge.ts`). The bridge knows every database the primary has:
-  the main one, the Vault (backups), the code database and the second one. The worker asks at start which ones exist (`src/db/bridgeTargets.js`), so it needs **no database URL**.
+  the main one, the Vault (backups), the code database and the second one. The worker asks at start which ones exist (`src/db/bridgeTargets.js`), so it needs **no database URL** (do not copy the database addresses of the primary into `.env.worker`: with one set, the worker connects directly instead of using the bridge). If the primary does not answer at that moment, it asks again every minute until it does.
 - **The dashboard and the API reach the servers of the worker.** Every route with a `:guildId` passes through the primary, which looks at the shard of the server (`(id >> 22) % shardCount`). If a connected worker holds it, the request goes through the link,
   the worker answers it with its own copy of the same routes (listening only on `127.0.0.1`), and the primary gives the answer back. If nobody holds the shard it answers `503 shard_unavailable` (or `shard_timeout` when the worker is too slow).
 - **Redis.** The worker does not need Redis. What the dashboard says on `petto:*` ("this setting changed, forget the cache") reaches it through the link, and what the worker says goes to the primary and to the other workers.
