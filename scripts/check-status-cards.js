@@ -27,7 +27,7 @@ let failing = false;
 fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql, params) => {
   if (failing) throw new Error('database down');
   // The totals of the whole bot: this process (2 servers, 12 members) plus what the shards of the other instances report (1 to 4: 195 servers, 42500 members).
-  if (/from bot_status where shard_id/.test(sql)) return { rows: rows.filter((row) => !params[0].includes(row.shard_id) && row.shard_id < params[1]) };
+  if (/select shard_id, guild_count, member_count from bot_status/.test(sql)) return { rows }; // all of them: the code leaves out the shards of this process and the one that does not exist
   if (/count\(\*\)::int as servers/.test(sql)) return { rows: [{ servers: 281, members: '60300' }] };
   if (/from bot_status/.test(sql)) return { rows };
   throw new Error(`unexpected query: ${sql}`);
