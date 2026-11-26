@@ -24,8 +24,10 @@ let rows = [
   { shard_id: 9, status: 'Ready', guild_count: 1, member_count: 1, ping_ms: 1, updated_at: ago(1000), cluster_name: 'Old', cluster_location: null }, // a shard that does not exist (an old row)
 ];
 let failing = false;
-fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql) => {
+fake('src/db/postgres.js', { getPrimaryPool: () => ({ query: async (sql, params) => {
   if (failing) throw new Error('database down');
+  // The totals of the whole bot: this process (2 servers, 12 members) plus what the shards of the other instances report (1 to 4: 195 servers, 42500 members).
+  if (/from bot_status where shard_id/.test(sql)) return { rows: rows.filter((row) => !params[0].includes(row.shard_id) && row.shard_id < params[1]) };
   if (/count\(\*\)::int as servers/.test(sql)) return { rows: [{ servers: 281, members: '60300' }] };
   if (/from bot_status/.test(sql)) return { rows };
   throw new Error(`unexpected query: ${sql}`);
@@ -48,15 +50,15 @@ const textOf = (card) => { const out = []; const walk = (n) => { if (!n || typeo
   // Split between instances: every shard of the whole bot, from what the instances reported.
   const whole = await ops.readWholeBot(client);
   assert.equal(whole.shards.length, 6, 'a row of a shard that does not exist is left out');
-  assert.equal(whole.totals.servers, 281);
+  assert.equal(whole.totals.servers, 197); assert.equal(whole.totals.members, 42512);
   const internal = textOf(ops.internalStatusCard(client));
-  assert.match(internal, /\*\*Discord\*\* 281 servers · 60300 members \(the whole bot, 6 shards\)/, 'the totals of the whole bot, not the 2 servers of this process');
+  assert.match(internal, /\*\*Discord\*\* 197 servers · 42512 members \(the whole bot, 6 shards\)/, 'the totals of the whole bot, not the 2 servers of this process');
   assert.match(internal, /This process \(primary\)/);
   for (const [n, text] of [[1, /Shard 1\*\* · Online · 38 servers · 25 ms · Discloud/], [2, /Shard 2\*\* · Online · 52 servers · 61 ms · Miami · Florida, US/], [4, /Shard 4\*\* · Online · 49 servers · 142 ms · Ashburn · Virginia, US/],
     [5, /Shard 5\*\* · Disconnected · 50 servers · Ashburn · Virginia, US/], [6, /Shard 6\*\* · Online · 48 servers · 23 ms · Discloud/]]) assert.match(internal, text, `shard ${n}`);
   assert.doesNotMatch(internal, /Shard 5\*\*[^\n]*ms/, 'a shard that is down has no ping');
   assert.equal((internal.match(/\*\*Shard \d\*\*/g) ?? []).length, 6);
-  assert.match(textOf(ops.publicStatusCard(client)), /\*\*Servers\*\* 281/);
+  assert.match(textOf(ops.publicStatusCard(client)), /\*\*Servers\*\* 197/);
 
   // ---- The shards of the workers are watched: a shard that is down is announced, once, after two checks in a row ----------------------------------
   ops.resetRemoteShards();
