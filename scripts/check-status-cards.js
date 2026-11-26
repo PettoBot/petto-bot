@@ -41,6 +41,10 @@ const client = {
 const textOf = (card) => { const out = []; const walk = (n) => { if (!n || typeof n !== 'object') return; if (typeof n.content === 'string') out.push(n.content); Object.values(n).forEach((v) => (Array.isArray(v) ? v.forEach(walk) : walk(v))); }; walk(card.toJSON()); return out.join('\n'); };
 
 (async () => {
+  const localIds = new Set(client.ws.shards.keys());
+  const check = async () => { const whole = await ops.readWholeBot(client); return ops.evaluateRemoteShards(whole.shards, localIds); };
+  const fresh = () => rows.map((row) => ({ ...row, status: 'Ready', updated_at: ago(2000) }));
+
   // Split between instances: every shard of the whole bot, from what the instances reported.
   const whole = await ops.readWholeBot(client);
   assert.equal(whole.shards.length, 6, 'a row of a shard that does not exist is left out');
@@ -52,18 +56,61 @@ const textOf = (card) => { const out = []; const walk = (n) => { if (!n || typeo
     [5, /Shard 5\*\* · Disconnected · 50 servers · Ashburn · Virginia, US/], [6, /Shard 6\*\* · Online · 48 servers · 23 ms · Discloud/]]) assert.match(internal, text, `shard ${n}`);
   assert.doesNotMatch(internal, /Shard 5\*\*[^\n]*ms/, 'a shard that is down has no ping');
   assert.equal((internal.match(/\*\*Shard \d\*\*/g) ?? []).length, 6);
-  const pub = textOf(ops.publicStatusCard(client));
-  assert.match(pub, /\*\*Servers\*\* 281/); assert.match(pub, /Some services|degraded|outage|recover/i, 'one shard down: the public card does not say everything is fine');
+  assert.match(textOf(ops.publicStatusCard(client)), /\*\*Servers\*\* 281/);
 
-  // A shard that has not reported for a while counts as down.
-  rows = rows.map((row) => (row.shard_id === 4 ? { ...row, status: 'Ready', updated_at: ago(12 * 60_000) } : row));
-  await ops.readWholeBot(client);
-  assert.match(textOf(ops.internalStatusCard(client)), /Shard 5\*\* · No data for 12 min · 50 servers/, 'silent for 12 minutes');
+  // ---- The shards of the workers are watched: a shard that is down is announced, once, after two checks in a row ----------------------------------
+  ops.resetRemoteShards();
+  let result = await check(); // the shard 5 (Ashburn) says Disconnected
+  assert.deepEqual(result, { events: [], downIds: [] }, 'one check could be a reconnect of a few seconds: nothing yet');
+  assert.match(textOf(ops.publicStatusCard(client)), /Petto is online and serving Discord communities/, 'and the public card has not changed its mind');
+  result = await check();
+  assert.equal(result.events.length, 1); assert.equal(result.events[0].kind, 'down'); assert.deepEqual(result.downIds, [4]);
+  assert.equal(ops.remoteMessage(result.events[0], result.downIds), 'Shard **5** (Ashburn · Virginia, US) is **Disconnected**. Its **50** servers may not answer until it recovers. The instance reconnects on its own.');
+  assert.match(textOf(ops.publicStatusCard(client)), /Partial outage detected/, 'two checks: the public card says it');
+  assert.equal(ops.aggregateGatewayState(client), 'outage');
+  assert.deepEqual((await check()).events, [], 'it is not announced again every minute');
 
-  // Everything reports and runs: the public card is the good one.
-  rows = rows.map((row) => ({ ...row, status: 'Ready', updated_at: ago(2000) }));
-  await ops.readWholeBot(client);
+  // It comes back.
+  rows = fresh();
+  result = await check();
+  assert.equal(result.events.length, 1); assert.equal(result.events[0].kind, 'up'); assert.deepEqual(result.downIds, []);
+  assert.equal(ops.remoteMessage(result.events[0], result.downIds), 'Shard **5** (Ashburn · Virginia, US) is back. **All services are restored.**');
   assert.match(textOf(ops.publicStatusCard(client)), /Petto is online and serving Discord communities/);
+  assert.equal(ops.aggregateGatewayState(client), 'online');
+
+  // A blip (bad once, then fine) is never announced.
+  ops.resetRemoteShards();
+  rows = fresh().map((row) => (row.shard_id === 2 ? { ...row, status: 'Reconnecting' } : row));
+  assert.deepEqual((await check()).events, []);
+  rows = fresh();
+  assert.deepEqual(await check(), { events: [], downIds: [] }, 'and nothing is said when it recovers either');
+
+  // A whole instance that stops talking (the VPS is off): its shards are silent for more than 2 minutes.
+  ops.resetRemoteShards();
+  rows = fresh().map((row) => (row.cluster_name === 'Miami' ? { ...row, updated_at: ago(7 * 60_000) } : row));
+  await check();
+  result = await check();
+  assert.deepEqual(result.downIds, [1, 2], 'both shards of the instance');
+  assert.deepEqual(result.events.map((event) => event.kind), ['down', 'down']);
+  assert.match(ops.remoteMessage(result.events[0], result.downIds), /Shard \*\*2\*\* \(Miami · Florida, US\) has not reported for \*\*7 minutes\*\*: its instance may be off or restarting\. Its \*\*52\*\* servers/);
+  assert.match(textOf(ops.internalStatusCard(client)), /Shard 2\*\* · No data for 7 min · 52 servers/);
+
+  // One of the two comes back: it says what is still down.
+  rows = fresh().map((row) => (row.shard_id === 2 ? { ...row, updated_at: ago(7 * 60_000) } : row));
+  result = await check();
+  assert.equal(result.events.length, 1); assert.equal(result.events[0].kind, 'up'); assert.deepEqual(result.downIds, [2]);
+  assert.equal(ops.remoteMessage(result.events[0], result.downIds), 'Shard **2** (Miami · Florida, US) is back. Still down: shard **3**.');
+
+  // The shards of this process have their own events: a row of one of them is never judged here, and a row that disappears is forgotten.
+  ops.resetRemoteShards();
+  rows = fresh().map((row) => (row.shard_id === 0 ? { ...row, status: 'Disconnected' } : row));
+  await check();
+  assert.deepEqual((await check()).events, [], 'a local shard is the business of its own events');
+  rows = fresh(); rows.splice(2, 1);
+  rows = rows.map((row) => (row.shard_id === 3 ? { ...row, status: 'Disconnected' } : row));
+  await check(); await check();
+  rows = rows.filter((row) => row.shard_id !== 3);
+  assert.deepEqual((await check()).downIds, [], 'a shard that is not in the table any more is forgotten');
 
   // The database does not answer: this process alone, as before (its own shards, from its own cache).
   failing = true;
