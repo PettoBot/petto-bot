@@ -49,10 +49,13 @@ async function liveOf(client, id, now) {
     const known = liveCache.get(id);
     if (known && now - known.at < exports.ONLINE_EVERY_MS)
         return known;
-    const fetched = await client.guilds.fetch({ guild: id, withCounts: true, force: true }).catch(() => null);
+    // Asked to Discord directly (REST) and not with `client.guilds.fetch`: that one keeps what it gets in `client.guilds.cache`, and a server of another shard would stay in this
+    // process as an empty copy (no member count): it was counted as one more server of this process, and it left the carousel the next time it was built.
+    const { Routes } = require('discord.js');
+    const raw = await client.rest.get(Routes.guild(id), { query: new URLSearchParams({ with_counts: 'true' }) }).catch(() => null);
     const value = {
-        online: typeof fetched?.approximatePresenceCount === 'number' ? fetched.approximatePresenceCount : (known?.online ?? null),
-        badge: fetched ? badgeOf(fetched.features, fetched.premiumSubscriptionCount ?? 0, Number(fetched.premiumTier) || 0) : (known?.badge ?? null),
+        online: typeof raw?.approximate_presence_count === 'number' ? raw.approximate_presence_count : (known?.online ?? null),
+        badge: raw ? badgeOf(raw.features ?? [], raw.premium_subscription_count ?? 0, Number(raw.premium_tier) || 0) : (known?.badge ?? null),
         at: now,
     };
     liveCache.set(id, value);

@@ -36,6 +36,7 @@ Discord ── shard 0    ──> primary                                    the
 | --- | --- |
 | `PETTO_BRIDGE_SECRET` | The shared secret, at least 32 random characters (`openssl rand -hex 32`). Without it the bridge and the link do not exist. |
 | `DISCORD_SHARDS` / `DISCORD_SHARD_COUNT` | The shards it holds and how many there are in all, for example `0` and `2`. |
+| `GROQ_API_KEY` | The same key as the primary, if the AI features should work in the servers of this worker: `/ask` and the AI helper of the Migrate page run in the instance that holds the shard of the server, so without the key there they answer "not available" for those servers. |
 | `PETTO_CLUSTER_NAME` / `PETTO_CLUSTER_LOCATION` | Optional: the name and place of this instance, shown on the status page. |
 
 **Worker** (`.env.worker`, never in git):
