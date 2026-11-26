@@ -75,7 +75,36 @@ async function sendGuildLifecycleLog(client, options) {
   const specific = options.kind === 'join' ? channelIdFor('joinLog') : channelIdFor('leaves');
   const ids = [...new Set([specific, channelIdFor('general')].filter(Boolean))];
   logger.info(`Guild lifecycle: ${options.kind === 'join' ? 'joined' : 'left'} guild=${options.guild.id} name=${options.guild.name} members=${options.guild.memberCount ?? 'unknown'}`);
-  await Promise.all(ids.map((id) => sendToChannel(client, id, { embeds: [embed] })));
+  const results = await Promise.all(ids.map(async (id) => ({ id, sent: await sendToChannel(client, id, { embeds: [embed] }) })));
+  // Said, not skipped without a word: with a channel the instance cannot reach (another id in its environment, or one that was deleted) nothing arrived and nobody knew why.
+  for (const { id, sent } of results) if (!sent) logger.warn(`Guild lifecycle: the ${options.kind === 'join' ? 'join' : 'leave'} log of ${options.guild.id} could not be posted in channel ${id}: this instance cannot reach it (check the channel id variables of this instance).`); // i18n-ignore: operator log
+}
+
+/**
+ * Which channels of the team this instance can reach. Run once after start on every instance (the primary and the workers): a worker has only what its own `.env.worker` says, so a missing
+ * or different channel id there means what it has to report goes nowhere. A channel it cannot reach is a warning with its id and where the id comes from; a channel with no id is only said.
+ */
+const TEAM_CHANNELS = [
+  ['join log', () => channelIdFor('joinLog'), 'PETTO_JOIN_LOG_CHANNEL_ID'],
+  ['leave log', () => channelIdFor('leaves'), 'PETTO_LEAVE_LOG_CHANNEL_ID'],
+  ['general log', () => channelIdFor('general'), 'PETTO_GENERAL_LOG_CHANNEL_ID'],
+  ['error log', () => config.errorLogChannelId, 'PETTO_ERROR_LOG_CHANNEL_ID'],
+  ['priority error log', () => channelIdFor('priorityErrors'), 'PETTO_PRIORITY_ERRORS_CHANNEL_ID'],
+  ['direct message reports', () => channelIdFor('dmReports'), 'PETTO_DM_REPORTS_CHANNEL_ID'],
+  ['malicious link alerts', () => config.maliciousLinkAlertChannelId, 'PETTO_MALICIOUS_LINK_ALERT_CHANNEL_ID'],
+];
+
+async function verifyTeamChannels(client, env = process.env) {
+  const unreachable = []; const unset = []; let reachable = 0;
+  for (const [label, idOf, variable] of TEAM_CHANNELS) {
+    const id = idOf();
+    if (!id) { unset.push(`${label} (${variable})`); continue; }
+    if (await getTextChannel(client, id)) reachable += 1;
+    else unreachable.push(`${label}: ${id} (${env[variable] ? `from ${variable}` : 'built-in default, the variable is not set here'})`);
+  }
+  if (unreachable.length) logger.warn(`Team channels this instance cannot reach: ${unreachable.join('; ')}. What it has to report there goes nowhere.`); // i18n-ignore: operator log
+  else logger.info(`Team channels: ${reachable} reachable from this instance${unset.length ? `; no id set for ${unset.join(', ')}` : ''}.`); // i18n-ignore: operator log
+  return { reachable, unreachable, unset };
 }
 
 /**
@@ -431,6 +460,7 @@ function attachDiscordLogger(client) {
 }
 
 module.exports = {
+  verifyTeamChannels,
   memberCount,
   evaluateRemoteShards,
   remoteMessage,
