@@ -33,9 +33,12 @@ function drawBadge(ctx, badge, cx, cy, r) {
         ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2);
         return;
     }
-    hexPath(ctx, cx, cy, r);
-    ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    ctx.fill();
+    const noBg = badge.color === 'none' || badge.color === 'transparent';
+    if (!noBg) {
+        hexPath(ctx, cx, cy, r);
+        ctx.fillStyle = 'rgba(255,255,255,0.07)';
+        ctx.fill();
+    }
     if (badge.art) {
         ctx.save();
         hexPath(ctx, cx, cy, r);
@@ -45,7 +48,7 @@ function drawBadge(ctx, badge, cx, cy, r) {
     }
     else {
         hexPath(ctx, cx, cy, r);
-        ctx.fillStyle = badge.color;
+        ctx.fillStyle = noBg ? '#2b2d31' : badge.color;
         ctx.fill();
         hexPath(ctx, cx, cy, r - 8);
         ctx.fillStyle = 'rgba(0,0,0,0.25)';

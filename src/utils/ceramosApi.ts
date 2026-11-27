@@ -74,7 +74,7 @@ export async function catalog(): Promise<{ badges: CatalogBadge[]; items: Catalo
       planMin: item.planMin ?? null, onSale: badges.onSale(item, now), retired: Boolean(item.retired), hasFile: item.hasFile, version: item.version, credit: item.credit ?? null,
     })),
     packs: badges.allPacks().map((pack) => {
-      const summary = shopCatalog.packSummary(pack.id, new Set(), null, now);
+      const summary = shopCatalog.packSummary(pack.id, new Set(), 'gold', now);
       return {
         id: pack.id, kind: pack.kind, names: pack.names, color: pack.color, free: pack.free, price: pack.price, fullPrice: summary?.fullPrice ?? 0, saleFrom: pack.saleFrom, saleUntil: pack.saleUntil,
         planMin: pack.planMin, onSale: badges.onSale(pack, now), retired: pack.retired, pieces: summary?.pieces ?? [],
