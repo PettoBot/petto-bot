@@ -124,12 +124,12 @@ const images = require('../src/utils/shopImages');
   catalog.setItems([item('a'), item('b')]);
   assert.equal(catalog.priceOf(catalog.itemById('banner', 'a')), 0, 'a free pack makes its pieces free');
 
-  // The price of a whole pack: its own price, never dearer than the pieces you do not have; every piece you have is left out.
+  // The price of a whole pack: its fixed price when the team set one, or the sum of pieces; once you own part of the pack, you never pay more than the remaining paid pieces.
   badges.setPacks([pack({ price: 150 })]);
   catalog.setItems([item('a'), item('b'), item('c', { rarity: 'common' }), item('gone', { retired: true }), item('nofile', { hasFile: false })]);
   assert.deepEqual(catalog.packSummary('winter-pack').pieces, ['banner:a', 'banner:b', 'banner:c'], 'retired pieces and pieces with no file are not sold');
   assert.equal(catalog.packSummary('winter-pack').fullPrice, 50 + 50 + 20);
-  assert.equal(catalog.packSummary('winter-pack').price, 120, 'the pack is never dearer than the pieces');
+  assert.equal(catalog.packSummary('winter-pack').price, 150, 'a fixed pack price is respected when buying the whole pack');
   assert.equal(catalog.packSummary('winter-pack', new Set(['banner:a', 'banner:b'])).price, 20);
   assert.equal(catalog.packSummary('nope'), null);
   badges.setPacks([pack({ price: null })]);

@@ -21,7 +21,7 @@ exports.priceOf = priceOf;
 /** The name of a piece in a language (the editor keeps it in the three languages). */
 const itemName = (lang, item) => item.names[lang] ?? item.names[lang.split('-')[0]] ?? item.names.en ?? item.id;
 exports.itemName = itemName;
-/** What a pack holds now and what it costs whole: the sum of the pieces, or its own price when the team set one (the whole pack is never dearer than the pieces). */
+/** What a pack holds now and what it costs whole: its fixed price when the team set one, or the sum of the pieces (never charging more than the missing paid pieces once you already own part of the pack). */
 function packSummary(packId, owned = new Set(), plan = null, now = new Date()) {
     const pack = badges.packById(packId);
     if (!pack)
@@ -39,6 +39,7 @@ function packSummary(packId, owned = new Set(), plan = null, now = new Date()) {
     }
     const missing = pieces.filter((piece) => !owned.has(piece.key));
     const fullPrice = missing.reduce((sum, piece) => sum + piece.price, 0);
-    const price = pack.free ? 0 : pack.price === null ? fullPrice : Math.min(pack.price, fullPrice);
+    const ownedSome = missing.length < pieces.length;
+    const price = pack.free ? 0 : pack.price === null ? fullPrice : (ownedSome && fullPrice > 0 ? Math.min(pack.price, fullPrice) : pack.price);
     return { pieces: pieces.map((piece) => piece.key), missing: missing.map((piece) => piece.key), fullPrice, price };
 }

@@ -54,12 +54,13 @@ export function drawBadge(ctx: import('@napi-rs/canvas').SKRSContext2D, badge: S
     ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2);
     return;
   }
-  hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fill();
+  const noBg = badge.color === 'none' || badge.color === 'transparent';
+  if (!noBg) { hexPath(ctx, cx, cy, r); ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fill(); }
   if (badge.art) {
     ctx.save(); hexPath(ctx, cx, cy, r); ctx.clip();
     ctx.drawImage(badge.art, cx - r, cy - r, r * 2, r * 2); ctx.restore();
   } else {
-    hexPath(ctx, cx, cy, r); ctx.fillStyle = badge.color; ctx.fill();
+    hexPath(ctx, cx, cy, r); ctx.fillStyle = noBg ? '#2b2d31' : badge.color; ctx.fill();
     hexPath(ctx, cx, cy, r - 8); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
     if (badge.label) {
       ctx.fillStyle = '#ffffff'; ctx.font = canvasFont(FONT, 700, Math.round(r * 0.62)); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

@@ -125,7 +125,8 @@ function checkOverrideInput(body) {
     const packId = packIdOf(body.packId);
     if (packId === undefined)
         return { ok: false, error: 'bad_pack' };
-    const color = typeof body.color === 'string' && body.color ? (/^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : undefined) : null;
+    const rawColor = typeof body.color === 'string' ? body.color.trim().toLowerCase() : '';
+    const color = rawColor === 'none' || rawColor === 'transparent' ? 'none' : rawColor ? (/^#[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor : undefined) : null;
     if (color === undefined)
         return { ok: false, error: 'bad_color' };
     const active = typeof body.active === 'boolean' ? body.active : null;

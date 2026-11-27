@@ -58,7 +58,8 @@ export function checkBadgeInput(body: Record<string, unknown>): Checked {
   const rarity = (RARITIES as readonly string[]).includes(String(body.rarity)) ? String(body.rarity) as Rarity : 'common';
   const price = Number(body.price ?? 0);
   if (!Number.isInteger(price) || price < 0 || price > 100000) return { ok: false, error: 'bad_price' };
-  const color = typeof body.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : '#8f7bd6';
+  const rawColor = typeof body.color === 'string' ? body.color.trim().toLowerCase() : '';
+  const color = rawColor === 'none' || rawColor === 'transparent' ? 'none' : /^#[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor : '#8f7bd6';
   const saleFrom = date(body.saleFrom), saleUntil = date(body.saleUntil);
   if (saleFrom === undefined || saleUntil === undefined) return { ok: false, error: 'bad_date' };
   if (saleFrom && saleUntil && new Date(saleUntil) <= new Date(saleFrom)) return { ok: false, error: 'bad_dates' };
