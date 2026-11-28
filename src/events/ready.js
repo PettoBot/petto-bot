@@ -2,7 +2,7 @@ const { Events } = require('discord.js');
 const { applyStatus, currentStatus } = require('../utils/botPresence');
 const { warmGuild } = require('../utils/inviteCache');
 const logger = require('../utils/logger');
-const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
+const { attachDiscordLogger, startDiscordStatusJob, registerWorkerShardRelay } = require('../utils/discordOps');
 const { announceDeployReport, cleanupGuildCommands, syncGuildCommands } = require('../handlers/deployCommands');
 const config = require('../config');
 const { isWorker } = require('../utils/instanceRole');
@@ -65,6 +65,7 @@ module.exports = {
       .then(() => syncGuildCommands(client))
       .catch((err) => logger.warn(`The server commands could not be registered: ${err?.message ?? err}`));
     if (!isWorker()) startDiscordStatusJob(client);
+    else registerWorkerShardRelay(client);
     // Once, in the background: disabled-command rules saved with an alias (`sug`) take the real name (`suggest`), the only one checked.
     disabledCommandsDb.canonicalizeStored((name) => {
       const word = String(name ?? '').trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();

@@ -33,9 +33,9 @@ async function findConfig(body, db = database) {
 
 /** Builds the answer, or `{ status, error }` when there is none. `deps` lets a test replace the database and Discord. */
 async function buildLeaderboard(client, body, deps = {}) {
-  const config = await (deps.findConfig ?? findConfig)(body);
+  const config = deps.config ?? await (deps.findConfig ?? findConfig)(body);
   if (!config) return { status: 404, error: 'not_found' };
-  const guild = client.guilds.cache.get(config.guild_id);
+  const guild = client.guilds.cache.get(config.guild_id) ?? await client.guilds.fetch?.(config.guild_id).catch(() => null);
   if (!guild) return { status: 404, error: 'not_found' };
   const source = body?.source === 'voice' ? 'voice' : 'text';
   const page = Math.min(MAX_PAGE, Math.max(1, Math.floor(Number(body?.page)) || 1));
@@ -56,6 +56,7 @@ async function buildLeaderboard(client, body, deps = {}) {
       id: guild.id,
       name: guild.name,
       icon: guild.iconURL?.({ size: 128, extension: 'png' }) ?? null,
+      banner: guild.bannerURL?.({ size: 1024, extension: 'png' }) ?? null,
       memberCount: guild.memberCount ?? null,
       slug: config.leaderboard_slug ?? null,
       joinUrl: /^https:\/\//.test(config.leaderboard_join_url ?? '') ? config.leaderboard_join_url : null,
@@ -84,14 +85,24 @@ async function buildLeaderboard(client, body, deps = {}) {
   return value;
 }
 
-function registerPublicLeaderboardRoute(app, { isAuthorized, limiter, client }) {
+function registerPublicLeaderboardRoute(app, { isAuthorized, limiter, client, routeGuild } = {}) {
   app.post('/api/public/leaderboard', ...(limiter ? [limiter] : []), async (req, res) => {
     if (!isAuthorized(req)) {
       res.status(401).json({ ok: false, error: 'unauthorized' });
       return;
     }
     try {
-      const answer = await buildLeaderboard(client, req.body);
+      const config = await findConfig(req.body);
+      if (!config) {
+        res.status(404).json({ ok: false, error: 'not_found' });
+        return;
+      }
+      // If this server's shard lives on a worker VPS, forward the request over the instance link so every VPS exposes its leaderboards.
+      if (routeGuild && !client.guilds.cache.get(config.guild_id)) {
+        const handled = await routeGuild(req, res, config.guild_id);
+        if (handled) return;
+      }
+      const answer = await buildLeaderboard(client, req.body, { config });
       if (answer.error) {
         res.status(answer.status).json({ ok: false, error: answer.error });
         return;
