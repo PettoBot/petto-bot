@@ -134,12 +134,27 @@ export async function release(client: Client, guildId: string, channelId: string
 export async function tick(client: Client): Promise<{ checked: number; joined: number }> {
   const rows = await listEnabled();
   const wanted = new Set(rows.map((row) => row.guildId));
-  for (const guildId of [...targets.keys()]) if (!wanted.has(guildId)) { targets.delete(guildId); seen.delete(guildId); reported.delete(guildId); }
+  for (const [guildId, prev] of [...targets.entries()]) {
+    if (!wanted.has(guildId)) {
+      await release(client, guildId, prev.channelId).catch(() => {});
+    }
+  }
   let joined = 0;
   for (const row of rows) {
     const guild = client.guilds.cache.get(row.guildId);
     if (!guild) continue;
-    const needs = !inChannel(guild, row.channelId) || guild.members.me?.voice.selfDeaf !== row.deaf || (seen.get(row.guildId)?.statusAt ?? 0) + STATUS_EVERY_MS < Date.now();
+    const prev = targets.get(row.guildId);
+    if (prev && prev.channelId !== row.channelId) {
+      await writeStatus(client, prev.channelId, null).catch(() => {});
+    }
+    const wantedText = statusText(row, peekGuildLanguage(guild.id));
+    const prevSeen = seen.get(row.guildId);
+    const needs =
+      !inChannel(guild, row.channelId) ||
+      guild.members.me?.voice.selfDeaf !== row.deaf ||
+      !prevSeen ||
+      prevSeen.statusText !== wantedText ||
+      prevSeen.statusAt + STATUS_EVERY_MS < Date.now();
     targets.set(row.guildId, row);
     if (!needs) continue;
     if (joined >= MAX_JOINS_PER_TICK && !inChannel(guild, row.channelId)) continue;

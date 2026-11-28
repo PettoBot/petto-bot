@@ -398,11 +398,55 @@ async function reportDiscordStatus(client) {
   ]);
 }
 
+/**
+ * Attached on worker VPS instances: forwards real-time shard lifecycle events (reconnecting, disconnect, error, ready, resume)
+ * to the primary host over `petto:shard_event` (via Redis or the instance WebSocket link) so all shards appear in the shards channel.
+ */
+function registerWorkerShardRelay(client) {
+  const publish = (state, details) => {
+    const payload = JSON.stringify({ state, details });
+    const redis = require('./redis');
+    if (redis.available()) {
+      redis.publish('shard_event', payload).catch(() => {});
+    } else {
+      require('./linkRuntime').sendFromWorker('shard_event', payload);
+    }
+  };
+  client.on(Events.ShardReconnecting, (shardId) => {
+    publish('idle', `Shard **${Number(shardId) + 1}** is reconnecting. Some servers may respond slowly while Discord restores the connection.`);
+  });
+  client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
+    publish('outage', `Shard **${Number(shardId) + 1}** disconnected (code \`${closeEvent?.code ?? 'unknown'}\`). Petto is attempting to recover automatically.`);
+  });
+  client.on(Events.ShardError, (error, shardId) => {
+    publish('outage', `Shard **${Number(shardId) + 1}** reported an error: \`${redact(error?.message || error)}\``);
+  });
+  client.on(Events.ShardReady, (shardId) => {
+    publish('online', `Shard **${Number(shardId) + 1}** recovered and is online.`);
+  });
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    publish('online', `Shard **${Number(shardId) + 1}** resumed successfully (${replayedEvents ?? 0} replayed events).`);
+  });
+}
+
 function startDiscordStatusJob(client) {
   registerGatewayStatusEvents(client);
-  announceStatusHistory(client, 'online', `Petto is online and serving **${guildCount(client)}** servers.`, { force: true }).catch(() => {});
+  // Receive real-time shard events forwarded from worker VPS instances so every shard (not only the primary's) is announced.
+  require('./redis').subscribe('shard_event', (raw) => {
+    try {
+      const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!msg?.state || !msg?.details) return;
+      announceStatusHistory(client, msg.state, msg.details, { force: true }).catch(() => {});
+    } catch { /* ignore malformed event */ }
+  });
   const report = exclusiveTask(() => reportDiscordStatus(client));
-  report().catch(() => {});
+  // Read all shards from the database first so the startup announcement shows the total server count across all hosts.
+  readWholeBot(client)
+    .catch(() => {})
+    .finally(() => {
+      announceStatusHistory(client, 'online', `Petto is online and serving **${guildCount(client)}** servers.`, { force: true }).catch(() => {});
+      report().catch(() => {});
+    });
   const timer = setInterval(() => {
     report().catch(() => {});
     const state = aggregateGatewayState(client);
@@ -473,4 +517,5 @@ module.exports = {
   attachDiscordLogger,
   sendGuildLifecycleLog,
   startDiscordStatusJob,
+  registerWorkerShardRelay,
 };

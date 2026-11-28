@@ -233,6 +233,7 @@ function startServer(client) {
   const linkLib = require('../utils/instanceLink');
   const linkRuntime = require('../utils/linkRuntime');
   let linkHub = null;
+  let linkOwnerOf = null;
   if (config.primaryDatabaseUrl && config.instanceRole !== 'worker' && bridgeLib.validSecret(config.dbBridgeSecret)) {
     const pools = {
       primary: () => require('../db/postgres').getPrimaryPool(),
@@ -256,9 +257,9 @@ function startServer(client) {
       linkRuntime.relayEvent(channel, message, worker);
     });
     // A request for a server that lives on a shard of a worker goes through the link; one for a server nobody holds answers 503. Every route with a :guildId passes here.
-    const ownerOf = linkRuntime.ownership();
+    linkOwnerOf = linkRuntime.ownership();
     app.param('guildId', (req, res, next, guildId) => {
-      linkLib.routeGuildRequest(linkHub, ownerOf, req, res, guildId).then((handled) => { if (!handled) next(); }).catch(next);
+      linkLib.routeGuildRequest(linkHub, linkOwnerOf, req, res, guildId).then((handled) => { if (!handled) next(); }).catch(next);
     });
     logger.info('SQL bridge and link: serving /api/bridge/db and /api/bridge/link for a second instance.'); // i18n-ignore: operator log
   }
@@ -1020,7 +1021,8 @@ function startServer(client) {
     // Forum support: the forums and their tags, the posts, the panel and lock, close and solved from the dashboard.
     registerForumRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
-    registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
+    const routePublicGuild = linkHub ? (req, res, guildId) => linkLib.routeGuildRequest(linkHub, linkOwnerOf, req, res, guildId) : null;
+    registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client, routeGuild: routePublicGuild });
     // The feedback board of the website: publish, redraw and delete the Discord card of a post.
     registerFeedbackBoardRoutes(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
